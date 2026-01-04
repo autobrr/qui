@@ -263,6 +263,13 @@ export interface CategoryAction {
   condition?: RuleCondition
 }
 
+export interface MoveAction {
+  enabled: boolean
+  path: string
+  blockIfCrossSeed?: boolean
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -271,6 +278,7 @@ export interface ActionConditions {
   delete?: DeleteAction
   tag?: TagAction
   category?: CategoryAction
+  move?: MoveAction
 }
 
 export interface Automation {
@@ -308,7 +316,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -330,6 +338,8 @@ export interface AutomationActivity {
     categories?: Record<string, number> // category -> count of torrents
     // Speed/share limit activity details
     limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
+    // Move activity details
+    paths?: Record<string, number> // path -> count of torrents
   }
   createdAt: string
 }

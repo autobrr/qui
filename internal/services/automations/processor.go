@@ -43,6 +43,11 @@ type torrentDesiredState struct {
 	deleteRuleID   int
 	deleteRuleName string
 	deleteReason   string
+
+	// Move (first rule to trigger wins)
+	shouldMove             bool
+	movePath               string
+	moveBlockedByCrossSeed bool
 }
 
 type ruleRunStats struct {
@@ -60,13 +65,16 @@ type ruleRunStats struct {
 	CategoryConditionNotMetOrBlocked int
 	DeleteApplied                    int
 	DeleteConditionNotMet            int
+	MoveApplied                      int
+	MoveConditionNotMet              int
+	MoveBlockedByCrossSeed           int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -286,6 +294,27 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 		}
 	}
+
+	// Move
+	if conditions.Move != nil && conditions.Move.Enabled {
+		shouldApply := conditions.Move.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)
+
+		// Only apply move if not already in target path and not blocked by cross-seed protection
+		if shouldApply && !inSavePath(torrent, conditions.Move.Path) && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex) {
+			if stats != nil {
+				stats.MoveApplied++
+			}
+			state.shouldMove = true
+			state.movePath = conditions.Move.Path
+		} else if stats != nil {
+			if shouldApply {
+				stats.MoveBlockedByCrossSeed++
+			} else {
+				stats.MoveConditionNotMet++
+			}
+		}
+	}
 }
 
 func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
@@ -309,6 +338,27 @@ func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCatego
 		}
 	}
 	return false
+}
+
+func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
+	if moveAction == nil || !moveAction.BlockIfCrossSeed {
+		return false
+	}
+	key, ok := makeCrossSeedKey(torrent)
+	if !ok {
+		return false
+	}
+	group, ok := crossSeedIndex[key]
+	if !ok || len(group) == 0 {
+		return false
+	}
+
+	// If we have any other torrent in the same cross-seed group, block the move
+	return true
+}
+
+func inSavePath(torrent qbt.Torrent, savePath string) bool {
+	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
 func containsStringFold(list []string, candidate string) bool {
@@ -396,7 +446,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldPause ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
-		state.shouldDelete
+		state.shouldDelete ||
+		state.shouldMove
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.

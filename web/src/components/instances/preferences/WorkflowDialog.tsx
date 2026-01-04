@@ -66,10 +66,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -78,6 +78,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   delete: "Delete",
   tag: "Tag",
   category: "Category",
+  move: "Move",
 }
 
 type FormState = {
@@ -97,6 +98,7 @@ type FormState = {
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
+  moveEnabled: boolean
   // Speed limits settings
   exprUploadKiB?: number
   exprDownloadKiB?: number
@@ -114,6 +116,9 @@ type FormState = {
   exprCategory: string
   exprIncludeCrossSeeds: boolean
   exprBlockIfCrossSeedInCategories: string[]
+  // Move action settings
+  exprMovePath: string
+  exprMoveBlockIfCrossSeed: boolean
 }
 
 const emptyFormState: FormState = {
@@ -130,6 +135,7 @@ const emptyFormState: FormState = {
   deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
+  moveEnabled: false,
   exprUploadKiB: undefined,
   exprDownloadKiB: undefined,
   exprRatioLimit: undefined,
@@ -142,6 +148,8 @@ const emptyFormState: FormState = {
   exprCategory: "",
   exprIncludeCrossSeeds: false,
   exprBlockIfCrossSeedInCategories: [],
+  exprMovePath: "",
+  exprMoveBlockIfCrossSeed: false,
 }
 
 // Helper to get enabled actions from form state
@@ -153,6 +161,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
+  if (state.moveEnabled) actions.push("move")
   return actions
 }
 
@@ -326,6 +335,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
+        let moveEnabled = false
         let exprUploadKiB: number | undefined
         let exprDownloadKiB: number | undefined
         let exprRatioLimit: number | undefined
@@ -338,6 +348,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
+        let exprMovePath = ""
+        let exprMoveBlockIfCrossSeed = false
 
         if (conditions) {
           // Get condition from any enabled action (they should all be the same)
@@ -347,6 +359,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.delete?.condition
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
+            ?? conditions.move?.condition
             ?? null
 
           if (conditions.speedLimits?.enabled) {
@@ -386,6 +399,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprIncludeCrossSeeds = conditions.category.includeCrossSeeds ?? false
             exprBlockIfCrossSeedInCategories = conditions.category.blockIfCrossSeedInCategories ?? []
           }
+          if (conditions.move?.enabled) {
+            moveEnabled = true
+            exprMovePath = conditions.move.path ?? ""
+            exprMoveBlockIfCrossSeed = conditions.move.blockIfCrossSeed ?? false
+          }
         }
 
         setFormState({
@@ -403,6 +421,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
+          moveEnabled,
           exprUploadKiB,
           exprDownloadKiB,
           exprRatioLimit,
@@ -413,6 +432,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprUseTrackerAsTag,
           exprUseDisplayName,
           exprCategory,
+          exprMovePath,
+          exprMoveBlockIfCrossSeed,
           exprIncludeCrossSeeds,
           exprBlockIfCrossSeedInCategories,
         })
@@ -475,6 +496,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.moveEnabled) {
+      conditions.move = {
+        enabled: true,
+        path: input.exprMovePath,
+        blockIfCrossSeed: input.exprMoveBlockIfCrossSeed,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
 
     return {
       name: input.name,
@@ -499,6 +528,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
+    formState.moveEnabled,
   ].filter(Boolean).length
 
   const previewMutation = useMutation({
@@ -618,6 +648,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (formState.deleteEnabled && !formState.actionCondition) {
       toast.error("Delete requires at least one condition")
+      return
+    }
+    if (formState.moveEnabled && !formState.exprMovePath) {
+      toast.error("Move requires a path")
       return
     }
 
@@ -787,6 +821,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
+                            moveEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -804,6 +839,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="pause">Pause</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
+                        <SelectItem value="move">Move</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1155,6 +1191,63 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
                             </SelectContent>
                           </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {formState.moveEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Move</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, moveEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">New save path</Label>
+                          <Input
+                            type="text"
+                            value={formState.exprMovePath}
+                            onChange={(e) => setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))}
+                            placeholder="e.g., /data/torrents"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="block-if-cross-seed"
+                            checked={formState.exprMoveBlockIfCrossSeed}
+                            onCheckedChange={(checked) => setFormState(prev => ({
+                              ...prev,
+                              exprMoveBlockIfCrossSeed: checked,
+                            }))}
+                          />
+                          <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer whitespace-nowrap">
+                            Skip if cross-seeds exist
+                          </Label>
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                  aria-label="About skipping move if cross-seeds exist"
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[320px]">
+                                <p>
+                                  Skips the move if there are any other torrents in the same cross-seed group. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </div>
                     )}
