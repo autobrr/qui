@@ -297,11 +297,12 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Move
 	if conditions.Move != nil && conditions.Move.Enabled {
-		shouldApply := conditions.Move.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)
+		shouldApply := (conditions.Move.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)) &&
+			!inSavePath(torrent, conditions.Move.Path)
 
 		// Only apply move if not already in target path and not blocked by cross-seed protection
-		if shouldApply && !inSavePath(torrent, conditions.Move.Path) && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex) {
+		if shouldApply && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex) {
 			if stats != nil {
 				stats.MoveApplied++
 			}
