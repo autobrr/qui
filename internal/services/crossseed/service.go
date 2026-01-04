@@ -9201,32 +9201,22 @@ func (s *Service) processReflinkMode(
 		Int("totalFiles", totalFiles).
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
 
-	// Add the torrent
-	if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
-		// Rollback reflink tree on failure
-		if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
-			log.Warn().
+		// Add the torrent
+		if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+			// Rollback reflink tree on failure
+			if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
+				log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
 				Msg("[CROSSSEED] Reflink mode: failed to rollback reflink tree")
 		}
-		log.Error().
-			Err(err).
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
-		return reflinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "reflink_error",
-				Message:      fmt.Sprintf("Failed to add torrent: %v", err),
-			},
+			log.Error().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentName", torrentName).
+				Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
+			return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
 		}
-	}
 
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
