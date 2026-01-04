@@ -76,6 +76,12 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
     ? formatSpeedWithUnit(uploadLimit, speedUnit)
     : "Unlimited"
 
+  const formatTimeLimit = (minutes: number | undefined): string => {
+    if (minutes === undefined || minutes === -1) return "Unlimited"
+    if (minutes === -2) return "Use Global"
+    return formatDuration((minutes || 0) * 60)
+  }
+
   if (loading && !properties) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -234,8 +240,8 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         <Separator className="opacity-30 mt-2" />
 
-        {/* Row 5: Transfer Stats + Speed + Network + Time */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 m-0 mt-2">
+        {/* Row 5: Transfer Stats + Network + Time + Limits */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-6 lg:gap-y-0 m-0 mt-2">
           {/* Transfer Stats */}
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Transfer</h4>
@@ -246,14 +252,13 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               value={(properties.share_ratio || 0).toFixed(2)}
               valueStyle={{ color: getRatioColor(properties.share_ratio || 0) }}
             />
-            <StatRow label="Ratio Limit" value={torrent.max_ratio > 0 ? torrent.max_ratio.toFixed(2) : "∞"} />
             <StatRow label="Wasted" value={formatBytes(properties.total_wasted || 0)} />
             {torrent.seq_dl && <StatRow label="Sequential Download" value="Enabled" />}
           </div>
 
-          {/* Speed */}
+          {/* Network */}
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Speed</h4>
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Network</h4>
             <StatRow
               label="DL"
               value={`${formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)} - (${formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)} avg.)`}
@@ -264,13 +269,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               value={`${formatSpeedWithUnit(properties.up_speed || 0, speedUnit)} - (${formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)} avg.)`}
               highlight="blue"
             />
-            <StatRow label="DL Limit" value={downloadLimitLabel} />
-            <StatRow label="UL Limit" value={uploadLimitLabel} />
-          </div>
-
-          {/* Network */}
-          <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Network</h4>
             <StatRow
               label="Seeds"
               value={`${properties.seeds || 0} / ${properties.seeds_total || 0}`}
@@ -302,6 +300,24 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
             {properties.creation_date && properties.creation_date !== -1 && (
               <StatRow label="Created" value={formatTimestamp(properties.creation_date)} />
+            )}
+          </div>
+
+          {/* Limits */}
+          <div className="space-y-1">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Limits</h4>
+            <StatRow label="Ratio Limit" value={torrent.max_ratio > 0 ? torrent.max_ratio.toFixed(2) : "∞"} />
+            <StatRow label="DL Limit" value={downloadLimitLabel} />
+            <StatRow label="UL Limit" value={uploadLimitLabel} />
+            <StatRow
+              label="Seedtime Limit"
+              value={formatTimeLimit(torrent.seeding_time_limit)}
+            />
+            {torrent.inactive_seeding_time_limit !== undefined && (
+              <StatRow
+                label="Inactive Limit"
+                value={formatTimeLimit(torrent.inactive_seeding_time_limit)}
+              />
             )}
           </div>
         </div>
