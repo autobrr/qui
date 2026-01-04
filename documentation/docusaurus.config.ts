@@ -62,6 +62,20 @@ const config: Config = {
     locales: ["en"],
   },
 
+  themes: [
+    [
+      require.resolve("@easyops-cn/docusaurus-search-local"),
+      /** @type {import("@easyops-cn/docusaurus-search-local").PluginOptions} */
+      ({
+        hashed: true,
+        docsRouteBasePath: "/docs",
+        language: "en",
+        docsDir: "docs",
+        searchBarShortcutHint: false,
+      }),
+    ],
+  ],
+
   presets: [
     [
       "classic",
