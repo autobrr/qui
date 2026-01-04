@@ -41,6 +41,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -7942,43 +7943,54 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		}
 
 		// Execute the external program - simplified version of handler logic
-		success := s.executeExternalProgramSimple(ctx, program, *targetTorrent)
+		launched, outcomeKnown := s.executeExternalProgramSimple(program, targetTorrent)
 
-		if success {
+		switch {
+		case !launched:
+			log.Error().
+				Int("instanceId", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("programId", programID).
+				Str("programName", program.Name).
+				Msg("External program failed to launch for cross-seed injection")
+		case outcomeKnown:
 			log.Debug().
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
 				Str("programName", program.Name).
 				Msg("External program executed successfully for cross-seed injection")
-		} else {
-			log.Error().
+		default:
+			log.Debug().
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
 				Str("programName", program.Name).
-				Msg("External program execution failed for cross-seed injection")
+				Msg("External program launched for cross-seed injection (outcome unknown)")
 		}
 	}()
 }
 
-// executeExternalProgramSimple runs an external program for a torrent using simplified logic
-func (s *Service) executeExternalProgramSimple(ctx context.Context, program *models.ExternalProgram, torrent qbt.Torrent) bool {
+// executeExternalProgramSimple runs an external program for a torrent using simplified logic.
+// Returns (launched, outcomeKnown):
+//   - launched: true if the process was started successfully
+//   - outcomeKnown: true if we can determine success/failure (false on Windows with 'start')
+func (s *Service) executeExternalProgramSimple(program *models.ExternalProgram, torrent *qbt.Torrent) (launched, outcomeKnown bool) {
 	// Build torrent data map for variable substitution
 	torrentData := map[string]string{
 		"hash":         torrent.Hash,
 		"name":         torrent.Name,
-		"save_path":    s.applyPathMappings(torrent.SavePath, program.PathMappings),
+		"save_path":    externalprograms.ApplyPathMappings(torrent.SavePath, program.PathMappings),
 		"category":     torrent.Category,
 		"tags":         torrent.Tags,
 		"state":        string(torrent.State),
 		"size":         strconv.FormatInt(torrent.Size, 10),
 		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-		"content_path": s.applyPathMappings(torrent.ContentPath, program.PathMappings),
+		"content_path": externalprograms.ApplyPathMappings(torrent.ContentPath, program.PathMappings),
 	}
 
 	// Build command arguments
-	args := s.buildArgsSimple(program.ArgsTemplate, torrentData)
+	args := externalprograms.BuildArguments(program.ArgsTemplate, torrentData)
 
 	// Build command
 	var cmd *exec.Cmd
@@ -8013,49 +8025,42 @@ func (s *Service) executeExternalProgramSimple(ctx context.Context, program *mod
 		Str("command", fmt.Sprintf("%v", cmd.Args)).
 		Msg("External program launched")
 
-	// Execute in background
-	go func() {
-		if runtime.GOOS == "windows" {
-			cmd.Run()
-		} else {
-			if err := cmd.Start(); err != nil {
-				log.Error().Err(err).Str("program", program.Name).Msg("Failed to start external program")
-				return
-			}
-			cmd.Wait()
+	if runtime.GOOS == "windows" {
+		// Windows uses 'start' which spawns a detached process - we can't know
+		// the child's exit status, only whether the 'start' command itself succeeded.
+		if err := cmd.Run(); err != nil {
+			log.Error().
+				Err(err).
+				Str("program", program.Name).
+				Str("hash", torrent.Hash).
+				Str("command", fmt.Sprintf("%v", cmd.Args)).
+				Msg("Failed to launch external program via cmd.exe")
+			return false, false
 		}
-	}()
-
-	return true
-}
-
-// Helper functions for external program execution
-func (s *Service) applyPathMappings(remotePath string, mappings []models.PathMapping) string {
-	if remotePath == "" {
-		return ""
-	}
-	for _, mapping := range mappings {
-		if strings.HasPrefix(remotePath, mapping.From) {
-			return strings.Replace(remotePath, mapping.From, mapping.To, 1)
-		}
-	}
-	return remotePath
-}
-
-func (s *Service) buildArgsSimple(template string, torrentData map[string]string) []string {
-	if template == "" {
-		return []string{}
+		return true, false // launched, but outcome unknown
 	}
 
-	// Simple argument splitting and substitution
-	args := strings.Fields(template)
-	for i := range args {
-		for key, value := range torrentData {
-			placeholder := "{" + key + "}"
-			args[i] = strings.ReplaceAll(args[i], placeholder, value)
-		}
+	if err := cmd.Start(); err != nil {
+		log.Error().
+			Err(err).
+			Str("program", program.Name).
+			Str("hash", torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("External program failed to start")
+		return false, true
 	}
-	return args
+
+	if err := cmd.Wait(); err != nil {
+		log.Debug().
+			Err(err).
+			Str("program", program.Name).
+			Str("hash", torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("External program exited with error")
+		return false, true
+	}
+
+	return true, true
 }
 
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
