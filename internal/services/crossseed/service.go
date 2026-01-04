@@ -857,6 +857,36 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 	return s.automationStore.UpsertSearchSettings(ctx, settings)
 }
 
+// ReconcileInterruptedRuns marks any runs that were left in 'running' status as failed.
+// This should be called at startup before serving requests to clean up runs interrupted
+// by a crash or restart.
+func (s *Service) ReconcileInterruptedRuns(ctx context.Context) {
+	if s.automationStore == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	const msg = "run interrupted (qui restarted or crashed)"
+
+	searchCount, err := s.automationStore.MarkInterruptedSearchRuns(ctx, now, msg)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to reconcile interrupted search runs")
+		return
+	}
+	if searchCount > 0 {
+		log.Info().Int64("count", searchCount).Msg("reconciled interrupted search runs")
+	}
+
+	automationCount, err := s.automationStore.MarkInterruptedAutomationRuns(ctx, now, msg)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to reconcile interrupted automation runs")
+		return
+	}
+	if automationCount > 0 {
+		log.Info().Int64("count", automationCount).Msg("reconciled interrupted automation runs")
+	}
+}
+
 // StartAutomation launches the background scheduler loop.
 func (s *Service) StartAutomation(ctx context.Context) {
 	s.automationMu.Lock()

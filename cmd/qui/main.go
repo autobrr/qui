@@ -698,6 +698,12 @@ func (app *Application) runServer() {
 		ArrService:                       arrService,
 	})
 
+	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
+	// Use a short timeout so a locked DB can't hang startup.
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer reconcileCancel()
+	crossSeedService.ReconcileInterruptedRuns(reconcileCtx)
+
 	errorChannel := make(chan error)
 	serverReady := make(chan struct{}, 1)
 	go func() {
