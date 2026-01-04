@@ -10,12 +10,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type TorrentCollector struct {
-	syncManager *qbittorrent.SyncManager
-	clientPool  *qbittorrent.ClientPool
+	syncManager               *qbittorrent.SyncManager
+	clientPool                *qbittorrent.ClientPool
+	trackerCustomizationStore *models.TrackerCustomizationStore
 
 	torrentsDownloadingDesc      *prometheus.Desc
 	torrentsSeedingDesc          *prometheus.Desc
@@ -30,12 +32,17 @@ type TorrentCollector struct {
 	allTimeUpload                *prometheus.Desc
 	instanceConnectionStatusDesc *prometheus.Desc
 	scrapeErrorsDesc             *prometheus.Desc
+	trackerTorrentsDesc          *prometheus.Desc
+	trackerUploadedDesc          *prometheus.Desc
+	trackerDownloadedDesc        *prometheus.Desc
+	trackerTotalSizeDesc         *prometheus.Desc
 }
 
-func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool) *TorrentCollector {
+func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool, trackerCustomizationStore *models.TrackerCustomizationStore) *TorrentCollector {
 	return &TorrentCollector{
-		syncManager: syncManager,
-		clientPool:  clientPool,
+		syncManager:               syncManager,
+		clientPool:                clientPool,
+		trackerCustomizationStore: trackerCustomizationStore,
 
 		torrentsDownloadingDesc: prometheus.NewDesc(
 			"qbittorrent_torrents_downloading",
@@ -115,6 +122,30 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 			[]string{"instance_id", "instance_name", "type"},
 			nil,
 		),
+		trackerTorrentsDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_torrents",
+			"Number of torrents by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
+		trackerUploadedDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_uploaded_bytes",
+			"Total uploaded data in bytes by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
+		trackerDownloadedDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_downloaded_bytes",
+			"Total downloaded data in bytes by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
+		trackerTotalSizeDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_total_size_bytes",
+			"Total content size in bytes by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
 	}
 }
 
@@ -132,6 +163,10 @@ func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.allTimeUpload
 	ch <- c.instanceConnectionStatusDesc
 	ch <- c.scrapeErrorsDesc
+	ch <- c.trackerTorrentsDesc
+	ch <- c.trackerUploadedDesc
+	ch <- c.trackerDownloadedDesc
+	ch <- c.trackerTotalSizeDesc
 }
 
 func (c *TorrentCollector) reportError(ch chan<- prometheus.Metric, instanceIDStr, instanceName, errorType string) {
@@ -152,6 +187,16 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 	if c.clientPool == nil {
 		log.Debug().Msg("ClientPool is nil, skipping metrics collection")
 		return
+	}
+
+	// Load tracker customizations once for resolving display names
+	var trackerCustomizations []*models.TrackerCustomization
+	if c.trackerCustomizationStore != nil {
+		var err error
+		trackerCustomizations, err = c.trackerCustomizationStore.List(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to load tracker customizations for metrics")
+		}
 	}
 
 	instances := c.clientPool.GetAllInstances(ctx)
@@ -267,6 +312,69 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				)
 			}
 
+			if counts.TrackerTransfers != nil {
+				type aggregatedStats struct {
+					count      int
+					uploaded   int64
+					downloaded int64
+					totalSize  int64
+				}
+
+				trackerStats := map[string]*aggregatedStats{}
+
+				for domain, stats := range counts.TrackerTransfers {
+					displayName := models.ResolveTrackerDisplayName(domain, "", trackerCustomizations)
+
+					if existing, ok := trackerStats[displayName]; ok {
+						existing.count += stats.Count
+						existing.uploaded += stats.Uploaded
+						existing.downloaded += stats.Downloaded
+						existing.totalSize += stats.TotalSize
+					} else {
+						trackerStats[displayName] = &aggregatedStats{
+							count:      stats.Count,
+							uploaded:   stats.Uploaded,
+							downloaded: stats.Downloaded,
+							totalSize:  stats.TotalSize,
+						}
+					}
+				}
+
+				for trackerName, stats := range trackerStats {
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerTorrentsDesc,
+						prometheus.GaugeValue,
+						float64(stats.count),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerUploadedDesc,
+						prometheus.GaugeValue,
+						float64(stats.uploaded),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerDownloadedDesc,
+						prometheus.GaugeValue,
+						float64(stats.downloaded),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerTotalSizeDesc,
+						prometheus.GaugeValue,
+						float64(stats.totalSize),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+				}
+			}
 		}
 
 		if response != nil && response.ServerState != nil {
