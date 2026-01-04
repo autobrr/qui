@@ -226,6 +226,9 @@ const (
 	recheckAPITimeout                   = 30 * time.Second
 	minSearchIntervalSeconds            = 60
 	minSearchCooldownMinutes            = 720
+
+	// User-facing message when cross-seed is skipped due to recheck requirement
+	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
@@ -2987,7 +2990,7 @@ func (s *Service) processCrossSeedCandidate(
 
 	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
 		result.Status = "skipped_recheck"
-		result.Message = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
+		result.Message = skippedRecheckMessage
 		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
@@ -8554,7 +8557,7 @@ func (s *Service) processHardlinkMode(
 				InstanceName: candidate.InstanceName,
 				Success:      false,
 				Status:       "skipped_recheck",
-				Message:      "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow",
+				Message:      skippedRecheckMessage,
 			},
 		}
 	}
@@ -9069,7 +9072,7 @@ func (s *Service) processReflinkMode(
 				InstanceName: candidate.InstanceName,
 				Success:      false,
 				Status:       "skipped_recheck",
-				Message:      "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow",
+				Message:      skippedRecheckMessage,
 			},
 		}
 	}
