@@ -246,7 +246,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               value={(properties.share_ratio || 0).toFixed(2)}
               valueStyle={{ color: getRatioColor(properties.share_ratio || 0) }}
             />
-            <StatRow label="Ratio Limit"value={torrent.max_ratio > 0 ? torrent.max_ratio.toFixed(2) : "∞"} />
+            <StatRow label="Ratio Limit" value={torrent.max_ratio > 0 ? torrent.max_ratio.toFixed(2) : "∞"} />
             <StatRow label="Wasted" value={formatBytes(properties.total_wasted || 0)} />
             {torrent.seq_dl && <StatRow label="Sequential Download" value="Enabled" />}
           </div>
