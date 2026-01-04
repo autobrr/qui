@@ -8047,14 +8047,51 @@ func (s *Service) buildArgsSimple(template string, torrentData map[string]string
 		return []string{}
 	}
 
-	// Simple argument splitting and substitution
-	args := strings.Fields(template)
+	// Split template into arguments (respecting quoted strings)
+	args := splitArgs(template)
 	for i := range args {
 		for key, value := range torrentData {
 			placeholder := "{" + key + "}"
 			args[i] = strings.ReplaceAll(args[i], placeholder, value)
 		}
 	}
+	return args
+}
+
+// splitArgs splits a command line string into arguments, respecting quoted strings.
+// This ensures that arguments like -d '{"key":"value"}' are not split incorrectly.
+func splitArgs(s string) []string {
+	var args []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, r := range s {
+		switch {
+		case r == '"' || r == '\'':
+			if !inQuote {
+				inQuote = true
+				quoteChar = r
+			} else if r == quoteChar {
+				inQuote = false
+				quoteChar = 0
+			} else {
+				current.WriteRune(r)
+			}
+		case r == ' ' && !inQuote:
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
 	return args
 }
 
