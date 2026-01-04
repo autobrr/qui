@@ -7363,9 +7363,20 @@ func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCateg
 	}
 }
 
+// isWindowsDriveAbs returns true if p is a Windows absolute path (e.g., C:/...).
+// It requires a drive letter, colon, and forward slash (backslashes should be
+// normalized before calling).
+func isWindowsDriveAbs(p string) bool {
+	if len(p) < 3 {
+		return false
+	}
+	c := p[0]
+	return (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') && p[1] == ':' && p[2] == '/'
+}
+
 // normalizePath normalizes a file path for comparison by:
 // - Converting backslashes to forward slashes
-// - Removing trailing slashes
+// - Removing trailing slashes (preserving Windows drive roots like C:/)
 // - Cleaning the path (removing . and .. where possible)
 func normalizePath(p string) string {
 	if p == "" {
@@ -7373,7 +7384,27 @@ func normalizePath(p string) string {
 	}
 	// Convert backslashes to forward slashes for cross-platform comparison
 	p = strings.ReplaceAll(p, "\\", "/")
-	// Clean the path and remove trailing slashes (keep root "/")
+
+	// Handle Windows drive paths specially to preserve C:/ (path.Clean turns it into C:)
+	if len(p) >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':' {
+		// Extract drive prefix and clean the rest
+		drive := p[:2] // "C:"
+		rest := p[2:]  // "/foo/bar" or "/" or "" (drive-relative)
+
+		// Bare drive letter (C:) is drive-relative - leave unchanged
+		if rest == "" {
+			return drive
+		}
+
+		rest = path.Clean(rest)
+		// Ensure drive root stays as C:/ not C:
+		if rest == "/" || rest == "." {
+			return drive + "/"
+		}
+		return drive + rest
+	}
+
+	// Non-Windows path: standard cleaning
 	p = path.Clean(p)
 	if len(p) > 1 {
 		p = strings.TrimSuffix(p, "/")
@@ -7393,7 +7424,7 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 
 	// Rootless content dir logic expects an absolute storage path.
 	// Accept POSIX absolute (/downloads/...) and Windows drive paths (C:/...).
-	if !path.IsAbs(contentPath) && !strings.Contains(contentPath, ":/") {
+	if !path.IsAbs(contentPath) && !isWindowsDriveAbs(contentPath) {
 		return ""
 	}
 

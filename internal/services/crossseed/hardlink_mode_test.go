@@ -479,3 +479,169 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		strings.Contains(result.Result.Message, "filesystem"),
 		"error message should mention directory or filesystem issue, got: %s", result.Result.Message)
 }
+
+func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
+	// When FallbackToRegularMode is enabled, hardlink failures should return
+	// Used=false so that regular cross-seed mode can proceed.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				FallbackToRegularMode:    true, // Fallback enabled
+				HardlinkBaseDir:          "",   // Empty to force early failure
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback enabled, failure should return Used=false to allow regular mode
+	assert.False(t, result.Used, "hardlink mode should return Used=false when fallback is enabled and it fails")
+}
+
+func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
+	// When FallbackToRegularMode is disabled, hardlink failures should return
+	// Used=true with hardlink_error status.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				FallbackToRegularMode:    false, // Fallback disabled
+				HardlinkBaseDir:          "",    // Empty to force early failure
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback disabled, failure should return Used=true with error status
+	require.True(t, result.Used, "hardlink mode should return Used=true when fallback is disabled")
+	assert.False(t, result.Success, "result should indicate failure")
+	assert.Equal(t, "hardlink_error", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "base directory")
+}
+
+func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
+	// When FallbackToRegularMode is enabled, reflink failures should return
+	// Used=false so that regular cross-seed mode can proceed.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true,
+				FallbackToRegularMode:    true, // Fallback enabled
+				HardlinkBaseDir:          "",   // Empty to force early failure (reflink reuses this field)
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback enabled, failure should return Used=false to allow regular mode
+	assert.False(t, result.Used, "reflink mode should return Used=false when fallback is enabled and it fails")
+}
+
+func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
+	// When FallbackToRegularMode is disabled, reflink failures should return
+	// Used=true with reflink_error status.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true,
+				FallbackToRegularMode:    false, // Fallback disabled
+				HardlinkBaseDir:          "",    // Empty to force early failure
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback disabled, failure should return Used=true with error status
+	require.True(t, result.Used, "reflink mode should return Used=true when fallback is disabled")
+	assert.False(t, result.Success, "result should indicate failure")
+	assert.Equal(t, "reflink_error", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "base directory")
+}
