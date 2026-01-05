@@ -45,9 +45,8 @@ type torrentDesiredState struct {
 	deleteReason   string
 
 	// Move (first rule to trigger wins)
-	shouldMove             bool
-	movePath               string
-	moveBlockedByCrossSeed bool
+	shouldMove bool
+	movePath   string
 }
 
 type ruleRunStats struct {
@@ -295,8 +294,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
-	// Move
-	if conditions.Move != nil && conditions.Move.Enabled {
+	// Move (first rule to trigger wins - skip if already set)
+	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
 		shouldApply := (conditions.Move.Condition == nil ||
 			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)) &&
 			!inSavePath(torrent, conditions.Move.Path)
@@ -354,7 +353,14 @@ func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAc
 		return false
 	}
 
-	// If we have any other torrent in the same cross-seed group, evaluate the condition for each torrent
+	// If condition is nil, it means "always apply" - all cross-seeds are considered matching,
+	// so don't block. This aligns with processRuleForTorrent where nil condition means unconditional apply.
+	if moveAction.Condition == nil {
+		return false
+	}
+
+	// If we have any other torrent in the same cross-seed group, evaluate the condition for each torrent.
+	// Block if any cross-seed does NOT match the condition.
 	for _, other := range group {
 		if other.Hash == torrent.Hash {
 			continue
