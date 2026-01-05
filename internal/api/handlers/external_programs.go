@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -284,8 +284,8 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 
 	// Convert torrent to map format for variable substitution
 	// Apply path mappings to convert remote paths to local paths
-	savePath := applyPathMappings(torrent.SavePath, program.PathMappings)
-	contentPath := applyPathMappings(torrent.ContentPath, program.PathMappings)
+	savePath := externalprograms.ApplyPathMappings(torrent.SavePath, program.PathMappings)
+	contentPath := externalprograms.ApplyPathMappings(torrent.ContentPath, program.PathMappings)
 
 	torrentData := map[string]string{
 		"hash":         torrent.Hash,
@@ -300,7 +300,7 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	}
 
 	// Build command arguments by substituting variables
-	args := h.buildArguments(program.ArgsTemplate, torrentData)
+	args := externalprograms.BuildArguments(program.ArgsTemplate, torrentData)
 
 	// Build the command - construct as array then let shell handle it
 	// Use context.Background() so the command isn't cancelled when the HTTP request completes
@@ -421,27 +421,6 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	return result
 }
 
-// buildArguments substitutes variables in the args template with torrent data
-// Returns arguments as an array suitable for exec.Command (no manual quoting needed)
-func (h *ExternalProgramsHandler) buildArguments(template string, torrentData map[string]string) []string {
-	if template == "" {
-		return []string{}
-	}
-
-	// Split template into arguments (respecting quoted strings)
-	args := splitArgs(template)
-
-	// Substitute variables in each argument
-	for i := range args {
-		for key, value := range torrentData {
-			placeholder := "{" + key + "}"
-			args[i] = strings.ReplaceAll(args[i], placeholder, value)
-		}
-	}
-
-	return args
-}
-
 func normalizePath(p string) string {
 	cleaned, err := filepath.Abs(p)
 	if err != nil {
@@ -558,89 +537,4 @@ func (h *ExternalProgramsHandler) createTerminalCommand(cmdLine string) *exec.Cm
 		Str("command", cmdLine).
 		Msg("No terminal emulator found, running command in background")
 	return exec.Command("sh", "-c", cmdLine)
-}
-
-// splitArgs splits a command line string into arguments, respecting quoted strings
-func splitArgs(s string) []string {
-	var args []string
-	var current strings.Builder
-	inQuote := false
-	quoteChar := rune(0)
-
-	for _, r := range s {
-		switch {
-		case r == '"' || r == '\'':
-			if !inQuote {
-				inQuote = true
-				quoteChar = r
-			} else if r == quoteChar {
-				inQuote = false
-				quoteChar = 0
-			} else {
-				current.WriteRune(r)
-			}
-		case r == ' ' && !inQuote:
-			if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
-			}
-		default:
-			current.WriteRune(r)
-		}
-	}
-
-	if current.Len() > 0 {
-		args = append(args, current.String())
-	}
-
-	return args
-}
-
-// applyPathMappings applies configured path mappings to convert remote paths to local paths
-// This allows external programs to work with torrents on remote qBittorrent instances
-// where the filesystem paths differ between the remote and local machine
-//
-// IMPORTANT: Path mappings use prefix-based matching and should use the same path separator
-// style as the remote qBittorrent instance (e.g., / for Linux, \ for Windows). Cross-platform
-// path separator conversion is not performed automatically.
-//
-// Mappings are matched longest-prefix-first to handle overlapping prefixes correctly.
-// For example, if you have both /data and /data/torrents, the more specific /data/torrents
-// will be tried first.
-func applyPathMappings(path string, mappings []models.PathMapping) string {
-	if len(mappings) == 0 {
-		return path
-	}
-
-	// Sort mappings by "from" prefix length (longest first) to handle overlapping prefixes
-	// This ensures more specific paths match before more general ones
-	// Example: /data/torrents matches before /data
-	sortedMappings := make([]models.PathMapping, len(mappings))
-	copy(sortedMappings, mappings)
-	sort.Slice(sortedMappings, func(i, j int) bool {
-		return len(sortedMappings[i].From) > len(sortedMappings[j].From)
-	})
-
-	// Try each mapping in order (longest prefix first)
-	for _, mapping := range sortedMappings {
-		if mapping.From == "" || mapping.To == "" {
-			continue
-		}
-
-		// Check if path starts with the "from" prefix
-		if strings.HasPrefix(path, mapping.From) {
-			// Replace the prefix
-			mappedPath := mapping.To + strings.TrimPrefix(path, mapping.From)
-			log.Debug().
-				Str("original", path).
-				Str("from", mapping.From).
-				Str("to", mapping.To).
-				Str("mapped", mappedPath).
-				Msg("Applied path mapping")
-			return mappedPath
-		}
-	}
-
-	// No mapping matched, return original path
-	return path
 }
