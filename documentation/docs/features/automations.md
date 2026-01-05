@@ -133,7 +133,7 @@ Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default. 
 
 ## Tracker Matching
 
-Every rule requires a tracker pattern:
+This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
 
 | Pattern | Example | Matches |
 |---------|---------|---------|

@@ -1244,6 +1244,50 @@ func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time
 	return rows, nil
 }
 
+// MarkInterruptedSearchRuns marks any search runs still in 'running' status as failed.
+// This should be called at startup to reconcile runs interrupted by a crash/restart.
+func (s *CrossSeedStore) MarkInterruptedSearchRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
+	query := `
+		UPDATE cross_seed_search_runs
+		SET status = 'failed', completed_at = ?, error_message = ?
+		WHERE status = 'running'
+	`
+
+	result, err := s.db.ExecContext(ctx, query, completedAt, message)
+	if err != nil {
+		return 0, fmt.Errorf("mark interrupted search runs: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+
+	return rows, nil
+}
+
+// MarkInterruptedAutomationRuns marks any automation runs still in 'running' status as failed.
+// This should be called at startup to reconcile runs interrupted by a crash/restart.
+func (s *CrossSeedStore) MarkInterruptedAutomationRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
+	query := `
+		UPDATE cross_seed_runs
+		SET status = 'failed', completed_at = ?, error_message = ?
+		WHERE status = 'running'
+	`
+
+	result, err := s.db.ExecContext(ctx, query, completedAt, message)
+	if err != nil {
+		return 0, fmt.Errorf("mark interrupted automation runs: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+
+	return rows, nil
+}
+
 func scanCrossSeedRun(scanner interface {
 	Scan(dest ...any) error
 }) (*CrossSeedRun, error) {
