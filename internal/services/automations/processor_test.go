@@ -14,7 +14,7 @@ import (
 )
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -54,7 +54,7 @@ func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -98,7 +98,7 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{

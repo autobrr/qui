@@ -16,8 +16,10 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
+import { buildTrackerCustomizationLookup, getTrackerCustomizationsCacheKey, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { formatBytes } from "@/lib/utils"
 import {
   DndContext,
@@ -614,8 +616,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   // Filter lifecycle state machine to replace fragile timing-based coordination
-  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
-  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
+  type FilterLifecycleState = "idle" | "clearing-all" | "clearing-columns-only" | "cleared"
+  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>("idle")
 
   const [incognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -644,6 +646,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     trackerIconsRef.current = latest
     return latest
   }, [trackerIconsQuery.data])
+
+  // Tracker customizations for custom display names and merged domains
+  const trackerCustomizationsQuery = useTrackerCustomizations()
+  const trackerCustomizationsRef = useRef<{ key: string; lookup: TrackerCustomizationLookup } | undefined>(undefined)
+  const trackerCustomizationLookup = useMemo(() => {
+    const latest = trackerCustomizationsQuery.data
+    if (!latest) {
+      return trackerCustomizationsRef.current?.lookup ?? new Map()
+    }
+
+    // Build a cache key from ids + updatedAt to detect any changes
+    const newKey = getTrackerCustomizationsCacheKey(latest)
+
+    // Check if the lookup has changed using the cache key
+    const previous = trackerCustomizationsRef.current
+    if (previous && previous.key === newKey) {
+      return previous.lookup
+    }
+
+    // Build a new lookup map from the customizations
+    const newLookup = buildTrackerCustomizationLookup(latest)
+    trackerCustomizationsRef.current = { key: newKey, lookup: newLookup }
+    return newLookup
+  }, [trackerCustomizationsQuery.data])
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -872,7 +898,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
   const isDoingCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
+    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
   }, [filters?.expr])
 
   // Combine column filters with any existing filter expression
@@ -1120,8 +1146,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const sortedTorrents = torrents
 
   // Atomic filter clearing callback
-  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
-    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
+  const clearFiltersAtomically = useCallback((mode: "all" | "columns-only" = "all") => {
+    setFilterLifecycleState(mode === "all" ? "clearing-all" : "clearing-columns-only");
   }, []);
   const effectiveServerState = useMemo(() => {
     const cached = serverStateRef.current
@@ -1282,8 +1308,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode as TableViewMode),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode as TableViewMode, trackerCustomizationLookup),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode, trackerCustomizationLookup]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1334,8 +1360,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       ...(isCrossSeedFiltering && {
         columnFilters: columnFilters.map(filter => ({
           id: filter.columnId,
-          value: filter.value
-        }))
+          value: filter.value,
+        })),
       }),
     },
     onSortingChange: setSorting,
@@ -1357,7 +1383,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Fix virtualization when column filters are cleared in cross-seed mode
   // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
   useEffect(() => {
-    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
+    if (filterLifecycleState === "idle" && isCrossSeedFiltering && columnFilters.length === 0) {
       // Reset loadedRows to ensure all rows are visible when filters are cleared
       const targetRows = Math.min(100, sortedTorrents.length)
       // Use functional update to ensure idempotent, non-racing updates
@@ -1646,7 +1672,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Also keep loadedRows in sync with actual data to prevent status display issues
   useEffect(() => {
-    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
+    if (filterLifecycleState === "idle" && loadedRows > rows.length && rows.length > 0) {
       setLoadedRows(rows.length)
     }
   }, [loadedRows, rows.length, filterLifecycleState])
@@ -1730,7 +1756,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Filter lifecycle state machine
   useLayoutEffect(() => {
-    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
+    if (filterLifecycleState === "clearing-all" || filterLifecycleState === "clearing-columns-only") {
 
       // Perform clearing operations atomically
       setColumnFilters([]);
@@ -1743,7 +1769,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setLoadedRows(newLoadedRows);
 
       // Only clear parent filters if clearing all (not just columns)
-      if (filterLifecycleState === 'clearing-all') {
+      if (filterLifecycleState === "clearing-all") {
         const emptyFilters: TorrentFilters = {
           status: [],
           excludeStatus: [],
@@ -1752,16 +1778,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           tags: [],
           excludeTags: [],
           trackers: [],
-          excludeTrackers: []
+          excludeTrackers: [],
         };
         onFilterChange?.(emptyFilters);
       }
 
       // Transition to cleared state
-      setFilterLifecycleState('cleared');
-    } else if (filterLifecycleState === 'cleared') {
+      setFilterLifecycleState("cleared");
+    } else if (filterLifecycleState === "cleared") {
       // Reset to idle state after clearing is complete
-      setFilterLifecycleState('idle');
+      setFilterLifecycleState("idle");
     }
   }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
 
@@ -1912,14 +1938,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const handleDeleteWrapper = useCallback(() => {
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds
-      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
-      : contextHashes
+    const hashesToDelete = deleteCrossSeeds? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]: contextHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds
-      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
-      : contextClientMeta
+    const deleteClientMeta = deleteCrossSeeds? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }: contextClientMeta
 
     handleDelete(
       hashesToDelete,
@@ -2236,7 +2258,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             onClick={() => {
                               // Use atomic filter clearing to avoid race conditions
                               // Only clear column filters in cross-seed mode, clear all filters otherwise
-                              const clearingMode = isCrossSeedFiltering ? 'columns-only' : 'all'
+                              const clearingMode = isCrossSeedFiltering ? "columns-only" : "all"
                               clearFiltersAtomically(clearingMode)
                             }}
                           >
@@ -2690,9 +2712,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                                 "flex items-center overflow-hidden min-w-0",
                                 // Select and compact columns are centered to match header
                                 (isSelectColumn || isCompactColumn) && "justify-center",
-                                isCompactColumn
-                                  ? (desktopViewMode === "dense" ? "px-0 py-0.5" : "px-0 py-2")
-                                  : (desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2")
+                                isCompactColumn? (desktopViewMode === "dense" ? "px-0 py-0.5" : "px-0 py-2"): (desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2")
                               )}
                             >
                               {flexRender(
