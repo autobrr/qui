@@ -66,6 +66,7 @@ type ruleRunStats struct {
 	DeleteConditionNotMet            int
 	MoveApplied                      int
 	MoveConditionNotMet              int
+	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
 }
 
@@ -296,22 +297,24 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
-		shouldApply := (conditions.Move.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)) &&
-			!inSavePath(torrent, conditions.Move.Path)
+		conditionMet := conditions.Move.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)
+		alreadyAtDest := inSavePath(torrent, conditions.Move.Path)
 
-		// Only apply move if not already in target path and not blocked by cross-seed protection
-		if shouldApply && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex, evalCtx) {
+		// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
+		if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex, evalCtx) {
 			if stats != nil {
 				stats.MoveApplied++
 			}
 			state.shouldMove = true
 			state.movePath = conditions.Move.Path
 		} else if stats != nil {
-			if shouldApply {
-				stats.MoveBlockedByCrossSeed++
-			} else {
+			if !conditionMet {
 				stats.MoveConditionNotMet++
+			} else if alreadyAtDest {
+				stats.MoveAlreadyAtDestination++
+			} else {
+				stats.MoveBlockedByCrossSeed++
 			}
 		}
 	}

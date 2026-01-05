@@ -680,6 +680,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 				Int("deleteNoMatch", stats.DeleteConditionNotMet).
 				Int("moveNoMatch", stats.MoveConditionNotMet).
+				Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
 				Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
 				Msg("automations: rule matched trackers but applied no actions")
 		}
