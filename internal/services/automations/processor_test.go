@@ -208,12 +208,14 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 			Name:        "source",
 			SavePath:    "/data/downloads",
 			ContentPath: "/data/downloads/contents",
+			Ratio:       2.5,
 		},
 		{
 			Hash:        "b",
 			Name:        "cross-seed",
 			SavePath:    "/data/downloads",
 			ContentPath: "/data/downloads/contents",
+			Ratio:       2.0,
 		},
 	}
 
@@ -227,6 +229,11 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 				Enabled:          true,
 				Path:             "/data/archive",
 				BlockIfCrossSeed: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
 			},
 		},
 	}
