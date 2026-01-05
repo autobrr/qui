@@ -5,6 +5,7 @@ package collector
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -313,29 +314,27 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			}
 
 			if counts.TrackerTransfers != nil {
-				type aggregatedStats struct {
-					count      int
-					uploaded   int64
-					downloaded int64
-					totalSize  int64
-				}
-
-				trackerStats := map[string]*aggregatedStats{}
+				trackerStats := map[string]*qbittorrent.TrackerTransferStats{}
 
 				for domain, stats := range counts.TrackerTransfers {
-					displayName := models.ResolveTrackerDisplayName(domain, "", trackerCustomizations)
+					domainLower := strings.ToLower(domain)
+					displayName, shouldInclude := resolveTrackerForStats(domainLower, trackerCustomizations)
+
+					if !shouldInclude {
+						continue
+					}
 
 					if existing, ok := trackerStats[displayName]; ok {
-						existing.count += stats.Count
-						existing.uploaded += stats.Uploaded
-						existing.downloaded += stats.Downloaded
-						existing.totalSize += stats.TotalSize
+						existing.Count += stats.Count
+						existing.Uploaded += stats.Uploaded
+						existing.Downloaded += stats.Downloaded
+						existing.TotalSize += stats.TotalSize
 					} else {
-						trackerStats[displayName] = &aggregatedStats{
-							count:      stats.Count,
-							uploaded:   stats.Uploaded,
-							downloaded: stats.Downloaded,
-							totalSize:  stats.TotalSize,
+						trackerStats[displayName] = &qbittorrent.TrackerTransferStats{
+							Count:      stats.Count,
+							Uploaded:   stats.Uploaded,
+							Downloaded: stats.Downloaded,
+							TotalSize:  stats.TotalSize,
 						}
 					}
 				}
@@ -344,7 +343,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(
 						c.trackerTorrentsDesc,
 						prometheus.GaugeValue,
-						float64(stats.count),
+						float64(stats.Count),
 						instanceIDStr,
 						instanceName,
 						trackerName,
@@ -352,7 +351,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(
 						c.trackerUploadedDesc,
 						prometheus.GaugeValue,
-						float64(stats.uploaded),
+						float64(stats.Uploaded),
 						instanceIDStr,
 						instanceName,
 						trackerName,
@@ -360,7 +359,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(
 						c.trackerDownloadedDesc,
 						prometheus.GaugeValue,
-						float64(stats.downloaded),
+						float64(stats.Downloaded),
 						instanceIDStr,
 						instanceName,
 						trackerName,
@@ -368,7 +367,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 					ch <- prometheus.MustNewConstMetric(
 						c.trackerTotalSizeDesc,
 						prometheus.GaugeValue,
-						float64(stats.totalSize),
+						float64(stats.TotalSize),
 						instanceIDStr,
 						instanceName,
 						trackerName,
@@ -440,4 +439,30 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			Str("instanceName", instanceName).
 			Msg("Collected metrics for instance")
 	}
+}
+
+// resolveTrackerForStats determines the display name for a domain and whether it should be included in stats.
+// https://github.com/autobrr/qui/blob/7466a98023aa4ca1e531d47c661e2701fb8dc3cf/web/src/pages/Dashboard.tsx#L990-L1011
+func resolveTrackerForStats(domain string, customizations []*models.TrackerCustomization) (displayName string, shouldInclude bool) {
+	for _, c := range customizations {
+		for i, d := range c.Domains {
+			if strings.ToLower(d) == domain {
+				isPrimary := i == 0
+
+				if isPrimary {
+					return c.DisplayName, true
+				}
+
+				for _, included := range c.IncludedInStats {
+					if strings.ToLower(included) == domain {
+						return c.DisplayName, true
+					}
+				}
+
+				return "", false
+			}
+		}
+	}
+
+	return domain, true
 }
