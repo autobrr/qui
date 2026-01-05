@@ -1228,7 +1228,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             }))}
                           />
                           <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer whitespace-nowrap">
-                            Skip if cross-seeds exist
+                            Skip if cross-seeds don't match the rule's conditions
                           </Label>
                           <TooltipProvider delayDuration={150}>
                             <Tooltip>
@@ -1243,7 +1243,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </TooltipTrigger>
                               <TooltipContent className="max-w-[320px]">
                                 <p>
-                                  Skips the move if there are any other torrents in the same cross-seed group. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.
+                                  Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.
                                 </p>
                               </TooltipContent>
                             </Tooltip>
