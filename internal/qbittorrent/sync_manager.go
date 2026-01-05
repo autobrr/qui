@@ -1397,6 +1397,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 
 		// Retry loop: qBittorrent may need a moment to register the new torrent.
 		const maxAttempts = 3
+	retryLoop:
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			if syncErr := syncManager.Sync(syncCtx); syncErr != nil {
 				log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
@@ -1410,7 +1411,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			if attempt < maxAttempts {
 				select {
 				case <-syncCtx.Done():
-					break
+					break retryLoop
 				case <-time.After(150 * time.Millisecond):
 				}
 			}
