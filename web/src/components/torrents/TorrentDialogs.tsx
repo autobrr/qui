@@ -1595,6 +1595,8 @@ interface EditTrackerDialogProps {
   selectedHashes: string[]
   onConfirm: (oldURL: string, newURL: string) => void
   isPending?: boolean
+  onConvertHttpToHttps?: () => void
+  isConverting?: boolean
 }
 
 export const EditTrackerDialog = memo(function EditTrackerDialog({
@@ -1607,6 +1609,8 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   selectedHashes,
   onConfirm,
   isPending = false,
+  onConvertHttpToHttps,
+  isConverting = false,
 }: EditTrackerDialogProps) {
   const [oldURL, setOldURL] = useState("")
   const [newURL, setNewURL] = useState("")
@@ -1626,6 +1630,26 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
     wasOpen.current = open
   }, [open, tracker, trackerURLs])
 
+  // Update oldURL selection when trackerURLs refresh (e.g., after HTTP→HTTPS conversion)
+  // If the selected URL was converted, try to select its https equivalent or first available
+  useEffect(() => {
+    if (!open || !oldURL) return
+    // If current selection still exists, keep it
+    if (trackerURLs.includes(oldURL)) return
+    // If it was an http:// URL, try to find its https:// equivalent
+    if (oldURL.startsWith("http://")) {
+      const httpsEquivalent = oldURL.replace(/^http:\/\//, "https://")
+      if (trackerURLs.includes(httpsEquivalent)) {
+        setOldURL(httpsEquivalent)
+        return
+      }
+    }
+    // Fall back to first available URL
+    if (trackerURLs.length > 0) {
+      setOldURL(trackerURLs[0])
+    }
+  }, [open, oldURL, trackerURLs])
+
   const handleConfirm = useCallback((): void => {
     if (oldURL.trim() && newURL.trim()) {
       onConfirm(oldURL.trim(), newURL.trim())
@@ -1642,6 +1666,12 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
 
   const hashCount = selectedHashes.length
   const isFilteredMode = hashCount === 0 // When no hashes provided, we're updating all torrents with this tracker
+
+  // Check if there are any HTTP URLs that could be converted to HTTPS
+  const hasHttpUrls = useMemo(
+    () => trackerURLs.some((url) => url.startsWith("http://")),
+    [trackerURLs]
+  )
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -1686,11 +1716,15 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
                   onChange={(e) => setOldURL(e.target.value)}
                   placeholder={trackerURLs.length === 0 ? `e.g., http://${tracker}:6969/announce` : ""}
                   className="font-mono text-sm"
-                  readOnly={trackerURLs.length === 1}
                 />
                 {trackerURLs.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Enter the complete tracker URL including the announce path
+                  </p>
+                )}
+                {trackerURLs.length === 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    Pre-populated from detected URL. Edit if needed (e.g., different scheme).
                   </p>
                 )}
               </>
@@ -1716,12 +1750,29 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
               </p>
             </div>
           )}
+          {hasHttpUrls && onConvertHttpToHttps && (
+            <div className="pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onConvertHttpToHttps}
+                disabled={isConverting || loadingURLs || isPending}
+                className="w-full"
+              >
+                {isConverting ? "Converting..." : "Convert all HTTP to HTTPS"}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                Upgrades all http:// tracker URLs to https:// for this domain
+              </p>
+            </div>
+          )}
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs}
+            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs || isConverting}
           >
             Update Tracker
           </AlertDialogAction>
