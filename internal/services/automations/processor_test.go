@@ -240,8 +240,8 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil)
 
-	// Test with a torrent that has empty ContentPath, so it won't have a cross-seed key
-	// and won't be blocked even with BlockIfCrossSeed=true
+	// Test with a single torrent that has no cross-seed partner,
+	// so it won't be blocked even with BlockIfCrossSeed=true
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -267,7 +267,7 @@ func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 	state, ok := states["a"]
-	require.True(t, ok, "expected move action to apply when torrent has no cross-seed key (empty ContentPath)")
+	require.True(t, ok, "expected move action to apply when torrent has no cross-seed partner")
 	require.True(t, state.shouldMove)
 	require.Equal(t, "/data/archive", state.movePath)
 }
@@ -359,7 +359,7 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 	state, ok := states["a"]
-	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is false")
+	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is true but all cross-seeds meet the condition")
 	require.True(t, state.shouldMove)
 	require.Equal(t, "/data/archive", state.movePath)
 }
