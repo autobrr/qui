@@ -60,9 +60,13 @@ function getStatusBadge(status: OrphanScanRunStatus, filesFound?: number) {
 function InstanceOrphanScanItem({
   instance,
   onConfigureInstance,
+  isExpanded,
+  onToggle,
 }: {
   instance: Instance
   onConfigureInstance?: (instanceId: number) => void
+  isExpanded: boolean
+  onToggle: () => void
 }) {
   const hasLocalAccess = instance.hasLocalFilesystemAccess
   const settingsQuery = useOrphanScanSettings(instance.id, { enabled: hasLocalAccess })
@@ -201,7 +205,14 @@ function InstanceOrphanScanItem({
               className="scale-90"
             />
           </div>
-          <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+          </button>
         </div>
       </div>
 
@@ -486,13 +497,24 @@ export function OrphanScanOverview({
           onValueChange={setExpandedInstances}
           className="border-t"
         >
-          {activeInstances.map((instance) => (
-            <InstanceOrphanScanItem
-              key={instance.id}
-              instance={instance}
-              onConfigureInstance={onConfigureInstance}
-            />
-          ))}
+          {activeInstances.map((instance) => {
+            const itemValue = String(instance.id)
+            return (
+              <InstanceOrphanScanItem
+                key={instance.id}
+                instance={instance}
+                onConfigureInstance={onConfigureInstance}
+                isExpanded={expandedInstances.includes(itemValue)}
+                onToggle={() => {
+                  if (expandedInstances.includes(itemValue)) {
+                    setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                  } else {
+                    setExpandedInstances([...expandedInstances, itemValue])
+                  }
+                }}
+              />
+            )
+          })}
         </Accordion>
       </CardContent>
     </Card>

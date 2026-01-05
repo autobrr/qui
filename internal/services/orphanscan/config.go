@@ -33,7 +33,7 @@ func DefaultSettings() Settings {
 		GracePeriodMinutes:  10,
 		IgnorePaths:         []string{},
 		ScanIntervalHours:   24,
-		MaxFilesPerRun:      10000,
+		MaxFilesPerRun:      1000,
 		AutoCleanupEnabled:  false,
 		AutoCleanupMaxFiles: 100,
 	}
