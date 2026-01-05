@@ -331,6 +331,16 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
+	// Get free space on instance (only if rules use FREE_SPACE field)
+	if instance != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+		freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
+			return nil, err
+		}
+		evalCtx.FreeSpace = freeSpace
+	}
+
 	matchIndex := 0
 	for _, torrent := range torrents {
 		// Check tracker match
@@ -430,6 +440,16 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		if ConditionUsesField(cond, FieldHardlinkScope) {
 			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 		}
+	}
+
+	// Get free space on instance (only if rules use FREE_SPACE field)
+	if instance != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+		freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
+			return nil, err
+		}
+		evalCtx.FreeSpace = freeSpace
 	}
 
 	targetCategory := ""
