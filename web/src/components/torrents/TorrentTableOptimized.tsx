@@ -19,7 +19,7 @@ import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
-import { buildTrackerCustomizationLookup, getTrackerCustomizationsCacheKey, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { formatBytes } from "@/lib/utils"
 import {
   DndContext,
@@ -329,35 +329,6 @@ const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: Trac
   prev.className === next.className
 )
 
-const getTrackerDisplayMeta = (tracker?: string) => {
-  if (!tracker) {
-    return {
-      host: "",
-      fallback: "#",
-      title: "",
-    }
-  }
-
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-
-  let host = trimmed
-  try {
-    if (trimmed.includes("://")) {
-      const url = new URL(trimmed)
-      host = url.hostname
-    }
-  } catch {
-    // Keep host as trimmed value if URL parsing fails
-  }
-
-  return {
-    host,
-    fallback: fallbackLetter,
-    title: host,
-  }
-}
-
 // Compact row component for desktop
 interface CompactRowProps {
   torrent: Torrent
@@ -373,6 +344,7 @@ interface CompactRowProps {
   speedUnit: "bytes" | "bits"
   supportsTrackerHealth: boolean
   trackerIcons?: Record<string, string>
+  trackerCustomizationLookup: TrackerCustomizationLookup
   style: React.CSSProperties
 }
 
@@ -390,6 +362,7 @@ const CompactRow = memo(({
   speedUnit,
   supportsTrackerHealth,
   trackerIcons,
+  trackerCustomizationLookup,
   style,
 }: CompactRowProps) => {
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
@@ -402,9 +375,17 @@ const CompactRow = memo(({
     [torrent, supportsTrackerHealth]
   )
 
-  const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
-  const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
-  const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
+  // Resolve tracker display name and icon using customizations
+  const trackerRaw = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+  const trackerHost = useMemo(() => extractTrackerHost(trackerRaw), [trackerRaw])
+  const trackerDisplayInfo = useMemo(
+    () => resolveTrackerDisplay(trackerHost, trackerCustomizationLookup),
+    [trackerHost, trackerCustomizationLookup]
+  )
+  const trackerLabel = trackerDisplayInfo.displayName || ""
+  const trackerIconKey = trackerDisplayInfo.primaryDomain || trackerHost
+  const trackerIconSrc = trackerIconKey ? trackerIcons?.[trackerIconKey] ?? null : null
+  const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayInfo.displayName} (${trackerHost})` : trackerHost
 
   // Compact view
   return (
@@ -441,20 +422,22 @@ const CompactRow = memo(({
             className="h-4 w-4"
           />
         </div>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-1 whitespace-nowrap overflow-x-auto scrollbar-thin">
-            <TrackerIcon
-              title={trackerMeta.title}
-              fallback={trackerMeta.fallback}
-              src={trackerIconSrc}
-              size="sm"
-              className="flex-shrink-0"
-            />
-            <h3 className="font-medium text-sm truncate" title={displayName}>
-              {displayName}
-            </h3>
-          </div>
+        <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
+          <TrackerIcon
+            title={trackerTitle}
+            fallback={trackerHost ? trackerHost.charAt(0).toUpperCase() : "?"}
+            src={trackerIconSrc}
+            size="sm"
+          />
+          {trackerLabel && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {trackerLabel}
+            </span>
+          )}
         </div>
+        <h3 className="flex-1 font-medium text-sm truncate min-w-0" title={displayName}>
+          {displayName}
+        </h3>
         <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
           {statusBadgeLabel}
         </Badge>
@@ -546,6 +529,7 @@ const CompactRow = memo(({
   prev.speedUnit === next.speedUnit &&
   prev.supportsTrackerHealth === next.supportsTrackerHealth &&
   prev.trackerIcons === next.trackerIcons &&
+  prev.trackerCustomizationLookup === next.trackerCustomizationLookup &&
   prev.style === next.style
 )
 
@@ -2574,6 +2558,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           speedUnit={speedUnit}
                           supportsTrackerHealth={supportsTrackerHealth}
                           trackerIcons={trackerIcons}
+                          trackerCustomizationLookup={trackerCustomizationLookup}
                           onCheckboxPointerDown={handleCompactCheckboxPointerDown}
                           onCheckboxChange={handleCompactCheckboxChange}
                           style={{
