@@ -1338,28 +1338,44 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		failedMovesByPath[path] = failedMovesForPath
 	}
 
-	// Record aggregated share limit activity
-	if s.activityStore != nil && len(successfulMovesByPath) > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionMoved,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+	// Record aggregated move activity
+	if s.activityStore != nil {
+		var hasSuccesses, hasFailures bool
+		for _, count := range successfulMovesByPath {
+			if count > 0 {
+				hasSuccesses = true
+				break
+			}
 		}
-	} else if s.activityStore != nil && len(failedMovesByPath) > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionMoved,
-			Outcome:    models.ActivityOutcomeFailed,
-			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+		for _, count := range failedMovesByPath {
+			if count > 0 {
+				hasFailures = true
+				break
+			}
+		}
+
+		if hasSuccesses {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeSuccess,
+				Details:    detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
+		} else if hasFailures {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeFailed,
+				Details:    detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
 		}
 	}
 
