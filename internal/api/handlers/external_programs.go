@@ -297,6 +297,7 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		"size":         fmt.Sprintf("%d", torrent.Size),
 		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
 		"content_path": contentPath,
+		"comment":      torrent.Comment,
 	}
 
 	// Build command arguments by substituting variables
