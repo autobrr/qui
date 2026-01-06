@@ -1002,10 +1002,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <Label className="text-xs">Tags</Label>
                               <Input
                                 type="text"
-                                value={formState.exprTags.join(", ")}
-                                onChange={(e) => {
-                                  const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
+                                defaultValue={formState.exprTags.join(", ")}
+                                onBlur={(e) => {
+                                  const tags =  e.currentTarget.value.split(",").map(t => t.trim()).filter(Boolean)
                                   setFormState(prev => ({ ...prev, exprTags: tags }))
+                                   e.currentTarget.value = tags.join(", ")
                                 }}
                                 placeholder="tag1, tag2, ..."
                               />
