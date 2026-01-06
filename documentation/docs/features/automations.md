@@ -233,6 +233,17 @@ Only sends API calls when the torrent's current setting differs from the desired
 - **Accumulative** for combinable actions (tags, speed limits)
 - Delete ends torrent processing (no further rules evaluated)
 
+### Free Space Condition Behavior
+
+When using the **Free Space** condition in delete rules, the system uses intelligent cumulative tracking:
+
+1. **Oldest-first processing** - Torrents are sorted by age (oldest first) for deterministic, predictable cleanup
+2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space
+3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match
+4. **Cross-seed aware** - Cross-seeded torrents sharing the same files are only counted once to avoid overestimating freed space
+
+**Example:** With 400GB free and a rule "Delete if Free Space < 500GB", the system deletes oldest torrents until the cumulative freed space reaches 100GB, then stops. A 50GB torrent and its cross-seed (same files) only count as 50GB freed, not 100GB.
+
 ### Batching
 
 Torrents are grouped by action value and sent to qBittorrent in batches of up to 50 hashes per API call.
@@ -255,6 +266,8 @@ Match torrents completed over 30 days ago when filesystem is lower than 500GB:
 - Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
 - Action: Delete with files
 
+The system deletes oldest matching torrents first, stopping once enough space would be freed to exceed 500GB. This prevents over-deletion when you only need to clear a small amount of space.
+
 ### Speed Limit Private Trackers
 
 Limit upload on private trackers:
@@ -275,6 +288,15 @@ Remove torrents the tracker no longer recognizes:
 - Tracker: `*`
 - Condition: `Is Unregistered is true`
 - Action: Delete (keep files)
+
+### Maintain Minimum Free Space
+
+Keep at least 200GB free by removing oldest completed torrents:
+- Tracker: `*`
+- Condition: `Free Space < 200GB` AND `State is completed`
+- Action: Delete with files (preserve cross-seeds)
+
+Only deletes the minimum number of torrents needed to reach 200GB free. Oldest torrents are removed first, and cross-seeded content is preserved if other torrents reference the same files.
 
 ### Organize by Tracker
 
