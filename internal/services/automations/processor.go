@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"sort"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -111,6 +112,14 @@ func processTorrents(
 ) map[string]*torrentDesiredState {
 	states := make(map[string]*torrentDesiredState)
 	crossSeedIndex := buildCrossSeedIndex(torrents)
+
+	// Stable sort for deterministic pagination: oldest first, then by hash
+	sort.Slice(torrents, func(i, j int) bool {
+		if torrents[i].AddedOn != torrents[j].AddedOn {
+			return torrents[i].AddedOn < torrents[j].AddedOn
+		}
+		return torrents[i].Hash < torrents[j].Hash
+	})
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -281,6 +290,9 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				state.deleteRuleID = rule.ID
 				state.deleteRuleName = rule.Name
 				state.deleteReason = "condition matched"
+
+				// Update the cumulative free space cleared for the "free space" condition
+				updateCumulativeFreeSpaceCleared(torrent, evalCtx)
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
 			}
@@ -429,4 +441,27 @@ func parseTorrentTags(tags string) map[string]struct{} {
 		}
 	}
 	return result
+}
+
+// updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext) {
+	if evalCtx == nil {
+		return
+	}
+
+	crossSeedKey, ok := makeCrossSeedKey(torrent)
+	if !ok {
+		// If the torrent cannot be a cross-seed, we add the file size to the cumulative space to clear
+		evalCtx.SpaceToClear += torrent.Size
+		return
+	}
+
+	// If the torrent is a cross-seed, we've already counted the file size in the cumulative space to clear
+	if _, ok := evalCtx.FilesToClear[crossSeedKey]; ok {
+		return
+	}
+
+	// This is a new torrent or cross-seed, so we add the file size to the cumulative space to clear
+	evalCtx.SpaceToClear += torrent.Size
+	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
 }

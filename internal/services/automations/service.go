@@ -279,10 +279,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return nil, err
 	}
 
-	// Stable sort for deterministic pagination: newest first, then by hash
+	// Stable sort for deterministic pagination: oldest first, then by hash
 	sort.Slice(torrents, func(i, j int) bool {
 		if torrents[i].AddedOn != torrents[j].AddedOn {
-			return torrents[i].AddedOn > torrents[j].AddedOn
+			return torrents[i].AddedOn < torrents[j].AddedOn
 		}
 		return torrents[i].Hash < torrents[j].Hash
 	})
@@ -339,6 +339,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 			return nil, err
 		}
 		evalCtx.FreeSpace = freeSpace
+		evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
 	}
 
 	matchIndex := 0
@@ -362,6 +363,8 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 
 		if wouldDelete {
+			updateCumulativeFreeSpaceCleared(torrent, evalCtx)
+
 			matchIndex++
 			if matchIndex <= offset {
 				continue
@@ -392,10 +395,10 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return nil, err
 	}
 
-	// Stable sort for deterministic pagination: newest first, then by hash
+	// Stable sort for deterministic pagination: oldest first, then by hash
 	sort.Slice(torrents, func(i, j int) bool {
 		if torrents[i].AddedOn != torrents[j].AddedOn {
-			return torrents[i].AddedOn > torrents[j].AddedOn
+			return torrents[i].AddedOn < torrents[j].AddedOn
 		}
 		return torrents[i].Hash < torrents[j].Hash
 	})
@@ -450,6 +453,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 			return nil, err
 		}
 		evalCtx.FreeSpace = freeSpace
+		evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
 	}
 
 	targetCategory := ""
@@ -620,6 +624,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			return fmt.Errorf("failed to get free space: %w", err)
 		}
 		evalCtx.FreeSpace = freeSpace
+		evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
 	}
 
 	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName

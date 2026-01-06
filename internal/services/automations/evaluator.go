@@ -39,6 +39,10 @@ type EvalContext struct {
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem
 	FreeSpace int64
+	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition
+	SpaceToClear int64
+	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds
+	FilesToClear map[crossSeedKey]struct{}
 
 	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
@@ -310,7 +314,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		if ctx == nil {
 			return false
 		}
-		return compareInt64(ctx.FreeSpace, cond)
+		return compareInt64(ctx.FreeSpace+ctx.SpaceToClear, cond)
 
 	// Timestamp/duration fields (int64)
 	case FieldAddedOn:
