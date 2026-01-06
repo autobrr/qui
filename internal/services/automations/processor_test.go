@@ -457,3 +457,20 @@ func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
 	_, hasAAA := states["aaa"]
 	require.True(t, hasAAA, "expected torrent with lowest hash (aaa) to be deleted when AddedOn is equal")
 }
+
+func TestProcessTorrents_HandlesNilFilesToClearGracefully(t *testing.T) {
+	evalCtx := &EvalContext{
+		SpaceToClear: 0,
+		FilesToClear: nil, // Not initialized because rule doesn't use FREE_SPACE
+	}
+
+	torrent := qbt.Torrent{
+		Hash:        "abc123",
+		Size:        50000000000,
+		ContentPath: "/data/movie",
+		SavePath:    "/data",
+	}
+
+	// Should not panic
+	require.NotPanics(t, func() { updateCumulativeFreeSpaceCleared(torrent, evalCtx) })
+}

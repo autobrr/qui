@@ -445,7 +445,7 @@ func parseTorrentTags(tags string) map[string]struct{} {
 
 // updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition
 func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext) {
-	if evalCtx == nil {
+	if evalCtx == nil || evalCtx.FilesToClear == nil {
 		return
 	}
 
