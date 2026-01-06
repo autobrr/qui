@@ -131,6 +131,12 @@ const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
  * Detect network errors that indicate an SSO redirect was blocked by CORS.
  * When an upstream SSO proxy session expires, it often returns a cross-origin
  * redirect that fetch() cannot follow, resulting in a TypeError.
+ *
+ * This check is intentionally broad because browsers hide redirect details for
+ * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
+ * network failures at this level. The sessionStorage reload guard in
+ * attemptSSORecoveryReload() prevents infinite loops if this misclassifies a
+ * genuine network outage.
  */
 function isSSOBlockedNetworkError(error: unknown): boolean {
   if (!(error instanceof TypeError)) {
@@ -163,7 +169,7 @@ function isSSOHTMLResponse(response: Response): boolean {
 /**
  * Attempt a single hard page reload to let the browser follow the SSO redirect
  * at the top level. Uses sessionStorage to prevent infinite reload loops.
- * Skips reload when offline to avoid pointless refreshes.
+ * Skips reload when offline or in background tabs to avoid pointless refreshes.
  */
 function attemptSSORecoveryReload(): void {
   if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
@@ -171,6 +177,10 @@ function attemptSSORecoveryReload(): void {
   }
   // Don't reload if we're offline - it's not an SSO issue
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return
+  }
+  // Don't reload from background tabs - wait for user to return
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
     return
   }
   if (sessionStorage.getItem(SSO_RELOAD_GUARD_KEY)) {
@@ -204,7 +214,8 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
       credentials: "include",
     })
   } catch (error) {
-    if (isSSOBlockedNetworkError(error)) {
+    // Only attempt SSO recovery for API endpoints (not other fetches)
+    if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
       attemptSSORecoveryReload()
     }
     throw error
