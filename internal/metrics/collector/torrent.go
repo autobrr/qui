@@ -5,17 +5,21 @@ package collector
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type TorrentCollector struct {
-	syncManager *qbittorrent.SyncManager
-	clientPool  *qbittorrent.ClientPool
+	syncManager               *qbittorrent.SyncManager
+	clientPool                *qbittorrent.ClientPool
+	trackerCustomizationStore *models.TrackerCustomizationStore
 
 	torrentsDownloadingDesc      *prometheus.Desc
 	torrentsSeedingDesc          *prometheus.Desc
@@ -30,12 +34,17 @@ type TorrentCollector struct {
 	allTimeUpload                *prometheus.Desc
 	instanceConnectionStatusDesc *prometheus.Desc
 	scrapeErrorsDesc             *prometheus.Desc
+	trackerTorrentsDesc          *prometheus.Desc
+	trackerUploadedDesc          *prometheus.Desc
+	trackerDownloadedDesc        *prometheus.Desc
+	trackerTotalSizeDesc         *prometheus.Desc
 }
 
-func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool) *TorrentCollector {
+func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool, trackerCustomizationStore *models.TrackerCustomizationStore) *TorrentCollector {
 	return &TorrentCollector{
-		syncManager: syncManager,
-		clientPool:  clientPool,
+		syncManager:               syncManager,
+		clientPool:                clientPool,
+		trackerCustomizationStore: trackerCustomizationStore,
 
 		torrentsDownloadingDesc: prometheus.NewDesc(
 			"qbittorrent_torrents_downloading",
@@ -115,6 +124,30 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 			[]string{"instance_id", "instance_name", "type"},
 			nil,
 		),
+		trackerTorrentsDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_torrents",
+			"Number of torrents by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
+		trackerUploadedDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_uploaded_bytes",
+			"Total uploaded data in bytes by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
+		trackerDownloadedDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_downloaded_bytes",
+			"Total downloaded data in bytes by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
+		trackerTotalSizeDesc: prometheus.NewDesc(
+			"qbittorrent_tracker_total_size_bytes",
+			"Total content size in bytes by tracker",
+			[]string{"instance_id", "instance_name", "tracker_name"},
+			nil,
+		),
 	}
 }
 
@@ -132,6 +165,10 @@ func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.allTimeUpload
 	ch <- c.instanceConnectionStatusDesc
 	ch <- c.scrapeErrorsDesc
+	ch <- c.trackerTorrentsDesc
+	ch <- c.trackerUploadedDesc
+	ch <- c.trackerDownloadedDesc
+	ch <- c.trackerTotalSizeDesc
 }
 
 func (c *TorrentCollector) reportError(ch chan<- prometheus.Metric, instanceIDStr, instanceName, errorType string) {
@@ -152,6 +189,16 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 	if c.clientPool == nil {
 		log.Debug().Msg("ClientPool is nil, skipping metrics collection")
 		return
+	}
+
+	// Load tracker customizations once for resolving display names
+	var trackerCustomizations []*models.TrackerCustomization
+	if c.trackerCustomizationStore != nil {
+		var err error
+		trackerCustomizations, err = c.trackerCustomizationStore.List(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to load tracker customizations for metrics")
+		}
 	}
 
 	instances := c.clientPool.GetAllInstances(ctx)
@@ -267,6 +314,66 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				)
 			}
 
+			if counts.TrackerTransfers != nil {
+				trackerStats := map[string]*qbittorrent.TrackerTransferStats{}
+
+				for domain, stats := range counts.TrackerTransfers {
+					displayName, shouldInclude := resolveTrackerForStats(domain, trackerCustomizations)
+
+					if !shouldInclude {
+						continue
+					}
+
+					if existing, ok := trackerStats[displayName]; ok {
+						existing.Count += stats.Count
+						existing.Uploaded += stats.Uploaded
+						existing.Downloaded += stats.Downloaded
+						existing.TotalSize += stats.TotalSize
+					} else {
+						trackerStats[displayName] = &qbittorrent.TrackerTransferStats{
+							Count:      stats.Count,
+							Uploaded:   stats.Uploaded,
+							Downloaded: stats.Downloaded,
+							TotalSize:  stats.TotalSize,
+						}
+					}
+				}
+
+				for trackerName, stats := range trackerStats {
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerTorrentsDesc,
+						prometheus.GaugeValue,
+						float64(stats.Count),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerUploadedDesc,
+						prometheus.GaugeValue,
+						float64(stats.Uploaded),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerDownloadedDesc,
+						prometheus.GaugeValue,
+						float64(stats.Downloaded),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+					ch <- prometheus.MustNewConstMetric(
+						c.trackerTotalSizeDesc,
+						prometheus.GaugeValue,
+						float64(stats.TotalSize),
+						instanceIDStr,
+						instanceName,
+						trackerName,
+					)
+				}
+			}
 		}
 
 		if response != nil && response.ServerState != nil {
@@ -332,4 +439,25 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			Str("instanceName", instanceName).
 			Msg("Collected metrics for instance")
 	}
+}
+
+// resolveTrackerForStats determines the display name for a domain and whether it should be included in stats.
+// https://github.com/autobrr/qui/blob/7466a98023aa4ca1e531d47c661e2701fb8dc3cf/web/src/pages/Dashboard.tsx#L990-L1011
+func resolveTrackerForStats(domain string, customizations []*models.TrackerCustomization) (displayName string, shouldInclude bool) {
+	for _, c := range customizations {
+		isPrimary := len(c.Domains) > 0 && strings.EqualFold(c.Domains[0], domain)
+		if isPrimary {
+			return c.DisplayName, true
+		}
+
+		isIncluded := slices.ContainsFunc(c.IncludedInStats, func(d string) bool {
+			return strings.EqualFold(d, domain)
+		})
+
+		if isIncluded {
+			return c.DisplayName, true
+		}
+	}
+
+	return "", false
 }
