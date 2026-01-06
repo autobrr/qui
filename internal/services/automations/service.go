@@ -1370,7 +1370,8 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			}); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
 			}
-		} else if hasFailures {
+		}
+		if hasFailures {
 			detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
 			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 				InstanceID: instanceID,
