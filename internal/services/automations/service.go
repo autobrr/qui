@@ -1277,13 +1277,18 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	// Execute moves
-	// Keep track of moved hashes to avoid moving multiple times if captured by both
-	// rule conditions and cross-seed detection.
+	// Execute moves - sort paths for deterministic processing order
+	sortedPaths := make([]string, 0, len(moveBatches))
+	for path := range moveBatches {
+		sortedPaths = append(sortedPaths, path)
+	}
+	sort.Strings(sortedPaths)
+
 	movedHashes := make(map[string]struct{})
 	successfulMovesByPath := make(map[string]int)
 	failedMovesByPath := make(map[string]int)
-	for path, hashes := range moveBatches {
+	for _, path := range sortedPaths {
+		hashes := moveBatches[path]
 		successfulMovesForPath := 0
 		failedMovesForPath := 0
 
