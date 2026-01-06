@@ -1024,9 +1024,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
+    // Clear prior validation errors
+    setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+
     // Validate custom category mode has a category specified
     if (globalSettings.useCustomCategory && !globalSettings.customCategory.trim()) {
-      toast.error("Custom category mode requires a category name")
+      setValidationErrors(prev => ({ ...prev, customCategory: "Custom category mode requires a category name" }))
       return
     }
 
@@ -2410,15 +2413,26 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       </div>
                       <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
                       {globalSettings.useCustomCategory && (
-                        <MultiSelect
-                          options={customCategorySelectOptions}
-                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
-                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
-                          placeholder="Select or type a category..."
-                          className="mt-2 max-w-xs"
-                          creatable
-                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
-                        />
+                        <>
+                          <MultiSelect
+                            options={customCategorySelectOptions}
+                            selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                            onChange={values => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                            placeholder="Select or type a category..."
+                            className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
+                            creatable
+                            onCreateOption={value => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: value }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                          />
+                          {validationErrors.customCategory && (
+                            <p className="text-sm text-destructive">{validationErrors.customCategory}</p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
