@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,20 +30,21 @@ type CrossSeedHandler struct {
 }
 
 type automationSettingsRequest struct {
-	Enabled                      bool     `json:"enabled"`
-	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	IgnorePatterns               []string `json:"ignorePatterns"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
-	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
-	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
-	RunExternalProgramID         *int     `json:"runExternalProgramId"`
-	SkipRecheck                  bool     `json:"skipRecheck"`
+	Enabled                      bool    `json:"enabled"`
+	RunIntervalMinutes           int     `json:"runIntervalMinutes"`
+	StartPaused                  bool    `json:"startPaused"`
+	Category                     *string `json:"category"`
+	TargetInstanceIDs            []int   `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int   `json:"targetIndexerIds"`
+	MaxResultsPerRun             int     `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`
+	UseCrossCategorySuffix       bool    `json:"useCrossCategorySuffix"`
+	UseCustomCategory            bool    `json:"useCustomCategory"`
+	CustomCategory               string  `json:"customCategory"`
+	RunExternalProgramID         *int    `json:"runExternalProgramId"`
+	SkipRecheck                  bool    `json:"skipRecheck"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -50,7 +52,6 @@ type automationSettingsPatchRequest struct {
 	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
 	StartPaused        *bool          `json:"startPaused,omitempty"`
 	Category           optionalString `json:"category"`
-	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
 	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
 	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
@@ -68,6 +69,8 @@ type automationSettingsPatchRequest struct {
 	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
 	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	UseCustomCategory              *bool       `json:"useCustomCategory,omitempty"`
+	CustomCategory                 *string     `json:"customCategory,omitempty"`
 	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
@@ -76,11 +79,12 @@ type automationSettingsPatchRequest struct {
 	WebhookTags          *[]string `json:"webhookTags,omitempty"`
 	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
 	// Skip auto-resume settings per source mode
-	SkipAutoResumeRSS          *bool `json:"skipAutoResumeRss,omitempty"`
-	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
-	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
-	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
-	SkipRecheck                *bool `json:"skipRecheck,omitempty"`
+	SkipAutoResumeRSS            *bool `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch   *bool `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion     *bool `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook        *bool `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
+	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
 }
 
 type optionalString struct {
@@ -144,7 +148,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
@@ -160,6 +163,8 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
 		r.UseCrossCategorySuffix == nil &&
+		r.UseCustomCategory == nil &&
+		r.CustomCategory == nil &&
 		!r.RunExternalProgramID.Set &&
 		r.RSSAutomationTags == nil &&
 		r.SeededSearchTags == nil &&
@@ -170,7 +175,8 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeSeededSearch == nil &&
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
-		r.SkipRecheck == nil
+		r.SkipRecheck == nil &&
+		r.SkipPieceBoundarySafetyCheck == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -194,9 +200,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 				settings.Category = &trimmed
 			}
 		}
-	}
-	if patch.IgnorePatterns != nil {
-		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
 	if patch.TargetInstanceIDs != nil {
 		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
@@ -245,6 +248,12 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCrossCategorySuffix != nil {
 		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
 	}
+	if patch.UseCustomCategory != nil {
+		settings.UseCustomCategory = *patch.UseCustomCategory
+	}
+	if patch.CustomCategory != nil {
+		settings.CustomCategory = *patch.CustomCategory
+	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
 	}
@@ -279,6 +288,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipRecheck != nil {
 		settings.SkipRecheck = *patch.SkipRecheck
+	}
+	if patch.SkipPieceBoundarySafetyCheck != nil {
+		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
 	}
 }
 
@@ -317,6 +329,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
+			r.Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
@@ -326,6 +339,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Get("/status", h.GetAutomationStatus)
 		r.Get("/runs", h.ListAutomationRuns)
 		r.Post("/run", h.TriggerAutomationRun)
+		r.Post("/run/cancel", h.CancelAutomationRun)
 		r.Route("/search", func(r chi.Router) {
 			r.Get("/settings", h.GetSearchSettings)
 			r.Patch("/settings", h.PatchSearchSettings)
@@ -344,6 +358,25 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 	})
 }
 
+// parseTorrentParams extracts and validates instanceID and hash from URL parameters.
+// Returns instanceID, hash, and ok (false if validation failed and error response was sent).
+func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash string, ok bool) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	id, err := strconv.Atoi(instanceIDStr)
+	if err != nil || id <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return 0, "", false
+	}
+
+	h := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if h == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return 0, "", false
+	}
+
+	return id, h, true
+}
+
 // AnalyzeTorrentForSearch godoc
 // @Summary Analyze torrent for cross-seed search metadata
 // @Description Returns metadata about how a torrent would be searched (content type, search type, required categories/capabilities) without performing the actual search
@@ -357,16 +390,8 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/analyze [get]
 func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -398,16 +423,8 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/async-status [get]
 func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -424,6 +441,39 @@ func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *htt
 	}
 
 	RespondJSON(w, http.StatusOK, filteringState)
+}
+
+// GetLocalMatches godoc
+// @Summary Find existing torrents that match the source torrent across all instances
+// @Description Returns torrents from all instances that match the source torrent using proper release metadata parsing (rls library), not fuzzy string matching.
+// @Tags cross-seed
+// @Produce json
+// @Param instanceID path int true "Source instance ID"
+// @Param hash path string true "Source torrent hash"
+// @Success 200 {object} crossseed.LocalMatchesResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/torrents/{instanceID}/{hash}/local-matches [get]
+func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Request) {
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
+		return
+	}
+
+	response, err := h.service.FindLocalMatches(r.Context(), instanceID, hash)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to find local cross-seed matches")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
 }
 
 // SearchTorrentMatches godoc
@@ -502,6 +552,29 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+
+	// Parse torrent for logging (cheap operation, also done in service)
+	var torrentName, torrentHash string
+	var totalSize int64
+	var fileCount int
+	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
+		if name, hash, files, info, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
+			torrentName, torrentHash = name, hash
+			totalSize = info.TotalLength()
+			fileCount = len(files)
+		}
+	}
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Str("torrentName", torrentName).
+		Str("torrentHash", torrentHash).
+		Int64("size", totalSize).
+		Int("fileCount", fileCount).
+		Ints("instanceIds", req.InstanceIDs).
+		Str("indexerName", req.IndexerName).
+		Str("category", req.Category).
+		Msg("Webhook apply: received request")
 
 	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
@@ -638,9 +711,19 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
-	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
-	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
-		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+	// Validate mutual exclusivity: category modes are mutually exclusive
+	enabledModes := 0
+	if req.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if req.UseCrossCategorySuffix {
+		enabledModes++
+	}
+	if req.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
 		return
 	}
 
@@ -649,7 +732,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
 		Category:                     category,
-		IgnorePatterns:               req.IgnorePatterns,
 		TargetInstanceIDs:            req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,
 		MaxResultsPerRun:             req.MaxResultsPerRun,
@@ -657,6 +739,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
+		UseCustomCategory:            req.UseCustomCategory,
+		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
 	}
@@ -723,9 +807,19 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
 
-	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
-	if merged.UseCategoryFromIndexer && merged.UseCrossCategorySuffix {
-		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+	// Validate mutual exclusivity: category modes are mutually exclusive
+	enabledModes := 0
+	if merged.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if merged.UseCrossCategorySuffix {
+		enabledModes++
+	}
+	if merged.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
 		return
 	}
 
@@ -851,6 +945,23 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	}
 
 	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// CancelAutomationRun godoc
+// @Summary Cancel RSS automation run
+// @Description Stops the currently running RSS automation run, if any.
+// @Tags cross-seed
+// @Success 204
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/run/cancel [post]
+func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
+	canceled := h.service.CancelAutomationRun()
+	if !canceled {
+		RespondError(w, http.StatusConflict, "No automation run is currently active")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetSearchSettings godoc

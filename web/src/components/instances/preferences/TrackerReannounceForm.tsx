@@ -16,10 +16,13 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -75,6 +78,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   }, [instanceId, instance?.reannounceSettings])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: !!instance })
+  const { data: trackerCustomizations } = useTrackerCustomizations()
+  const { data: trackerIcons } = useTrackerIcons()
 
   const categoriesQuery = useQuery({
     queryKey: ["instance-categories", instanceId],
@@ -90,16 +95,76 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     staleTime: 1000 * 60 * 5,
   })
 
+  // Build lookup maps from tracker customizations for merging and nicknames
+  const trackerCustomizationMaps = useMemo(() => {
+    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
+    const secondaryDomains = new Set<string>()
+
+    for (const custom of trackerCustomizations ?? []) {
+      const domains = custom.domains
+      if (domains.length === 0) continue
+
+      for (let i = 0; i < domains.length; i++) {
+        const domain = domains[i].toLowerCase()
+        domainToCustomization.set(domain, {
+          displayName: custom.displayName,
+          domains: custom.domains,
+          id: custom.id,
+        })
+        if (i > 0) {
+          secondaryDomains.add(domain)
+        }
+      }
+    }
+
+    return { domainToCustomization, secondaryDomains }
+  }, [trackerCustomizations])
+
+  // Process trackers to apply customizations (nicknames and merged domains)
   const trackerOptions: Option[] = useMemo(() => {
     if (!trackersQuery.data) return []
-    
-    // The API returns Record<string, string> where key is domain, value is full URL or similar.
-    // We're interested in the domains (keys).
-    return Object.keys(trackersQuery.data).map((domain) => ({
-      label: domain,
-      value: domain,
-    })).sort((a, b) => a.label.localeCompare(b.label))
-  }, [trackersQuery.data])
+
+    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const trackers = Object.keys(trackersQuery.data)
+    const processed: Option[] = []
+    const seenDisplayNames = new Set<string>()
+
+    for (const tracker of trackers) {
+      const lowerTracker = tracker.toLowerCase()
+
+      if (secondaryDomains.has(lowerTracker)) {
+        continue
+      }
+
+      const customization = domainToCustomization.get(lowerTracker)
+
+      if (customization) {
+        const displayKey = customization.displayName.toLowerCase()
+        if (seenDisplayNames.has(displayKey)) continue
+        seenDisplayNames.add(displayKey)
+
+        const primaryDomain = customization.domains[0]
+        processed.push({
+          label: customization.displayName,
+          value: customization.domains.join(","),
+          icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
+        })
+      } else {
+        if (seenDisplayNames.has(lowerTracker)) continue
+        seenDisplayNames.add(lowerTracker)
+
+        processed.push({
+          label: tracker,
+          value: tracker,
+          icon: <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />,
+        })
+      }
+    }
+
+    processed.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+
+    return processed
+  }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons])
 
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
@@ -246,7 +311,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
+        <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-lg border shrink-0">
           <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
             {settings.enabled ? "Enabled" : "Disabled"}
           </Label>
@@ -290,8 +355,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const settingsContent = (
     <div className="space-y-6">
-              {settings.enabled ? (
-                <>
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Timing & Behavior</h3>
@@ -338,7 +401,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       />
                     </div>
 
-                    <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
+                    <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
@@ -370,7 +433,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                     </div>
 
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
+                      <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
                         <div className="space-y-0.5">
                           <Label htmlFor="monitor-all" className="text-base">Monitor All Stalled Torrents</Label>
                           <p className="text-sm text-muted-foreground">
@@ -488,36 +551,20 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             placeholder="Select tracker domains..."
                             creatable
                             onCreateOption={(value) => appendUniqueValue("trackers", value)}
+                            hideCheckIcon
                           />
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {!formId && (
-                    <div className="flex justify-end pt-4">
-                      <Button type="submit" disabled={isUpdating}>
-                        {isUpdating ? "Saving..." : "Save Changes"}
-                      </Button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 border-2 border-dashed rounded-lg">
-                  <div className="p-3 rounded-full bg-muted/50">
-                    <RefreshCcw className="h-6 w-6 text-muted-foreground/50" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-medium text-muted-foreground">Monitoring Disabled</h3>
-                    <p className="text-sm text-muted-foreground/60 max-w-xs mx-auto">
-                      Enable automatic reannouncing to configure settings and start monitoring stalled torrents.
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={() => setSettings((prev) => ({ ...prev, enabled: true }))}>
-                    Enable Monitoring
-                  </Button>
-                </div>
-              )}
+      {!formId && (
+        <div className="flex justify-end pt-4">
+          <Button type="submit" disabled={isUpdating}>
+            {isUpdating ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      )}
     </div>
   )
 
@@ -566,11 +613,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                   </p>
                 </div>
               ) : activityQuery.isLoading ? (
-                 <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/10">
+                 <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/30">
                     <p className="text-sm text-muted-foreground">Loading activity...</p>
                  </div>
               ) : activityEvents.length === 0 ? (
-                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-6">
+                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-6">
                   <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
                   {activityEnabled && (
                     <p className="text-xs text-muted-foreground/60 mt-1">
@@ -579,10 +626,10 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                   )}
                 </div>
               ) : (
-                <ScrollArea className="h-[400px] rounded-md border">
-                  <div className="divide-y divide-border/40">
+                <ScrollArea className="h-[400px] rounded-md border bg-muted/20">
+                  <div className="divide-y divide-border">
                     {activityEvents.map((event, index) => (
-                      <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/20 transition-colors">
+                      <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
                         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                           <div className="space-y-1.5 flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -602,7 +649,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             </div>
                             
                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                              <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                 <span className="font-mono">{event.hash.substring(0, 7)}</span>
                                 <button
                                   type="button"
@@ -621,7 +668,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             </div>
 
                             {(event.trackers || event.reason) && (
-                              <div className="mt-2 space-y-1 bg-muted/30 p-2 rounded text-xs">
+                              <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
                                 {event.trackers && (
                                   <div className="flex items-start gap-2">
                                     <span className="font-medium text-muted-foreground shrink-0">Trackers:</span>

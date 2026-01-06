@@ -20,7 +20,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
-import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -139,17 +139,23 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
 
-  // Use the cross-seed hook to find matching torrents
-  const { matchingTorrents, isLoadingMatches } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
+  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+
+  // Build instance lookup map for CrossSeedTable
+  const instanceById = useMemo(
+    () => new Map(allInstances.map(i => [i.id, i])),
+    [allInstances]
+  )
 
   // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
-    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(',')
+    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(",")
   }, [matchingTorrents])
 
   // Prune stale selections when matching torrents change
   useEffect(() => {
-    const validKeysArray = matchingTorrentsKeys.split(',').filter(k => k)
+    const validKeysArray = matchingTorrentsKeys.split(",").filter(k => k)
 
     setSelectedCrossSeedTorrents(prev => {
       if (validKeysArray.length === 0 && prev.size === 0) {
@@ -344,7 +350,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setFilePriorityMutation.mutate({
       indices,
       priority: selected ? 1 : 0,
-      hash: torrent.hash
+      hash: torrent.hash,
     })
   }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
@@ -588,12 +594,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           api.bulkAction(instId, {
             hashes,
             action: "delete",
-            deleteFiles: deleteCrossSeedFiles
+            deleteFiles: deleteCrossSeedFiles,
           })
         )
       )
 
-      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? 's' : ''}`)
+      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? "s" : ""}`)
 
       // Refresh all instances
       for (const instId of byInstance.keys()) {
@@ -603,7 +609,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setSelectedCrossSeedTorrents(new Set())
       setShowDeleteCrossSeedDialog(false)
     } catch (error) {
-      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient])
 
@@ -614,7 +620,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.bulkAction(instanceId, {
         hashes: [torrent.hash],
         action: "delete",
-        deleteFiles: deleteCurrentFiles
+        deleteFiles: deleteCurrentFiles,
       })
 
       toast.success(`Deleted torrent: ${torrent.name}`)
@@ -624,7 +630,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       // Close the details panel by clearing selection (parent component should handle this)
       // The user will be returned to the torrent list
     } catch (error) {
-      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }, [torrent, instanceId, deleteCurrentFiles, queryClient])
 
@@ -664,11 +670,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const folderSet = new Set<string>()
     if (files) {
       files.forEach(file => {
-        const parts = file.name.split('/').filter(Boolean)
+        const parts = file.name.split("/").filter(Boolean)
         if (parts.length <= 1) return
 
         // Build all folder paths progressively
-        let current = ''
+        let current = ""
         for (let i = 0; i < parts.length - 1; i++) {
           current = current ? `${current}/${parts[i]}` : parts[i]
           folderSet.add(current)
@@ -716,57 +722,61 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   return (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="w-full justify-start rounded-none border-b h-8 bg-background px-4 sm:px-6 py-0">
-          <TabsTrigger
-            value="general"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            General
-          </TabsTrigger>
-          <TabsTrigger
-            value="trackers"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Trackers
-          </TabsTrigger>
-          <TabsTrigger
-            value="peers"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Peers
-          </TabsTrigger>
-          {hasWebseeds && (
-            <TabsTrigger
-              value="webseeds"
-              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-            >
-              HTTP Sources
-            </TabsTrigger>
-          )}
-          <TabsTrigger
-            value="content"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Content
-          </TabsTrigger>
-          <TabsTrigger
-            value="crossseed"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Cross-Seed
-          </TabsTrigger>
+        <div className="border-b flex items-center">
+          <div className="flex-1 overflow-x-auto scroll-smooth">
+            <TabsList className="w-fit sm:w-full justify-start rounded-none h-8 bg-background px-4 sm:px-6 py-0 flex-nowrap">
+              <TabsTrigger
+                value="general"
+                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+              >
+                General
+              </TabsTrigger>
+              <TabsTrigger
+                value="trackers"
+                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+              >
+                Trackers
+              </TabsTrigger>
+              <TabsTrigger
+                value="peers"
+                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+              >
+                Peers
+              </TabsTrigger>
+              {hasWebseeds && (
+                <TabsTrigger
+                  value="webseeds"
+                  className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+                >
+                  HTTP Sources
+                </TabsTrigger>
+              )}
+              <TabsTrigger
+                value="content"
+                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+              >
+                Content
+              </TabsTrigger>
+              <TabsTrigger
+                value="crossseed"
+                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+              >
+                Cross-Seed
+              </TabsTrigger>
+            </TabsList>
+          </div>
           {onClose && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-10 shrink-0"
+              className="h-8 w-10 shrink-0 rounded-none"
               onClick={onClose}
               aria-label="Close details panel"
             >
               <X className="h-3 w-3" />
             </Button>
           )}
-        </TabsList>
+        </div>
 
 
         <div className="flex-1 min-h-0 overflow-hidden">
@@ -801,6 +811,122 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     </div>
                   ) : properties ? (
                     <div className="space-y-6">
+                      {/* General Information */}
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">General Information</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Torrent Name */}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Torrent Name</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all">{displayName || "N/A"}</p>
+                                {displayName && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayName, "Torrent name")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Info Hash v1 */}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Info Hash v1</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all font-mono">{displayInfohashV1 || "N/A"}</p>
+                                {displayInfohashV1 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Info Hash v2 */}
+                            {displayInfohashV2 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Info Hash v2</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs flex-1 break-all font-mono">{displayInfohashV2}</p>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Save Path */}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Save Path</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all font-mono">{displaySavePath || "N/A"}</p>
+                                {displaySavePath && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displaySavePath, "Save path")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Temporary Download Path */}
+                            {tempPathEnabled && displayTempPath && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Download Path</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs flex-1 break-all font-mono">{displayTempPath || "N/A"}</p>
+                                  {displayTempPath && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 shrink-0"
+                                      onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Created By */}
+                            {displayCreatedBy && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Created By</p>
+                                <div className="text-xs">{renderTextWithLinks(displayCreatedBy)}</div>
+                              </div>
+                            )}
+
+                            {/* Comment */}
+                            {displayComment && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Comment</p>
+                                <div className="text-xs">{renderTextWithLinks(displayComment)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Transfer Statistics Section */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transfer Statistics</h3>
@@ -899,30 +1025,30 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             {(metadata.preferences.max_active_downloads > 0 ||
                               metadata.preferences.max_active_uploads > 0 ||
                               metadata.preferences.max_active_torrents > 0) && (
-                                <>
-                                  <Separator className="opacity-50" />
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                    {metadata.preferences.max_active_downloads > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Downloads</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
-                                      </div>
-                                    )}
-                                    {metadata.preferences.max_active_uploads > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Uploads</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
-                                      </div>
-                                    )}
-                                    {metadata.preferences.max_active_torrents > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Active</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </>
-                              )}
+                              <>
+                                <Separator className="opacity-50" />
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                  {metadata.preferences.max_active_downloads > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Max Downloads</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                    </div>
+                                  )}
+                                  {metadata.preferences.max_active_uploads > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Max Uploads</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                    </div>
+                                  )}
+                                  {metadata.preferences.max_active_torrents > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Max Active</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -941,98 +1067,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <p className="text-sm font-medium">{formatDuration(properties.seeding_time || 0)}</p>
                             </div>
                           </div>
-                        </div>
-                      </div>
-
-                      {/* Save Path */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                          <div className="flex items-center gap-2">
-                            <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                              {displaySavePath || "N/A"}
-                            </div>
-                            {displaySavePath && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0"
-                                onClick={() => copyToClipboard(displaySavePath, "File location")}
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Temporary Download Path - shown if temp_path_enabled */}
-                      {tempPathEnabled && (
-                        <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
-                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                            <div className="flex items-center gap-2">
-                              <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                                {displayTempPath || "N/A"}
-                              </div>
-                              {displayTempPath && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Info Hash Display */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Torrent Identifiers</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-4">
-                          <div className="space-y-2">
-                            <p className="text-xs text-muted-foreground">Info Hash v1</p>
-                            <div className="flex items-center gap-2">
-                              <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                {displayInfohashV1 || "N/A"}
-                              </div>
-                              {displayInfohashV1 && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          {displayInfohashV2 && (
-                            <>
-                              <Separator className="opacity-50" />
-                              <div className="space-y-2">
-                                <p className="text-xs text-muted-foreground">Info Hash v2</p>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                    {displayInfohashV2}
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 shrink-0"
-                                    onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </>
-                          )}
                         </div>
                       </div>
 
@@ -1060,32 +1094,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           </div>
                         </div>
                       </div>
-
-                      {/* Additional Information */}
-                      {(displayComment || displayCreatedBy) && (
-                        <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Information</h3>
-                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
-                            {displayCreatedBy && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Created By</p>
-                                <div className="text-sm">{renderTextWithLinks(displayCreatedBy)}</div>
-                              </div>
-                            )}
-                            {displayComment && (
-                              <>
-                                {displayCreatedBy && <Separator className="opacity-50" />}
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-2">Comment</p>
-                                  <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                    {renderTextWithLinks(displayComment)}
-                                  </div>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ) : null}
                 </div>
@@ -1508,9 +1516,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
                     <span className="text-xs text-muted-foreground">
-                      {supportsFilePriority
-                        ? `${selectedFileCount} of ${totalFiles} selected`
-                        : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+                      {supportsFilePriority? `${selectedFileCount} of ${totalFiles} selected`: `${files.length} file${files.length !== 1 ? "s" : ""}`}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1574,6 +1580,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onDeselectAll={handleDeselectAllCrossSeed}
                 onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
                 onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+                instanceById={instanceById}
                 onNavigateToTorrent={onNavigateToTorrent}
               />
             ) : (
@@ -1594,11 +1601,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            {selectedCrossSeedTorrents.size > 0
-                              ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
-                              : isLoadingMatches
-                                ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
-                                : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
+                            {selectedCrossSeedTorrents.size > 0? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`: isLoadingMatches? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? "s" : ""} found, checking more instances...`: `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? "s" : ""} found across all instances`}
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1691,15 +1694,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           }
 
                           // Match type display
-                          const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
-                          const matchLabel = matchType === 'infohash' ? 'Info Hash'
-                            : matchType === 'content_path' ? 'Content Path'
-                              : matchType === 'save_path' ? 'Save Path'
-                                : 'Name'
-                          const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
-                            : matchType === 'content_path' ? 'Same content location on disk'
-                              : matchType === 'save_path' ? 'Same save directory and filename'
-                                : 'Same torrent name'
+                          const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "name"
+                          const matchLabel = matchType === "infohash" ? "Info Hash": matchType === "content_path" ? "Content Path": matchType === "save_path" ? "Save Path": "Name"
+                          const matchDescription = matchType === "infohash" ? "Exact same torrent (same info hash)": matchType === "content_path" ? "Same content location on disk": matchType === "save_path" ? "Same save directory and filename": "Same torrent name"
 
                           return (
                             <div
@@ -1710,7 +1707,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               )}
                               onClick={(e) => {
                                 // Don't navigate if clicking checkbox
-                                if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                                if ((e.target as HTMLElement).closest("[role=\"checkbox\"]")) return
                                 onNavigateToTorrent?.(match.instanceId, match.hash)
                               }}
                             >
@@ -1723,7 +1720,21 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     aria-label={`Select ${displayName}`}
                                   />
                                   <div className="flex-1 min-w-0 space-y-1">
-                                    <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                    <div className="flex items-start gap-2">
+                                      <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                      {isHardlinkManaged(match, instanceById.get(match.instanceId)) && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
+                                              Hardlink
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">Files stored in hardlink directory (separate from source)</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                       <span className="shrink-0">Instance: {match.instanceName}</span>
                                       <span className="shrink-0">•</span>
@@ -1904,7 +1915,7 @@ tracker.example.com:8080
           <DialogHeader>
             <DialogTitle>Delete Selected Torrents</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}?
+              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? "s" : ""}?
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1941,7 +1952,7 @@ tracker.example.com:8080
               onClick={handleDeleteCrossSeed}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}
+              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? "s" : ""}
             </Button>
           </DialogFooter>
         </DialogContent>

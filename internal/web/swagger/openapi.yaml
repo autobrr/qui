@@ -520,6 +520,178 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/arr/instances:
+    get:
+      tags:
+        - ARR Integrations
+      summary: List ARR instances
+      description: Get all configured Sonarr/Radarr instances
+      responses:
+        '200':
+          description: List of ARR instances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArrInstance'
+    post:
+      tags:
+        - ARR Integrations
+      summary: Create ARR instance
+      description: Add a new Sonarr or Radarr instance configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrInstanceCreate'
+      responses:
+        '201':
+          description: ARR instance created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrInstance'
+        '400':
+          description: Invalid request
+        '409':
+          description: An instance with this URL already exists for this type
+
+  /api/arr/instances/{id}:
+    get:
+      tags:
+        - ARR Integrations
+      summary: Get ARR instance
+      description: Get a single Sonarr/Radarr instance by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: ARR instance details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrInstance'
+        '404':
+          description: ARR instance not found
+    put:
+      tags:
+        - ARR Integrations
+      summary: Update ARR instance
+      description: Update an existing Sonarr/Radarr instance configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrInstanceUpdate'
+      responses:
+        '200':
+          description: ARR instance updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrInstance'
+        '404':
+          description: ARR instance not found
+        '409':
+          description: An instance with this URL already exists for this type
+    delete:
+      tags:
+        - ARR Integrations
+      summary: Delete ARR instance
+      description: Delete an ARR instance configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: ARR instance deleted successfully
+        '404':
+          description: ARR instance not found
+
+  /api/arr/instances/{id}/test:
+    post:
+      tags:
+        - ARR Integrations
+      summary: Test ARR instance
+      description: Test connectivity to an existing ARR instance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrTestResponse'
+        '404':
+          description: ARR instance not found
+
+  /api/arr/test:
+    post:
+      tags:
+        - ARR Integrations
+      summary: Test ARR connection
+      description: Test connectivity to an ARR instance before saving
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrTestConnectionRequest'
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrTestResponse'
+        '400':
+          description: Invalid request
+
+  /api/arr/resolve:
+    post:
+      tags:
+        - ARR Integrations
+      summary: Resolve title to external IDs
+      description: Use configured ARR instances to resolve a title to external IDs (IMDb, TMDb, TVDb, TVMaze)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrResolveRequest'
+      responses:
+        '200':
+          description: Resolved IDs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrResolveResponse'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to resolve title
+
   /api/instances:
     get:
       tags:
@@ -575,6 +747,19 @@ paths:
                 tlsSkipVerify:
                   type: boolean
                   description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
+                hasLocalFilesystemAccess:
+                  type: boolean
+                  description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
+                useHardlinks:
+                  type: boolean
+                  description: Enable hardlink mode for cross-seed operations on this instance.
+                hardlinkBaseDir:
+                  type: string
+                  description: Base directory for hardlink trees when hardlink mode is enabled.
+                hardlinkDirPreset:
+                  type: string
+                  enum: [flat, by-tracker, by-instance]
+                  description: Directory organization preset for hardlink mode.
       responses:
         '201':
           description: Instance created
@@ -655,6 +840,19 @@ paths:
                 tlsSkipVerify:
                   type: boolean
                   description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
+                hasLocalFilesystemAccess:
+                  type: boolean
+                  description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
+                useHardlinks:
+                  type: boolean
+                  description: Enable hardlink mode for cross-seed operations on this instance.
+                hardlinkBaseDir:
+                  type: string
+                  description: Base directory for hardlink trees when hardlink mode is enabled.
+                hardlinkDirPreset:
+                  type: string
+                  enum: [flat, by-tracker, by-instance]
+                  description: Directory organization preset for hardlink mode.
       responses:
         '200':
           description: Instance updated
@@ -2489,6 +2687,18 @@ paths:
         '500':
           description: Failed to trigger automation run
 
+  /api/cross-seed/run/cancel:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Cancel RSS automation run
+      description: Stops the currently running RSS automation run, if any.
+      responses:
+        '204':
+          description: RSS automation run cancelled successfully
+        '409':
+          description: No automation run is currently active
+
   /api/cross-seed/search/settings:
     get:
       tags:
@@ -2824,16 +3034,15 @@ paths:
                   type: array
                   items:
                     type: string
-                ignorePatterns:
-                  type: array
-                  items:
-                    type: string
                 startPaused:
                   type: boolean
                 skipIfExists:
                   type: boolean
                 findIndividualEpisodes:
                   type: boolean
+                indexerName:
+                  type: string
+                  description: Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise. Webhook applies cannot derive the indexer from the torrent file, so this field is required for that mode.
       responses:
         '200':
           description: Torrent processed
@@ -2950,6 +3159,122 @@ paths:
           description: Invalid request body
         '500':
           description: Failed to add torrents
+
+  /api/cross-seed/torrents/{instanceID}/{hash}/local-matches:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Find local cross-seed matches
+      description: Find torrents across all qBittorrent instances that match the specified torrent (by content path, name, or release metadata)
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: List of matching torrents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalCrossSeedMatch'
+                required:
+                  - matches
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Failed to find matches
+
+  /api/log-settings:
+    get:
+      tags:
+        - System
+      summary: Get log settings
+      description: Get the current log configuration including level, file path, and rotation settings
+      responses:
+        '200':
+          description: Current log settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogSettings'
+    put:
+      tags:
+        - System
+      summary: Update log settings
+      description: Update log configuration. Changes are applied immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogSettingsUpdate'
+      responses:
+        '200':
+          description: Updated log settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogSettings'
+        '400':
+          description: Invalid settings or attempting to modify locked fields
+
+  /api/log-exclusions:
+    get:
+      tags:
+        - System
+      summary: Get log exclusions
+      description: Get the list of muted log message patterns
+      responses:
+        '200':
+          description: Current log exclusions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogExclusions'
+    put:
+      tags:
+        - System
+      summary: Update log exclusions
+      description: Replace the list of muted log message patterns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogExclusionsInput'
+      responses:
+        '200':
+          description: Updated log exclusions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogExclusions'
+
+  /api/logs/stream:
+    get:
+      tags:
+        - System
+      summary: Stream live logs
+      description: Server-Sent Events endpoint for streaming live log lines. Sends initial history (configurable via limit parameter) then streams new log lines in real-time.
+      parameters:
+        - name: limit
+          in: query
+          description: Number of historical log lines to send initially (default 1000)
+          schema:
+            type: integer
+            default: 1000
+      responses:
+        '200':
+          description: SSE stream of log lines
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Each message is a log line in SSE format
 
   /api/version/latest:
     get:
@@ -3229,6 +3554,220 @@ paths:
         '500':
           description: Failed to retrieve torrent file
 
+  # Orphan File Scanning
+  /api/instances/{instanceID}/orphan-scan/settings:
+    get:
+      tags:
+        - Orphan Scan
+      summary: Get orphan scan settings
+      description: Get orphan file scanning settings for an instance. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Orphan scan settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanSettings'
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+    put:
+      tags:
+        - Orphan Scan
+      summary: Update orphan scan settings
+      description: Update orphan file scanning settings for an instance. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrphanScanSettingsUpdate'
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanSettings'
+        '400':
+          description: Invalid settings (e.g., non-absolute ignore paths)
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+
+  /api/instances/{instanceID}/orphan-scan/scan:
+    post:
+      tags:
+        - Orphan Scan
+      summary: Trigger orphan scan
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: integer
+                    format: int64
+                    description: ID of the created scan run
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+        '409':
+          description: A scan is already in progress for this instance
+
+  /api/instances/{instanceID}/orphan-scan/runs:
+    get:
+      tags:
+        - Orphan Scan
+      summary: List orphan scan runs
+      description: Get recent orphan scan runs for an instance. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Maximum number of runs to return
+      responses:
+        '200':
+          description: List of scan runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrphanScanRun'
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+
+  /api/instances/{instanceID}/orphan-scan/runs/{runID}:
+    get:
+      tags:
+        - Orphan Scan
+      summary: Get orphan scan run
+      description: Get details of a specific scan run including the list of orphan files found. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Scan run ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Maximum number of files to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Scan run with files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanRunWithFiles'
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Run not found
+    delete:
+      tags:
+        - Orphan Scan
+      summary: Cancel orphan scan run
+      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Scan run ID
+      responses:
+        '200':
+          description: Run canceled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "canceled"
+        '400':
+          description: Run already finished
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Run not found
+        '409':
+          description: Cannot cancel run while deletion is in progress
+
+  /api/instances/{instanceID}/orphan-scan/runs/{runID}/confirm:
+    post:
+      tags:
+        - Orphan Scan
+      summary: Confirm orphan file deletion
+      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Scan run ID
+      responses:
+        '202':
+          description: Deletion started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "deleting"
+        '400':
+          description: Run is not in preview_ready status
+        '409':
+          description: A scan or deletion is already in progress for this instance
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Run not found
+
   /health:
     get:
       tags:
@@ -3483,6 +4022,19 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+        hasLocalFilesystemAccess:
+          type: boolean
+          description: When true, qui can access this instance's download paths locally (required for hardlink detection in automations).
+        useHardlinks:
+          type: boolean
+          description: When true, cross-seed operations use hardlink mode for this instance.
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees when hardlink mode is enabled.
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink mode.
         sortOrder:
           type: integer
           description: Display order preference for the instance.
@@ -3676,6 +4228,102 @@ components:
           type: string
         savePath:
           type: string
+
+    LogSettings:
+      type: object
+      description: Log configuration settings
+      required:
+        - level
+        - path
+        - maxSize
+        - maxBackups
+      properties:
+        level:
+          type: string
+          description: Log level
+          enum: [trace, debug, info, warn, error]
+          example: "info"
+        path:
+          type: string
+          description: Path to log file (empty for stdout only)
+          example: "/var/log/qui/qui.log"
+        maxSize:
+          type: integer
+          description: Maximum size of log file in megabytes before rotation
+          example: 50
+        maxBackups:
+          type: integer
+          description: Number of old log files to keep (0 for unlimited)
+          example: 3
+        configPath:
+          type: string
+          description: Path to the active config file being modified
+          example: "/config/config.toml"
+        locked:
+          type: object
+          description: Map of field names to lock source (environment or cli) if locked
+          additionalProperties:
+            type: string
+
+    LogSettingsUpdate:
+      type: object
+      description: Request to update log settings
+      properties:
+        level:
+          type: string
+          description: Log level to set
+          enum: [trace, debug, info, warn, error]
+          example: "debug"
+        path:
+          type: string
+          description: Path to log file
+          example: "/var/log/qui/qui.log"
+        maxSize:
+          type: integer
+          description: Maximum log file size in MB
+          example: 100
+        maxBackups:
+          type: integer
+          description: Number of backup files to keep
+          example: 5
+
+    LogExclusions:
+      type: object
+      description: Muted log message patterns
+      required:
+        - id
+        - patterns
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          description: Record ID
+        patterns:
+          type: array
+          items:
+            type: string
+          description: List of log message patterns to hide
+        createdAt:
+          type: string
+          format: date-time
+          description: When the record was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the record was last updated
+
+    LogExclusionsInput:
+      type: object
+      description: Request to update log exclusions
+      required:
+        - patterns
+      properties:
+        patterns:
+          type: array
+          items:
+            type: string
+          description: List of log message patterns to hide
 
     LatestVersionResponse:
       type: object
@@ -3910,10 +4558,6 @@ components:
           type: array
           items:
             type: string
-        ignorePatterns:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -3933,6 +4577,15 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        useCrossCategorySuffix:
+          type: boolean
+          description: Add .cross suffix to cross-seeded torrent categories
+        useCustomCategory:
+          type: boolean
+          description: Use a custom category for all cross-seeds
+        customCategory:
+          type: string
+          description: Custom category name when useCustomCategory is true
         runExternalProgramId:
           type: integer
           nullable: true
@@ -3959,6 +4612,16 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck
+        useHardlinks:
+          type: boolean
+          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees (must be on same filesystem as downloads)
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink trees
 
     CrossSeedAutomationSettings:
       type: object
@@ -3976,10 +4639,6 @@ components:
           type: array
           items:
             type: string
-        ignorePatterns:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -3999,6 +4658,15 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        useCrossCategorySuffix:
+          type: boolean
+          description: Add .cross suffix to cross-seeded torrent categories
+        useCustomCategory:
+          type: boolean
+          description: Use a custom category for all cross-seeds
+        customCategory:
+          type: string
+          description: Custom category name when useCustomCategory is true
         runExternalProgramId:
           type: integer
           nullable: true
@@ -4025,6 +4693,16 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck
+        useHardlinks:
+          type: boolean
+          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees (must be on same filesystem as downloads)
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink trees
         createdAt:
           type: string
           format: date-time
@@ -4346,6 +5024,57 @@ components:
           items:
             $ref: '#/components/schemas/CrossSeedApplyResult'
 
+    LocalCrossSeedMatch:
+      type: object
+      description: A torrent that matches another torrent for cross-seeding purposes
+      properties:
+        instanceId:
+          type: integer
+          description: The qBittorrent instance ID containing this torrent
+        instanceName:
+          type: string
+          description: The name of the qBittorrent instance
+        hash:
+          type: string
+          description: Torrent info hash
+        name:
+          type: string
+          description: Torrent name
+        size:
+          type: integer
+          format: int64
+          description: Total size in bytes
+        progress:
+          type: number
+          format: float
+          description: Download progress (0-1)
+        savePath:
+          type: string
+          description: Save path on disk
+        contentPath:
+          type: string
+          description: Content path on disk
+        category:
+          type: string
+          description: Torrent category
+        tags:
+          type: string
+          description: Comma-separated torrent tags
+        state:
+          type: string
+          description: Torrent state
+        tracker:
+          type: string
+          description: Primary tracker URL
+        trackerHealth:
+          type: string
+          enum: [unregistered, tracker_down]
+          description: Tracker health status (only present if unhealthy)
+        matchType:
+          type: string
+          enum: [content_path, name, release]
+          description: How this torrent was matched
+
     CrossInstanceFilterOptions:
       type: object
       description: Filter options for cross-instance torrent filtering
@@ -4465,11 +5194,340 @@ components:
         savePath:
           type: string
 
+    OrphanScanSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        enabled:
+          type: boolean
+          description: Whether scheduled orphan scanning is enabled
+        gracePeriodMinutes:
+          type: integer
+          description: Skip files modified within this many minutes
+        ignorePaths:
+          type: array
+          items:
+            type: string
+          description: Absolute paths to exclude from scanning
+        scanIntervalHours:
+          type: integer
+          description: Hours between scheduled scans
+        maxFilesPerRun:
+          type: integer
+          description: Maximum orphan files to record per run (prevents DB bloat)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OrphanScanSettingsUpdate:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        gracePeriodMinutes:
+          type: integer
+          minimum: 0
+        ignorePaths:
+          type: array
+          items:
+            type: string
+        scanIntervalHours:
+          type: integer
+          minimum: 1
+        maxFilesPerRun:
+          type: integer
+          minimum: 1
+
+    OrphanScanRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        status:
+          type: string
+          enum: ["pending", "scanning", "preview_ready", "deleting", "completed", "failed", "canceled"]
+        triggeredBy:
+          type: string
+          enum: ["manual", "scheduled"]
+        scanPaths:
+          type: array
+          items:
+            type: string
+          description: Directories that were scanned (derived from torrent SavePath values)
+        filesFound:
+          type: integer
+          description: Number of orphan files found
+        filesDeleted:
+          type: integer
+          description: Number of files deleted (after confirmation)
+        foldersDeleted:
+          type: integer
+          description: Number of empty folders deleted
+        bytesReclaimed:
+          type: integer
+          format: int64
+          description: Total bytes freed
+        truncated:
+          type: boolean
+          description: True if max_files_per_run was reached and more orphans may exist
+        errorMessage:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    OrphanScanFile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        runId:
+          type: integer
+          format: int64
+        filePath:
+          type: string
+          description: Absolute path to the orphan file
+        fileSize:
+          type: integer
+          format: int64
+          description: File size in bytes
+        modifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: ["pending", "deleted", "skipped", "failed"]
+        errorMessage:
+          type: string
+          nullable: true
+
+    OrphanScanRunWithFiles:
+      allOf:
+        - $ref: '#/components/schemas/OrphanScanRun'
+        - type: object
+          properties:
+            files:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrphanScanFile'
+
+    ArrInstance:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: ["sonarr", "radarr"]
+        name:
+          type: string
+        base_url:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        timeout_seconds:
+          type: integer
+        last_test_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_test_status:
+          type: string
+          enum: ["unknown", "ok", "error"]
+        last_test_error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ArrInstanceCreate:
+      type: object
+      required:
+        - type
+        - name
+        - base_url
+        - api_key
+      properties:
+        type:
+          type: string
+          enum: ["sonarr", "radarr"]
+        name:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+          default: true
+        priority:
+          type: integer
+          default: 0
+        timeout_seconds:
+          type: integer
+          default: 15
+
+    ArrInstanceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+          description: Only update if provided
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        timeout_seconds:
+          type: integer
+
+    ArrTestConnectionRequest:
+      type: object
+      required:
+        - type
+        - base_url
+        - api_key
+      properties:
+        type:
+          type: string
+          enum: ["sonarr", "radarr"]
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+
+    ArrTestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+
+    ArrResolveRequest:
+      type: object
+      required:
+        - title
+        - content_type
+      properties:
+        title:
+          type: string
+        content_type:
+          type: string
+          enum: ["movie", "tv"]
+
+    ArrExternalIDs:
+      type: object
+      properties:
+        imdb_id:
+          type: string
+        tmdb_id:
+          type: integer
+        tvdb_id:
+          type: integer
+        tvmaze_id:
+          type: integer
+
+    ArrIDCacheEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title_hash:
+          type: string
+        content_type:
+          type: string
+        arr_instance_id:
+          type: integer
+          nullable: true
+        external_ids:
+          $ref: '#/components/schemas/ArrExternalIDs'
+        is_negative:
+          type: boolean
+        cached_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    ArrInstanceResult:
+      type: object
+      properties:
+        instance_id:
+          type: integer
+        instance_name:
+          type: string
+        instance_type:
+          type: string
+        ids:
+          $ref: '#/components/schemas/ArrExternalIDs'
+        error:
+          type: string
+          nullable: true
+
+    ArrResolveResponse:
+      type: object
+      properties:
+        title:
+          type: string
+        title_hash:
+          type: string
+        content_type:
+          type: string
+          enum: ["movie", "tv"]
+        cache_hit:
+          type: boolean
+        cache_entry:
+          $ref: '#/components/schemas/ArrIDCacheEntry'
+        instances_available:
+          type: integer
+        instance_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArrInstanceResult'
+        error:
+          type: string
+          nullable: true
+
 tags:
   - name: Authentication
     description: User authentication and session management
   - name: API Keys
     description: API key management
+  - name: ARR Integrations
+    description: Sonarr/Radarr instance management for external ID lookups
   - name: Client API Keys
     description: Client API key management for external applications
   - name: External Programs
@@ -4486,5 +5544,7 @@ tags:
     description: Tag management
   - name: Cross-Seed
     description: Cross-seeding operations for finding and adding duplicate torrents
+  - name: Orphan Scan
+    description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Theme Licenses
     description: Theme license management (optional feature)

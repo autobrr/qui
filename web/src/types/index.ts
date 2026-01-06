@@ -23,6 +23,13 @@ export interface Instance {
   username: string
   basicUsername?: string
   tlsSkipVerify: boolean
+  hasLocalFilesystemAccess: boolean
+  // Hardlink mode settings (per-instance)
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
+  useReflinks: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -36,6 +43,13 @@ export interface InstanceFormData {
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  hasLocalFilesystemAccess: boolean
+  // Hardlink mode settings (per-instance)
+  useHardlinks?: boolean
+  hardlinkBaseDir?: string
+  hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
+  useReflinks?: boolean
   reannounceSettings: InstanceReannounceSettings
 }
 
@@ -74,6 +88,26 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeTags: string[]
 }
 
+/**
+ * A torrent match found by the backend using proper release metadata parsing (rls library).
+ */
+export interface LocalCrossSeedMatch {
+  instanceId: number
+  instanceName: string
+  hash: string
+  name: string
+  size: number
+  progress: number
+  savePath: string
+  contentPath: string
+  category: string
+  tags: string
+  state: string
+  tracker: string
+  trackerHealth?: string
+  matchType: "content_path" | "name" | "release"
+}
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string
@@ -105,36 +139,247 @@ export interface InstanceError {
   occurredAt: string
 }
 
-export interface TrackerRule {
+// Condition field types for expression-based automations
+export type ConditionField =
+  // String fields
+  | "NAME"
+  | "HASH"
+  | "CATEGORY"
+  | "TAGS"
+  | "SAVE_PATH"
+  | "CONTENT_PATH"
+  | "STATE"
+  | "TRACKER"
+  | "COMMENT"
+  // Numeric fields (bytes)
+  | "SIZE"
+  | "TOTAL_SIZE"
+  | "DOWNLOADED"
+  | "UPLOADED"
+  | "AMOUNT_LEFT"
+  | "FREE_SPACE"
+  // Numeric fields (timestamps/seconds)
+  | "ADDED_ON"
+  | "COMPLETION_ON"
+  | "LAST_ACTIVITY"
+  | "SEEDING_TIME"
+  | "TIME_ACTIVE"
+  // Age fields (time since timestamp - duration type)
+  | "ADDED_ON_AGE"
+  | "COMPLETION_ON_AGE"
+  | "LAST_ACTIVITY_AGE"
+  // Numeric fields (float64)
+  | "RATIO"
+  | "PROGRESS"
+  | "AVAILABILITY"
+  // Numeric fields (speeds)
+  | "DL_SPEED"
+  | "UP_SPEED"
+  // Numeric fields (counts)
+  | "NUM_SEEDS"
+  | "NUM_LEECHS"
+  | "NUM_COMPLETE"
+  | "NUM_INCOMPLETE"
+  | "TRACKERS_COUNT"
+  // Boolean fields
+  | "PRIVATE"
+  | "IS_UNREGISTERED"
+  // Enum-like fields
+  | "HARDLINK_SCOPE"
+
+export type ConditionOperator =
+  // Logical operators (for groups)
+  | "AND"
+  | "OR"
+  // Comparison operators
+  | "EQUAL"
+  | "NOT_EQUAL"
+  | "CONTAINS"
+  | "NOT_CONTAINS"
+  | "STARTS_WITH"
+  | "ENDS_WITH"
+  | "GREATER_THAN"
+  | "GREATER_THAN_OR_EQUAL"
+  | "LESS_THAN"
+  | "LESS_THAN_OR_EQUAL"
+  | "BETWEEN"
+  | "MATCHES"
+  // Cross-category lookup operators (NAME field only)
+  | "EXISTS_IN"
+  | "CONTAINS_IN"
+
+export interface RuleCondition {
+  /** UI-only stable identifier (not persisted server-side) */
+  clientId?: string
+  field?: ConditionField
+  operator: ConditionOperator
+  value?: string
+  minValue?: number
+  maxValue?: number
+  regex?: boolean
+  negate?: boolean
+  conditions?: RuleCondition[]
+}
+
+export interface SpeedLimitAction {
+  enabled: boolean
+  uploadKiB?: number
+  downloadKiB?: number
+  condition?: RuleCondition
+}
+
+export interface ShareLimitsAction {
+  enabled: boolean
+  ratioLimit?: number
+  seedingTimeMinutes?: number
+  condition?: RuleCondition
+}
+
+export interface PauseAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface DeleteAction {
+  enabled: boolean
+  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  condition?: RuleCondition
+}
+
+export interface TagAction {
+  enabled: boolean
+  tags: string[]
+  mode: "full" | "add" | "remove"
+  useTrackerAsTag?: boolean
+  useDisplayName?: boolean
+  condition?: RuleCondition
+}
+
+export interface CategoryAction {
+  enabled: boolean
+  category: string
+  includeCrossSeeds?: boolean
+  blockIfCrossSeedInCategories?: string[]
+  condition?: RuleCondition
+}
+
+export interface ActionConditions {
+  schemaVersion: string
+  speedLimits?: SpeedLimitAction
+  shareLimits?: ShareLimitsAction
+  pause?: PauseAction
+  delete?: DeleteAction
+  tag?: TagAction
+  category?: CategoryAction
+}
+
+export interface Automation {
   id: number
   instanceId: number
   name: string
   trackerPattern: string
   trackerDomains?: string[]
-  category?: string
-  tag?: string
-  uploadLimitKiB?: number
-  downloadLimitKiB?: number
-  ratioLimit?: number
-  seedingTimeLimitMinutes?: number
+  conditions: ActionConditions
   enabled: boolean
   sortOrder: number
+  intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
   updatedAt?: string
 }
 
-export interface TrackerRuleInput {
+export interface AutomationInput {
   name: string
   trackerPattern?: string
   trackerDomains?: string[]
-  category?: string
-  tag?: string
-  uploadLimitKiB?: number
-  downloadLimitKiB?: number
-  ratioLimit?: number
-  seedingTimeLimitMinutes?: number
+  conditions: ActionConditions
   enabled?: boolean
   sortOrder?: number
+  intervalSeconds?: number | null // null = use global default (15 minutes)
+}
+
+export interface AutomationPreviewInput extends AutomationInput {
+  previewLimit?: number
+  previewOffset?: number
+}
+
+export interface AutomationActivity {
+  id: number
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackerDomain?: string
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused"
+  ruleId?: number
+  ruleName?: string
+  outcome: "success" | "failed"
+  reason?: string
+  details?: {
+    ratio?: number
+    ratioLimit?: number
+    seedingMinutes?: number
+    seedingLimitMinutes?: number
+    filesKept?: boolean
+    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+    limitKiB?: number
+    count?: number
+    type?: string
+    // Tag activity details
+    added?: Record<string, number>   // tag -> count of torrents
+    removed?: Record<string, number> // tag -> count of torrents
+    // Category activity details
+    categories?: Record<string, number> // category -> count of torrents
+    // Speed/share limit activity details
+    limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
+  }
+  createdAt: string
+}
+
+export interface AutomationPreviewTorrent {
+  name: string
+  hash: string
+  size: number
+  ratio: number
+  seedingTime: number
+  tracker: string
+  category: string
+  tags: string
+  state: string
+  addedOn: number
+  uploaded: number
+  downloaded: number
+  isUnregistered?: boolean
+  isCrossSeed?: boolean
+  hardlinkScope?: string // none, torrents_only, outside_qbittorrent
+  // Additional fields for dynamic columns
+  numSeeds: number
+  numComplete: number
+  numLeechs: number
+  numIncomplete: number
+  progress: number
+  availability: number
+  timeActive: number
+  lastActivity: number
+  completionOn: number
+  totalSize: number
+}
+
+export interface AutomationPreviewResult {
+  totalMatches: number
+  crossSeedCount?: number
+  examples: AutomationPreviewTorrent[]
+}
+
+export interface RegexValidationError {
+  path: string
+  message: string
+  pattern: string
+  field: string
+  operator: string
+}
+
+export interface RegexValidationResult {
+  valid: boolean
+  errors: RegexValidationError[]
 }
 
 export interface InstanceResponse extends Instance {
@@ -352,6 +597,17 @@ export interface DashboardSettingsInput {
   trackerBreakdownSortColumn?: string
   trackerBreakdownSortDirection?: string
   trackerBreakdownItemsPerPage?: number
+}
+
+export interface LogExclusions {
+  id: number
+  patterns: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LogExclusionsInput {
+  patterns: string[]
 }
 
 export interface TorrentCounts {
@@ -1412,7 +1668,6 @@ export interface CrossSeedAutomationSettings {
   runIntervalMinutes: number
   startPaused: boolean
   category?: string | null
-  ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -1429,6 +1684,8 @@ export interface CrossSeedAutomationSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   useCrossCategorySuffix: boolean
+  useCustomCategory: boolean
+  customCategory: string
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags: string[]
@@ -1442,6 +1699,11 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  skipPieceBoundarySafetyCheck: boolean
+  // Hardlink mode settings
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
   createdAt?: string
   updatedAt?: string
 }
@@ -1451,7 +1713,6 @@ export interface CrossSeedAutomationSettingsPatch {
   runIntervalMinutes?: number
   startPaused?: boolean
   category?: string | null
-  ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -1468,6 +1729,8 @@ export interface CrossSeedAutomationSettingsPatch {
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
   useCrossCategorySuffix?: boolean
+  useCustomCategory?: boolean
+  customCategory?: string
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags?: string[]
@@ -1481,6 +1744,11 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeCompletion?: boolean
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
+  skipPieceBoundarySafetyCheck?: boolean
+  // Hardlink mode settings
+  useHardlinks?: boolean
+  hardlinkBaseDir?: string
+  hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
 }
 
 export interface CrossSeedAutomationStatus {
@@ -1559,4 +1827,88 @@ export interface CrossSeedSearchStatus {
   currentTorrent?: CrossSeedSearchCandidate
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
+}
+// Orphan Scan types
+export type OrphanScanRunStatus =
+  | "pending"
+  | "scanning"
+  | "preview_ready"
+  | "deleting"
+  | "completed"
+  | "failed"
+  | "canceled"
+
+export type OrphanScanTriggerType = "manual" | "scheduled"
+
+export type OrphanScanFileStatus = "pending" | "deleted" | "skipped" | "failed"
+
+export interface OrphanScanSettings {
+  id?: number
+  instanceId: number
+  enabled: boolean
+  gracePeriodMinutes: number
+  ignorePaths: string[]
+  scanIntervalHours: number
+  maxFilesPerRun: number
+  autoCleanupEnabled: boolean
+  autoCleanupMaxFiles: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface OrphanScanSettingsUpdate {
+  enabled?: boolean
+  gracePeriodMinutes?: number
+  ignorePaths?: string[]
+  scanIntervalHours?: number
+  maxFilesPerRun?: number
+  autoCleanupEnabled?: boolean
+  autoCleanupMaxFiles?: number
+}
+
+export interface OrphanScanRun {
+  id: number
+  instanceId: number
+  status: OrphanScanRunStatus
+  triggeredBy: OrphanScanTriggerType
+  scanPaths: string[]
+  filesFound: number
+  filesDeleted: number
+  foldersDeleted: number
+  bytesReclaimed: number
+  truncated: boolean
+  errorMessage?: string | null
+  startedAt: string
+  completedAt?: string | null
+}
+
+export interface OrphanScanFile {
+  id: number
+  runId: number
+  filePath: string
+  fileSize: number
+  modifiedAt?: string | null
+  status: OrphanScanFileStatus
+  errorMessage?: string | null
+}
+
+export interface OrphanScanRunWithFiles extends OrphanScanRun {
+  files: OrphanScanFile[]
+}
+
+// Log Settings Types
+export interface LogSettings {
+  level: string
+  path: string
+  maxSize: number
+  maxBackups: number
+  configPath?: string
+  locked?: Record<string, string>
+}
+
+export interface LogSettingsUpdate {
+  level?: string
+  path?: string
+  maxSize?: number
+  maxBackups?: number
 }

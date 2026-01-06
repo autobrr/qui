@@ -142,6 +142,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+      hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
       reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
     },
     onSubmit: ({ value }) => {
@@ -221,6 +222,24 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               </div>
               <Switch
                 id="tls-skip-verify"
+                checked={field.state.value}
+                onCheckedChange={(checked) => field.handleChange(checked)}
+              />
+            </div>
+          )}
+        </form.Field>
+
+        <form.Field name="hasLocalFilesystemAccess">
+          {(field) => (
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="local-filesystem-access">Local Filesystem Access</Label>
+                <p className="text-sm text-muted-foreground max-w-prose">
+                  Enable if qui can access this instance's download paths (required for hardlink detection in automations).
+                </p>
+              </div>
+              <Switch
+                id="local-filesystem-access"
                 checked={field.state.value}
                 onCheckedChange={(checked) => field.handleChange(checked)}
               />
