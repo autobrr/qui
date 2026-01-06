@@ -5,6 +5,7 @@ package collector
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -317,8 +318,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				trackerStats := map[string]*qbittorrent.TrackerTransferStats{}
 
 				for domain, stats := range counts.TrackerTransfers {
-					domainLower := strings.ToLower(domain)
-					displayName, shouldInclude := resolveTrackerForStats(domainLower, trackerCustomizations)
+					displayName, shouldInclude := resolveTrackerForStats(domain, trackerCustomizations)
 
 					if !shouldInclude {
 						continue
@@ -445,24 +445,19 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 // https://github.com/autobrr/qui/blob/7466a98023aa4ca1e531d47c661e2701fb8dc3cf/web/src/pages/Dashboard.tsx#L990-L1011
 func resolveTrackerForStats(domain string, customizations []*models.TrackerCustomization) (displayName string, shouldInclude bool) {
 	for _, c := range customizations {
-		for i, d := range c.Domains {
-			if strings.ToLower(d) == domain {
-				isPrimary := i == 0
+		isPrimary := len(c.Domains) > 0 && strings.EqualFold(c.Domains[0], domain)
+		if isPrimary {
+			return c.DisplayName, true
+		}
 
-				if isPrimary {
-					return c.DisplayName, true
-				}
+		isIncluded := slices.ContainsFunc(c.IncludedInStats, func(d string) bool {
+			return strings.EqualFold(d, domain)
+		})
 
-				for _, included := range c.IncludedInStats {
-					if strings.ToLower(included) == domain {
-						return c.DisplayName, true
-					}
-				}
-
-				return "", false
-			}
+		if isIncluded {
+			return c.DisplayName, true
 		}
 	}
 
-	return domain, true
+	return "", false
 }
