@@ -47,7 +47,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2, Plus, X } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
@@ -175,6 +175,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const previewPageSize = 25
+  const tagsInputRef = useRef<HTMLInputElement>(null)
+
+  const commitPendingTags = () => {
+    if (tagsInputRef.current) {
+      const tags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
+      setFormState(prev => ({ ...prev, exprTags: tags }))
+      tagsInputRef.current.value = tags.join(", ")
+    }
+  }
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -573,6 +582,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    commitPendingTags()
     setRegexErrors([]) // Clear previous errors
 
     if (!formState.name) {
@@ -1001,13 +1011,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <div className="space-y-1">
                               <Label className="text-xs">Tags</Label>
                               <Input
+                                ref={tagsInputRef}
                                 type="text"
                                 defaultValue={formState.exprTags.join(", ")}
-                                onBlur={(e) => {
-                                  const tags =  e.currentTarget.value.split(",").map(t => t.trim()).filter(Boolean)
-                                  setFormState(prev => ({ ...prev, exprTags: tags }))
-                                   e.currentTarget.value = tags.join(", ")
-                                }}
+                                onBlur={commitPendingTags}
                                 placeholder="tag1, tag2, ..."
                               />
                             </div>
