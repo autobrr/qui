@@ -500,41 +500,72 @@ func (s *Service) collectLocalMatches(
 	normalizedSourceHash := normalizeHash(sourceTorrent.Hash)
 
 	for _, instance := range instances {
+		if ctx.Err() != nil {
+			return matches
+		}
+
 		cachedTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get cached torrents for instance")
 			continue
 		}
 
-		for i := range cachedTorrents {
-			cached := &cachedTorrents[i]
-			if instance.ID == sourceInstanceID && normalizeHash(cached.Hash) == normalizedSourceHash {
-				continue
-			}
-
-			matchType := s.determineLocalMatchType(sourceTorrent, sourceRelease, cached, normalizedContentPath, matchCtx)
-			if matchType != "" {
-				matches = append(matches, LocalMatch{
-					InstanceID:    instance.ID,
-					InstanceName:  instance.Name,
-					Hash:          cached.Hash,
-					Name:          cached.Name,
-					Size:          cached.Size,
-					Progress:      cached.Progress,
-					SavePath:      cached.SavePath,
-					ContentPath:   cached.ContentPath,
-					Category:      cached.Category,
-					Tags:          cached.Tags,
-					State:         string(cached.State),
-					Tracker:       cached.Tracker,
-					TrackerHealth: string(cached.TrackerHealth),
-					MatchType:     matchType,
-				})
-			}
-		}
+		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
+			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 	}
 
 	return matches
+}
+
+// matchTorrentsInInstance checks torrents in a single instance for matches.
+func (s *Service) matchTorrentsInInstance(
+	ctx context.Context,
+	matches []LocalMatch,
+	instance *models.Instance,
+	cachedTorrents []qbittorrent.CrossInstanceTorrentView,
+	sourceInstanceID int,
+	normalizedSourceHash string,
+	sourceTorrent *qbt.Torrent,
+	sourceRelease *rls.Release,
+	normalizedContentPath string,
+	matchCtx *localMatchContext,
+) []LocalMatch {
+	for i := range cachedTorrents {
+		if ctx.Err() != nil {
+			return matches
+		}
+
+		cached := &cachedTorrents[i]
+		if instance.ID == sourceInstanceID && normalizeHash(cached.Hash) == normalizedSourceHash {
+			continue
+		}
+
+		matchType := s.determineLocalMatchType(sourceTorrent, sourceRelease, cached, normalizedContentPath, matchCtx)
+		if matchType != "" {
+			matches = append(matches, newLocalMatch(instance, cached, matchType))
+		}
+	}
+	return matches
+}
+
+// newLocalMatch creates a LocalMatch from instance and torrent data.
+func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceTorrentView, matchType string) LocalMatch {
+	return LocalMatch{
+		InstanceID:    instance.ID,
+		InstanceName:  instance.Name,
+		Hash:          cached.Hash,
+		Name:          cached.Name,
+		Size:          cached.Size,
+		Progress:      cached.Progress,
+		SavePath:      cached.SavePath,
+		ContentPath:   cached.ContentPath,
+		Category:      cached.Category,
+		Tags:          cached.Tags,
+		State:         string(cached.State),
+		Tracker:       cached.Tracker,
+		TrackerHealth: string(cached.TrackerHealth),
+		MatchType:     matchType,
+	}
 }
 
 // localMatchContext holds source file data for file-level matching.

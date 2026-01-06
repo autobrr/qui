@@ -463,7 +463,8 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 	}
 
 	// strict=true for delete dialogs: fail if overlap checks can't complete
-	strict := r.URL.Query().Get("strict") == "true"
+	// ParseBool accepts true/TRUE/1/t etc., defaults to false when absent/invalid
+	strict, _ := strconv.ParseBool(r.URL.Query().Get("strict")) //nolint:errcheck // intentional: default to false
 
 	response, err := h.service.FindLocalMatches(r.Context(), instanceID, hash, strict)
 	if err != nil {
