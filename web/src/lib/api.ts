@@ -124,18 +124,114 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
+// Session storage key used to guard against reload loops when backend is truly down.
+const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
+
+/**
+ * Detect network errors that indicate an SSO redirect was blocked by CORS.
+ * When an upstream SSO proxy session expires, it often returns a cross-origin
+ * redirect that fetch() cannot follow, resulting in a TypeError.
+ */
+function isSSOBlockedNetworkError(error: unknown): boolean {
+  if (!(error instanceof TypeError)) {
+    return false
+  }
+  const msg = error.message.toLowerCase()
+  return msg.includes("networkerror") || msg.includes("failed to fetch")
+}
+
+/**
+ * Check if a response appears to be an SSO login/error page rather than a JSON API response.
+ * SSO proxies typically return HTML with these status codes:
+ * - 200 OK with HTML login page (some Pangolin setups)
+ * - 401/403 with HTML error page (Cloudflare Access)
+ *
+ * We explicitly exclude 5xx errors to avoid triggering reload on legitimate
+ * reverse proxy error pages (e.g., nginx 502 Bad Gateway).
+ */
+function isSSOHTMLResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type") || ""
+  if (!contentType.includes("text/html")) {
+    return false
+  }
+  // Only treat as SSO if it's a 2xx/4xx response with HTML.
+  // 5xx with HTML is likely a reverse proxy error page, not SSO.
+  const status = response.status
+  return status < 500
+}
+
+/**
+ * Attempt a single hard page reload to let the browser follow the SSO redirect
+ * at the top level. Uses sessionStorage to prevent infinite reload loops.
+ * Skips reload when offline to avoid pointless refreshes.
+ */
+function attemptSSORecoveryReload(): void {
+  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+    return
+  }
+  // Don't reload if we're offline - it's not an SSO issue
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return
+  }
+  if (sessionStorage.getItem(SSO_RELOAD_GUARD_KEY)) {
+    // Already tried once this session; don't loop.
+    return
+  }
+  sessionStorage.setItem(SSO_RELOAD_GUARD_KEY, "1")
+  window.location.reload()
+}
+
+/** Clear the SSO reload guard after a successful request. */
+function clearSSOReloadGuard(): void {
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem(SSO_RELOAD_GUARD_KEY)
+  }
+}
+
+/**
+ * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
+ * an expired SSO session by triggering a page reload.
+ */
+async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        ...options.headers,
+      },
+      credentials: "include",
+    })
+  } catch (error) {
+    if (isSSOBlockedNetworkError(error)) {
+      attemptSSORecoveryReload()
+    }
+    throw error
+  }
+
+  // If we got an HTML response on an API endpoint, it's likely an SSO login page.
+  // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
+  if (isSSOHTMLResponse(response)) {
+    attemptSSORecoveryReload()
+    throw new Error("Received HTML instead of JSON - SSO session may have expired")
+  }
+
+  clearSSOReloadGuard()
+  return response
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
         ...options?.headers,
       },
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -156,11 +252,14 @@ class ApiClient {
     const fallbackMessage = `HTTP error! status: ${response.status}`
 
     try {
+      const contentType = response.headers.get("content-type") || ""
       const rawBody = await response.text()
+
       if (!rawBody) {
         return fallbackMessage
       }
 
+      // Try to parse as JSON first
       try {
         const errorData = JSON.parse(rawBody) as { error?: string; message?: string }
         const parsedMessage = errorData?.error ?? errorData?.message
@@ -168,8 +267,15 @@ class ApiClient {
           return parsedMessage
         }
       } catch {
+        // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
+        if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
+          // Don't show raw HTML to user, provide a readable message
+          return `${fallbackMessage} (server returned HTML error page)`
+        }
+
+        // Plain text error
         const trimmed = rawBody.trim()
-        if (trimmed.length > 0) {
+        if (trimmed.length > 0 && trimmed.length < 500) {
           return trimmed
         }
       }
@@ -226,13 +332,13 @@ class ApiClient {
 
   async checkSetupRequired(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE}/auth/check-setup`, {
+      const response = await ssoSafeFetch(`${API_BASE}/auth/check-setup`, {
         method: "GET",
-        credentials: "include",
       })
       const data = await response.json()
       return data.setupRequired || false
     } catch {
+      // ssoSafeFetch handles SSO recovery internally
       return false
     }
   }
@@ -409,10 +515,9 @@ class ApiClient {
     const formData = new FormData()
     formData.append("archive", manifestFile)
 
-    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
       method: "POST",
       body: formData,
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -623,10 +728,9 @@ class ApiClient {
     if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
     if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
-    const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
       body: formData,
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -1205,9 +1309,8 @@ class ApiClient {
 
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
     const encodedHash = encodeURIComponent(hash)
-    const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
       method: "GET",
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -1264,12 +1367,9 @@ class ApiClient {
   }
 
   async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
-    const response = await fetch(
+    const response = await ssoSafeFetch(
       `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,
-      {
-        method: "GET",
-        credentials: "include",
-      }
+      { method: "GET" }
     )
 
     if (!response.ok) {
@@ -1350,6 +1450,17 @@ class ApiClient {
 
   async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
     return this.request(`/instances/${instanceId}/trackers`)
+  }
+
+  async getDirectoryContent(instanceId: number, dirPath: string, signal?: AbortSignal): Promise<string[]> {
+    const response = await ssoSafeFetch(
+      `${API_BASE}/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(dirPath)}`,
+      { method: "GET", signal }
+    )
+    if (!response.ok) {
+      throw new Error("Failed to fetch directory content")
+    }
+    return response.json()
   }
 
   async listAutomations(instanceId: number): Promise<Automation[]> {
