@@ -456,12 +456,12 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext)
 		return
 	}
 
-	// If the torrent is a cross-seed, we've already counted the file size in the cumulative space to clear
+	// If the torrent is a cross-seed of a torrent that has already been counted, we don't count it again
 	if _, ok := evalCtx.FilesToClear[crossSeedKey]; ok {
 		return
 	}
 
-	// This is a new torrent or cross-seed, so we add the file size to the cumulative space to clear
+	// This is a new torrent, so we add the file size to the cumulative space to clear
 	evalCtx.SpaceToClear += torrent.Size
 	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
 }
