@@ -46,10 +46,10 @@ import type {
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
   InstanceFormData,
-  LocalCrossSeedMatch,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  LocalCrossSeedMatch,
   LogExclusions,
   LogExclusionsInput,
   LogSettings,
@@ -771,10 +771,13 @@ class ApiClient {
   /**
    * Get local cross-seed matches for a torrent across all instances.
    * Uses proper release metadata parsing (rls library), not fuzzy string matching.
+   *
+   * @param strict - When true, fail if file overlap checks can't complete (use for delete dialogs)
    */
   async getLocalCrossSeedMatches(
     instanceId: number,
-    hash: string
+    hash: string,
+    strict = false
   ): Promise<LocalCrossSeedMatch[]> {
     type RawLocalMatch = {
       instance_id: number
@@ -797,8 +800,9 @@ class ApiClient {
       matches: RawLocalMatch[]
     }
 
+    const params = strict ? "?strict=true" : ""
     const raw = await this.request<RawResponse>(
-      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches${params}`,
       { method: "GET" }
     )
 

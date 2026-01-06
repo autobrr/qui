@@ -450,6 +450,7 @@ func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *htt
 // @Produce json
 // @Param instanceID path int true "Source instance ID"
 // @Param hash path string true "Source torrent hash"
+// @Param strict query bool false "When true, fail if file overlap checks cannot complete (use for delete dialogs)"
 // @Success 200 {object} crossseed.LocalMatchesResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
@@ -461,7 +462,10 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	response, err := h.service.FindLocalMatches(r.Context(), instanceID, hash)
+	// strict=true for delete dialogs: fail if overlap checks can't complete
+	strict := r.URL.Query().Get("strict") == "true"
+
+	response, err := h.service.FindLocalMatches(r.Context(), instanceID, hash, strict)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
