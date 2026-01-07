@@ -2214,12 +2214,6 @@ type TorrentCounts struct {
 	Total            int                             `json:"total"`
 }
 
-// InstanceSpeeds represents download/upload speeds for an instance
-type InstanceSpeeds struct {
-	Download int64 `json:"download"`
-	Upload   int64 `json:"upload"`
-}
-
 // ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching.
 // Handles multiple formats:
 //   - Standard URLs with schemes (http, https, udp, ws, wss)
@@ -2786,33 +2780,6 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		Msg("Calculated torrent counts")
 
 	return counts, nil
-}
-
-// GetInstanceSpeeds gets total download/upload speeds efficiently using GetTransferInfo
-// This is MUCH faster than fetching all torrents for large instances
-func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*InstanceSpeeds, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Use GetTransferInfo - a lightweight API that returns just global speeds
-	// This doesn't fetch any torrents, making it perfect for dashboard stats
-	transferInfo, err := client.GetTransferInfoCtx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transfer info: %w", err)
-	}
-
-	// Extract speeds from TransferInfo
-	speeds := &InstanceSpeeds{
-		Download: transferInfo.DlInfoSpeed,
-		Upload:   transferInfo.UpInfoSpeed,
-	}
-
-	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: got from GetTransferInfo API")
-
-	return speeds, nil
 }
 
 // Helper methods
