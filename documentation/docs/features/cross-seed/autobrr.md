@@ -91,11 +91,14 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 ```
 
 **Field descriptions:**
-- `torrentData` - Base64-encoded torrent file bytes
-- `instanceIds` - Target instances (omit to apply to any matching instance)
+- `torrentData` (required) - Base64-encoded torrent file bytes
+- `instanceIds` (optional) - Target instances (omit to apply to any matching instance)
 - `indexerName` (optional) - Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise
 - `tags` (optional) - Override webhook tags from settings
 - `category` (optional) - Override category. Takes precedence over `indexerName`
+- `startPaused` (optional) - Override whether torrents are added paused
+- `skipIfExists` (optional) - Skip adding if the torrent already exists
+- `findIndividualEpisodes` (optional) - Override the global episode matching setting
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 
@@ -117,4 +120,4 @@ This is useful when:
 Exclude filters take precedence over include filters. Tag matching is case-sensitive. When both category and tag include filters are configured, a torrent must pass both filter checks (matching at least one allowed category AND at least one allowed tag).
 :::
 
-Configure in qui UI: **Cross-Seed → Global → Webhook Source Filters**
+Configure in qui UI: **Cross-Seed → Auto → Webhook / autobrr**
