@@ -3,7 +3,6 @@ package crossseed
 import (
 	"context"
 	"maps"
-	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -34,10 +33,11 @@ func (*reflinkFallbackSafetySyncManager) GetTorrents(_ context.Context, _ int, f
 func (m *reflinkFallbackSafetySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		if files, ok := m.files[strings.ToLower(h)]; ok {
+		key := normalizeHash(h)
+		if files, ok := m.files[key]; ok {
 			cp := make(qbt.TorrentFiles, len(files))
 			copy(cp, files)
-			result[normalizeHash(h)] = cp
+			result[key] = cp
 		}
 	}
 	return result, nil
@@ -48,7 +48,7 @@ func (*reflinkFallbackSafetySyncManager) HasTorrentByAnyHash(context.Context, in
 }
 
 func (m *reflinkFallbackSafetySyncManager) GetTorrentProperties(_ context.Context, _ int, hash string) (*qbt.TorrentProperties, error) {
-	if props, ok := m.props[strings.ToLower(hash)]; ok {
+	if props, ok := m.props[normalizeHash(hash)]; ok {
 		cp := *props
 		return &cp, nil
 	}
@@ -146,10 +146,10 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 
 	sync := &reflinkFallbackSafetySyncManager{
 		files: map[string]qbt.TorrentFiles{
-			matchedHash: candidateFiles,
+			normalizeHash(matchedHash): candidateFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			matchedHash: {SavePath: "/downloads/movies"},
+			normalizeHash(matchedHash): {SavePath: "/downloads/movies"},
 		},
 	}
 
