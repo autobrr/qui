@@ -434,6 +434,11 @@ const FilterSidebarComponent = ({
     const httpUrls = trackerFullURLs.filter((url) => url.startsWith("http://"))
     if (httpUrls.length === 0) return
 
+    if (!trackerToEdit) {
+      toast.error("No tracker selected for conversion")
+      return
+    }
+
     // Collect HTTPS samples to infer the correct port for each hostname/path
     const httpsSamples = trackerFullURLs
       .filter((url) => url.startsWith("https://"))
