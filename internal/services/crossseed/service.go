@@ -2897,14 +2897,11 @@ func (s *Service) processCrossSeedCandidate(
 	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks
 	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
 
-	// SAFETY: Reject cross-seeds where main content file sizes don't match.
-	// This prevents corrupting existing good data with potentially different or corrupted files.
-	// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
-	// it indicates either corruption or a different release that shouldn't be cross-seeded.
-	//
-	// NOTE: Reflink mode bypasses this check because it is allowed to repair/overwrite
-	// the cloned files without risking corruption to the original seeded files.
-	if !useReflinkMode {
+	runReuseSafetyChecks := func() bool {
+		// SAFETY: Reject cross-seeds where main content file sizes don't match.
+		// This prevents corrupting existing good data with potentially different or corrupted files.
+		// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
+		// it indicates either corruption or a different release that shouldn't be cross-seeded.
 		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
@@ -2916,16 +2913,17 @@ func (s *Service) processCrossSeedCandidate(
 				Str("matchType", string(matchType)).
 				Strs("mismatchedFiles", mismatchedFiles).
 				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
-			return result
+			return false
 		}
-	}
 
-	// SAFETY: Check piece-boundary alignment when source has extra files.
-	// If extra/ignored files share pieces with content files, downloading those pieces
-	// could corrupt the existing content data (piece hashes span both file types).
-	// In this case, we must skip - only reflink/copy mode could safely handle it.
-	// NOTE: Reflink mode bypasses this check because reflinks allow safe modification.
-	if !useReflinkMode && hasExtraFiles && torrentInfo != nil {
+		// SAFETY: Check piece-boundary alignment when source has extra files.
+		// If extra/ignored files share pieces with content files, downloading those pieces
+		// could corrupt the existing content data (piece hashes span both file types).
+		// In this case, we must skip - only reflink/copy mode could safely handle it.
+		if !hasExtraFiles || torrentInfo == nil {
+			return true
+		}
+
 		// Build set of missing file paths (files in source that have no (normalizedKey, size) match in candidate).
 		// This uses the same multiset matching as hasExtraSourceFiles.
 		type fileKeySize struct {
@@ -2979,13 +2977,22 @@ func (s *Service) processCrossSeedCandidate(
 						Str("ignoredFile", v.IgnoredFile).
 						Msg("[CROSSSEED] First piece boundary violation detail")
 				}
-				return result
+				return false
 			}
 		} else {
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Piece boundary safety check skipped by user setting")
+		}
+
+		return true
+	}
+
+	// NOTE: Reflink mode bypasses these checks only when reflink mode is actually used.
+	if !useReflinkMode {
+		if !runReuseSafetyChecks() {
+			return result
 		}
 	}
 
@@ -3092,6 +3099,12 @@ func (s *Service) processCrossSeedCandidate(
 		if rlResult.Used {
 			// Reflink mode was attempted (regardless of success/failure)
 			return rlResult.Result
+		}
+
+		// Reflink mode was enabled but not used (e.g., fallback on error). Re-run reuse safety checks
+		// before continuing into hardlink/regular modes.
+		if !runReuseSafetyChecks() {
+			return result
 		}
 	}
 
@@ -9329,22 +9342,22 @@ func (s *Service) processReflinkMode(
 		Int("totalFiles", totalFiles).
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
 
-		// Add the torrent
-		if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
-			// Rollback reflink tree on failure
-			if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
-				log.Warn().
+	// Add the torrent
+	if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+		// Rollback reflink tree on failure
+		if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
+			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
 				Msg("[CROSSSEED] Reflink mode: failed to rollback reflink tree")
 		}
-			log.Error().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentName", torrentName).
-				Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
-			return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
-		}
+		log.Error().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
+		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
+	}
 
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
