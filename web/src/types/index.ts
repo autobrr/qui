@@ -301,9 +301,12 @@ export interface AutomationInput {
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
 
+export type PreviewView = "needed" | "eligible"
+
 export interface AutomationPreviewInput extends AutomationInput {
   previewLimit?: number
   previewOffset?: number
+  previewView?: PreviewView
 }
 
 export interface AutomationActivity {

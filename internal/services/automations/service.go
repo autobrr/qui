@@ -273,7 +273,10 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
 // This is used to show users what a rule would affect before saving.
 // For "include cross-seeds" mode, also shows expanded cross-seeds that would be deleted.
-func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.Automation, limit int, offset int) (*PreviewResult, error) {
+// previewView controls the view mode:
+//   - "needed" (default): Show minimal deletions needed to reach FREE_SPACE target (stops early)
+//   - "eligible": Show all torrents matching the rule filters (ignores cumulative stop-when-satisfied)
+func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int, previewView string) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
@@ -352,9 +355,12 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		deleteMode = rule.Conditions.Delete.Mode
 	}
 
+	// Eligible mode: don't track cumulative space cleared (shows all matching torrents)
+	eligibleMode := previewView == "eligible"
+
 	// For "include cross-seeds" mode, use specialized preview
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, limit, offset)
+		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, limit, offset, eligibleMode)
 	}
 
 	// Standard delete modes (non-include-cross-seeds)
@@ -379,7 +385,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 
 		if wouldDelete {
-			updateCumulativeFreeSpaceCleared(torrent, evalCtx, deleteMode, torrents)
+			// Only update cumulative space for "needed" mode (not "eligible")
+			if !eligibleMode {
+				updateCumulativeFreeSpaceCleared(torrent, evalCtx, deleteMode, torrents)
+			}
 
 			matchIndex++
 			if matchIndex <= offset {
@@ -402,6 +411,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 // previewDeleteIncludeCrossSeeds handles preview for "include cross-seeds" delete mode.
 // It evaluates torrents incrementally, expanding with cross-seeds and updating FREE_SPACE
 // projection after each group so that stop-when-satisfied behavior works correctly.
+// When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
 func (s *Service) previewDeleteIncludeCrossSeeds(
 	ctx context.Context,
 	instanceID int,
@@ -409,6 +419,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
 	limit, offset int,
+	eligibleMode bool,
 ) (*PreviewResult, error) {
 	result := &PreviewResult{
 		Examples: make([]PreviewTorrent, 0, limit),
@@ -458,8 +469,10 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue // Group skipped due to verification failure
 		}
 
-		// Update cumulative free space for the entire group (counted once per unique content)
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, torrents)
+		// Only update cumulative free space for "needed" mode (not "eligible")
+		if !eligibleMode {
+			updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, torrents)
+		}
 	}
 
 	// Build result - iterate torrents slice for STABLE pagination order

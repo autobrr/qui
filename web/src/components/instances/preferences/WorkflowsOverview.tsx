@@ -56,7 +56,7 @@ import {
   toExportFormat,
   toExportJSON
 } from "@/lib/workflow-utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse } from "@/types"
+import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse, PreviewView, RuleCondition } from "@/types"
 import type { DragEndEvent } from "@dnd-kit/core"
 import {
   DndContext,
@@ -80,6 +80,18 @@ import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } fr
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+
+/**
+ * Recursively checks if a condition tree uses a specific field.
+ */
+function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
+  if (!condition) return false
+  if (condition.field === field) return true
+  if (condition.conditions) {
+    return condition.conditions.some(c => conditionUsesField(c, field))
+  }
+  return false
+}
 
 interface ActivityStats {
   deletionsToday: number
@@ -239,6 +251,8 @@ export function WorkflowsOverview({
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
+  const [previewView, setPreviewView] = useState<PreviewView>("needed")
+  const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const previewPageSize = 25
 
   const reorderRules = useMutation<
@@ -350,8 +364,8 @@ export function WorkflowsOverview({
   })
 
   const previewRule = useMutation({
-    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
+    mutationFn: ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) =>
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0, previewView: view }),
     onSuccess: (preview, { instanceId, rule }) => {
       // Last warning before enabling a delete rule (even if 0 matches right now).
       setEnableConfirm({ instanceId, rule, preview })
@@ -363,10 +377,9 @@ export function WorkflowsOverview({
 
   const loadMorePreview = useMutation({
     mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset, previewView }),
     onSuccess: (preview) => {
-      setEnableConfirm(prev => prev? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }: prev
-      )
+      setEnableConfirm(prev => prev ? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } } : prev)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -481,10 +494,39 @@ export function WorkflowsOverview({
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
       // Enabling a delete or category rule - show preview first
-      previewRule.mutate({ instanceId, rule })
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
       // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
+    }
+  }
+
+  // Check if a delete rule uses FREE_SPACE field
+  const ruleUsesFreeSpace = (rule: Automation): boolean => {
+    if (!isDeleteRule(rule)) return false
+    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
+  }
+
+  // Handler for switching preview view - refetches with new view and resets pagination
+  const handlePreviewViewChange = async (newView: PreviewView) => {
+    if (!enableConfirm) return
+    setPreviewView(newView)
+    setIsLoadingPreviewView(true)
+    try {
+      const preview = await api.previewAutomation(enableConfirm.instanceId, {
+        ...enableConfirm.rule,
+        enabled: true,
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+        previewView: newView,
+      })
+      setEnableConfirm(prev => prev ? { ...prev, preview } : prev)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+    } finally {
+      setIsLoadingPreviewView(false)
     }
   }
 
@@ -1228,7 +1270,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`: "Enable Delete Rule"
+          enableConfirm && isCategoryRule(enableConfirm.rule) ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}` : "Enable Delete Rule"
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1260,6 +1302,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
+        condition={enableConfirm?.rule.conditions?.delete?.condition}
         onConfirm={confirmEnableRule}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
@@ -1267,6 +1310,10 @@ export function WorkflowsOverview({
         isConfirming={toggleEnabled.isPending}
         destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
+        previewView={previewView}
+        onPreviewViewChange={handlePreviewViewChange}
+        showPreviewViewToggle={enableConfirm ? ruleUsesFreeSpace(enableConfirm.rule) : false}
+        isLoadingPreview={isLoadingPreviewView}
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>

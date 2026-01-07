@@ -270,6 +270,21 @@ When using the **Free Space** condition in delete rules, the system uses intelli
 3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match
 4. **Cross-seed aware** - Cross-seeded torrents sharing the same files are only counted once to avoid overestimating freed space
 
+**Preview Views for Free Space Rules**
+
+When previewing a delete rule with a Free Space condition, a toggle allows switching between two views:
+
+| View | Description |
+|------|-------------|
+| **Needed to reach target** | Shows only the torrents that would be removed right now to reach your free-space target. This is the default view and reflects actual delete behavior. |
+| **All eligible** | Shows all torrents this rule could remove while free space is low. Useful for understanding the full scope of what the rule could potentially delete (may include cross-seeds that don't directly match filters). |
+
+The toggle only appears for delete rules that use the Free Space condition.
+
+**Cross-seed expansion in previews:**
+
+Cross-seeds are only expanded and displayed in the preview when using `Remove with files (include cross-seeds)` mode. In this mode, the preview shows all torrents that would be deleted together, with cross-seeds clearly marked. Other delete modes don't expand cross-seeds in the preview since they either preserve cross-seeds or don't consider them specially.
+
 **Delete mode affects space projection:**
 
 | Delete Mode | Space Added to Projection |

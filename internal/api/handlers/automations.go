@@ -46,6 +46,7 @@ type AutomationPayload struct {
 	Conditions      *models.ActionConditions `json:"conditions"`
 	PreviewLimit    *int                     `json:"previewLimit"`
 	PreviewOffset   *int                     `json:"previewOffset"`
+	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
 }
 
 // toModel converts the payload to an Automation model.
@@ -500,8 +501,14 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Determine preview view mode (default: "needed")
+	previewView := payload.PreviewView
+	if previewView == "" {
+		previewView = "needed"
+	}
+
 	// Delete preview (existing logic)
-	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, previewLimit, previewOffset)
+	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, previewLimit, previewOffset, previewView)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")

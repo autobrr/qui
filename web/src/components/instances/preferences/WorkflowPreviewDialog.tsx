@@ -20,9 +20,12 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
-import type { AutomationPreviewResult, AutomationPreviewTorrent, RuleCondition } from "@/types"
+import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Loader2 } from "lucide-react"
 import { useMemo } from "react"
+
+// Tabs component for needed/eligible toggle
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // Helper to get human-readable label from value/label arrays
 function getLabelFromValues(values: Array<{ value: string; label: string }>, value: string): string {
@@ -49,6 +52,14 @@ interface WorkflowPreviewDialogProps {
   destructive?: boolean
   /** Use warning styling (amber button) for category changes */
   warning?: boolean
+  /** Current preview view mode (only shown for delete rules with FREE_SPACE) */
+  previewView?: PreviewView
+  /** Callback when user switches preview view */
+  onPreviewViewChange?: (view: PreviewView) => void
+  /** Whether to show the preview view toggle (only for FREE_SPACE delete rules) */
+  showPreviewViewToggle?: boolean
+  /** Whether the preview is currently loading (e.g., when switching views) */
+  isLoadingPreview?: boolean
 }
 
 // Extract all field names from a condition tree
@@ -229,6 +240,10 @@ export function WorkflowPreviewDialog({
   isLoadingMore = false,
   destructive = true,
   warning = false,
+  previewView = "needed",
+  onPreviewViewChange,
+  showPreviewViewToggle = false,
+  isLoadingPreview = false,
 }: WorkflowPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
@@ -250,12 +265,40 @@ export function WorkflowPreviewDialog({
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               {description}
+              {showPreviewViewToggle && (
+                <div className="space-y-2 pt-1">
+                  <Tabs
+                    value={previewView}
+                    onValueChange={(v) => onPreviewViewChange?.(v as PreviewView)}
+                    className="w-full"
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="needed" disabled={isLoadingPreview}>
+                        Needed to reach target
+                      </TabsTrigger>
+                      <TabsTrigger value="eligible" disabled={isLoadingPreview}>
+                        All eligible
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <p className="text-xs text-muted-foreground">
+                    {previewView === "needed"
+                      ? "These are the torrents that would be removed now to reach your free-space target."
+                      : "These are all torrents this rule could remove while free space is low."}
+                  </p>
+                </div>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         {preview && preview.examples.length > 0 && (
-          <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
+          <div className="flex-1 min-h-0 overflow-hidden border rounded-lg relative">
+            {isLoadingPreview && (
+              <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
             <div className="overflow-auto max-h-[50vh]">
               <table className="w-full text-sm">
                 <thead className="sticky top-0">

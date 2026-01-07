@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"sort"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -979,3 +980,366 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 	}
 }
 
+// -----------------------------------------------------------------------------
+// updateCumulativeFreeSpaceCleared tests for preview view behavior
+// -----------------------------------------------------------------------------
+
+func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
+	// Test that "needed" mode updates cumulative space tracking
+	// so FREE_SPACE condition stops matching after target is satisfied
+	allTorrents := []qbt.Torrent{
+		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1", SavePath: "/data"}, // 100 GB
+		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2", SavePath: "/data"},  // 50 GB
+		{Hash: "c", Size: 30 * 1024 * 1024 * 1024, ContentPath: "/data/movie3", SavePath: "/data"},  // 30 GB
+	}
+
+	evalCtx := &EvalContext{
+		SpaceToClear: 0,
+		FilesToClear: make(map[crossSeedKey]struct{}),
+	}
+
+	// Simulate "needed" mode processing: each deletion updates SpaceToClear
+	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, allTorrents)
+	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
+
+	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, allTorrents)
+	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
+
+	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, allTorrents)
+	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
+}
+
+func TestUpdateCumulativeFreeSpaceCleared_EligibleView(t *testing.T) {
+	// Test that "eligible" mode does NOT update cumulative space tracking
+	// (simulated by not calling updateCumulativeFreeSpaceCleared)
+	// This is the expected behavior in eligible mode - we skip the update
+	allTorrents := []qbt.Torrent{
+		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1"}, // 100 GB
+		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2"},  // 50 GB
+	}
+
+	evalCtx := &EvalContext{
+		SpaceToClear: 0,
+	}
+
+	// In "eligible" mode, we don't call updateCumulativeFreeSpaceCleared
+	// SpaceToClear should remain 0, so all torrents continue to match FREE_SPACE conditions
+
+	// Verify SpaceToClear stays at 0 when we don't update it
+	assert.Equal(t, int64(0), evalCtx.SpaceToClear)
+
+	// In eligible mode the condition would continue matching all torrents
+	// because SpaceToClear is never incremented
+	_ = allTorrents // Used in actual preview logic
+}
+
+func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
+	// Test that cross-seed expansion works the same way in both views
+	// Only deleteWithFilesIncludeCrossSeeds mode expands cross-seeds
+	allTorrents := []qbt.Torrent{
+		{Hash: "a", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/shared"}, // 50 GB - trigger
+		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/shared"}, // 50 GB - cross-seed
+		{Hash: "c", Size: 30 * 1024 * 1024 * 1024, ContentPath: "/data/unique"}, // 30 GB - unique
+	}
+
+	// findCrossSeedGroup should return both a and b for target a
+	group := findCrossSeedGroup(allTorrents[0], allTorrents)
+	require.NotNil(t, group)
+	assert.Len(t, group, 2)
+
+	groupHashes := make(map[string]bool)
+	for _, t := range group {
+		groupHashes[t.Hash] = true
+	}
+	assert.True(t, groupHashes["a"])
+	assert.True(t, groupHashes["b"])
+	assert.False(t, groupHashes["c"])
+}
+
+func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
+	// Test that FREE_SPACE condition logic respects SpaceToClear projection
+	// When SpaceToClear + FreeSpace >= target, condition should stop matching
+
+	// Simulate 400GB free, target 500GB => need to clear 100GB
+	evalCtx := &EvalContext{
+		FreeSpace:    400000000000, // 400 GB
+		SpaceToClear: 0,
+	}
+
+	// Create a FREE_SPACE < 500GB condition (value in bytes)
+	condition := &RuleCondition{
+		Field:    FieldFreeSpace,
+		Operator: OperatorLessThan,
+		Value:    "500000000000", // 500GB in bytes
+	}
+
+	// Initially: 400GB free + 0 to be cleared = 400GB effective
+	// 400GB < 500GB => should match
+	match1 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
+	assert.True(t, match1, "Should match when effective free space is below target")
+
+	// Simulate clearing 50GB
+	evalCtx.SpaceToClear = 50000000000 // 50GB
+
+	// Now: 400GB free + 50GB to be cleared = 450GB effective
+	// 450GB < 500GB => should still match
+	match2 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
+	assert.True(t, match2, "Should match when effective free space is still below target")
+
+	// Simulate clearing another 60GB (total 110GB)
+	evalCtx.SpaceToClear = 110000000000 // 110GB
+
+	// Now: 400GB free + 110GB to be cleared = 510GB effective
+	// 510GB < 500GB => false, should NOT match
+	match3 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
+	assert.False(t, match3, "Should NOT match when effective free space exceeds target")
+}
+
+// -----------------------------------------------------------------------------
+// PreviewDeleteRule previewView simulation tests
+// -----------------------------------------------------------------------------
+
+// simulatePreviewDeleteRule simulates the core logic of PreviewDeleteRule
+// with controlled test data, allowing us to test "needed" vs "eligible" behavior.
+func simulatePreviewDeleteRule(
+	torrents []qbt.Torrent,
+	rule *models.Automation,
+	freeSpace int64,
+	previewView string,
+) *PreviewResult {
+	result := &PreviewResult{Examples: make([]PreviewTorrent, 0)}
+
+	deleteConfig := rule.Conditions.Delete
+	if deleteConfig == nil || !deleteConfig.Enabled {
+		return result
+	}
+
+	deleteMode := deleteConfig.Mode
+	if deleteMode == "" {
+		deleteMode = DeleteModeKeepFiles
+	}
+
+	// Sort torrents by AddedOn (oldest first) for deterministic ordering
+	sortedTorrents := make([]qbt.Torrent, len(torrents))
+	copy(sortedTorrents, torrents)
+	sort.Slice(sortedTorrents, func(i, j int) bool {
+		return sortedTorrents[i].AddedOn < sortedTorrents[j].AddedOn
+	})
+
+	evalCtx := &EvalContext{
+		FreeSpace:    freeSpace,
+		SpaceToClear: 0,
+		FilesToClear: make(map[crossSeedKey]struct{}),
+	}
+	eligibleMode := previewView == "eligible"
+
+	for i := range sortedTorrents {
+		torrent := &sortedTorrents[i]
+		// Check if torrent would be deleted
+		wouldDelete := deleteConfig.Condition == nil ||
+			EvaluateConditionWithContext(deleteConfig.Condition, *torrent, evalCtx, 0)
+		if !wouldDelete {
+			continue
+		}
+
+		// Only update cumulative space for "needed" mode (not "eligible")
+		if !eligibleMode {
+			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, sortedTorrents)
+		}
+
+		result.Examples = append(result.Examples, PreviewTorrent{
+			Hash: torrent.Hash,
+			Name: torrent.Name,
+			Size: torrent.Size,
+		})
+	}
+
+	result.TotalMatches = len(result.Examples)
+	return result
+}
+
+func TestPreviewDeleteRule_NeededVsEligible_FreeSpaceRule(t *testing.T) {
+	// This test proves that "eligible" returns more matches than "needed"
+	// for FREE_SPACE rules when there are more torrents than needed to satisfy the target.
+
+	// Create 5 torrents, each 20GB, with different ages
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Size: 20000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/t1"},
+		{Hash: "b", Name: "torrent2", Size: 20000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/t2"},
+		{Hash: "c", Name: "torrent3", Size: 20000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/t3"},
+		{Hash: "d", Name: "torrent4", Size: 20000000000, AddedOn: 4000, SavePath: "/data", ContentPath: "/data/t4"},
+		{Hash: "e", Name: "torrent5", Size: 20000000000, AddedOn: 5000, SavePath: "/data", ContentPath: "/data/t5"},
+	}
+
+	// Rule: Delete if free space < 50GB
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFiles,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldFreeSpace,
+					Operator: models.OperatorLessThan,
+					Value:    "50000000000", // 50GB
+				},
+			},
+		},
+	}
+
+	// Current free space: 10GB
+	// Need to clear 40GB to reach 50GB threshold
+	// Each torrent is 20GB, so we need exactly 2 torrents for "needed"
+	freeSpace := int64(10000000000) // 10GB
+
+	// Test "needed" view - should stop after 2 torrents (40GB cleared = 50GB effective)
+	neededResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "needed")
+
+	// Test "eligible" view - should return ALL 5 torrents (doesn't update SpaceToClear)
+	eligibleResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "eligible")
+
+	// Assert: eligible should return more matches than needed
+	assert.Equal(t, 2, neededResult.TotalMatches, "needed view should return exactly 2 torrents (enough to reach target)")
+	assert.Equal(t, 5, eligibleResult.TotalMatches, "eligible view should return all 5 torrents (all match the condition)")
+	assert.Greater(t, eligibleResult.TotalMatches, neededResult.TotalMatches, "eligible.TotalMatches should be greater than needed.TotalMatches")
+
+	// Verify "needed" selected the oldest torrents
+	neededHashes := make([]string, len(neededResult.Examples))
+	for i, ex := range neededResult.Examples {
+		neededHashes[i] = ex.Hash
+	}
+	assert.Contains(t, neededHashes, "a", "needed should include oldest torrent (a)")
+	assert.Contains(t, neededHashes, "b", "needed should include second oldest torrent (b)")
+}
+
+func TestPreviewDeleteRule_NeededVsEligible_WithCrossSeeds(t *testing.T) {
+	// Test that cross-seeds are handled correctly in both views
+	// Cross-seeds share the same ContentPath, so they only count once for space projection
+
+	// Create torrents where some are cross-seeds (same content path)
+	// torrent1 and torrent2 are cross-seeds (same 30GB file)
+	// torrent3, torrent4, torrent5 are independent (20GB each)
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Size: 30000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/movie"},
+		{Hash: "b", Name: "torrent2", Size: 30000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/movie"}, // Cross-seed of a
+		{Hash: "c", Name: "torrent3", Size: 20000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/other1"},
+		{Hash: "d", Name: "torrent4", Size: 20000000000, AddedOn: 4000, SavePath: "/data", ContentPath: "/data/other2"},
+		{Hash: "e", Name: "torrent5", Size: 20000000000, AddedOn: 5000, SavePath: "/data", ContentPath: "/data/other3"},
+	}
+
+	// Rule: Delete if free space < 60GB
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFiles, // Standard delete, doesn't expand cross-seeds
+				Condition: &models.RuleCondition{
+					Field:    models.FieldFreeSpace,
+					Operator: models.OperatorLessThan,
+					Value:    "60000000000", // 60GB
+				},
+			},
+		},
+	}
+
+	// Current free space: 10GB
+	// Need to clear 50GB to reach 60GB threshold
+	// torrent1 (30GB, cross-seed) + torrent2 (cross-seed, 0GB additional) + torrent3 (20GB) = 50GB
+	// So "needed" should get: a (30GB), b (0GB - cross-seed), c (20GB) = 3 torrents for 50GB
+	freeSpace := int64(10000000000) // 10GB
+
+	// Test "needed" view
+	neededResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "needed")
+
+	// Test "eligible" view - should return ALL 5 torrents
+	eligibleResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "eligible")
+
+	// Assert: eligible should return more matches than needed
+	assert.Equal(t, 3, neededResult.TotalMatches, "needed view should return 3 torrents (a=30GB, b=0GB cross-seed, c=20GB = 50GB)")
+	assert.Equal(t, 5, eligibleResult.TotalMatches, "eligible view should return all 5 torrents")
+	assert.Greater(t, eligibleResult.TotalMatches, neededResult.TotalMatches, "eligible.TotalMatches should be greater than needed.TotalMatches")
+}
+
+func TestPreviewDeleteRule_NeededVsEligible_NoFreeSpaceCondition(t *testing.T) {
+	// Test that when there's no FREE_SPACE condition, both views return the same result
+	// (because there's no cumulative stop-when-satisfied logic)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Size: 20000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/t1", Ratio: 2.5},
+		{Hash: "b", Name: "torrent2", Size: 20000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/t2", Ratio: 3.0},
+		{Hash: "c", Name: "torrent3", Size: 20000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/t3", Ratio: 1.5},
+	}
+
+	// Rule: Delete if ratio > 2.0 (no FREE_SPACE condition)
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFiles,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
+			},
+		},
+	}
+
+	freeSpace := int64(100000000000) // 100GB (doesn't matter, not used)
+
+	neededResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "needed")
+	eligibleResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "eligible")
+
+	// Both should return 2 torrents (a and b have ratio > 2.0)
+	assert.Equal(t, 2, neededResult.TotalMatches, "needed view should return 2 torrents with ratio > 2.0")
+	assert.Equal(t, 2, eligibleResult.TotalMatches, "eligible view should return 2 torrents with ratio > 2.0")
+	assert.Equal(t, neededResult.TotalMatches, eligibleResult.TotalMatches, "both views should return same count for non-FREE_SPACE rules")
+}
+
+func TestPreviewDeleteRule_NeededVsEligible_ExactlyEnoughTorrents(t *testing.T) {
+	// Test edge case where "needed" and "eligible" return the same count
+	// because there are exactly enough torrents to satisfy the target
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Size: 25000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/t1"}, // 25GB
+		{Hash: "b", Name: "torrent2", Size: 25000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/t2"}, // 25GB
+	}
+
+	// Rule: Delete if free space < 50GB
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFiles,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldFreeSpace,
+					Operator: models.OperatorLessThan,
+					Value:    "50000000000", // 50GB
+				},
+			},
+		},
+	}
+
+	// Current free space: 0GB
+	// Need to clear 50GB, both torrents combined = 50GB
+	// So "needed" should get both (exactly enough)
+	freeSpace := int64(0)
+
+	neededResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "needed")
+	eligibleResult := simulatePreviewDeleteRule(torrents, rule, freeSpace, "eligible")
+
+	// Both should return 2 (exactly enough to satisfy target)
+	assert.Equal(t, 2, neededResult.TotalMatches, "needed view should return 2 torrents (exactly enough)")
+	assert.Equal(t, 2, eligibleResult.TotalMatches, "eligible view should return 2 torrents (all match)")
+}

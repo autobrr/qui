@@ -42,6 +42,7 @@ import type {
   Automation,
   AutomationInput,
   AutomationPreviewResult,
+  PreviewView,
   RegexValidationError,
   RuleCondition
 } from "@/types"
@@ -194,6 +195,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
+  const [previewView, setPreviewView] = useState<PreviewView>("needed")
+  const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   // Speed limit units - track separately so they persist when value is cleared
   const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
@@ -641,6 +644,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
 
+  // Check if delete rule uses FREE_SPACE field (shows preview view toggle)
+  const deleteUsesFreeSpace = useMemo(() => {
+    if (!formState.deleteEnabled) return false
+    return conditionUsesField(formState.actionCondition, "FREE_SPACE")
+  }, [formState.deleteEnabled, formState.actionCondition])
+
   // Count enabled actions
   const enabledActionsCount = [
     formState.speedLimitsEnabled,
@@ -652,15 +661,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   ].filter(Boolean).length
 
   const previewMutation = useMutation({
-    mutationFn: async (input: FormState) => {
+    mutationFn: async ({ input, view }: { input: FormState; view: PreviewView }) => {
       const payload = {
         ...buildPayload(input),
         previewLimit: previewPageSize,
         previewOffset: 0,
+        previewView: view,
       }
       return api.previewAutomation(instanceId, payload)
     },
-    onSuccess: (result, input) => {
+    onSuccess: (result, { input }) => {
       // Last warning before enabling a delete rule (even if 0 matches right now).
       setPreviewInput(input)
       setPreviewResult(result)
@@ -680,12 +690,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         ...buildPayload(previewInput),
         previewLimit: previewPageSize,
         previewOffset: previewResult.examples.length,
+        previewView: previewView,
       }
       return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result) => {
-      setPreviewResult(prev => prev? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches }: result
-      )
+      setPreviewResult(prev => prev ? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches } : result)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -697,6 +707,27 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     loadMorePreview.mutate()
+  }
+
+  // Handler for switching preview view - refetches with new view and resets pagination
+  const handlePreviewViewChange = async (newView: PreviewView) => {
+    if (!previewInput) return
+    setPreviewView(newView)
+    setIsLoadingPreviewView(true)
+    try {
+      const payload = {
+        ...buildPayload(previewInput),
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+        previewView: newView,
+      }
+      const result = await api.previewAutomation(instanceId, payload)
+      setPreviewResult(result)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+    } finally {
+      setIsLoadingPreviewView(false)
+    }
   }
 
   const createOrUpdate = useMutation({
@@ -827,7 +858,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // For delete and category rules, show preview as a last warning before enabling.
     const needsPreview = (isDeleteRule || isCategoryRule) && submitState.enabled
     if (needsPreview) {
-      previewMutation.mutate(submitState)
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      previewMutation.mutate({ input: submitState, view: "needed" })
     } else {
       createOrUpdate.mutate(submitState)
     }
@@ -1556,7 +1589,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         setEnabledBeforePreview(formState.enabled)
                         const nextState = { ...formState, enabled: true }
                         setFormState(nextState)
-                        previewMutation.mutate(nextState)
+                        // Reset preview view to "needed" when starting a new preview
+                        setPreviewView("needed")
+                        previewMutation.mutate({ input: nextState, view: "needed" })
                       } else {
                         setFormState(prev => ({ ...prev, enabled: checked }))
                       }
@@ -1628,7 +1663,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           setShowConfirmDialog(open)
         }}
         title={
-          isDeleteRule? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule"): `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
+          isDeleteRule ? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule") : `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
         }
         description={
           previewResult && previewResult.totalMatches > 0 ? (
@@ -1677,6 +1712,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isConfirming={createOrUpdate.isPending}
         destructive={isDeleteRule && formState.enabled}
         warning={isCategoryRule}
+        previewView={previewView}
+        onPreviewViewChange={handlePreviewViewChange}
+        showPreviewViewToggle={isDeleteRule && deleteUsesFreeSpace}
+        isLoadingPreview={isLoadingPreviewView}
       />
     </>
   )
