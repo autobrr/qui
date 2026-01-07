@@ -973,10 +973,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     className="w-24"
                                     value={formState.exprUploadValue !== undefined ? formState.exprUploadValue / uploadSpeedUnit : ""}
                                     onChange={(e) => {
-                                      const displayValue = e.target.value ? Number(e.target.value) : undefined
+                                      const rawValue = e.target.value
+                                      if (rawValue === "") {
+                                        setFormState(prev => ({ ...prev, exprUploadValue: undefined }))
+                                        return
+                                      }
+
+                                      const parsed = Number(rawValue)
+                                      if (Number.isNaN(parsed)) {
+                                        return
+                                      }
+
                                       setFormState(prev => ({
                                         ...prev,
-                                        exprUploadValue: displayValue !== undefined ? Math.round(displayValue * uploadSpeedUnit) : undefined,
+                                        exprUploadValue: Math.round(parsed * uploadSpeedUnit),
                                       }))
                                     }}
                                     placeholder="e.g. 10"
@@ -1037,10 +1047,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     className="w-24"
                                     value={formState.exprDownloadValue !== undefined ? formState.exprDownloadValue / downloadSpeedUnit : ""}
                                     onChange={(e) => {
-                                      const displayValue = e.target.value ? Number(e.target.value) : undefined
+                                      const rawValue = e.target.value
+                                      if (rawValue === "") {
+                                        setFormState(prev => ({ ...prev, exprDownloadValue: undefined }))
+                                        return
+                                      }
+
+                                      const parsed = Number(rawValue)
+                                      if (Number.isNaN(parsed)) {
+                                        return
+                                      }
+
                                       setFormState(prev => ({
                                         ...prev,
-                                        exprDownloadValue: displayValue !== undefined ? Math.round(displayValue * downloadSpeedUnit) : undefined,
+                                        exprDownloadValue: Math.round(parsed * downloadSpeedUnit),
                                       }))
                                     }}
                                     placeholder="e.g. 10"
