@@ -289,6 +289,7 @@ const FilterSidebarComponent = ({
   const [trackerToEdit, setTrackerToEdit] = useState("")
   const [trackerFullURLs, setTrackerFullURLs] = useState<string[]>([])
   const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
+  const [isConvertingScheme, setIsConvertingScheme] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
     let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
@@ -303,6 +304,9 @@ const FilterSidebarComponent = ({
 
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
+
+  // Base URL used purely for parsing scheme-less URLs, never used as network target
+  const URL_PARSE_BASE = "http://parse-base"
 
   // Function to fetch tracker URLs for a specific tracker domain
   // Scans multiple torrents to find ALL unique tracker URLs (handles cases where
@@ -340,24 +344,42 @@ const FilterSidebarComponent = ({
         // Collect unique URLs from multiple torrents
         const allUrls = new Set<string>()
 
-        // Fetch trackers from up to 20 torrents in parallel to find all unique URLs
-        // This handles cases where one torrent has wrong passkey while others are correct
-        const torrentsToCheck = torrentsList.torrents.slice(0, 20)
-        const trackerPromises = torrentsToCheck.map(t =>
-          api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
-        )
-
-        const allTrackerResults = await Promise.all(trackerPromises)
-
-        for (const trackers of allTrackerResults) {
-          for (const t of trackers) {
+        // Helper to extract hostname from URL with fallback for scheme-less URLs
+        const extractHostname = (urlStr: string): string | null => {
+          const trimmed = urlStr.trim()
+          if (!trimmed) return null
+          try {
+            return new URL(trimmed).hostname.toLowerCase()
+          } catch {
+            // Try parsing as scheme-less URL (e.g., "tracker.example.com:6969/announce")
             try {
-              const url = new URL(t.url)
-              if (url.hostname === trackerDomain) {
-                allUrls.add(t.url)
-              }
+              return new URL("//" + trimmed, URL_PARSE_BASE).hostname.toLowerCase()
             } catch {
-              // Not a valid URL, skip
+              return null
+            }
+          }
+        }
+
+        // Fetch trackers from up to 50 torrents with concurrency limit of 10
+        // This handles cases where one torrent has wrong passkey while others are correct
+        // Also helps discover different URL variants (http vs https, different ports)
+        const torrentsToCheck = torrentsList.torrents.slice(0, 50)
+        const concurrencyLimit = 10
+        const normalizedDomain = trackerDomain.toLowerCase()
+
+        for (let i = 0; i < torrentsToCheck.length; i += concurrencyLimit) {
+          const batch = torrentsToCheck.slice(i, i + concurrencyLimit)
+          const batchPromises = batch.map(t =>
+            api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
+          )
+          const batchResults = await Promise.all(batchPromises)
+
+          for (const trackers of batchResults) {
+            for (const t of trackers) {
+              const hostname = extractHostname(t.url)
+              if (hostname === normalizedDomain) {
+                allUrls.add(t.url.trim())
+              }
             }
           }
         }
@@ -406,6 +428,104 @@ const FilterSidebarComponent = ({
       })
     },
   })
+
+  // Handler for converting all HTTP URLs to HTTPS for the current tracker domain
+  const handleConvertHttpToHttps = useCallback(async () => {
+    const httpUrls = trackerFullURLs.filter((url) => url.startsWith("http://"))
+    if (httpUrls.length === 0) return
+
+    if (!trackerToEdit) {
+      toast.error("No tracker selected for conversion")
+      return
+    }
+
+    // Collect HTTPS samples to infer the correct port for each hostname/path
+    const httpsSamples = trackerFullURLs
+      .filter((url) => url.startsWith("https://"))
+      .map((url) => {
+        try {
+          return new URL(url)
+        } catch {
+          return null
+        }
+      })
+      .filter((u): u is URL => u !== null)
+
+    setIsConvertingScheme(true)
+    let successCount = 0
+    let failCount = 0
+    let firstError: string | null = null
+
+    for (const oldURL of httpUrls) {
+      // Use URL parsing to properly handle scheme and port conversion
+      let newURL: string
+      try {
+        const parsed = new URL(oldURL)
+        parsed.protocol = "https:"
+
+        // Find a matching HTTPS sample to infer the correct port
+        const matchingSample = httpsSamples.find(
+          (sample) =>
+            sample.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+            sample.pathname === parsed.pathname
+        )
+
+        if (matchingSample) {
+          // Use the port from the matching HTTPS sample
+          parsed.port = matchingSample.port
+        } else {
+          // No sample found - clear port to default to 443
+          parsed.port = ""
+        }
+
+        newURL = parsed.toString()
+      } catch {
+        // Fall back to simple replacement if URL parsing fails
+        newURL = oldURL.replace(/^http:\/\//, "https://")
+      }
+      try {
+        await api.bulkAction(instanceId, {
+          hashes: [],
+          action: "editTrackers",
+          trackerOldURL: oldURL,
+          trackerNewURL: newURL,
+          selectAll: true,
+          filters: {
+            status: [],
+            excludeStatus: [],
+            categories: [],
+            excludeCategories: [],
+            tags: [],
+            excludeTags: [],
+            trackers: [trackerToEdit],
+            excludeTrackers: [],
+            expr: "",
+          },
+        })
+        successCount++
+      } catch (err) {
+        failCount++
+        if (!firstError) {
+          firstError = typeof err === "string"
+            ? err
+            : (err as { message?: string })?.message ?? null
+        }
+      }
+    }
+
+    setIsConvertingScheme(false)
+
+    if (successCount > 0) {
+      toast.success(`Converted ${successCount} tracker URL${successCount > 1 ? "s" : ""} to HTTPS`)
+      // Refresh the tracker URLs to show updated state
+      await fetchTrackerURLs(trackerToEdit)
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to convert ${failCount} URL${failCount > 1 ? "s" : ""}`, {
+        description: firstError ?? undefined,
+      })
+    }
+  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs])
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -2980,6 +3100,8 @@ const FilterSidebarComponent = ({
         selectedHashes={[]} // Not using selected hashes, will update all torrents with this tracker
         onConfirm={(oldURL, newURL) => editTrackersMutation.mutate({ oldURL, newURL, tracker: trackerToEdit })}
         isPending={editTrackersMutation.isPending}
+        onConvertHttpToHttps={handleConvertHttpToHttps}
+        isConverting={isConvertingScheme}
       />
     </div>
   )

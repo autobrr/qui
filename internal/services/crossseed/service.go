@@ -424,7 +424,11 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 
 // FindLocalMatches finds existing torrents across all instances that match a source torrent.
 // Uses proper release metadata parsing (rls library) for matching, not fuzzy string matching.
-func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, sourceHash string) (*LocalMatchesResponse, error) {
+//
+// When strict is true (use for delete dialogs), any file overlap check failure returns an error
+// so the UI can show "failed to check" instead of a false "no cross-seeds found".
+// When strict is false (default for general queries), failures are logged and skipped.
+func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, sourceHash string, strict bool) (*LocalMatchesResponse, error) {
 	// Get all instances
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
@@ -450,51 +454,170 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Normalize content path for comparison (case-insensitive, cleaned)
 	normalizedContentPath := strings.ToLower(normalizePath(sourceTorrent.ContentPath))
 
+	// Create match context with lazy file loading - files are only fetched
+	// when an ambiguous content_path match is encountered
+	matchCtx := &localMatchContext{
+		ctx:              ctx,
+		svc:              s,
+		sourceInstanceID: sourceInstanceID,
+		sourceHash:       sourceTorrent.Hash,
+	}
+
+	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
+
+	// Check for any errors during file overlap verification
+	overlapErr := matchCtx.sourceFilesErr
+	if overlapErr == nil {
+		overlapErr = matchCtx.candidateFilesErr
+	}
+
+	if overlapErr != nil {
+		if strict {
+			// In strict mode (delete dialogs), fail so UI shows "failed to check"
+			// instead of a false "no cross-seeds found".
+			return nil, fmt.Errorf("failed to verify file overlap for cross-seed detection: %w", overlapErr)
+		}
+		// In best-effort mode, log the error and return partial results
+		log.Warn().Err(overlapErr).
+			Int("instanceID", sourceInstanceID).
+			Str("hash", normalizeHash(sourceHash)).
+			Msg("File overlap check failed during local match search (best-effort mode, continuing with partial results)")
+	}
+
+	return &LocalMatchesResponse{Matches: matches}, nil
+}
+
+// collectLocalMatches iterates through all instances and collects matching torrents.
+func (s *Service) collectLocalMatches(
+	ctx context.Context,
+	instances []*models.Instance,
+	sourceInstanceID int,
+	sourceTorrent *qbt.Torrent,
+	sourceRelease *rls.Release,
+	normalizedContentPath string,
+	matchCtx *localMatchContext,
+) []LocalMatch {
 	var matches []LocalMatch
+	normalizedSourceHash := normalizeHash(sourceTorrent.Hash)
 
 	for _, instance := range instances {
-		// Get all torrents from this instance using cached data
+		if ctx.Err() != nil {
+			return matches
+		}
+
 		cachedTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get cached torrents for instance")
 			continue
 		}
 
-		for i := range cachedTorrents {
-			cached := &cachedTorrents[i]
-			// Skip the exact source torrent
-			if instance.ID == sourceInstanceID && normalizeHash(cached.Hash) == normalizeHash(sourceHash) {
-				continue
-			}
-
-			// Determine match type
-			matchType := s.determineLocalMatchType(
-				&sourceTorrent, sourceRelease,
-				cached, normalizedContentPath,
-			)
-
-			if matchType != "" {
-				matches = append(matches, LocalMatch{
-					InstanceID:    instance.ID,
-					InstanceName:  instance.Name,
-					Hash:          cached.Hash,
-					Name:          cached.Name,
-					Size:          cached.Size,
-					Progress:      cached.Progress,
-					SavePath:      cached.SavePath,
-					ContentPath:   cached.ContentPath,
-					Category:      cached.Category,
-					Tags:          cached.Tags,
-					State:         string(cached.State),
-					Tracker:       cached.Tracker,
-					TrackerHealth: string(cached.TrackerHealth),
-					MatchType:     matchType,
-				})
-			}
-		}
+		matches = s.matchTorrentsInInstance(ctx, matches, instance, cachedTorrents,
+			sourceInstanceID, normalizedSourceHash, sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 	}
 
-	return &LocalMatchesResponse{Matches: matches}, nil
+	return matches
+}
+
+// matchTorrentsInInstance checks torrents in a single instance for matches.
+func (s *Service) matchTorrentsInInstance(
+	ctx context.Context,
+	matches []LocalMatch,
+	instance *models.Instance,
+	cachedTorrents []qbittorrent.CrossInstanceTorrentView,
+	sourceInstanceID int,
+	normalizedSourceHash string,
+	sourceTorrent *qbt.Torrent,
+	sourceRelease *rls.Release,
+	normalizedContentPath string,
+	matchCtx *localMatchContext,
+) []LocalMatch {
+	for i := range cachedTorrents {
+		if ctx.Err() != nil {
+			return matches
+		}
+
+		cached := &cachedTorrents[i]
+		if instance.ID == sourceInstanceID && normalizeHash(cached.Hash) == normalizedSourceHash {
+			continue
+		}
+
+		matchType := s.determineLocalMatchType(sourceTorrent, sourceRelease, cached, normalizedContentPath, matchCtx)
+		if matchType != "" {
+			matches = append(matches, newLocalMatch(instance, cached, matchType))
+		}
+	}
+	return matches
+}
+
+// newLocalMatch creates a LocalMatch from instance and torrent data.
+func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceTorrentView, matchType string) LocalMatch {
+	return LocalMatch{
+		InstanceID:    instance.ID,
+		InstanceName:  instance.Name,
+		Hash:          cached.Hash,
+		Name:          cached.Name,
+		Size:          cached.Size,
+		Progress:      cached.Progress,
+		SavePath:      cached.SavePath,
+		ContentPath:   cached.ContentPath,
+		Category:      cached.Category,
+		Tags:          cached.Tags,
+		State:         string(cached.State),
+		Tracker:       cached.Tracker,
+		TrackerHealth: string(cached.TrackerHealth),
+		MatchType:     matchType,
+	}
+}
+
+// localMatchContext holds source file data for file-level matching.
+// Source files are lazily fetched on first access to avoid unnecessary API calls
+// when no ambiguous content_path matches are encountered.
+type localMatchContext struct {
+	ctx              context.Context
+	svc              *Service
+	sourceInstanceID int
+	sourceHash       string
+
+	// Lazy-loaded source file data
+	fetched          bool
+	sourceFilesErr   error // Error from fetching/parsing source files
+	sourceFileKeys   map[string]int64
+	sourceTotalBytes int64
+
+	// Candidate file errors (first error only, for strict mode)
+	candidateFilesErr error
+}
+
+// getSourceFiles lazily fetches and caches source file keys.
+// Returns the file keys, total bytes, and any error encountered.
+func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBytes int64, err error) {
+	if m.fetched {
+		return m.sourceFileKeys, m.sourceTotalBytes, m.sourceFilesErr
+	}
+	m.fetched = true
+
+	srcFiles, err := m.svc.getTorrentFilesCached(m.ctx, m.sourceInstanceID, m.sourceHash)
+	if err != nil {
+		m.sourceFilesErr = err
+		return nil, 0, err
+	}
+
+	// Treat empty file list as an error - qBittorrent should always return files for a valid torrent.
+	// An empty list could indicate a stale/removed torrent or API issue, and silently skipping
+	// overlap checks would produce false negatives in delete dialogs.
+	if len(srcFiles) == 0 {
+		m.sourceFilesErr = fmt.Errorf("source torrent %s returned empty file list", normalizeHash(m.sourceHash))
+		return nil, 0, m.sourceFilesErr
+	}
+
+	m.sourceFileKeys = make(map[string]int64, len(srcFiles))
+	for _, f := range srcFiles {
+		key := strings.ToLower(normalizePath(f.Name)) + "|" + strconv.FormatInt(f.Size, 10)
+		m.sourceFileKeys[key] = f.Size
+		m.sourceTotalBytes += f.Size
+	}
+
+	return m.sourceFileKeys, m.sourceTotalBytes, nil
 }
 
 // determineLocalMatchType checks if a candidate torrent matches the source.
@@ -504,11 +627,62 @@ func (s *Service) determineLocalMatchType(
 	sourceRelease *rls.Release,
 	candidate *qbittorrent.CrossInstanceTorrentView,
 	normalizedContentPath string,
+	matchCtx *localMatchContext,
 ) string {
-	// Strategy 1: Same content path (case-insensitive, cleaned)
+	// Strategy 1: Same content path (case-insensitive, cleaned).
+	//
+	// qBittorrent uses the storage directory as content_path for some multi-file torrents
+	// (e.g. "create subfolder" disabled). In that case, many unrelated torrents can share
+	// the same content_path. Avoid treating "content_path == save_path" as a definitive
+	// cross-seed signal.
 	candidateContentPath := strings.ToLower(normalizePath(candidate.ContentPath))
+	sourceSavePath := strings.ToLower(normalizePath(source.SavePath))
+	candidateSavePath := strings.ToLower(normalizePath(candidate.SavePath))
 	if normalizedContentPath != "" && candidateContentPath != "" && normalizedContentPath == candidateContentPath {
-		return matchTypeContentPath
+		sourceIsAmbiguousDir := sourceSavePath != "" && normalizedContentPath == sourceSavePath
+		candidateIsAmbiguousDir := candidateSavePath != "" && candidateContentPath == candidateSavePath
+		if !sourceIsAmbiguousDir && !candidateIsAmbiguousDir {
+			return matchTypeContentPath
+		}
+
+		// Ambiguous directory match: verify actual file overlap using file lists.
+		// This prevents false positives when unrelated torrents share the same download directory.
+		if matchCtx != nil {
+			srcFileKeys, srcTotalBytes, err := matchCtx.getSourceFiles()
+			if err == nil && len(srcFileKeys) > 0 {
+				sharesFiles, stats, checkErr := s.candidateSharesSourceFiles(
+					matchCtx.ctx,
+					srcFileKeys, srcTotalBytes,
+					candidate.InstanceID, candidate.Hash,
+				)
+				switch {
+				case checkErr != nil:
+					// Store candidate fetch error (first error wins) so FindLocalMatches can bubble it up.
+					// A failed overlap check should not silently produce "no cross-seeds".
+					if matchCtx.candidateFilesErr == nil {
+						matchCtx.candidateFilesErr = checkErr
+					}
+				case sharesFiles:
+					return matchTypeContentPath
+				case sourceIsAmbiguousDir || candidateIsAmbiguousDir:
+					// Log diagnostics when ambiguous content_path match fails overlap threshold
+					log.Trace().
+						Str("sourceHash", normalizeHash(source.Hash)).
+						Str("candidateHash", normalizeHash(candidate.Hash)).
+						Int("candidateInstanceID", candidate.InstanceID).
+						Str("contentPath", normalizedContentPath).
+						Bool("sourceIsAmbiguousDir", sourceIsAmbiguousDir).
+						Bool("candidateIsAmbiguousDir", candidateIsAmbiguousDir).
+						Int64("srcTotalBytes", srcTotalBytes).
+						Int64("overlapBytes", stats.OverlapBytes).
+						Int64("candTotalBytes", stats.CandTotalBytes).
+						Int64("minTotal", stats.MinTotal).
+						Int64("overlapPercent", stats.OverlapPercent).
+						Msg("[CROSSSEED] Ambiguous content_path match did not meet overlap threshold")
+				}
+			}
+			// On error or no overlap, fall through to other matching strategies
+		}
 	}
 
 	// Strategy 2: Exact name match
@@ -525,6 +699,74 @@ func (s *Service) determineLocalMatchType(
 	}
 
 	return ""
+}
+
+// overlapStats holds file overlap statistics for diagnostic logging.
+type overlapStats struct {
+	OverlapBytes   int64
+	CandTotalBytes int64
+	MinTotal       int64
+	OverlapPercent int64 // integer percentage (0-100)
+}
+
+// candidateSharesSourceFiles checks if a candidate torrent shares files with the source.
+// Uses precomputed source file keys for efficiency. Returns true if overlap >= 90% of the
+// smaller torrent's total size. Uses integer math to avoid float rounding issues.
+// Also returns overlap statistics for diagnostic logging.
+func (s *Service) candidateSharesSourceFiles(
+	ctx context.Context,
+	srcFileKeys map[string]int64, srcTotalBytes int64,
+	candInstanceID int, candHash string,
+) (bool, overlapStats, error) {
+	if len(srcFileKeys) == 0 || srcTotalBytes == 0 {
+		return false, overlapStats{}, nil
+	}
+
+	// Fetch candidate file list
+	candFiles, err := s.getTorrentFilesCached(ctx, candInstanceID, candHash)
+	if err != nil {
+		return false, overlapStats{}, err
+	}
+
+	// Treat empty file list as an error - qBittorrent should always return files for a valid torrent.
+	// An empty list could indicate a magnet without metadata, transient API issue, or stale torrent.
+	// Returning an error ensures strict mode can fail-safe instead of silently producing false negatives.
+	if len(candFiles) == 0 {
+		return false, overlapStats{}, fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candHash))
+	}
+
+	// Calculate overlap with candidate files
+	var overlapBytes, candTotalBytes int64
+	for _, f := range candFiles {
+		candTotalBytes += f.Size
+		key := strings.ToLower(normalizePath(f.Name)) + "|" + strconv.FormatInt(f.Size, 10)
+		if size, ok := srcFileKeys[key]; ok {
+			overlapBytes += size
+		}
+	}
+
+	if candTotalBytes == 0 {
+		return false, overlapStats{}, nil
+	}
+
+	// Use the smaller total as the reference
+	minTotal := min(srcTotalBytes, candTotalBytes)
+
+	// Compute overlap percent for stats (0-100)
+	var overlapPct int64
+	if minTotal > 0 {
+		overlapPct = (overlapBytes * 100) / minTotal
+	}
+	stats := overlapStats{
+		OverlapBytes:   overlapBytes,
+		CandTotalBytes: candTotalBytes,
+		MinTotal:       minTotal,
+		OverlapPercent: overlapPct,
+	}
+
+	// Consider "shares files" if overlap >= 90% of the smaller torrent
+	// Using integer math: overlapBytes * 100 >= minTotal * 90
+	return overlapBytes*100 >= minTotal*90, stats, nil
 }
 
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.

@@ -33,6 +33,22 @@ interface WorkflowsPanelProps {
   variant?: "card" | "embedded"
 }
 
+/** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
+function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
+  if (value === undefined) return null
+  if (value === -2) return "Global"
+  if (value === -1) return "Unlimited"
+  // For ratio, show 2 decimal places; for time, show whole number
+  return isRatio ? value.toFixed(2) : String(value)
+}
+
+/** Format speed limit value for display: 0 = "Unlimited", > 0 = KiB/s value */
+function formatSpeedLimit(kiB: number | undefined): string | null {
+  if (kiB === undefined) return null
+  if (kiB === 0) return "Unlimited"
+  return `${kiB} KiB/s`
+}
+
 export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelProps) {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -344,10 +360,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <div className="space-y-1">
               {conditions.speedLimits.uploadKiB !== undefined && (
-                <p>Upload: {conditions.speedLimits.uploadKiB} KiB/s</p>
+                <p>Upload: {formatSpeedLimit(conditions.speedLimits.uploadKiB)}</p>
               )}
               {conditions.speedLimits.downloadKiB !== undefined && (
-                <p>Download: {conditions.speedLimits.downloadKiB} KiB/s</p>
+                <p>Download: {formatSpeedLimit(conditions.speedLimits.downloadKiB)}</p>
               )}
             </div>
           </TooltipContent>
@@ -366,10 +382,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <div className="space-y-1">
               {conditions.shareLimits.ratioLimit !== undefined && (
-                <p>Ratio: {conditions.shareLimits.ratioLimit}</p>
+                <p>Ratio: {formatShareLimit(conditions.shareLimits.ratioLimit, true)}</p>
               )}
               {conditions.shareLimits.seedingTimeMinutes !== undefined && (
-                <p>Seed time: {conditions.shareLimits.seedingTimeMinutes}m</p>
+                <p>Seed time: {formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false)}{conditions.shareLimits.seedingTimeMinutes >= 0 ? "m" : ""}</p>
               )}
             </div>
           </TooltipContent>

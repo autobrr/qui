@@ -3181,6 +3181,13 @@ paths:
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
+        - name: strict
+          in: query
+          description: When true, fail if file overlap checks cannot complete (use for delete dialogs to avoid false negatives)
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: List of matching torrents
