@@ -1389,7 +1389,36 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	// Validate that torrents exist before proceeding
 	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
 	if len(torrentMap) == 0 {
-		return fmt.Errorf("no sync data available")
+		// Force a fresh sync to pick up torrents that were just added (e.g., cross-seed recheck after add).
+		// This mirrors the pattern in validateTorrentsExist() for backup restore flows.
+		// Use context.Background() so caller cancellation doesn't abort this critical sync.
+		syncCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		// Retry loop: qBittorrent may need a moment to register the new torrent.
+		const maxAttempts = 3
+	retryLoop:
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			if syncErr := syncManager.Sync(syncCtx); syncErr != nil {
+				log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
+					Int("attempt", attempt).Msg("BulkAction: forced sync failed")
+			} else {
+				torrentMap = syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
+				if len(torrentMap) > 0 {
+					break
+				}
+			}
+			if attempt < maxAttempts {
+				select {
+				case <-syncCtx.Done():
+					break retryLoop
+				case <-time.After(150 * time.Millisecond):
+				}
+			}
+		}
+		if len(torrentMap) == 0 {
+			return errors.New("no sync data available")
+		}
 	}
 
 	existingTorrents := make([]*qbt.Torrent, 0, len(torrentMap))

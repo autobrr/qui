@@ -42,6 +42,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -226,6 +227,9 @@ const (
 	recheckAPITimeout                   = 30 * time.Second
 	minSearchIntervalSeconds            = 60
 	minSearchCooldownMinutes            = 720
+
+	// User-facing message when cross-seed is skipped due to recheck requirement
+	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
@@ -855,6 +859,35 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 	}
 
 	return s.automationStore.UpsertSearchSettings(ctx, settings)
+}
+
+// ReconcileInterruptedRuns marks any runs that were left in 'running' status as failed.
+// This should be called at startup before serving requests to clean up runs interrupted
+// by a crash or restart.
+func (s *Service) ReconcileInterruptedRuns(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if s.automationStore == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	const msg = "run interrupted (qui restarted or crashed)"
+
+	searchCount, err := s.automationStore.MarkInterruptedSearchRuns(ctx, now, msg)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to reconcile interrupted search runs")
+	} else if searchCount > 0 {
+		log.Info().Int64("count", searchCount).Msg("reconciled interrupted search runs")
+	}
+
+	automationCount, err := s.automationStore.MarkInterruptedAutomationRuns(ctx, now, msg)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to reconcile interrupted automation runs")
+	} else if automationCount > 0 {
+		log.Info().Int64("count", automationCount).Msg("reconciled interrupted automation runs")
+	}
 }
 
 // StartAutomation launches the background scheduler loop.
@@ -2838,6 +2871,19 @@ func (s *Service) processCrossSeedCandidate(
 		options["stopped"] = "false"
 	}
 
+	// Compute add policy from source files (e.g., disc layout detection)
+	addPolicy := PolicyForSourceFiles(sourceFiles)
+	addPolicy.ApplyToAddOptions(options)
+
+	if addPolicy.DiscLayout {
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Str("discMarker", addPolicy.DiscMarker).
+			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and auto-resume disabled")
+	}
+
 	// Check if we need rename alignment (folder/file names differ)
 	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
 
@@ -2945,7 +2991,7 @@ func (s *Service) processCrossSeedCandidate(
 
 	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
 		result.Status = "skipped_recheck"
-		result.Message = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
+		result.Message = skippedRecheckMessage
 		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
@@ -3302,14 +3348,22 @@ func (s *Service) processCrossSeedCandidate(
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
-			result.Message = result.Message + " - recheck failed, manual intervention required"
+			result.Message += " - recheck failed, manual intervention required"
+		} else if addPolicy.ShouldSkipAutoResume() {
+			// Policy forces skip auto-resume (e.g., disc layout)
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Bool("discLayout", addPolicy.DiscLayout).
+				Msg("Skipping auto-resume per add policy (recheck triggered)")
+			result.Message += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Skipping auto-resume per user settings (recheck triggered)")
-			result.Message = result.Message + " - auto-resume skipped per settings"
+			result.Message += " - auto-resume skipped per settings"
 		} else {
 			// Queue for background resume - threshold is calculated from tolerance setting
 			log.Debug().
@@ -3317,18 +3371,26 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Msg("Queuing torrent for recheck resume")
 			if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
-				result.Message = result.Message + " - auto-resume queue full, manual resume required"
+				result.Message += " - auto-resume queue full, manual resume required"
 			}
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
-		if req.SkipAutoResume {
+		if addPolicy.ShouldSkipAutoResume() {
+			// Policy forces skip auto-resume (e.g., disc layout)
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Bool("discLayout", addPolicy.DiscLayout).
+				Msg("Skipping auto-resume for perfect match per add policy")
+			result.Message += addPolicy.StatusSuffix()
+		} else if req.SkipAutoResume {
 			// User requested to skip auto-resume - leave paused
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Skipping auto-resume for perfect match per user settings")
-			result.Message = result.Message + " - auto-resume skipped per settings"
+			result.Message += " - auto-resume skipped per settings"
 		} else {
 			// Resume immediately since there's nothing to wait for
 			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
@@ -3338,7 +3400,7 @@ func (s *Service) processCrossSeedCandidate(
 					Str("torrentHash", torrentHash).
 					Msg("Failed to resume cross-seed torrent after add")
 				// Update message to indicate manual resume needed
-				result.Message = result.Message + " - auto-resume failed, manual resume required"
+				result.Message += " - auto-resume failed, manual resume required"
 			}
 		}
 	} else if !alignmentSucceeded {
@@ -3353,11 +3415,14 @@ func (s *Service) processCrossSeedCandidate(
 					Msg("Failed to pause misaligned cross-seed torrent")
 			}
 		}
-		result.Message = result.Message + " - alignment failed, left paused"
+		result.Message += " - alignment failed, left paused"
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
 			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
+	} else if !startPaused && addPolicy.ShouldSkipAutoResume() {
+		// User wanted auto-start, but policy forces paused (e.g., disc layout)
+		result.Message += addPolicy.StatusSuffix()
 	}
 	result.Success = true
 	result.Status = "added"
@@ -7986,43 +8051,54 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		}
 
 		// Execute the external program - simplified version of handler logic
-		success := s.executeExternalProgramSimple(ctx, program, *targetTorrent)
+		launched, outcomeKnown := s.executeExternalProgramSimple(program, targetTorrent)
 
-		if success {
+		switch {
+		case !launched:
+			log.Error().
+				Int("instanceId", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("programId", programID).
+				Str("programName", program.Name).
+				Msg("External program failed to launch for cross-seed injection")
+		case outcomeKnown:
 			log.Debug().
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
 				Str("programName", program.Name).
 				Msg("External program executed successfully for cross-seed injection")
-		} else {
-			log.Error().
+		default:
+			log.Debug().
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
 				Str("programName", program.Name).
-				Msg("External program execution failed for cross-seed injection")
+				Msg("External program launched for cross-seed injection (outcome unknown)")
 		}
 	}()
 }
 
-// executeExternalProgramSimple runs an external program for a torrent using simplified logic
-func (s *Service) executeExternalProgramSimple(ctx context.Context, program *models.ExternalProgram, torrent qbt.Torrent) bool {
+// executeExternalProgramSimple runs an external program for a torrent using simplified logic.
+// Returns (launched, outcomeKnown):
+//   - launched: true if the process was started successfully
+//   - outcomeKnown: true if we can determine success/failure (false on Windows with 'start')
+func (s *Service) executeExternalProgramSimple(program *models.ExternalProgram, torrent *qbt.Torrent) (launched, outcomeKnown bool) {
 	// Build torrent data map for variable substitution
 	torrentData := map[string]string{
 		"hash":         torrent.Hash,
 		"name":         torrent.Name,
-		"save_path":    s.applyPathMappings(torrent.SavePath, program.PathMappings),
+		"save_path":    externalprograms.ApplyPathMappings(torrent.SavePath, program.PathMappings),
 		"category":     torrent.Category,
 		"tags":         torrent.Tags,
 		"state":        string(torrent.State),
 		"size":         strconv.FormatInt(torrent.Size, 10),
 		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-		"content_path": s.applyPathMappings(torrent.ContentPath, program.PathMappings),
+		"content_path": externalprograms.ApplyPathMappings(torrent.ContentPath, program.PathMappings),
 	}
 
 	// Build command arguments
-	args := s.buildArgsSimple(program.ArgsTemplate, torrentData)
+	args := externalprograms.BuildArguments(program.ArgsTemplate, torrentData)
 
 	// Build command
 	var cmd *exec.Cmd
@@ -8057,49 +8133,42 @@ func (s *Service) executeExternalProgramSimple(ctx context.Context, program *mod
 		Str("command", fmt.Sprintf("%v", cmd.Args)).
 		Msg("External program launched")
 
-	// Execute in background
-	go func() {
-		if runtime.GOOS == "windows" {
-			cmd.Run()
-		} else {
-			if err := cmd.Start(); err != nil {
-				log.Error().Err(err).Str("program", program.Name).Msg("Failed to start external program")
-				return
-			}
-			cmd.Wait()
+	if runtime.GOOS == "windows" {
+		// Windows uses 'start' which spawns a detached process - we can't know
+		// the child's exit status, only whether the 'start' command itself succeeded.
+		if err := cmd.Run(); err != nil {
+			log.Error().
+				Err(err).
+				Str("program", program.Name).
+				Str("hash", torrent.Hash).
+				Str("command", fmt.Sprintf("%v", cmd.Args)).
+				Msg("Failed to launch external program via cmd.exe")
+			return false, false
 		}
-	}()
-
-	return true
-}
-
-// Helper functions for external program execution
-func (s *Service) applyPathMappings(remotePath string, mappings []models.PathMapping) string {
-	if remotePath == "" {
-		return ""
-	}
-	for _, mapping := range mappings {
-		if strings.HasPrefix(remotePath, mapping.From) {
-			return strings.Replace(remotePath, mapping.From, mapping.To, 1)
-		}
-	}
-	return remotePath
-}
-
-func (s *Service) buildArgsSimple(template string, torrentData map[string]string) []string {
-	if template == "" {
-		return []string{}
+		return true, false // launched, but outcome unknown
 	}
 
-	// Simple argument splitting and substitution
-	args := strings.Fields(template)
-	for i := range args {
-		for key, value := range torrentData {
-			placeholder := "{" + key + "}"
-			args[i] = strings.ReplaceAll(args[i], placeholder, value)
-		}
+	if err := cmd.Start(); err != nil {
+		log.Error().
+			Err(err).
+			Str("program", program.Name).
+			Str("hash", torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("External program failed to start")
+		return false, true
 	}
-	return args
+
+	if err := cmd.Wait(); err != nil {
+		log.Debug().
+			Err(err).
+			Str("program", program.Name).
+			Str("hash", torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("External program exited with error")
+		return false, true
+	}
+
+	return true, true
 }
 
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
@@ -8536,6 +8605,21 @@ func (s *Service) processHardlinkMode(
 	// we'll hardlink content files and let qBittorrent download the safe extras via recheck.
 	hasExtras := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
+	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
+	if req.SkipRecheck && hasExtras {
+		return hardlinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "skipped_recheck",
+				Message:      skippedRecheckMessage,
+			},
+		}
+	}
+
 	// Validate base directory is configured
 	if instance.HardlinkBaseDir == "" {
 		log.Warn().
@@ -8715,25 +8799,39 @@ func (s *Service) processHardlinkMode(
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
 
+	// Compute add policy from source files (e.g., disc layout detection)
+	addPolicy := PolicyForSourceFiles(sourceFiles)
+
+	if addPolicy.DiscLayout {
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Str("discMarker", addPolicy.DiscMarker).
+			Msg("[CROSSSEED] Hardlink mode: disc layout detected - torrent will be added paused and auto-resume disabled")
+	}
+
 	// Handle skip_checking and pause behavior based on extras:
 	// - No extras: skip_checking=true, start immediately (100% complete)
 	// - With extras: skip_checking=true, add paused, then recheck to find missing pieces
+	// - Disc layout: policy will override to paused via ApplyToAddOptions
+	options["skip_checking"] = "true"
 	if hasExtras {
 		// With extras: add paused, we'll trigger recheck after add
-		options["skip_checking"] = "true"
+		options["stopped"] = "true"
+		options["paused"] = "true"
+	} else if req.SkipAutoResume {
+		// No extras but user wants paused
 		options["stopped"] = "true"
 		options["paused"] = "true"
 	} else {
-		// No extras: skip_checking=true, start immediately unless SkipAutoResume
-		options["skip_checking"] = "true"
-		if req.SkipAutoResume {
-			options["stopped"] = "true"
-			options["paused"] = "true"
-		} else {
-			options["stopped"] = "false"
-			options["paused"] = "false"
-		}
+		// No extras: start immediately
+		options["stopped"] = "false"
+		options["paused"] = "false"
 	}
+
+	// Apply add policy (e.g., disc layout forces paused)
+	addPolicy.ApplyToAddOptions(options)
 
 	log.Debug().
 		Int("instanceID", candidate.InstanceID).
@@ -8741,6 +8839,7 @@ func (s *Service) processHardlinkMode(
 		Str("savepath", plan.RootDir).
 		Str("category", crossCategory).
 		Bool("hasExtras", hasExtras).
+		Bool("discLayout", addPolicy.DiscLayout).
 		Int("linkedFiles", len(candidateTorrentFilesToLink)).
 		Int("totalFiles", len(sourceFiles)).
 		Msg("[CROSSSEED] Hardlink mode: adding torrent")
@@ -8765,7 +8864,7 @@ func (s *Service) processHardlinkMode(
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via hardlink mode (match: %s, files: %d/%d)", matchType, len(candidateTorrentFilesToLink), len(sourceFiles))
 
-	// Handle recheck and auto-resume when extras exist
+	// Handle recheck and auto-resume when extras exist or disc layout detected
 	if hasExtras {
 		// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
 		// and which are missing (extras to download)
@@ -8776,6 +8875,14 @@ func (s *Service) processHardlinkMode(
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
 			statusMsg += " - recheck failed, manual intervention required"
+		} else if addPolicy.ShouldSkipAutoResume() {
+			// Policy forces skip auto-resume (e.g., disc layout)
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Bool("discLayout", addPolicy.DiscLayout).
+				Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per add policy")
+			statusMsg += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
@@ -8794,6 +8901,9 @@ func (s *Service) processHardlinkMode(
 				statusMsg += " - auto-resume queue full, manual resume required"
 			}
 		}
+	} else if addPolicy.ShouldSkipAutoResume() {
+		// Disc layout without extras - add policy status suffix
+		statusMsg += addPolicy.StatusSuffix()
 	}
 
 	return hardlinkModeResult{
@@ -8973,6 +9083,8 @@ func (s *Service) processReflinkMode(
 	// Reflink mode only requires recheck when the incoming torrent has extra files
 	// (files not present in the matched torrent).
 	hasExtras := hasExtraSourceFiles(sourceFiles, candidateFiles)
+
+	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
 	if req.SkipRecheck && hasExtras {
 		return reflinkModeResult{
 			Used:    true,
@@ -8982,7 +9094,7 @@ func (s *Service) processReflinkMode(
 				InstanceName: candidate.InstanceName,
 				Success:      false,
 				Status:       "skipped_recheck",
-				Message:      "Skipped cross-seed: reflink mode requires recheck for extra files and SkipRecheck is enabled",
+				Message:      skippedRecheckMessage,
 			},
 		}
 	}
@@ -9169,24 +9281,39 @@ func (s *Service) processReflinkMode(
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
 
+	// Compute add policy from source files (e.g., disc layout detection)
+	addPolicy := PolicyForSourceFiles(sourceFiles)
+
+	if addPolicy.DiscLayout {
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Str("discMarker", addPolicy.DiscMarker).
+			Msg("[CROSSSEED] Reflink mode: disc layout detected - torrent will be added paused and auto-resume disabled")
+	}
+
 	// Handle skip_checking and pause behavior based on extras:
 	// - No extras: skip_checking=true, start immediately (100% complete)
 	// - With extras: skip_checking=true, add paused, then recheck to find missing pieces
+	// - Disc layout: policy will override to paused via ApplyToAddOptions
 	options["skip_checking"] = "true"
 	if hasExtras {
 		// With extras: add paused, we'll trigger recheck after add
 		options["stopped"] = "true"
 		options["paused"] = "true"
+	} else if req.SkipAutoResume {
+		// No extras but user wants paused
+		options["stopped"] = "true"
+		options["paused"] = "true"
 	} else {
-		// No extras: start immediately unless SkipAutoResume
-		if req.SkipAutoResume {
-			options["stopped"] = "true"
-			options["paused"] = "true"
-		} else {
-			options["stopped"] = "false"
-			options["paused"] = "false"
-		}
+		// No extras: start immediately
+		options["stopped"] = "false"
+		options["paused"] = "false"
 	}
+
+	// Apply add policy (e.g., disc layout forces paused)
+	addPolicy.ApplyToAddOptions(options)
 
 	clonedFiles := len(candidateTorrentFilesToClone)
 	totalFiles := len(sourceFiles)
@@ -9197,6 +9324,7 @@ func (s *Service) processReflinkMode(
 		Str("savepath", plan.RootDir).
 		Str("category", crossCategory).
 		Bool("hasExtras", hasExtras).
+		Bool("discLayout", addPolicy.DiscLayout).
 		Int("clonedFiles", clonedFiles).
 		Int("totalFiles", totalFiles).
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
@@ -9221,7 +9349,7 @@ func (s *Service) processReflinkMode(
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
 
-	// Handle recheck and auto-resume when extras exist
+	// Handle recheck and auto-resume when extras exist or disc layout detected
 	if hasExtras {
 		// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
 		// and which are missing (extras to download)
@@ -9232,6 +9360,14 @@ func (s *Service) processReflinkMode(
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
 			statusMsg += " - recheck failed, manual intervention required"
+		} else if addPolicy.ShouldSkipAutoResume() {
+			// Policy forces skip auto-resume (e.g., disc layout)
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Bool("discLayout", addPolicy.DiscLayout).
+				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per add policy")
+			statusMsg += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
@@ -9250,6 +9386,9 @@ func (s *Service) processReflinkMode(
 				statusMsg += " - auto-resume queue full, manual resume required"
 			}
 		}
+	} else if addPolicy.ShouldSkipAutoResume() {
+		// Disc layout without extras - add policy status suffix
+		statusMsg += addPolicy.StatusSuffix()
 	}
 
 	// Add note about low completion behavior

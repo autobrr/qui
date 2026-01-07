@@ -1,9 +1,5 @@
 # qui
 
-> [!IMPORTANT]
-> The README for the latest version can be found here: [v1.11.0](https://github.com/autobrr/qui/blob/v1.11.0/README.md)
-> Everything below this line is not yet in a tagged release.
-
 A fast, modern web interface for qBittorrent. Supports managing multiple qBittorrent instances from a single, lightweight application.
 
 <div align="center">

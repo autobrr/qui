@@ -480,6 +480,116 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		"error message should mention directory or filesystem issue, got: %s", result.Result.Message)
 }
 
+func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
+	// This test verifies that when incoming torrent has extra files (files not in candidate)
+	// and SkipRecheck is enabled, hardlink mode returns skipped_recheck before any plan building.
+
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          "/hardlinks",
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	// Source files have an extra file (sample.mkv) not in candidate
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/sample.mkv", Size: 100}, // Extra file
+	}
+
+	// Candidate files only have the main movie
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"TorrentName",
+		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
+		&qbt.Torrent{ContentPath: "/downloads/Movie"},
+		"exact",
+		sourceFiles,
+		candidateFiles,
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// Should be Used=true because hardlink mode is enabled, but skipped due to recheck requirement
+	require.True(t, result.Used, "hardlink mode should be attempted")
+	assert.False(t, result.Success, "should not succeed - skipped")
+	assert.Equal(t, "skipped_recheck", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "requires recheck")
+	assert.Contains(t, result.Result.Message, "Skip recheck")
+}
+
+func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
+	// This test verifies that when incoming torrent has extra files (files not in candidate)
+	// and SkipRecheck is enabled, reflink mode returns skipped_recheck before any plan building.
+
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true, // Reflink mode enabled
+				HardlinkBaseDir:          "/reflinks",
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	// Source files have an extra file (sample.mkv) not in candidate
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/sample.mkv", Size: 100}, // Extra file
+	}
+
+	// Candidate files only have the main movie
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"TorrentName",
+		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
+		&qbt.Torrent{ContentPath: "/downloads/Movie"},
+		"exact",
+		sourceFiles,
+		candidateFiles,
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// Should be Used=true because reflink mode is enabled, but skipped due to recheck requirement
+	require.True(t, result.Used, "reflink mode should be attempted")
+	assert.False(t, result.Success, "should not succeed - skipped")
+	assert.Equal(t, "skipped_recheck", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "requires recheck")
+	assert.Contains(t, result.Result.Message, "Skip recheck")
+}
+
 func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 	// When FallbackToRegularMode is enabled, hardlink failures should return
 	// Used=false so that regular cross-seed mode can proceed.
