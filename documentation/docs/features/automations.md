@@ -150,11 +150,28 @@ Actions can be combined (except Delete which must be standalone). Each action su
 
 ### Speed Limits
 
-Set upload and/or download limits in KiB/s. Applied in batches for efficiency.
+Set upload and/or download limits. Each field supports these modes:
+
+| Mode | Value | Description |
+|------|-------|-------------|
+| No change | - | Don't modify this field |
+| Unlimited | 0 | Remove speed limit (qBittorrent treats 0 as unlimited) |
+| Custom | >0 | Specific limit in KiB/s or MiB/s |
+
+Applied in batches for efficiency.
 
 ### Share Limits
 
-Set ratio limit and/or seeding time limit (minutes). Torrents stop seeding when limits are reached.
+Set ratio limit and/or seeding time limit. Each field supports these modes:
+
+| Mode | Value | Description |
+|------|-------|-------------|
+| No change | - | Don't modify this field |
+| Use global | -2 | Follow qBittorrent's global share settings |
+| Unlimited | -1 | No limit for this field |
+| Custom | >=0 | Specific value (ratio as decimal, time in minutes) |
+
+Torrents stop seeding when any enabled limit is reached.
 
 ### Pause
 

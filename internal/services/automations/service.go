@@ -702,8 +702,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 	// Build batches from desired states
 	type shareKey struct {
-		ratio float64
-		seed  int64
+		ratio    float64
+		seed     int64
+		inactive int64
 	}
 	shareBatches := make(map[shareKey][]string)
 	uploadBatches := make(map[int64][]string)
@@ -815,18 +816,35 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 		// Share limits
 		if state.ratioLimit != nil || state.seedingMinutes != nil {
+			// Start with torrent's current values
 			ratio := torrent.RatioLimit
+			seedMinutes := torrent.SeedingTimeLimit
+			inactiveMinutes := torrent.InactiveSeedingTimeLimit // Preserve inactive limit
+
+			// Apply desired values if set
 			if state.ratioLimit != nil {
 				ratio = *state.ratioLimit
 			}
-			seedMinutes := torrent.SeedingTimeLimit
 			if state.seedingMinutes != nil {
 				seedMinutes = *state.seedingMinutes
 			}
-			needsUpdate := (state.ratioLimit != nil && torrent.RatioLimit != ratio) ||
+
+			// Normalize ratio to 2 decimal places to match qBittorrent/go-qbittorrent precision
+			// This prevents perpetual reapplication due to floating point differences
+			normalizeRatio := func(r float64) float64 {
+				if r >= 0 {
+					return float64(int(r*100+0.5)) / 100
+				}
+				return r // Keep sentinel values (-1, -2) unchanged
+			}
+			ratio = normalizeRatio(ratio)
+			currentRatio := normalizeRatio(torrent.RatioLimit)
+
+			// Check if update is needed (comparing normalized values)
+			needsUpdate := (state.ratioLimit != nil && currentRatio != ratio) ||
 				(state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes)
 			if needsUpdate {
-				key := shareKey{ratio: ratio, seed: seedMinutes}
+				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes}
 				shareBatches[key] = append(shareBatches[key], hash)
 			}
 		}
@@ -908,28 +926,34 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Apply share limits and track success
-	shareLimitSuccess := make(map[string]int) // "ratio:seed" -> count
+	shareLimitSuccess := make(map[string]int) // "ratio:seed:inactive" -> count
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
-			if err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, -1); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int("count", len(batch)).Msg("automations: share limit failed")
-				if s.activityStore != nil {
-					detailsJSON, _ := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "count": len(batch), "type": "share"})
-					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-						InstanceID: instanceID,
-						Hash:       strings.Join(batch, ","),
-						Action:     models.ActivityActionLimitFailed,
-						Outcome:    models.ActivityOutcomeFailed,
-						Reason:     "share limit failed: " + err.Error(),
-						Details:    detailsJSON,
-					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-					}
-				}
-			} else {
-				limitKey := fmt.Sprintf("%.2f:%d", key.ratio, key.seed)
+			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive)
+			if err == nil {
+				limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
 				shareLimitSuccess[limitKey] += len(batch)
+				continue
+			}
+			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Int("count", len(batch)).Msg("automations: share limit failed")
+			if s.activityStore == nil {
+				continue
+			}
+			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "count": len(batch), "type": "share"})
+			if marshalErr != nil {
+				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
+				continue
+			}
+			if actErr := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       strings.Join(batch, ","),
+				Action:     models.ActivityActionLimitFailed,
+				Outcome:    models.ActivityOutcomeFailed,
+				Reason:     "share limit failed: " + err.Error(),
+				Details:    detailsJSON,
+			}); actErr != nil {
+				log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 			}
 		}
 	}
