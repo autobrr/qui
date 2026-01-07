@@ -5,6 +5,7 @@
 package fsutil
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -19,7 +20,7 @@ import (
 //   - Windows: compares volume serial numbers
 func SameFilesystem(path1, path2 string) (bool, error) {
 	if path1 == "" || path2 == "" {
-		return false, fmt.Errorf("path must not be empty")
+		return false, errors.New("path must not be empty")
 	}
 	if _, err := os.Stat(path1); err != nil {
 		return false, fmt.Errorf("path does not exist: %s: %w", path1, err)
