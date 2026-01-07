@@ -169,6 +169,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -194,11 +195,12 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
-			i.use_reflinks
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -287,6 +289,7 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -312,11 +315,12 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
-			i.use_reflinks
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -388,6 +392,7 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
 			FOREIGN KEY (host_id) REFERENCES string_pool(id),
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -410,11 +415,12 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
-			i.use_reflinks
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -478,6 +484,7 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
 			FOREIGN KEY (host_id) REFERENCES string_pool(id),
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -500,11 +507,12 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
-			i.use_reflinks
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -568,6 +576,7 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -593,11 +602,12 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
-			i.use_reflinks
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err)

@@ -42,6 +42,8 @@ type Instance struct {
 	HardlinkDirPreset string `json:"hardlinkDirPreset"` // "flat", "by-tracker", "by-instance"
 	// Reflink mode (copy-on-write clones) - mutually exclusive with hardlink mode
 	UseReflinks bool `json:"useReflinks"`
+	// Fallback to regular mode when reflink/hardlink fails
+	FallbackToRegularMode bool `json:"fallbackToRegularMode"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -61,6 +63,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkBaseDir          string     `json:"hardlinkBaseDir"`
 		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
 		UseReflinks              bool       `json:"useReflinks"`
+		FallbackToRegularMode    bool       `json:"fallbackToRegularMode"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -86,6 +89,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkBaseDir:          i.HardlinkBaseDir,
 		HardlinkDirPreset:        i.HardlinkDirPreset,
 		UseReflinks:              i.UseReflinks,
+		FallbackToRegularMode:    i.FallbackToRegularMode,
 	})
 }
 
@@ -106,6 +110,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		HardlinkBaseDir          *string    `json:"hardlinkBaseDir,omitempty"`
 		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
 		UseReflinks              *bool      `json:"useReflinks,omitempty"`
+		FallbackToRegularMode    *bool      `json:"fallbackToRegularMode,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -151,6 +156,10 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	// Reflink setting (defaults to false if not provided)
 	if temp.UseReflinks != nil {
 		i.UseReflinks = *temp.UseReflinks
+	}
+	// Fallback to regular mode setting (defaults to false if not provided)
+	if temp.FallbackToRegularMode != nil {
+		i.FallbackToRegularMode = *temp.FallbackToRegularMode
 	}
 
 	// Handle password - don't overwrite if redacted
@@ -401,7 +410,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		WHERE id = ?
 	`
@@ -416,6 +425,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var useHardlinks bool
 	var hardlinkBaseDir, hardlinkDirPreset string
 	var useReflinks bool
+	var fallbackToRegularMode bool
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -433,6 +443,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&hardlinkBaseDir,
 		&hardlinkDirPreset,
 		&useReflinks,
+		&fallbackToRegularMode,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -455,6 +466,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		HardlinkBaseDir:          hardlinkBaseDir,
 		HardlinkDirPreset:        hardlinkDirPreset,
 		UseReflinks:              useReflinks,
+		FallbackToRegularMode:    fallbackToRegularMode,
 	}
 
 	if basicUsername.Valid {
@@ -469,7 +481,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
 	`
@@ -492,6 +504,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var useHardlinks bool
 		var hardlinkBaseDir, hardlinkDirPreset string
 		var useReflinks bool
+		var fallbackToRegularMode bool
 
 		err := rows.Scan(
 			&id,
@@ -509,6 +522,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&hardlinkBaseDir,
 			&hardlinkDirPreset,
 			&useReflinks,
+			&fallbackToRegularMode,
 		)
 		if err != nil {
 			return nil, err
@@ -528,6 +542,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			HardlinkBaseDir:          hardlinkBaseDir,
 			HardlinkDirPreset:        hardlinkDirPreset,
 			UseReflinks:              useReflinks,
+			FallbackToRegularMode:    fallbackToRegularMode,
 		}
 
 		if basicUsername.Valid {
@@ -555,6 +570,7 @@ type InstanceUpdateParams struct {
 	HardlinkBaseDir          *string
 	HardlinkDirPreset        *string
 	UseReflinks              *bool
+	FallbackToRegularMode    *bool
 }
 
 func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
@@ -671,6 +687,11 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		if params.UseReflinks != nil {
 			query += ", use_reflinks = ?"
 			args = append(args, *params.UseReflinks)
+		}
+
+		if params.FallbackToRegularMode != nil {
+			query += ", fallback_to_regular_mode = ?"
+			args = append(args, *params.FallbackToRegularMode)
 		}
 	}
 
