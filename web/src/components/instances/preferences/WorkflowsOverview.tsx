@@ -209,9 +209,11 @@ function formatPausedSummary(details: AutomationActivity["details"]): string {
   return `${count} torrent${count !== 1 ? "s" : ""} paused`
 }
 
-function formatMovedSummary(details: AutomationActivity["details"]): string {
+function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = Object.values(details?.paths ?? {}).reduce((sum, value) => sum + value, 0)
-  return `${count} torrent${count !== 1 ? "s" : ""} moved`
+  return outcome === "failed" 
+    ? `${count} torrent${count !== 1 ? "s" : ""} failed to move`
+    : `${count} torrent${count !== 1 ? "s" : ""} moved`
 }
 
 interface WorkflowsOverviewProps {
@@ -947,7 +949,7 @@ export function WorkflowsOverview({
                                         </span>
                                       ) : event.action === "moved" ? (
                                         <span className="font-medium text-sm block">
-                                          {formatMovedSummary(event.details)}
+                                          {formatMovedSummary(event.details, event.outcome)}
                                         </span>
                                       ) : (
                                         <TruncatedText className="font-medium text-sm block cursor-default">
