@@ -378,7 +378,7 @@ const FilterSidebarComponent = ({
             for (const t of trackers) {
               const hostname = extractHostname(t.url)
               if (hostname === normalizedDomain) {
-                allUrls.add(t.url)
+                allUrls.add(t.url.trim())
               }
             }
           }
@@ -434,13 +434,50 @@ const FilterSidebarComponent = ({
     const httpUrls = trackerFullURLs.filter((url) => url.startsWith("http://"))
     if (httpUrls.length === 0) return
 
+    // Collect HTTPS samples to infer the correct port for each hostname/path
+    const httpsSamples = trackerFullURLs
+      .filter((url) => url.startsWith("https://"))
+      .map((url) => {
+        try {
+          return new URL(url)
+        } catch {
+          return null
+        }
+      })
+      .filter((u): u is URL => u !== null)
+
     setIsConvertingScheme(true)
     let successCount = 0
     let failCount = 0
     let firstError: string | null = null
 
     for (const oldURL of httpUrls) {
-      const newURL = oldURL.replace(/^http:\/\//, "https://")
+      // Use URL parsing to properly handle scheme and port conversion
+      let newURL: string
+      try {
+        const parsed = new URL(oldURL)
+        parsed.protocol = "https:"
+
+        // Find a matching HTTPS sample to infer the correct port
+        const matchingSample = httpsSamples.find(
+          (sample) =>
+            sample.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+            sample.pathname === parsed.pathname
+        )
+
+        if (matchingSample) {
+          // Use the port from the matching HTTPS sample
+          parsed.port = matchingSample.port
+        } else {
+          // No sample found - clear port to default to 443
+          parsed.port = ""
+        }
+
+        newURL = parsed.toString()
+      } catch {
+        // Fall back to simple replacement if URL parsing fails
+        newURL = oldURL.replace(/^http:\/\//, "https://")
+      }
       try {
         await api.bulkAction(instanceId, {
           hashes: [],

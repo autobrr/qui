@@ -1636,12 +1636,30 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
     if (!open || !oldURL) return
     // If current selection still exists, keep it
     if (trackerURLs.includes(oldURL)) return
-    // If it was an http:// URL, try to find its https:// equivalent
+    // If it was an http:// URL, try to find its https:// equivalent by matching hostname/pathname
     if (oldURL.startsWith("http://")) {
-      const httpsEquivalent = oldURL.replace(/^http:\/\//, "https://")
-      if (trackerURLs.includes(httpsEquivalent)) {
-        setOldURL(httpsEquivalent)
-        return
+      try {
+        const parsed = new URL(oldURL)
+        // Find an HTTPS URL with matching hostname and pathname (port may differ)
+        const httpsMatch = trackerURLs.find((url) => {
+          if (!url.startsWith("https://")) return false
+          try {
+            const candidate = new URL(url)
+            return (
+              candidate.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+              candidate.pathname === parsed.pathname &&
+              candidate.search === parsed.search
+            )
+          } catch {
+            return false
+          }
+        })
+        if (httpsMatch) {
+          setOldURL(httpsMatch)
+          return
+        }
+      } catch {
+        // Parsing failed, fall through to fallback
       }
     }
     // Fall back to first available URL
