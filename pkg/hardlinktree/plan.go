@@ -236,6 +236,12 @@ func validateCandidatePath(path string) error {
 		return errors.New("empty file path in torrent")
 	}
 
+	// Reject Unix-style absolute paths on all platforms.
+	// (On Windows, filepath.IsAbs("/etc/passwd") is false.)
+	if strings.HasPrefix(path, "/") {
+		return errors.New("absolute path not allowed in torrent: " + path)
+	}
+
 	// Normalize path
 	p := filepath.Clean(filepath.FromSlash(path))
 
