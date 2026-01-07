@@ -370,7 +370,7 @@ func TestCandidateSharesSourceFiles_ExactMatch(t *testing.T) {
 	}
 	srcTotalBytes := int64(3000)
 
-	shares, err := svc.candidateSharesSourceFiles(context.Background(), srcFileKeys, srcTotalBytes, 1, candHash)
+	shares, _, err := svc.candidateSharesSourceFiles(context.Background(), srcFileKeys, srcTotalBytes, 1, candHash)
 	require.NoError(t, err)
 	require.True(t, shares, "Identical file lists should share files")
 }
@@ -394,7 +394,7 @@ func TestCandidateSharesSourceFiles_NoOverlap(t *testing.T) {
 	}
 	srcTotalBytes := int64(1000)
 
-	shares, err := svc.candidateSharesSourceFiles(context.Background(), srcFileKeys, srcTotalBytes, 1, candHash)
+	shares, _, err := svc.candidateSharesSourceFiles(context.Background(), srcFileKeys, srcTotalBytes, 1, candHash)
 	require.NoError(t, err)
 	require.False(t, shares, "Non-overlapping file lists should not share files")
 }
@@ -421,7 +421,7 @@ func TestCandidateSharesSourceFiles_EpisodeInPack(t *testing.T) {
 	}
 	srcTotalBytes := int64(1500000000)
 
-	shares, err := svc.candidateSharesSourceFiles(context.Background(), srcFileKeys, srcTotalBytes, 1, candHash)
+	shares, _, err := svc.candidateSharesSourceFiles(context.Background(), srcFileKeys, srcTotalBytes, 1, candHash)
 	require.NoError(t, err)
 	require.True(t, shares, "Single episode contained in pack should share files (100% of smaller)")
 }

@@ -649,19 +649,35 @@ func (s *Service) determineLocalMatchType(
 		if matchCtx != nil {
 			srcFileKeys, srcTotalBytes, err := matchCtx.getSourceFiles()
 			if err == nil && len(srcFileKeys) > 0 {
-				sharesFiles, checkErr := s.candidateSharesSourceFiles(
+				sharesFiles, stats, checkErr := s.candidateSharesSourceFiles(
 					matchCtx.ctx,
 					srcFileKeys, srcTotalBytes,
 					candidate.InstanceID, candidate.Hash,
 				)
-				if checkErr != nil {
+				switch {
+				case checkErr != nil:
 					// Store candidate fetch error (first error wins) so FindLocalMatches can bubble it up.
 					// A failed overlap check should not silently produce "no cross-seeds".
 					if matchCtx.candidateFilesErr == nil {
 						matchCtx.candidateFilesErr = checkErr
 					}
-				} else if sharesFiles {
+				case sharesFiles:
 					return matchTypeContentPath
+				case sourceIsAmbiguousDir || candidateIsAmbiguousDir:
+					// Log diagnostics when ambiguous content_path match fails overlap threshold
+					log.Trace().
+						Str("sourceHash", normalizeHash(source.Hash)).
+						Str("candidateHash", normalizeHash(candidate.Hash)).
+						Int("candidateInstanceID", candidate.InstanceID).
+						Str("contentPath", normalizedContentPath).
+						Bool("sourceIsAmbiguousDir", sourceIsAmbiguousDir).
+						Bool("candidateIsAmbiguousDir", candidateIsAmbiguousDir).
+						Int64("srcTotalBytes", srcTotalBytes).
+						Int64("overlapBytes", stats.OverlapBytes).
+						Int64("candTotalBytes", stats.CandTotalBytes).
+						Int64("minTotal", stats.MinTotal).
+						Int64("overlapPercent", stats.OverlapPercent).
+						Msg("[CROSSSEED] Ambiguous content_path match did not meet overlap threshold")
 				}
 			}
 			// On error or no overlap, fall through to other matching strategies
@@ -684,29 +700,38 @@ func (s *Service) determineLocalMatchType(
 	return ""
 }
 
+// overlapStats holds file overlap statistics for diagnostic logging.
+type overlapStats struct {
+	OverlapBytes   int64
+	CandTotalBytes int64
+	MinTotal       int64
+	OverlapPercent int64 // integer percentage (0-100)
+}
+
 // candidateSharesSourceFiles checks if a candidate torrent shares files with the source.
 // Uses precomputed source file keys for efficiency. Returns true if overlap >= 90% of the
 // smaller torrent's total size. Uses integer math to avoid float rounding issues.
+// Also returns overlap statistics for diagnostic logging.
 func (s *Service) candidateSharesSourceFiles(
 	ctx context.Context,
 	srcFileKeys map[string]int64, srcTotalBytes int64,
 	candInstanceID int, candHash string,
-) (bool, error) {
+) (bool, overlapStats, error) {
 	if len(srcFileKeys) == 0 || srcTotalBytes == 0 {
-		return false, nil
+		return false, overlapStats{}, nil
 	}
 
 	// Fetch candidate file list
 	candFiles, err := s.getTorrentFilesCached(ctx, candInstanceID, candHash)
 	if err != nil {
-		return false, err
+		return false, overlapStats{}, err
 	}
 
 	// Treat empty file list as an error - qBittorrent should always return files for a valid torrent.
 	// An empty list could indicate a magnet without metadata, transient API issue, or stale torrent.
 	// Returning an error ensures strict mode can fail-safe instead of silently producing false negatives.
 	if len(candFiles) == 0 {
-		return false, fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candHash))
+		return false, overlapStats{}, fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candHash))
 	}
 
 	// Calculate overlap with candidate files
@@ -720,15 +745,27 @@ func (s *Service) candidateSharesSourceFiles(
 	}
 
 	if candTotalBytes == 0 {
-		return false, nil
+		return false, overlapStats{}, nil
 	}
 
 	// Use the smaller total as the reference
 	minTotal := min(srcTotalBytes, candTotalBytes)
 
+	// Compute overlap percent for stats (0-100)
+	var overlapPct int64
+	if minTotal > 0 {
+		overlapPct = (overlapBytes * 100) / minTotal
+	}
+	stats := overlapStats{
+		OverlapBytes:   overlapBytes,
+		CandTotalBytes: candTotalBytes,
+		MinTotal:       minTotal,
+		OverlapPercent: overlapPct,
+	}
+
 	// Consider "shares files" if overlap >= 90% of the smaller torrent
 	// Using integer math: overlapBytes * 100 >= minTotal * 90
-	return overlapBytes*100 >= minTotal*90, nil
+	return overlapBytes*100 >= minTotal*90, stats, nil
 }
 
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.
