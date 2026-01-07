@@ -47,7 +47,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2, Plus, X } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
@@ -186,6 +186,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const previewPageSize = 25
+  const tagsInputRef = useRef<HTMLInputElement>(null)
+
+  const commitPendingTags = () => {
+    if (tagsInputRef.current) {
+      const tags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
+      setFormState(prev => ({ ...prev, exprTags: tags }))
+      tagsInputRef.current.value = tags.join(", ")
+    }
+  }
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -673,12 +682,30 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     event.preventDefault()
     setRegexErrors([]) // Clear previous errors
 
-    if (!formState.name) {
+    // Parse tags from input ref synchronously to avoid relying on async setFormState
+    let parsedTags: string[] = []
+    if (!formState.exprUseTrackerAsTag && tagsInputRef.current) {
+      parsedTags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
+    }
+
+    // Build submitState with parsed tags for validation and mutation
+    const submitState: FormState = {
+      ...formState,
+      exprTags: formState.exprUseTrackerAsTag ? [] : parsedTags,
+    }
+
+    // Sync the input display and formState (for UI consistency after save)
+    if (tagsInputRef.current) {
+      tagsInputRef.current.value = parsedTags.join(", ")
+    }
+    setFormState(submitState)
+
+    if (!submitState.name) {
       toast.error("Name is required")
       return
     }
-    const selectedTrackers = formState.trackerDomains.filter(Boolean)
-    if (!formState.applyToAllTrackers && selectedTrackers.length === 0) {
+    const selectedTrackers = submitState.trackerDomains.filter(Boolean)
+    if (!submitState.applyToAllTrackers && selectedTrackers.length === 0) {
       toast.error("Select at least one tracker")
       return
     }
@@ -690,57 +717,57 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     // Action-specific validation for enabled actions
-    if (formState.speedLimitsEnabled) {
+    if (submitState.speedLimitsEnabled) {
       // At least one field must be set to something other than "no_change"
-      const uploadIsSet = formState.exprUploadMode !== "no_change" &&
-        (formState.exprUploadMode !== "custom" || (formState.exprUploadValue !== undefined && formState.exprUploadValue > 0))
-      const downloadIsSet = formState.exprDownloadMode !== "no_change" &&
-        (formState.exprDownloadMode !== "custom" || (formState.exprDownloadValue !== undefined && formState.exprDownloadValue > 0))
+      const uploadIsSet = submitState.exprUploadMode !== "no_change" &&
+        (submitState.exprUploadMode !== "custom" || (submitState.exprUploadValue !== undefined && submitState.exprUploadValue > 0))
+      const downloadIsSet = submitState.exprDownloadMode !== "no_change" &&
+        (submitState.exprDownloadMode !== "custom" || (submitState.exprDownloadValue !== undefined && submitState.exprDownloadValue > 0))
       if (!uploadIsSet && !downloadIsSet) {
         toast.error("Set at least one speed limit")
         return
       }
       // Validate custom values are > 0
-      if (formState.exprUploadMode === "custom" && (formState.exprUploadValue === undefined || formState.exprUploadValue <= 0)) {
+      if (submitState.exprUploadMode === "custom" && (submitState.exprUploadValue === undefined || submitState.exprUploadValue <= 0)) {
         toast.error("Upload speed must be greater than 0 (use Unlimited for no limit)")
         return
       }
-      if (formState.exprDownloadMode === "custom" && (formState.exprDownloadValue === undefined || formState.exprDownloadValue <= 0)) {
+      if (submitState.exprDownloadMode === "custom" && (submitState.exprDownloadValue === undefined || submitState.exprDownloadValue <= 0)) {
         toast.error("Download speed must be greater than 0 (use Unlimited for no limit)")
         return
       }
     }
-    if (formState.shareLimitsEnabled) {
+    if (submitState.shareLimitsEnabled) {
       // At least one of the limits must be set to something other than "no_change"
-      const ratioIsSet = formState.exprRatioLimitMode !== "no_change" &&
-        (formState.exprRatioLimitMode !== "custom" || formState.exprRatioLimitValue !== undefined)
-      const seedingTimeIsSet = formState.exprSeedingTimeMode !== "no_change" &&
-        (formState.exprSeedingTimeMode !== "custom" || formState.exprSeedingTimeValue !== undefined)
+      const ratioIsSet = submitState.exprRatioLimitMode !== "no_change" &&
+        (submitState.exprRatioLimitMode !== "custom" || submitState.exprRatioLimitValue !== undefined)
+      const seedingTimeIsSet = submitState.exprSeedingTimeMode !== "no_change" &&
+        (submitState.exprSeedingTimeMode !== "custom" || submitState.exprSeedingTimeValue !== undefined)
       if (!ratioIsSet && !seedingTimeIsSet) {
         toast.error("Set ratio limit or seeding time")
         return
       }
     }
-    if (formState.tagEnabled) {
-      if (!formState.exprUseTrackerAsTag && formState.exprTags.length === 0) {
+    if (submitState.tagEnabled) {
+      if (!submitState.exprUseTrackerAsTag && submitState.exprTags.length === 0) {
         toast.error("Specify at least one tag or enable 'Use tracker name'")
         return
       }
     }
-    if (formState.categoryEnabled) {
-      if (!formState.exprCategory) {
+    if (submitState.categoryEnabled) {
+      if (!submitState.exprCategory) {
         toast.error("Select a category")
         return
       }
     }
-    if (formState.deleteEnabled && !formState.actionCondition) {
+    if (submitState.deleteEnabled && !submitState.actionCondition) {
       toast.error("Delete requires at least one condition")
       return
     }
 
     // Validate regex patterns before saving (only if enabling the workflow)
-    const payload = buildPayload(formState)
-    if (formState.enabled) {
+    const payload = buildPayload(submitState)
+    if (submitState.enabled) {
       try {
         const validation = await api.validateAutomationRegex(instanceId, payload)
         if (!validation.valid && validation.errors.length > 0) {
@@ -755,11 +782,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     // For delete and category rules, show preview as a last warning before enabling.
-    const needsPreview = (isDeleteRule || isCategoryRule) && formState.enabled
+    const needsPreview = (isDeleteRule || isCategoryRule) && submitState.enabled
     if (needsPreview) {
-      previewMutation.mutate(formState)
+      previewMutation.mutate(submitState)
     } else {
-      createOrUpdate.mutate(formState)
+      createOrUpdate.mutate(submitState)
     }
   }
 
@@ -1244,12 +1271,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <div className="space-y-1">
                               <Label className="text-xs">Tags</Label>
                               <Input
+                                ref={tagsInputRef}
                                 type="text"
-                                value={formState.exprTags.join(", ")}
-                                onChange={(e) => {
-                                  const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
-                                  setFormState(prev => ({ ...prev, exprTags: tags }))
-                                }}
+                                defaultValue={formState.exprTags.join(", ")}
+                                onBlur={commitPendingTags}
                                 placeholder="tag1, tag2, ..."
                               />
                             </div>
