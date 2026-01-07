@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { ThemeValidator } from "@/components/themes/ThemeValidator"
 
 function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
@@ -72,6 +73,7 @@ function AppLayoutContent() {
 export function AppLayout() {
   return (
     <LayoutRouteProvider>
+      <ThemeValidator />
       <TorrentSelectionProvider>
         <MobileScrollProvider>
           <AppLayoutContent />
