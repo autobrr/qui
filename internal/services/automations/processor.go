@@ -153,7 +153,7 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, crossSeedIndex, ruleStats)
+			processRuleForTorrent(rule, torrent, state, evalCtx, crossSeedIndex, ruleStats, torrents)
 		}
 
 		// Only store if there are actions to take
@@ -166,7 +166,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -292,7 +292,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				state.deleteReason = "condition matched"
 
 				// Update the cumulative free space cleared for the "free space" condition
-				updateCumulativeFreeSpaceCleared(torrent, evalCtx)
+				updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, allTorrents)
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
 			}
@@ -443,9 +443,16 @@ func parseTorrentTags(tags string) map[string]struct{} {
 	return result
 }
 
-// updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext) {
+// updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
+// Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
+// This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, allTorrents []qbt.Torrent) {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
+		return
+	}
+
+	// Only count toward free space if this delete will actually free disk bytes
+	if !deleteFreesSpace(deleteMode, torrent, allTorrents) {
 		return
 	}
 

@@ -80,6 +80,19 @@ const ACTION_LABELS: Record<ActionType, string> = {
   category: "Category",
 }
 
+/**
+ * Recursively checks if a condition tree uses a specific field.
+ * Used to validate that FREE_SPACE conditions aren't paired with keep-files mode.
+ */
+function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
+  if (!condition) return false
+  if (condition.field === field) return true
+  if (condition.conditions) {
+    return condition.conditions.some(c => conditionUsesField(c, field))
+  }
+  return false
+}
+
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
 
@@ -111,7 +124,7 @@ type FormState = {
   exprSeedingTimeMode: "no_change" | "global" | "unlimited" | "custom"
   exprSeedingTimeValue?: number
   // Delete settings
-  exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
@@ -187,6 +200,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const previewPageSize = 25
   const tagsInputRef = useRef<HTMLInputElement>(null)
+  // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
+  const isHydrating = useRef(true)
 
   const commitPendingTags = () => {
     if (tagsInputRef.current) {
@@ -331,6 +346,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
+    let cancelled = false
+
     if (open) {
       if (rule) {
         const isAllTrackers = rule.trackerPattern === "*"
@@ -483,8 +500,34 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       } else {
         setFormState(emptyFormState)
       }
+      // Mark hydration complete after a microtask to ensure state is settled
+      // Use cancelled flag to avoid race condition if dialog closes before microtask runs
+      queueMicrotask(() => {
+        if (!cancelled) {
+          isHydrating.current = false
+        }
+      })
+    } else {
+      // Reset hydration flag when dialog closes so it's ready for next open
+      isHydrating.current = true
     }
+
+    return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
+
+  // Auto-switch delete mode from keep-files to deleteWithFiles when FREE_SPACE is used
+  // This prevents users from creating invalid combinations that the backend would reject
+  // Only toast on user edits, not during initial form hydration
+  useEffect(() => {
+    if (formState.deleteEnabled && formState.exprDeleteMode === "delete") {
+      if (conditionUsesField(formState.actionCondition, "FREE_SPACE")) {
+        setFormState(prev => ({ ...prev, exprDeleteMode: "deleteWithFiles" }))
+        if (!isHydrating.current) {
+          toast.info("Switched to 'Remove with files' because Free Space condition requires actual disk space to be freed")
+        }
+      }
+    }
+  }, [formState.actionCondition, formState.deleteEnabled, formState.exprDeleteMode])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = (input: FormState): AutomationInput => {
@@ -1410,19 +1453,45 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Mode</Label>
-                          <Select
-                            value={formState.exprDeleteMode}
-                            onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
-                          >
-                            <SelectTrigger className="w-fit text-destructive">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove (keep files)</SelectItem>
-                              <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
-                              <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          {(() => {
+                            const usesFreeSpace = conditionUsesField(formState.actionCondition, "FREE_SPACE")
+                            const keepFilesDisabled = usesFreeSpace
+                            return (
+                              <Select
+                                value={formState.exprDeleteMode}
+                                onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
+                              >
+                                <SelectTrigger className="w-fit text-destructive">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <TooltipProvider delayDuration={150}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div>
+                                          <SelectItem
+                                            value="delete"
+                                            className="text-destructive focus:text-destructive"
+                                            disabled={keepFilesDisabled}
+                                          >
+                                            Remove (keep files)
+                                          </SelectItem>
+                                        </div>
+                                      </TooltipTrigger>
+                                      {keepFilesDisabled && (
+                                        <TooltipContent side="left" className="max-w-[280px]">
+                                          <p>Disabled when using Free Space condition. Keep-files mode cannot satisfy a free space target because no disk space is freed.</p>
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
+                                  <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
+                                  <SelectItem value="deleteWithFilesIncludeCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (include cross-seeds)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )
+                          })()}
                         </div>
                       </div>
                     )}

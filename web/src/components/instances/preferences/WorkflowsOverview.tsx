@@ -1060,6 +1060,8 @@ export function WorkflowsOverview({
                                           label = "Torrent only"
                                         } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
                                           label = "Files kept due to cross-seeds"
+                                        } else if (deleteMode === "deleteWithFilesIncludeCrossSeeds") {
+                                          label = "With files + cross-seeds"
                                         } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
                                           label = "With files"
                                         } else {
@@ -1496,7 +1498,7 @@ function RulePreview({
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "+ XS": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
           </Badge>
         )}
         {rule.conditions?.tag?.enabled && (

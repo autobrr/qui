@@ -186,6 +186,15 @@ Remove torrents from qBittorrent. **Must be standalone** - cannot combine with o
 | `delete` | Remove from client, keep files |
 | `deleteWithFiles` | Remove with files |
 | `deleteWithFilesPreserveCrossSeeds` | Remove files but preserve if cross-seeds detected |
+| `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
+
+**Include cross-seeds mode behavior:**
+
+When a torrent matches the rule, the system finds other torrents that point to the same downloaded files (cross-seeds/duplicates) and deletes them together. This is useful when you want to fully remove content and all its cross-seeded copies at once.
+
+- **Safe expansion**: If qui can't safely confirm another torrent uses the same files, it won't be included in the deletion.
+- **Safety-first**: If verification can't complete for any reason, the entire group is skipped rather than risking broken torrents.
+- **Preview**: The delete preview shows all torrents that would be deleted, with cross-seeds marked.
 
 ### Tag
 
@@ -213,8 +222,10 @@ Options:
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
 
-- **Detection** - Matches both ContentPath AND SavePath
-- **Delete Rules** - Use `deleteWithFilesPreserveCrossSeeds` to keep files if cross-seeds exist
+- **Detection** - Matches via ContentPath (and SavePath for category moves)
+- **Delete Rules**:
+  - Use `deleteWithFilesPreserveCrossSeeds` to keep files if cross-seeds exist
+  - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together
 - **Category Rules** - Enable "Include Cross-Seeds" to move related torrents together
 - **Blocking** - Prevent category moves if cross-seeds are in protected categories
 
@@ -255,11 +266,29 @@ Only sends API calls when the torrent's current setting differs from the desired
 When using the **Free Space** condition in delete rules, the system uses intelligent cumulative tracking:
 
 1. **Oldest-first processing** - Torrents are sorted by age (oldest first) for deterministic, predictable cleanup
-2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space
+2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space (only when the delete mode actually frees disk bytes)
 3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match
 4. **Cross-seed aware** - Cross-seeded torrents sharing the same files are only counted once to avoid overestimating freed space
 
-**Example:** With 400GB free and a rule "Delete if Free Space < 500GB", the system deletes oldest torrents until the cumulative freed space reaches 100GB, then stops. A 50GB torrent and its cross-seed (same files) only count as 50GB freed, not 100GB.
+**Delete mode affects space projection:**
+
+| Delete Mode | Space Added to Projection |
+|-------------|---------------------------|
+| Remove with files | Full torrent size |
+| Preserve cross-seeds (no cross-seeds) | Full torrent size |
+| Preserve cross-seeds (has cross-seeds) | 0 (files kept) |
+
+**How preserve cross-seeds works:**
+
+- Cross-seed detection checks if any other torrent shares the same Content Path at evaluation time (before any removals).
+- If multiple torrents share the same files, removing them all in one rule run will still keep the files on disk. No disk space is freed from that group because each torrent sees the others as cross-seeds.
+- Only non-cross-seeded torrents contribute to the free-space projection when using preserve mode.
+
+**Example:** With 400GB free and a rule "Delete if Free Space < 500GB" using `Remove with files`, the system deletes oldest torrents until the cumulative freed space reaches 100GB, then stops. A 50GB torrent and its cross-seed (same files) only count as 50GB freed, not 100GB.
+
+:::note
+The UI and API prevent combining `Remove (keep files)` mode with Free Space conditions. Since keep-files doesn't free disk space, such a rule could never satisfy the free space target and would match indefinitely.
+:::
 
 ### Batching
 
@@ -277,13 +306,13 @@ Activity is retained for 7 days by default. View the log in the Automations sect
 
 ## Example Rules
 
-### Delete Old Completed Torrents if low on disk space
+### Delete Old Completed Torrents
 
-Match torrents completed over 30 days ago when filesystem is lower than 500GB:
+Remove torrents completed over 30 days ago when disk space is low:
 - Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
-- Action: Delete with files
+- Action: Remove with files
 
-The system deletes oldest matching torrents first, stopping once enough space would be freed to exceed 500GB. This prevents over-deletion when you only need to clear a small amount of space.
+Deletes oldest matching torrents first, stopping once enough space would be freed to exceed 500GB.
 
 ### Speed Limit Private Trackers
 
@@ -311,9 +340,18 @@ Remove torrents the tracker no longer recognizes:
 Keep at least 200GB free by removing oldest completed torrents:
 - Tracker: `*`
 - Condition: `Free Space < 200GB` AND `State is completed`
-- Action: Delete with files (preserve cross-seeds)
+- Action: Remove with files (preserve cross-seeds)
 
-Only deletes the minimum number of torrents needed to reach 200GB free. Oldest torrents are removed first, and cross-seeded content is preserved if other torrents reference the same files.
+Removes torrents from the client, oldest first, until enough space is projected to be freed. Cross-seeded torrents keep their files on disk and don't contribute to the projection. If only cross-seeded torrents match, this may remove many torrents without freeing any disk space.
+
+### Clean Up Old Content with Cross-Seeds
+
+Remove completed torrents and all their cross-seeded copies when they're old enough:
+- Tracker: `*`
+- Condition: `Completion On Age > 30 days` AND `State is completed`
+- Action: Remove with files (include cross-seeds)
+
+When a torrent matches, any other torrents pointing to the same downloaded files are deleted together. Useful for complete cleanup when you no longer need any copy of the content.
 
 ### Organize by Tracker
 

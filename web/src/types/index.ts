@@ -246,7 +246,7 @@ export interface PauseAction {
 
 export interface DeleteAction {
   enabled: boolean
-  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   condition?: RuleCondition
 }
 
@@ -323,7 +323,7 @@ export interface AutomationActivity {
     seedingMinutes?: number
     seedingLimitMinutes?: number
     filesKept?: boolean
-    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
     limitKiB?: number
     count?: number
     type?: string

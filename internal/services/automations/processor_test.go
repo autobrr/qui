@@ -138,7 +138,7 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 }
 
 func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
-	t.Run("adds size for non-cross-seed torrent", func(t *testing.T) {
+	t.Run("adds size for non-cross-seed torrent with deleteWithFiles", func(t *testing.T) {
 		evalCtx := &EvalContext{
 			SpaceToClear: 0,
 			FilesToClear: make(map[crossSeedKey]struct{}),
@@ -152,7 +152,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 			SavePath:    "",
 		}
 
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx)
+		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil)
 
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
 		require.Len(t, evalCtx.FilesToClear, 0) // Not tracked as cross-seed
@@ -171,7 +171,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 			SavePath:    "/data",
 		}
 
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx)
+		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil)
 
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
 		require.Len(t, evalCtx.FilesToClear, 1) // Tracked as cross-seed
@@ -199,8 +199,9 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 			SavePath:    "/data",
 		}
 
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx)
+		allTorrents := []qbt.Torrent{torrent1, torrent2}
+		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFiles, allTorrents)
+		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, allTorrents)
 
 		// Should only count once
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
@@ -227,8 +228,9 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 			SavePath:    "/data",
 		}
 
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx)
+		allTorrents := []qbt.Torrent{torrent1, torrent2}
+		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFiles, allTorrents)
+		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, allTorrents)
 
 		require.Equal(t, int64(80000000000), evalCtx.SpaceToClear)
 		require.Len(t, evalCtx.FilesToClear, 2)
@@ -243,7 +245,82 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		}
 
 		// Should not panic
-		updateCumulativeFreeSpaceCleared(torrent, nil)
+		updateCumulativeFreeSpaceCleared(torrent, nil, DeleteModeWithFiles, nil)
+	})
+
+	t.Run("does not add size for DeleteModeKeepFiles", func(t *testing.T) {
+		evalCtx := &EvalContext{
+			SpaceToClear: 0,
+			FilesToClear: make(map[crossSeedKey]struct{}),
+		}
+
+		torrent := qbt.Torrent{
+			Hash:        "abc123",
+			Size:        50000000000, // 50GB
+			ContentPath: "/data/movie",
+			SavePath:    "/data",
+		}
+
+		// Keep-files mode should not increase SpaceToClear
+		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeKeepFiles, nil)
+
+		require.Equal(t, int64(0), evalCtx.SpaceToClear)
+		require.Len(t, evalCtx.FilesToClear, 0)
+	})
+
+	t.Run("does not add size for preserve-cross-seeds mode when cross-seeds exist", func(t *testing.T) {
+		evalCtx := &EvalContext{
+			SpaceToClear: 0,
+			FilesToClear: make(map[crossSeedKey]struct{}),
+		}
+
+		// Two torrents with same ContentPath = cross-seeds
+		torrent1 := qbt.Torrent{
+			Hash:        "abc123",
+			Size:        50000000000, // 50GB
+			ContentPath: "/data/movie",
+			SavePath:    "/data",
+		}
+
+		torrent2 := qbt.Torrent{
+			Hash:        "def456",
+			Size:        50000000000,
+			ContentPath: "/data/movie", // Same content path = cross-seed
+			SavePath:    "/data",
+		}
+
+		allTorrents := []qbt.Torrent{torrent1, torrent2}
+
+		// Deleting torrent1 with preserve-cross-seeds should NOT count toward SpaceToClear
+		// because torrent2 is a cross-seed that would keep the files
+		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFilesPreserveCrossSeeds, allTorrents)
+
+		require.Equal(t, int64(0), evalCtx.SpaceToClear)
+		require.Len(t, evalCtx.FilesToClear, 0)
+	})
+
+	t.Run("adds size for preserve-cross-seeds mode when no cross-seeds exist", func(t *testing.T) {
+		evalCtx := &EvalContext{
+			SpaceToClear: 0,
+			FilesToClear: make(map[crossSeedKey]struct{}),
+		}
+
+		// Only one torrent - no cross-seeds
+		torrent := qbt.Torrent{
+			Hash:        "abc123",
+			Size:        50000000000, // 50GB
+			ContentPath: "/data/movie",
+			SavePath:    "/data",
+		}
+
+		allTorrents := []qbt.Torrent{torrent}
+
+		// Deleting with preserve-cross-seeds should count toward SpaceToClear
+		// because there are no cross-seeds
+		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFilesPreserveCrossSeeds, allTorrents)
+
+		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
+		require.Len(t, evalCtx.FilesToClear, 1)
 	})
 }
 
@@ -472,5 +549,170 @@ func TestProcessTorrents_HandlesNilFilesToClearGracefully(t *testing.T) {
 	}
 
 	// Should not panic
-	require.NotPanics(t, func() { updateCumulativeFreeSpaceCleared(torrent, evalCtx) })
+	require.NotPanics(t, func() { updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil) })
+}
+
+// TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly tests runtime behavior
+// when keep-files mode is combined with FREE_SPACE condition.
+//
+// NOTE: The API/UI now prevents this combination during validation because it's a foot-gun
+// (keep-files can never satisfy a free space target). However, this test verifies correct
+// runtime behavior for edge cases like:
+// - Legacy rules created before validation was added
+// - Direct API calls bypassing validation
+// - Future changes to validation logic
+//
+// The correct behavior is that keep-files deletions do NOT contribute to SpaceToClear,
+// so the FREE_SPACE condition remains true and matches all eligible torrents.
+func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil)
+
+	// Create 5 torrents with different ages, each 20GB
+	torrents := []qbt.Torrent{
+		{Hash: "e", Name: "torrent5", Size: 20000000000, AddedOn: 5000, SavePath: "/data", ContentPath: "/data/t5"},
+		{Hash: "c", Name: "torrent3", Size: 20000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/t3"},
+		{Hash: "a", Name: "torrent1", Size: 20000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/t1"},
+		{Hash: "d", Name: "torrent4", Size: 20000000000, AddedOn: 4000, SavePath: "/data", ContentPath: "/data/t4"},
+		{Hash: "b", Name: "torrent2", Size: 20000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/t2"},
+	}
+
+	// Rule: Delete if free space < 50GB, BUT with keep-files mode
+	// Since keep-files doesn't free disk space, all torrents should match
+	// and NOT stop early based on projected free space
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    models.DeleteModeKeepFiles, // Keep files = no disk space freed
+				Condition: &models.RuleCondition{
+					Field:    models.FieldFreeSpace,
+					Operator: models.OperatorLessThan,
+					Value:    "50000000000", // 50GB
+				},
+			},
+		},
+	}
+
+	// Current free space: 10GB (< 50GB threshold)
+	// With deleteWithFiles, we'd need to clear 40GB (2 torrents) to reach 50GB
+	// But with keep-files, no space is freed, so ALL torrents should match
+	evalCtx := &EvalContext{
+		FreeSpace:    10000000000, // 10GB
+		SpaceToClear: 0,
+		FilesToClear: make(map[crossSeedKey]struct{}),
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+
+	// ALL 5 torrents should be marked for deletion because keep-files doesn't free space
+	// so the condition FREE_SPACE < 50GB remains true for all
+	require.Len(t, states, 5, "expected ALL torrents to be marked for deletion when using keep-files mode")
+
+	// Verify SpaceToClear was NOT incremented (since keep-files doesn't free space)
+	require.Equal(t, int64(0), evalCtx.SpaceToClear, "SpaceToClear should remain 0 for keep-files mode")
+}
+
+func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFiles(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil)
+
+	// Create torrents where some are cross-seeds (same content path)
+	// torrent1, torrent2, torrent3 are ALL cross-seeds sharing the same files
+	// torrent4 is independent
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Size: 30000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/movie"},
+		{Hash: "b", Name: "torrent2", Size: 30000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/movie"}, // Cross-seed
+		{Hash: "c", Name: "torrent3", Size: 30000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/movie"}, // Cross-seed
+		{Hash: "d", Name: "torrent4", Size: 20000000000, AddedOn: 4000, SavePath: "/data", ContentPath: "/data/other"},
+	}
+
+	// Rule: Delete if free space < 50GB, with preserve-cross-seeds mode
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    models.DeleteModeWithFilesPreserveCrossSeeds,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldFreeSpace,
+					Operator: models.OperatorLessThan,
+					Value:    "50000000000", // 50GB
+				},
+			},
+		},
+	}
+
+	// Current free space: 10GB
+	// Need to clear 40GB to reach 50GB threshold
+	//
+	// Processing order (oldest first): a, b, c, d
+	//
+	// With preserve-cross-seeds:
+	// - torrent a (cross-seed with b,c): files kept, SpaceToClear += 0 -> effective = 10GB < 50GB (matches)
+	// - torrent b (cross-seed with a,c): files kept, SpaceToClear += 0 -> effective = 10GB < 50GB (matches)
+	// - torrent c (cross-seed with a,b): files kept, SpaceToClear += 0 -> effective = 10GB < 50GB (matches)
+	// - torrent d (no cross-seed): files deleted, SpaceToClear += 20GB -> effective = 30GB < 50GB (matches)
+	//
+	// All 4 torrents should match because the cross-seeds don't contribute to SpaceToClear
+	evalCtx := &EvalContext{
+		FreeSpace:    10000000000, // 10GB
+		SpaceToClear: 0,
+		FilesToClear: make(map[crossSeedKey]struct{}),
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+
+	// All 4 torrents should be marked for deletion
+	require.Len(t, states, 4, "expected 4 torrents to be marked for deletion")
+
+	// Only torrent d (20GB) should contribute to SpaceToClear
+	// Torrents a, b, c have cross-seeds so their files are preserved
+	require.Equal(t, int64(20000000000), evalCtx.SpaceToClear,
+		"only torrent4 (no cross-seed) should contribute to SpaceToClear")
+}
+
+func TestDeleteFreesSpace(t *testing.T) {
+	allTorrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", ContentPath: "/data/movie"},
+		{Hash: "b", Name: "torrent2", ContentPath: "/data/movie"}, // Cross-seed of a
+		{Hash: "c", Name: "torrent3", ContentPath: "/data/other"},
+	}
+
+	t.Run("returns false for DeleteModeKeepFiles", func(t *testing.T) {
+		result := deleteFreesSpace(DeleteModeKeepFiles, allTorrents[0], allTorrents)
+		require.False(t, result)
+	})
+
+	t.Run("returns false for empty mode", func(t *testing.T) {
+		result := deleteFreesSpace("", allTorrents[0], allTorrents)
+		require.False(t, result)
+	})
+
+	t.Run("returns false for DeleteModeNone", func(t *testing.T) {
+		result := deleteFreesSpace(DeleteModeNone, allTorrents[0], allTorrents)
+		require.False(t, result)
+	})
+
+	t.Run("returns true for DeleteModeWithFiles", func(t *testing.T) {
+		result := deleteFreesSpace(DeleteModeWithFiles, allTorrents[0], allTorrents)
+		require.True(t, result)
+	})
+
+	t.Run("returns false for preserve-cross-seeds when cross-seeds exist", func(t *testing.T) {
+		// Torrent a has cross-seed b
+		result := deleteFreesSpace(DeleteModeWithFilesPreserveCrossSeeds, allTorrents[0], allTorrents)
+		require.False(t, result)
+	})
+
+	t.Run("returns true for preserve-cross-seeds when no cross-seeds exist", func(t *testing.T) {
+		// Torrent c has no cross-seeds
+		result := deleteFreesSpace(DeleteModeWithFilesPreserveCrossSeeds, allTorrents[2], allTorrents)
+		require.True(t, result)
+	})
 }

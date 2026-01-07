@@ -22,6 +22,7 @@ const (
 	DeleteModeKeepFiles                   = "delete"
 	DeleteModeWithFiles                   = "deleteWithFiles"
 	DeleteModeWithFilesPreserveCrossSeeds = "deleteWithFilesPreserveCrossSeeds"
+	DeleteModeWithFilesIncludeCrossSeeds  = "deleteWithFilesIncludeCrossSeeds"
 )
 
 // Tag mode constants

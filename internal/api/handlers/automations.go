@@ -327,6 +327,13 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
+	// Validate FREE_SPACE condition is not combined with keep-files mode
+	// Keep-files mode doesn't free disk space, so a FREE_SPACE < X condition
+	// would match all eligible torrents indefinitely (foot-gun).
+	if deleteUsesKeepFilesWithFreeSpace(payload.Conditions) {
+		return http.StatusBadRequest, "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed.", errors.New("invalid delete mode for free space condition")
+	}
+
 	return 0, "", nil
 }
 
@@ -355,6 +362,24 @@ func conditionsUseHardlink(conditions *models.ActionConditions) bool {
 		return true
 	}
 	return false
+}
+
+// deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
+// with a FREE_SPACE condition. This combination is a foot-gun because keep-files
+// doesn't free disk space, so the condition would match indefinitely.
+func deleteUsesKeepFilesWithFreeSpace(conditions *models.ActionConditions) bool {
+	if conditions == nil || conditions.Delete == nil || !conditions.Delete.Enabled {
+		return false
+	}
+
+	// Check if delete condition uses FREE_SPACE field
+	if !automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldFreeSpace) {
+		return false
+	}
+
+	// Check if mode is keep-files (or empty, which defaults to keep-files)
+	mode := conditions.Delete.Mode
+	return mode == "" || mode == models.DeleteModeKeepFiles
 }
 
 func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
