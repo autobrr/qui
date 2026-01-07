@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { ThemeValidator } from "@/components/themes/ThemeValidator"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useDynamicFavicon } from "@/hooks/useDynamicFavicon"
@@ -40,7 +39,6 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <ThemeValidator />
         <RouterProvider router={router} />
         <Toaster />
       </TooltipProvider>
