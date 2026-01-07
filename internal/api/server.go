@@ -261,7 +261,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	corsMiddleware := cors.New(cors.Options{
 		AllowCredentials: true,
 		AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
 		AllowOriginFunc:  func(origin string) bool { return true },
 		MaxAge:           300,
 		Debug:            false,
