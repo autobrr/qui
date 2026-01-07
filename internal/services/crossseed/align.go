@@ -568,13 +568,21 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 	return stripped1 == stripped2
 }
 
-// hasContentFileSizeMismatch checks if the main content files (after applying ignore patterns)
-// have matching sizes between source and candidate. Returns true if there's a size mismatch,
-// indicating the files may be corrupted or from different releases.
+// hasContentFileSizeMismatch checks if files that exist in both source and candidate (matched
+// by normalized filename) have matching sizes. Returns true only if a file exists in both but
+// with different sizes, indicating possible corruption or a different release.
 //
-// This is a critical safety check: if source and candidate are supposedly the same release
-// but their content files have different sizes, proceeding with the cross-seed could corrupt
-// the existing good data. Scene releases should be byte-for-byte identical across trackers.
+// This uses matched-files-only logic: extra files in source (files with no matching name in
+// candidate) are NOT treated as mismatches. Such extras are handled downstream by the
+// piece-boundary safety check and recheck/auto-resume logic.
+//
+// Significance check: we verify that among source files that HAVE corresponding keys in
+// candidate, the largest one was successfully matched AND is at least 1MB. This ignores
+// truly "extra" source files (those with no candidate key) when assessing match quality,
+// and prevents tiny sidecars from being the sole basis for trusting a match.
+//
+// Safety fallback: when matches aren't significant (only tiny files matched, or no keys
+// matched at all), we compare the largest files in each set to catch obvious mismatches.
 //
 // The function also returns a list of mismatched files for logging purposes.
 func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) (bool, []string) {
@@ -598,23 +606,112 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, no
 		return false, nil
 	}
 
-	// Build size buckets for candidate files
-	candidateSizes := make(map[int64]int)
+	// Build a map of normalized key -> size for candidate files.
+	// For duplicate keys (rare), store all sizes to handle multisets.
+	type candidateInfo struct {
+		sizes []int64
+	}
+	candidateByKey := make(map[string]*candidateInfo)
 	for _, cf := range filteredCandidate {
-		candidateSizes[cf.Size]++
+		key := normalizeFileKey(cf.Name)
+		if key == "" {
+			continue
+		}
+		if info := candidateByKey[key]; info != nil {
+			info.sizes = append(info.sizes, cf.Size)
+		} else {
+			candidateByKey[key] = &candidateInfo{sizes: []int64{cf.Size}}
+		}
 	}
 
-	// Check if all source content files can be matched by size
+	// Check each source file: only flag mismatch if the same normalized key exists
+	// in candidate but with a different size.
+	// Track: largest matched file, and largest source file that has a key in candidate.
 	var mismatchedFiles []string
+	var largestMatched int64
+	var largestSourceWithKey int64
+
 	for _, sf := range filteredSource {
-		if count := candidateSizes[sf.Size]; count > 0 {
-			candidateSizes[sf.Size]--
-		} else {
+		sourceKey := normalizeFileKey(sf.Name)
+		if sourceKey == "" {
+			continue
+		}
+
+		info := candidateByKey[sourceKey]
+		if info == nil {
+			// No candidate file with this key - this is an "extra" file in source.
+			// Not a mismatch; downstream checks (piece-boundary, recheck) handle this.
+			continue
+		}
+
+		// Track the largest source file that has a corresponding key in candidate
+		if sf.Size > largestSourceWithKey {
+			largestSourceWithKey = sf.Size
+		}
+
+		// Check if any size matches
+		sizeMatched := false
+		for i, candSize := range info.sizes {
+			if candSize == sf.Size {
+				// Remove this size from available (for multiset correctness)
+				info.sizes = slices.Delete(info.sizes, i, i+1)
+				sizeMatched = true
+				if sf.Size > largestMatched {
+					largestMatched = sf.Size
+				}
+				break
+			}
+		}
+
+		if !sizeMatched {
+			// Same file key but different size - true mismatch
 			mismatchedFiles = append(mismatchedFiles, sf.Name)
 		}
 	}
 
-	return len(mismatchedFiles) > 0, mismatchedFiles
+	// If we have explicit mismatches (same key, different size), report them
+	if len(mismatchedFiles) > 0 {
+		return true, mismatchedFiles
+	}
+
+	// Check if we matched the source's main matchable content: the largest matched file
+	// should equal the largest source file that has a corresponding key in candidate.
+	// This ignores "extra" source files (files with no candidate key) when checking
+	// significance, so source torrents with large extras won't trigger false alarms.
+	//
+	// Additionally, require the matched content to be substantial (≥1MB) to avoid trusting
+	// matches based solely on tiny sidecars like .sfv files.
+	const minSubstantialSize int64 = 1 << 20 // 1MB
+	substantialMatch := largestMatched >= largestSourceWithKey &&
+		largestSourceWithKey > 0 &&
+		largestMatched >= minSubstantialSize
+	if substantialMatch {
+		return false, nil // Source's main matchable content was matched, no mismatch
+	}
+
+	// Fallback: either no source files had matching keys, or only tiny files (<1MB) matched.
+	// Compare largest files to catch obvious mismatches from different naming or releases.
+	var largestSource int64
+	var largestSourceName string
+	for _, sf := range filteredSource {
+		if sf.Size > largestSource {
+			largestSource = sf.Size
+			largestSourceName = sf.Name
+		}
+	}
+	var largestCandidate int64
+	for _, cf := range filteredCandidate {
+		if cf.Size > largestCandidate {
+			largestCandidate = cf.Size
+		}
+	}
+
+	// If largest files differ, treat as mismatch
+	if largestSource > 0 && largestCandidate > 0 && largestSource != largestCandidate {
+		return true, []string{largestSourceName}
+	}
+
+	return false, nil
 }
 
 // fileKeySize is a composite key for matching files by normalized name + size.
