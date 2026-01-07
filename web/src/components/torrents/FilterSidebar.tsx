@@ -771,14 +771,14 @@ const FilterSidebarComponent = ({
     const secondaryDomains = new Set<string>()
 
     for (const custom of trackerCustomizations ?? []) {
-      const domains = custom.domains
+      const domains = custom.domains.map((domain) => domain.toLowerCase()).filter(Boolean)
       if (domains.length === 0) continue
 
       for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].toLowerCase()
+        const domain = domains[i]
         domainToCustomization.set(domain, {
           displayName: custom.displayName,
-          domains: custom.domains,
+          domains,
           id: custom.id,
         })
         // Secondary domains (not the first one) should be hidden/merged
@@ -850,7 +850,7 @@ const FilterSidebarComponent = ({
     }
 
     // Sort by display name (case-insensitive) for consistent alphabetical ordering
-    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
+    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
 
     return processed
   }, [trackers, trackerCustomizationMaps])

@@ -35,7 +35,7 @@ import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { buildTrackerCustomizationLookup, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -476,7 +476,8 @@ const TrackerIcon = ({ title, fallback, src, size = "md", className }: TrackerIc
 }
 
 const getTrackerDisplayMeta = (tracker?: string) => {
-  if (!tracker) {
+  const host = extractTrackerHost(tracker)
+  if (!host) {
     return {
       host: "",
       fallback: "#",
@@ -484,18 +485,7 @@ const getTrackerDisplayMeta = (tracker?: string) => {
     }
   }
 
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-
-  let host = trimmed
-  try {
-    if (trimmed.includes("://")) {
-      const url = new URL(trimmed)
-      host = url.hostname
-    }
-  } catch {
-    // Keep host as trimmed value if URL parsing fails
-  }
+  const fallbackLetter = host.charAt(0).toUpperCase()
 
   return {
     host,
@@ -1580,7 +1570,9 @@ export function TorrentCardsMobile({
     }
 
     // Include cross-seed hashes if user opted to delete them
-    const crossSeedHashes = deleteCrossSeeds? crossSeedWarning.affectedTorrents.map(t => t.hash): []
+    const crossSeedHashes = deleteCrossSeeds
+      ? crossSeedWarning.affectedTorrents.map((t) => t.hash)
+      : []
     const hashesToDelete = [...hashes, ...crossSeedHashes]
 
     let visibleHashes: string[]

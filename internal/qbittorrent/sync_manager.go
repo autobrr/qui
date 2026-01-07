@@ -269,6 +269,9 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 // Call this when tracker customizations are created, updated, or deleted to ensure
 // sorting uses the latest custom display names.
 func (sm *SyncManager) InvalidateTrackerDisplayNameCache() {
+	if sm == nil || sm.trackerDisplayNameCache == nil {
+		return
+	}
 	sm.trackerDisplayNameCache.Delete("tracker_display_names")
 }
 
@@ -276,6 +279,10 @@ func (sm *SyncManager) InvalidateTrackerDisplayNameCache() {
 // The cache is refreshed every 60 seconds. Returns an empty map if no customizations are configured.
 func (sm *SyncManager) getTrackerDisplayNameMap() map[string]string {
 	const cacheKey = "tracker_display_names"
+
+	if sm == nil || sm.trackerDisplayNameCache == nil {
+		return make(map[string]string)
+	}
 
 	// Check cache first
 	if cached, found := sm.trackerDisplayNameCache.Get(cacheKey); found {

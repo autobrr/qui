@@ -125,7 +125,8 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
 })
 
 const getTrackerDisplayMeta = (tracker?: string) => {
-  if (!tracker) {
+  const host = extractTrackerHost(tracker)
+  if (!host) {
     return {
       host: "",
       fallback: "#",
@@ -133,18 +134,7 @@ const getTrackerDisplayMeta = (tracker?: string) => {
     }
   }
 
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-
-  let host = trimmed
-  try {
-    if (trimmed.includes("://")) {
-      const url = new URL(trimmed)
-      host = url.hostname
-    }
-  } catch {
-    // Keep host as trimmed value if URL parsing fails
-  }
+  const fallbackLetter = host.charAt(0).toUpperCase()
 
   return {
     host,
@@ -835,7 +825,7 @@ export const createColumns = (
       header: ({ table }) => {
         const trackerColumn = table.getColumn("tracker")
         const sortState = trackerColumn?.getIsSorted()
-        const Icon = sortState === "asc"? ArrowDownAZ: sortState === "desc"? ArrowDownZA: Globe
+        const Icon = sortState === "asc" ? ArrowDownAZ : sortState === "desc" ? ArrowDownZA : Globe
 
         return (
           <Tooltip>
@@ -893,7 +883,7 @@ export const createColumns = (
         const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
         const host = extractTrackerHost(tracker)
         // Resolve display name from customizations
-        const displayInfo = trackerCustomizationLookup? resolveTrackerDisplay(host, trackerCustomizationLookup): { displayName: host, primaryDomain: host, isCustomized: false }
+        const displayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : { displayName: host, primaryDomain: host, isCustomized: false }
 
         // Build tooltip content: custom name (if any), hostname, and full URL
         const tooltipParts: string[] = []
