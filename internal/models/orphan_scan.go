@@ -257,10 +257,17 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
+		return nil, err
+	}
 
+	return &run, nil
+}
+
+func finalizeRun(run *OrphanScanRun, scanPathsJSON sql.NullString, errorMessage sql.NullString, completedAt sql.NullTime) error {
 	if scanPathsJSON.Valid && scanPathsJSON.String != "" {
 		if err := json.Unmarshal([]byte(scanPathsJSON.String), &run.ScanPaths); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if run.ScanPaths == nil {
@@ -272,60 +279,48 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	if completedAt.Valid {
 		run.CompletedAt = &completedAt.Time
 	}
+	return nil
+}
 
-	return &run, nil
+func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, error) {
+	var runs []*OrphanScanRun
+	for rows.Next() {
+		var run OrphanScanRun
+		var scanPathsJSON sql.NullString
+		var errorMessage sql.NullString
+		var completedAt sql.NullTime
+
+		if err := rows.Scan(
+			&run.ID,
+			&run.InstanceID,
+			&run.Status,
+			&run.TriggeredBy,
+			&scanPathsJSON,
+			&run.FilesFound,
+			&run.FilesDeleted,
+			&run.FoldersDeleted,
+			&run.BytesReclaimed,
+			&run.Truncated,
+			&errorMessage,
+			&run.StartedAt,
+			&completedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
+			return nil, err
+		}
+
+		runs = append(runs, &run)
+	}
+	return runs, rows.Err()
 }
 
 // ListRuns lists recent runs for an instance.
 func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit int) ([]*OrphanScanRun, error) {
 	if limit <= 0 {
 		limit = 10
-	}
-
-	scanRunFromRows := func(rows *sql.Rows) ([]*OrphanScanRun, error) {
-		var runs []*OrphanScanRun
-		for rows.Next() {
-			var run OrphanScanRun
-			var scanPathsJSON sql.NullString
-			var errorMessage sql.NullString
-			var completedAt sql.NullTime
-
-			if err := rows.Scan(
-				&run.ID,
-				&run.InstanceID,
-				&run.Status,
-				&run.TriggeredBy,
-				&scanPathsJSON,
-				&run.FilesFound,
-				&run.FilesDeleted,
-				&run.FoldersDeleted,
-				&run.BytesReclaimed,
-				&run.Truncated,
-				&errorMessage,
-				&run.StartedAt,
-				&completedAt,
-			); err != nil {
-				return nil, err
-			}
-
-			if scanPathsJSON.Valid && scanPathsJSON.String != "" {
-				if err := json.Unmarshal([]byte(scanPathsJSON.String), &run.ScanPaths); err != nil {
-					return nil, err
-				}
-			}
-			if run.ScanPaths == nil {
-				run.ScanPaths = []string{}
-			}
-			if errorMessage.Valid {
-				run.ErrorMessage = errorMessage.String
-			}
-			if completedAt.Valid {
-				run.CompletedAt = &completedAt.Time
-			}
-
-			runs = append(runs, &run)
-		}
-		return runs, rows.Err()
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -342,7 +337,7 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 	}
 	defer rows.Close()
 
-	recentRuns, err := scanRunFromRows(rows)
+	recentRuns, err := s.scanRunsFromRows(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +357,7 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 	}
 	defer activeRows.Close()
 
-	activeRuns, err := scanRunFromRows(activeRows)
+	activeRuns, err := s.scanRunsFromRows(activeRows)
 	if err != nil {
 		return nil, err
 	}
