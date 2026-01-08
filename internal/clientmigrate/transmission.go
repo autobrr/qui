@@ -184,12 +184,12 @@ func (i *TransmissionImport) Migrate() error {
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
 			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s error: %q", fastResumeOutFile, err)
-			return err
+			continue
 		}
 
 		if err = CopyFile(match, torrentOutFile); err != nil {
 			log.Error().Err(err).Msgf("Could copy qBittorrent torrent file %s error %q", torrentOutFile, err)
-			return err
+			continue
 		}
 
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)

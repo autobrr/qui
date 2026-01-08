@@ -39,6 +39,8 @@ func New(opts Options) Migrater {
 		m.imp = NewRTorrentImporter(m.opts)
 	case "transmission":
 		m.imp = NewTransmissionImporter(m.opts)
+	default:
+		log.Fatal().Str("source", m.opts.Source).Msg("unsupported source client")
 	}
 
 	return m

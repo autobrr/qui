@@ -118,7 +118,7 @@ func (i *RTorrentImport) Migrate() error {
 			FileFormat:                "libtorrent resume file",
 			FileVersion:               1,
 			FilePriority:              []int{},
-			FinishedTime:              int64(time.Since(time.Unix(rtFile.TimestampFinished, 0)).Minutes()),
+			FinishedTime:              int64(time.Since(time.Unix(rtFile.TimestampFinished, 0)).Seconds()),
 			LastDownload:              0,
 			LastSeenComplete:          rtFile.TimestampFinished,
 			LastUpload:                0,
@@ -213,9 +213,13 @@ func (i *RTorrentImport) Migrate() error {
 	return nil
 }
 
-// Takes id.rtorrent custom.seedingtime and converts to int64
+// Takes rtorrent custom.seedingtime (UNIX timestamp of seeding start) and converts to elapsed seconds
 func getActiveTime(t string) int64 {
-	return int64(time.Since(time.Unix(strToIntClean(t), 0)).Seconds())
+	startTime := strToIntClean(t)
+	if startTime == 0 {
+		return 0
+	}
+	return time.Now().Unix() - startTime
 }
 
 // convertTrackers from rtorrent file spec to qBittorrent fastresume
