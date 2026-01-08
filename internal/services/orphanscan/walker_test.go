@@ -119,7 +119,7 @@ func TestWalkScanRoot_UsesMarkerDirWhenMarkerIsDirectlyUnderScanRoot(t *testing.
 	}
 }
 
-func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenParentHasOtherContent(t *testing.T) {
+func TestWalkScanRoot_DiscUnitUsesParentWhenSiblingContentNotInUse(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -142,7 +142,8 @@ func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenParentHasOtherContent(t *t
 		_ = os.Chtimes(p, old, old)
 	}
 
-	// Extra sibling content in parent folder means we should not delete the parent as a unit.
+	// Extra sibling content that is NOT referenced by any torrent should not prevent deleting
+	// the parent as a single unit.
 	extra := filepath.Join(movieDir, "readme.txt")
 	if err := os.WriteFile(extra, []byte("hello"), 0o600); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -158,20 +159,59 @@ func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenParentHasOtherContent(t *t
 	if truncated {
 		t.Fatalf("expected not truncated")
 	}
-	if len(orphans) != 2 {
-		t.Fatalf("expected 2 orphan units (marker dir + extra file), got %d", len(orphans))
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit (parent folder), got %d", len(orphans))
+	}
+	if filepath.Clean(orphans[0].Path) != filepath.Clean(movieDir) {
+		t.Fatalf("expected orphan unit path %q, got %q", movieDir, orphans[0].Path)
+	}
+}
+
+func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenSiblingContentInUse(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
 	}
 
-	// Confirm the disc unit is the marker directory, not the movieDir.
-	expectedDiscUnit := filepath.Clean(bdmvDir)
-	foundDiscUnit := false
-	for _, o := range orphans {
-		if filepath.Clean(o.Path) == expectedDiscUnit {
-			foundDiscUnit = true
-			break
+	// Disc files.
+	for _, p := range []string{
+		filepath.Join(bdmvDir, "index.bdmv"),
+		filepath.Join(streamDir, "00000.m2ts"),
+	} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
 		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
 	}
-	if !foundDiscUnit {
-		t.Fatalf("expected disc unit %q in orphans, got %+v", expectedDiscUnit, orphans)
+
+	// Sibling content exists and is referenced by a torrent => unsafe to delete parent.
+	extra := filepath.Join(movieDir, "readme.txt")
+	if err := os.WriteFile(extra, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(extra, old, old)
+
+	tfm := NewTorrentFileMap()
+	tfm.Add(normalizePath(extra))
+
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit (marker dir), got %d", len(orphans))
+	}
+	if filepath.Clean(orphans[0].Path) != filepath.Clean(bdmvDir) {
+		t.Fatalf("expected orphan unit path %q, got %q", bdmvDir, orphans[0].Path)
 	}
 }

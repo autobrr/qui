@@ -13,6 +13,7 @@ import (
 // TorrentFileMap is a thread-safe set of file paths belonging to torrents.
 type TorrentFileMap struct {
 	paths map[string]struct{}
+	dirs  map[string]struct{}
 	mu    sync.RWMutex
 }
 
@@ -20,13 +21,27 @@ type TorrentFileMap struct {
 func NewTorrentFileMap() *TorrentFileMap {
 	return &TorrentFileMap{
 		paths: make(map[string]struct{}),
+		dirs:  make(map[string]struct{}),
 	}
 }
 
 // Add adds a normalized path to the map.
 func (m *TorrentFileMap) Add(path string) {
+	n := normalizePath(path)
+	// Track the file itself.
 	m.mu.Lock()
-	m.paths[path] = struct{}{}
+	m.paths[n] = struct{}{}
+	// Track all ancestor directories so we can quickly answer "is any torrent file under this dir?".
+	// This keeps lookup O(1) and avoids expensive prefix scans.
+	dir := filepath.Dir(n)
+	for dir != "." && dir != string(filepath.Separator) {
+		m.dirs[dir] = struct{}{}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
 	m.mu.Unlock()
 }
 
@@ -34,6 +49,15 @@ func (m *TorrentFileMap) Add(path string) {
 func (m *TorrentFileMap) Has(path string) bool {
 	m.mu.RLock()
 	_, ok := m.paths[path]
+	m.mu.RUnlock()
+	return ok
+}
+
+// HasAnyInDir reports whether at least one torrent file exists at or below dirPath.
+// The input must be normalized with normalizePath.
+func (m *TorrentFileMap) HasAnyInDir(dirPath string) bool {
+	m.mu.RLock()
+	_, ok := m.dirs[dirPath]
 	m.mu.RUnlock()
 	return ok
 }

@@ -44,6 +44,8 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 	// Cache to avoid re-reading unit directories for every file in a disc layout.
 	// Keyed by "<candidateParentAbs>|<marker>" and stores the chosen unit path.
 	discUnitCache := make(map[string]string)
+	// Tracks disc unit paths (directories) so we can suppress other orphan units contained within.
+	discUnitPaths := make(map[string]struct{})
 
 	truncated := false
 
@@ -85,7 +87,7 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 		}
 
 		// Determine whether this file should be grouped into a disc-layout orphan unit.
-		unitPath, isDiscUnit := discOrphanUnit(root, path, discUnitCache)
+		unitPath, isDiscUnit := discOrphanUnitWithContext(root, path, tfm, discUnitCache)
 
 		// If in torrent file map, skip. For disc units, mark the unit as in-use to prevent
 		// unsafe partial deletes (disc folder would contain a live torrent file).
@@ -112,6 +114,7 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 			if _, inUse := discUnitsInUse[unitPath]; inUse {
 				return nil
 			}
+			discUnitPaths[unitPath] = struct{}{}
 		}
 
 		if unitFilter != nil && !unitFilter(unitPath, isDiscUnit) {
@@ -142,6 +145,21 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 	})
 
 	orphans := make([]OrphanFile, 0, len(orphanUnits))
+	// Suppress any orphan units that are fully contained within a disc unit directory.
+	// This keeps previews clean and avoids redundant deletes (e.g., sibling files next to BDMV).
+	if len(discUnitPaths) > 0 {
+		for unit := range orphanUnits {
+			for discUnit := range discUnitPaths {
+				if unit == discUnit {
+					continue
+				}
+				if isPathUnder(unit, discUnit) {
+					delete(orphanUnits, unit)
+					break
+				}
+			}
+		}
+	}
 	for _, o := range orphanUnits {
 		orphans = append(orphans, *o)
 	}
@@ -158,6 +176,15 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 //   - If the marker is directly under the scan root, the unit becomes the marker directory itself
 //     (to avoid attempting to delete the scan root).
 func discOrphanUnit(scanRoot, filePath string, cache map[string]string) (unitPath string, ok bool) {
+	// Backwards-compatible wrapper (used only by local diagnostic code).
+	return discOrphanUnitWithContext(scanRoot, filePath, nil, cache)
+}
+
+// discOrphanUnitWithContext detects whether a file path belongs to a disc-layout folder.
+// If so, it returns the deletion unit path (directory) that should represent the disc.
+//
+// Note: sibling orphan files are suppressed at the end of the scan if a parent disc unit is chosen.
+func discOrphanUnitWithContext(scanRoot, filePath string, tfm *TorrentFileMap, unitCache map[string]string) (unitPath string, ok bool) {
 	root := filepath.Clean(scanRoot)
 	path := filepath.Clean(filePath)
 
@@ -219,29 +246,44 @@ func discOrphanUnit(scanRoot, filePath string, cache map[string]string) (unitPat
 	}
 
 	// If the marker isn't directly under scan root, prefer deleting the parent folder
-	// ONLY when it contains nothing besides disc-structure items. Otherwise, fall back
-	// to deleting just the marker directory (BDMV/VIDEO_TS) so we don't remove unrelated
-	// content that happens to live alongside the disc layout.
+	// when it's safe to do so. "Safe" here means: no sibling content that is referenced
+	// by any torrent file. This allows collapsing disc roots that contain extra filesystem
+	// cruft that isn't linked to any torrent.
 	if markerIndex > 0 {
-		key := strings.ToUpper(candidateAbs) + "|" + marker
-		if cache != nil {
-			if v, ok := cache[key]; ok {
+		key := normalizePath(candidateAbs) + "|" + marker
+		if unitCache != nil {
+			if v, ok := unitCache[key]; ok {
 				return v, true
 			}
 		}
 
-		preferParent := discParentIsPureDiscRoot(candidateAbs, marker)
+		preferParent := discParentIsSafeDiscRoot(candidateAbs, marker, tfm)
 		chosen := markerAbs
 		if preferParent {
 			chosen = candidateAbs
 		}
-		if cache != nil {
-			cache[key] = chosen
+		if unitCache != nil {
+			unitCache[key] = chosen
 		}
 		return chosen, true
 	}
 
 	return markerAbs, true
+}
+
+func isPathUnder(childPath, parentPath string) bool {
+	child := normalizePath(childPath)
+	parent := normalizePath(parentPath)
+	if child == parent {
+		return false
+	}
+	if !strings.HasPrefix(child, parent) {
+		return false
+	}
+	if len(child) == len(parent) {
+		return false
+	}
+	return child[len(parent)] == filepath.Separator
 }
 
 func discParentIsPureDiscRoot(parentAbs string, marker string) bool {
@@ -281,6 +323,61 @@ func discParentIsPureDiscRoot(parentAbs string, marker string) bool {
 			continue
 		}
 		return false
+	}
+
+	return true
+}
+
+func discParentIsSafeDiscRoot(parentAbs string, marker string, tfm *TorrentFileMap) bool {
+	// If we don't have a torrent map, retain the stricter "pure disc root" behavior.
+	if tfm == nil {
+		return discParentIsPureDiscRoot(parentAbs, marker)
+	}
+
+	entries, err := os.ReadDir(parentAbs)
+	if err != nil {
+		// If we can't confidently evaluate contents, don't risk deleting the parent folder.
+		return false
+	}
+
+	allowedDirs := map[string]struct{}{}
+	switch strings.ToUpper(marker) {
+	case "BDMV":
+		allowedDirs["BDMV"] = struct{}{}
+		allowedDirs["CERTIFICATE"] = struct{}{}
+	case "VIDEO_TS":
+		allowedDirs["VIDEO_TS"] = struct{}{}
+		allowedDirs["AUDIO_TS"] = struct{}{}
+	default:
+		allowedDirs[strings.ToUpper(marker)] = struct{}{}
+	}
+
+	allowedFiles := map[string]struct{}{
+		"DESKTOP.INI": {},
+		"THUMBS.DB":   {},
+		".DS_STORE":   {},
+	}
+
+	for _, e := range entries {
+		nameUpper := strings.ToUpper(e.Name())
+		full := filepath.Join(parentAbs, e.Name())
+		if e.IsDir() {
+			if _, ok := allowedDirs[nameUpper]; ok {
+				continue
+			}
+			// Any torrent file anywhere under this sibling dir makes it unsafe to delete the parent.
+			if tfm.HasAnyInDir(normalizePath(full)) {
+				return false
+			}
+			continue
+		}
+		if _, ok := allowedFiles[nameUpper]; ok {
+			continue
+		}
+		// Any torrent file that is this sibling file makes it unsafe to delete the parent.
+		if tfm.Has(normalizePath(full)) {
+			return false
+		}
 	}
 
 	return true
