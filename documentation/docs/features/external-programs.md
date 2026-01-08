@@ -58,6 +58,7 @@ Arguments are parsed with shell-style quoting and each placeholder is replaced w
 | `{state}` | qBittorrent torrent state string |
 | `{size}` | Size in bytes |
 | `{progress}` | Progress value between 0 and 1 rounded to two decimal places |
+| `{comment}` | Torrent comment |
 
 **Example arguments:**
 

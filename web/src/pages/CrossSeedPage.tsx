@@ -26,6 +26,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -108,7 +109,7 @@ interface GlobalCrossSeedSettings {
 }
 
 // Category mode type for type-safe radio group
-type CategoryMode = "suffix" | "indexer" | "custom"
+type CategoryMode = "reuse" | "suffix" | "indexer" | "custom"
 
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
@@ -294,6 +295,7 @@ function HardlinkModeSettings() {
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+    fallbackToRegularMode: boolean
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
@@ -317,6 +319,7 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
 
@@ -382,6 +385,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
       onSuccess: () => {
@@ -550,6 +554,24 @@ function HardlinkModeSettings() {
                                   <SelectItem value="by-instance">By Instance</SelectItem>
                                 </SelectContent>
                               </Select>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`fallback-${instance.id}`}
+                                checked={form.fallbackToRegularMode}
+                                onCheckedChange={(checked) =>
+                                  handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
+                                }
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                  Fallback to regular mode on error
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode using existing files.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </>
@@ -781,17 +803,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   useEffect(() => {
     if (settings && !globalSettingsInitialized) {
-      // If all three category modes are false, default to suffix mode
-      // This handles legacy databases where none were explicitly set
-      const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
-      const useCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+      // Normalize category flags: ensure exactly one mode is active (priority: custom > indexer > suffix > reuse)
+      const useCustomCategory = settings.useCustomCategory ?? false
+      const useCategoryFromIndexer = !useCustomCategory && (settings.useCategoryFromIndexer ?? false)
+      const useCrossCategorySuffix = !useCustomCategory && !useCategoryFromIndexer && (settings.useCrossCategorySuffix ?? true)
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
+        useCategoryFromIndexer,
         useCrossCategorySuffix,
-        useCustomCategory: settings.useCustomCategory ?? false,
+        useCustomCategory,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         // Source-specific tagging
@@ -868,18 +890,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    // If all three category modes are false, default to suffix mode
-    const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
-    const defaultCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+    // Normalize category flags for fallback path (same priority as init: custom > indexer > suffix > reuse)
+    const fallbackCustom = settings.useCustomCategory ?? false
+    const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
+    const fallbackSuffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategorySuffix ?? true)
 
     const globalSource = globalSettingsInitialized
       ? globalSettings
       : {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer,
-        useCrossCategorySuffix: defaultCrossCategorySuffix,
-        useCustomCategory: settings.useCustomCategory ?? false,
+        useCategoryFromIndexer: fallbackIndexer,
+        useCrossCategorySuffix: fallbackSuffix,
+        useCustomCategory: fallbackCustom,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -1023,6 +1046,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
+    // Clear prior validation errors
+    setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+
+    // Validate custom category mode has a category specified
+    if (globalSettings.useCustomCategory && !globalSettings.customCategory.trim()) {
+      setValidationErrors(prev => ({ ...prev, customCategory: "Custom category mode requires a category name" }))
+      return
+    }
+
     const payload = buildGlobalPatch()
     if (!payload) return
 
@@ -1205,7 +1237,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const getCategoryMode = (): CategoryMode => {
     if (globalSettings.useCustomCategory) return "custom"
     if (globalSettings.useCategoryFromIndexer) return "indexer"
-    return "suffix"
+    if (globalSettings.useCrossCategorySuffix) return "suffix"
+    return "reuse"
   }
 
   // Helper to set category mode (updates all three boolean flags)
@@ -2328,6 +2361,25 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   className="space-y-3"
                 >
                   <div className="flex items-start gap-3">
+                    <RadioGroupItem value="reuse" id="category-reuse" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-reuse" className="font-medium cursor-pointer">Reuse matched torrent category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Reuse category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Cross-seeds use the exact same category as the matched torrent. If the matched torrent uses AutoTMM, cross-seeds will too; otherwise the save path is set to match the original.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keep the matched torrent's category unchanged (no .cross suffix).</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
                     <RadioGroupItem value="suffix" id="category-suffix" className="mt-0.5" />
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
@@ -2383,15 +2435,26 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       </div>
                       <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
                       {globalSettings.useCustomCategory && (
-                        <MultiSelect
-                          options={customCategorySelectOptions}
-                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
-                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
-                          placeholder="Select or type a category..."
-                          className="mt-2 max-w-xs"
-                          creatable
-                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
-                        />
+                        <>
+                          <MultiSelect
+                            options={customCategorySelectOptions}
+                            selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                            onChange={values => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                            placeholder="Select or type a category..."
+                            className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
+                            creatable
+                            onCreateOption={value => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: value }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                          />
+                          {validationErrors.customCategory && (
+                            <p className="text-sm text-destructive">{validationErrors.customCategory}</p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

@@ -760,6 +760,12 @@ paths:
                   type: string
                   enum: [flat, by-tracker, by-instance]
                   description: Directory organization preset for hardlink mode.
+                useReflinks:
+                  type: boolean
+                  description: Enable reflink (copy-on-write) mode for cross-seed operations. Mutually exclusive with hardlink mode.
+                fallbackToRegularMode:
+                  type: boolean
+                  description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
       responses:
         '201':
           description: Instance created
@@ -853,6 +859,12 @@ paths:
                   type: string
                   enum: [flat, by-tracker, by-instance]
                   description: Directory organization preset for hardlink mode.
+                useReflinks:
+                  type: boolean
+                  description: Enable reflink (copy-on-write) mode for cross-seed operations. Mutually exclusive with hardlink mode.
+                fallbackToRegularMode:
+                  type: boolean
+                  description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
       responses:
         '200':
           description: Instance updated
@@ -3169,6 +3181,13 @@ paths:
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
+        - name: strict
+          in: query
+          description: When true, fail if file overlap checks cannot complete (use for delete dialogs to avoid false negatives)
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: List of matching torrents
@@ -4035,6 +4054,12 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink mode.
+        useReflinks:
+          type: boolean
+          description: When true, cross-seed operations use reflink (copy-on-write) mode for this instance. Mutually exclusive with hardlink mode.
+        fallbackToRegularMode:
+          type: boolean
+          description: When true, cross-seed falls back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
         sortOrder:
           type: integer
           description: Display order preference for the instance.
