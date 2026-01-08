@@ -1091,11 +1091,12 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     if (domainsToMerge.length === 0) return
 
     // Merge into selected group
+    const mergedDomains = [...new Set([...group.domains, ...domainsToMerge])]
     updateCustomization.mutate({
       id: targetGroupId,
       data: {
         displayName: group.displayName,
-        domains: [...group.domains, ...domainsToMerge],
+        domains: mergedDomains,
         includedInStats: group.includedInStats ?? [],
       }
     }, {
