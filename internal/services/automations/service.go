@@ -1101,13 +1101,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 						}
 						hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, other)
 						if err != nil {
-							log.Warn().Err(err).Str("hash", hash).Str("otherHash", other.Hash).
+							log.Warn().Err(err).
+								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
+								Str("hash", hash).Str("otherHash", other.Hash).
 								Msg("automations: skipping entire group due to verification error")
 							skipGroup = true
 							break
 						}
 						if !hasOverlap {
-							log.Warn().Str("hash", hash).Str("otherHash", other.Hash).
+							log.Warn().
+								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
+								Str("hash", hash).Str("otherHash", other.Hash).
 								Msg("automations: skipping entire group due to low file overlap")
 							skipGroup = true
 							break
@@ -1972,16 +1976,26 @@ type fileOverlapKey struct {
 
 // minFileOverlapPercent is the minimum percentage of file overlap required
 // to consider two torrents as sharing the same files when ContentPath is ambiguous.
+// 90% tolerates small differences (extra NFO/sample/metadata files) while preventing
+// accidental grouping of unrelated torrents that happen to share the same SavePath.
 const minFileOverlapPercent = 90
 
 // verifyFileOverlap checks if two torrents share at least minFileOverlapPercent of their files.
 // Returns true if verification passes, false if not enough overlap or verification failed.
 // This is used as a safety check when ContentPath matching is ambiguous.
 func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent1, torrent2 qbt.Torrent) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
 	// Get files for both torrents
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrent1.Hash, torrent2.Hash})
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch files: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
 
 	files1, ok1 := filesByHash[torrent1.Hash]
