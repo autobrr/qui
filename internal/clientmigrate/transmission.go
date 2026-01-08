@@ -62,7 +62,7 @@ func (i *TransmissionImport) Migrate() error {
 
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
-			log.Error().Err(err).Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
+			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
 			continue
 		}
 
@@ -91,10 +91,8 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
-		log.Info().Msgf("resume file, %v", resumeFile)
-
 		newFastResume := qbittorrent.Fastresume{
-			ActiveTime:                int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Minutes()),
+			ActiveTime:                int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Seconds()),
 			AddedTime:                 resumeFile.AddedDate,
 			Allocation:                "sparse",
 			ApplyIpFilter:             1,
@@ -107,7 +105,7 @@ func (i *TransmissionImport) Migrate() error {
 			FileFormat:                "libtorrent resume file",
 			FileVersion:               1,
 			FilePriority:              []int{},
-			FinishedTime:              int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Minutes()),
+			FinishedTime:              int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Seconds()),
 			LastDownload:              0,
 			LastSeenComplete:          resumeFile.DoneDate,
 			LastUpload:                0,
@@ -172,7 +170,7 @@ func (i *TransmissionImport) Migrate() error {
 		}
 
 		// handle trackers
-		newFastResume.Trackers = file.AnnounceList
+		newFastResume.Trackers = file.UpvertedAnnounceList()
 
 		newFastResume.ConvertFilePriority(len(metaInfo.Files))
 
