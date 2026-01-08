@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -332,6 +333,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			GracePeriodMinutes:  defaults.GracePeriodMinutes,
 			IgnorePaths:         defaults.IgnorePaths,
 			ScanIntervalHours:   defaults.ScanIntervalHours,
+			PreviewSort:         defaults.PreviewSort,
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
@@ -377,12 +379,12 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
-	// Walk each scan root and collect orphans
+	// Walk each scan root and collect orphans.
+	// Note: we intentionally do NOT enforce MaxFilesPerRun during the walk.
+	// We want the max-files cap to be applied *after sorting* so the preview
+	// and truncation reflect the user's configured ordering.
 	var allOrphans []OrphanFile
 	var walkErrors []string
-	truncated := false
-	remaining := settings.MaxFilesPerRun
-	var bytesFound int64
 
 	for _, root := range scanRoots {
 		if ctx.Err() != nil {
@@ -390,7 +392,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, wasTruncated, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, remaining)
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, runID)
@@ -402,15 +404,73 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 
 		allOrphans = append(allOrphans, orphans...)
-		for _, o := range orphans {
-			bytesFound += o.Size
-		}
-		remaining -= len(orphans)
+	}
 
-		if wasTruncated || remaining <= 0 {
-			truncated = true
-			break
+	// Deduplicate across scan roots.
+	// Some instances can produce overlapping scan roots (e.g. /data and /data/subdir),
+	// which would otherwise result in the same absolute path appearing multiple times.
+	if len(allOrphans) > 1 {
+		byPath := make(map[string]OrphanFile, len(allOrphans))
+		for _, o := range allOrphans {
+			key := normalizePath(o.Path)
+			if existing, ok := byPath[key]; ok {
+				if o.Size > existing.Size {
+					existing.Size = o.Size
+				}
+				if o.ModifiedAt.After(existing.ModifiedAt) {
+					existing.ModifiedAt = o.ModifiedAt
+				}
+				byPath[key] = existing
+				continue
+			}
+			byPath[key] = o
 		}
+
+		allOrphans = allOrphans[:0]
+		for _, o := range byPath {
+			allOrphans = append(allOrphans, o)
+		}
+	}
+
+	previewSort := strings.TrimSpace(settings.PreviewSort)
+	if previewSort == "" {
+		previewSort = "size_desc"
+	}
+
+	sort.Slice(allOrphans, func(i, j int) bool {
+		a, b := allOrphans[i], allOrphans[j]
+
+		switch previewSort {
+		case "directory_size_desc":
+			da := strings.ToLower(filepath.Clean(filepath.Dir(a.Path)))
+			db := strings.ToLower(filepath.Clean(filepath.Dir(b.Path)))
+			if da != db {
+				return da < db
+			}
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
+		default: // "size_desc"
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
+		}
+	})
+
+	maxFiles := settings.MaxFilesPerRun
+	if maxFiles <= 0 {
+		maxFiles = DefaultSettings().MaxFilesPerRun
+	}
+	truncated := maxFiles > 0 && len(allOrphans) > maxFiles
+	if truncated {
+		allOrphans = allOrphans[:maxFiles]
+	}
+
+	var bytesFound int64
+	for _, o := range allOrphans {
+		bytesFound += o.Size
 	}
 
 	// If no orphans found but we had walk errors, all roots likely failed

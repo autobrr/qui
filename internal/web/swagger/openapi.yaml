@@ -5241,6 +5241,10 @@ components:
         scanIntervalHours:
           type: integer
           description: Hours between scheduled scans
+        previewSort:
+          type: string
+          description: Sorting applied to the orphan preview list
+          enum: ["size_desc", "directory_size_desc"]
         maxFilesPerRun:
           type: integer
           description: Maximum orphan files to record per run (prevents DB bloat)
@@ -5266,6 +5270,9 @@ components:
         scanIntervalHours:
           type: integer
           minimum: 1
+        previewSort:
+          type: string
+          enum: ["size_desc", "directory_size_desc"]
         maxFilesPerRun:
           type: integer
           minimum: 1

@@ -119,8 +119,9 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 		}
 
 		// Cap check is on unique orphan units, not raw file count.
+		// When maxFiles <= 0, the scan is unbounded and truncation is disabled.
 		if _, exists := orphanUnits[unitPath]; !exists {
-			if len(orphanUnits) >= maxFiles {
+			if maxFiles > 0 && len(orphanUnits) >= maxFiles {
 				truncated = true
 				return fs.SkipAll
 			}

@@ -59,6 +59,7 @@ type OrphanScanSettingsPayload struct {
 	GracePeriodMinutes  *int     `json:"gracePeriodMinutes"`
 	IgnorePaths         []string `json:"ignorePaths"`
 	ScanIntervalHours   *int     `json:"scanIntervalHours"`
+	PreviewSort         *string  `json:"previewSort"`
 	MaxFilesPerRun      *int     `json:"maxFilesPerRun"`
 	AutoCleanupEnabled  *bool    `json:"autoCleanupEnabled"`
 	AutoCleanupMaxFiles *int     `json:"autoCleanupMaxFiles"`
@@ -91,6 +92,7 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 			GracePeriodMinutes:  defaults.GracePeriodMinutes,
 			IgnorePaths:         defaults.IgnorePaths,
 			ScanIntervalHours:   defaults.ScanIntervalHours,
+			PreviewSort:         defaults.PreviewSort,
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
@@ -134,6 +136,7 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			GracePeriodMinutes:  defaults.GracePeriodMinutes,
 			IgnorePaths:         defaults.IgnorePaths,
 			ScanIntervalHours:   defaults.ScanIntervalHours,
+			PreviewSort:         defaults.PreviewSort,
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
@@ -160,6 +163,18 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		settings.ScanIntervalHours = *payload.ScanIntervalHours
+	}
+	if payload.PreviewSort != nil {
+		// Empty is treated as default.
+		if *payload.PreviewSort != "" && *payload.PreviewSort != "size_desc" && *payload.PreviewSort != "directory_size_desc" {
+			RespondError(w, http.StatusBadRequest, "Invalid preview sort")
+			return
+		}
+		if *payload.PreviewSort == "" {
+			settings.PreviewSort = "size_desc"
+		} else {
+			settings.PreviewSort = *payload.PreviewSort
+		}
 	}
 	if payload.MaxFilesPerRun != nil {
 		if *payload.MaxFilesPerRun < 1 {
@@ -323,7 +338,12 @@ func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	files, err := h.store.ListFiles(r.Context(), runID, limit, offset)
+	previewSort := "size_desc"
+	if settings, sErr := h.store.GetSettings(r.Context(), instanceID); sErr == nil && settings != nil && settings.PreviewSort != "" {
+		previewSort = settings.PreviewSort
+	}
+
+	files, err := h.store.ListFiles(r.Context(), runID, limit, offset, previewSort)
 	if err != nil {
 		log.Error().Err(err).Int64("runID", runID).Msg("orphanscan: failed to list files")
 		RespondError(w, http.StatusInternalServerError, "Failed to get files")

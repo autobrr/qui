@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -23,6 +25,7 @@ type OrphanScanSettings struct {
 	GracePeriodMinutes  int       `json:"gracePeriodMinutes"`
 	IgnorePaths         []string  `json:"ignorePaths"`
 	ScanIntervalHours   int       `json:"scanIntervalHours"`
+	PreviewSort         string    `json:"previewSort"`
 	MaxFilesPerRun      int       `json:"maxFilesPerRun"`
 	AutoCleanupEnabled  bool      `json:"autoCleanupEnabled"`
 	AutoCleanupMaxFiles int       `json:"autoCleanupMaxFiles"`
@@ -73,7 +76,7 @@ func NewOrphanScanStore(db dbinterface.Querier) *OrphanScanStore {
 func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*OrphanScanSettings, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, enabled, grace_period_minutes, ignore_paths,
-		       scan_interval_hours, max_files_per_run, auto_cleanup_enabled,
+		       scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled,
 		       auto_cleanup_max_files, created_at, updated_at
 		FROM orphan_scan_settings
 		WHERE instance_id = ?
@@ -89,6 +92,7 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 		&settings.GracePeriodMinutes,
 		&ignorePathsJSON,
 		&settings.ScanIntervalHours,
+		&settings.PreviewSort,
 		&settings.MaxFilesPerRun,
 		&settings.AutoCleanupEnabled,
 		&settings.AutoCleanupMaxFiles,
@@ -127,19 +131,20 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO orphan_scan_settings
-			(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours,
-			 max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours,
+				 preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id) DO UPDATE SET
 			enabled = excluded.enabled,
 			grace_period_minutes = excluded.grace_period_minutes,
 			ignore_paths = excluded.ignore_paths,
 			scan_interval_hours = excluded.scan_interval_hours,
+				preview_sort = excluded.preview_sort,
 			max_files_per_run = excluded.max_files_per_run,
 			auto_cleanup_enabled = excluded.auto_cleanup_enabled,
 			auto_cleanup_max_files = excluded.auto_cleanup_max_files
 	`, settings.InstanceID, boolToInt(settings.Enabled), settings.GracePeriodMinutes,
-		string(ignorePathsJSON), settings.ScanIntervalHours, settings.MaxFilesPerRun,
+		string(ignorePathsJSON), settings.ScanIntervalHours, settings.PreviewSort, settings.MaxFilesPerRun,
 		boolToInt(settings.AutoCleanupEnabled), settings.AutoCleanupMaxFiles)
 	if err != nil {
 		return nil, err
@@ -593,48 +598,129 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 }
 
 // ListFiles lists orphan files for a run with pagination.
-func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
-		FROM orphan_scan_files
-		WHERE run_id = ?
-		ORDER BY file_size DESC
-		LIMIT ? OFFSET ?
-	`, runID, limit, offset)
-	if err != nil {
-		return nil, err
+
+func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, offset int, sortMode string) ([]*OrphanScanFile, error) {
+	// Default ordering matches historical behavior.
+	if sortMode == "" {
+		sortMode = "size_desc"
 	}
-	defer rows.Close()
 
-	var files []*OrphanScanFile
-	for rows.Next() {
-		var f OrphanScanFile
-		var modifiedAt sql.NullTime
-		var errorMessage sql.NullString
+	switch sortMode {
+	case "directory_size_desc":
+		// MaxFilesPerRun caps how many records exist for a run, so loading everything here
+		// stays bounded while letting us sort by derived fields (directory).
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+			FROM orphan_scan_files
+			WHERE run_id = ?
+		`, runID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
 
-		if err := rows.Scan(
-			&f.ID,
-			&f.RunID,
-			&f.FilePath,
-			&f.FileSize,
-			&modifiedAt,
-			&f.Status,
-			&errorMessage,
-		); err != nil {
+		var all []*OrphanScanFile
+		for rows.Next() {
+			var f OrphanScanFile
+			var modifiedAt sql.NullTime
+			var errorMessage sql.NullString
+
+			if err := rows.Scan(
+				&f.ID,
+				&f.RunID,
+				&f.FilePath,
+				&f.FileSize,
+				&modifiedAt,
+				&f.Status,
+				&errorMessage,
+			); err != nil {
+				return nil, err
+			}
+
+			if modifiedAt.Valid {
+				f.ModifiedAt = &modifiedAt.Time
+			}
+			if errorMessage.Valid {
+				f.ErrorMessage = errorMessage.String
+			}
+
+			all = append(all, &f)
+		}
+		if err := rows.Err(); err != nil {
 			return nil, err
 		}
 
-		if modifiedAt.Valid {
-			f.ModifiedAt = &modifiedAt.Time
+		sort.Slice(all, func(i, j int) bool {
+			a, b := all[i], all[j]
+			da := strings.ToLower(filepath.Clean(filepath.Dir(a.FilePath)))
+			db := strings.ToLower(filepath.Clean(filepath.Dir(b.FilePath)))
+			if da != db {
+				return da < db
+			}
+			if a.FileSize != b.FileSize {
+				return a.FileSize > b.FileSize
+			}
+			return strings.ToLower(a.FilePath) < strings.ToLower(b.FilePath)
+		})
+
+		if offset < 0 {
+			offset = 0
 		}
-		if errorMessage.Valid {
-			f.ErrorMessage = errorMessage.String
+		if limit <= 0 {
+			limit = 100
+		}
+		if offset >= len(all) {
+			return []*OrphanScanFile{}, nil
+		}
+		end := offset + limit
+		if end > len(all) {
+			end = len(all)
+		}
+		return all[offset:end], nil
+
+	default: // "size_desc"
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+			FROM orphan_scan_files
+			WHERE run_id = ?
+			ORDER BY file_size DESC
+			LIMIT ? OFFSET ?
+		`, runID, limit, offset)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var files []*OrphanScanFile
+		for rows.Next() {
+			var f OrphanScanFile
+			var modifiedAt sql.NullTime
+			var errorMessage sql.NullString
+
+			if err := rows.Scan(
+				&f.ID,
+				&f.RunID,
+				&f.FilePath,
+				&f.FileSize,
+				&modifiedAt,
+				&f.Status,
+				&errorMessage,
+			); err != nil {
+				return nil, err
+			}
+
+			if modifiedAt.Valid {
+				f.ModifiedAt = &modifiedAt.Time
+			}
+			if errorMessage.Valid {
+				f.ErrorMessage = errorMessage.String
+			}
+
+			files = append(files, &f)
 		}
 
-		files = append(files, &f)
+		return files, rows.Err()
 	}
-
-	return files, rows.Err()
 }
 
 // GetFilesForDeletion returns all pending files for a run.

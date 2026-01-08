@@ -1848,6 +1848,8 @@ export type OrphanScanTriggerType = "manual" | "scheduled"
 
 export type OrphanScanFileStatus = "pending" | "deleted" | "skipped" | "failed"
 
+export type OrphanScanPreviewSort = "size_desc" | "directory_size_desc"
+
 export interface OrphanScanSettings {
   id?: number
   instanceId: number
@@ -1855,6 +1857,7 @@ export interface OrphanScanSettings {
   gracePeriodMinutes: number
   ignorePaths: string[]
   scanIntervalHours: number
+  previewSort: OrphanScanPreviewSort
   maxFilesPerRun: number
   autoCleanupEnabled: boolean
   autoCleanupMaxFiles: number
@@ -1867,6 +1870,7 @@ export interface OrphanScanSettingsUpdate {
   gracePeriodMinutes?: number
   ignorePaths?: string[]
   scanIntervalHours?: number
+  previewSort?: OrphanScanPreviewSort
   maxFilesPerRun?: number
   autoCleanupEnabled?: boolean
   autoCleanupMaxFiles?: number
