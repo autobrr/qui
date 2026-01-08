@@ -99,7 +99,7 @@ func (di *DelugeImport) Migrate() error {
 		fastResume.TorrentFilePath = torrentNamePath
 		if _, err = os.Stat(fastResume.TorrentFilePath); os.IsNotExist(err) {
 			log.Error().Err(err).Msgf("Could not find torrent file %s for %s", fastResume.TorrentFilePath, torrentID)
-			return err
+			continue
 		}
 
 		file, err := metainfo.LoadFromFile(torrentNamePath)
@@ -151,12 +151,12 @@ func (di *DelugeImport) Migrate() error {
 		fastResumeOutFile := filepath.Join(di.opts.QbitDir, torrentID+".fastresume")
 		if err = fastResume.Encode(fastResumeOutFile); err != nil {
 			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s error: %q", fastResumeOutFile, err)
-			return err
+			continue
 		}
 
 		if err = CopyFile(fastResume.TorrentFilePath, torrentOutFile); err != nil {
 			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s error %q", torrentOutFile, err)
-			return err
+			continue
 		}
 
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)

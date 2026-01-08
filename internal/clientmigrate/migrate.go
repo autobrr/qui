@@ -55,78 +55,10 @@ func (m Migrater) Migrate(ctx context.Context) error {
 
 	// Backup data before running
 	if !skipBackup {
-		log.Info().Msg("prepare to backup torrent data before import..")
-
-		timeStamp := time.Now().Format("20060102150405")
-
-		sourceBackupArchive := filepath.Join("qbt_backup", source+"_backup_"+timeStamp+".tar.gz")
-		qbitBackupArchive := filepath.Join("qbt_backup", "qBittorrent_backup_"+timeStamp+".tar.gz")
-
-		if dryRun {
-			log.Info().Msgf("dry-run: creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
-		} else {
-			log.Info().Msgf("creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
-
-			// map files on disk to their paths in the archive using default settings (second arg)
-			files, err := archives.FilesFromDisk(ctx, nil, map[string]string{
-				sourceDir: "",
-			})
-			if err != nil {
-				return err
-			}
-
-			// create the output file we'll write to
-			out, err := os.Create(sourceBackupArchive)
-			if err != nil {
-				return err
-			}
-			defer out.Close()
-
-			format := archives.CompressedArchive{
-				Compression: archives.Gz{},
-				Archival:    archives.Tar{},
-			}
-
-			// create the archive
-			err = format.Archive(ctx, out, files)
-			if err != nil {
-				return errors.Wrapf(err, "could not create backup archive: %s", out.Name())
-			}
+		if err := m.Backup(ctx, source, dryRun, sourceDir, qbitDir); err != nil {
+			log.Error().Err(err).Msgf("Could not backup files")
+			return err
 		}
-
-		if dryRun {
-			log.Info().Msgf("dry-run: creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
-		} else {
-			log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
-
-			// map files on disk to their paths in the archive using default settings (second arg)
-			files, err := archives.FilesFromDisk(ctx, nil, map[string]string{
-				qbitDir: "",
-			})
-			if err != nil {
-				return err
-			}
-
-			// create the output file we'll write to
-			out, err := os.Create(qbitBackupArchive)
-			if err != nil {
-				return err
-			}
-			defer out.Close()
-
-			format := archives.CompressedArchive{
-				Compression: archives.Gz{},
-				Archival:    archives.Tar{},
-			}
-
-			// create the archive
-			err = format.Archive(ctx, out, files)
-			if err != nil {
-				return errors.Wrapf(err, "could not create backup archive: %s", out.Name())
-			}
-		}
-
-		log.Print("Backup completed!")
 	}
 
 	start := time.Now()
@@ -145,6 +77,71 @@ func (m Migrater) Migrate(ctx context.Context) error {
 	elapsed := time.Since(start)
 
 	log.Info().Msgf("Import finished in: %s", elapsed)
+
+	return nil
+}
+
+func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, sourceDir string, qbitDir string) error {
+	log.Info().Msg("prepare to backup torrent data before import..")
+
+	timeStamp := time.Now().Format("20060102150405")
+
+	backupDir := "qbt_backup"
+	if err := MkDirIfNotExists(backupDir); err != nil {
+		return errors.Wrap(err, "could not create backup directory")
+	}
+
+	sourceBackupArchive := filepath.Join(backupDir, source+"_backup_"+timeStamp+".tar.gz")
+	qbitBackupArchive := filepath.Join(backupDir, "qBittorrent_backup_"+timeStamp+".tar.gz")
+
+	if dryRun {
+		log.Info().Msgf("dry-run: creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
+		log.Info().Msgf("dry-run: creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
+	} else {
+		log.Info().Msgf("creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
+
+		if err := m.archiveDir(ctx, sourceDir, sourceBackupArchive); err != nil {
+			return errors.Wrapf(err, "could not create %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
+		}
+
+		log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
+
+		if err := m.archiveDir(ctx, qbitDir, qbitBackupArchive); err != nil {
+			return errors.Wrapf(err, "could not create qBittorrent backup of directory: %s", qbitDir)
+		}
+	}
+
+	log.Info().Msg("Backup completed!")
+
+	return nil
+}
+
+func (m Migrater) archiveDir(ctx context.Context, dir, archiveName string) error {
+	// map files on disk to their paths in the archive using default settings (second arg)
+	files, err := archives.FilesFromDisk(ctx, nil, map[string]string{
+		dir: "",
+	})
+	if err != nil {
+		return err
+	}
+
+	// create the output file we'll write to
+	out, err := os.Create(archiveName)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	format := archives.CompressedArchive{
+		Compression: archives.Gz{},
+		Archival:    archives.Tar{},
+	}
+
+	// create the archive
+	err = format.Archive(ctx, out, files)
+	if err != nil {
+		return errors.Wrapf(err, "could not create backup archive: %s", out.Name())
+	}
 
 	return nil
 }
