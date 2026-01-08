@@ -56,8 +56,10 @@ function detectBytesUnit(bytes: number): number {
   const tib = 1024 * 1024 * 1024 * 1024;
   const gib = 1024 * 1024 * 1024;
   const mib = 1024 * 1024;
-  if (bytes >= tib && bytes % tib === 0) return tib;
-  if (bytes >= gib && bytes % gib === 0) return gib;
+  // Use magnitude-based detection so fractional values like "24.5 TiB" re-open as TiB,
+  // rather than being reduced to "GiB" due to exact divisibility.
+  if (bytes >= tib) return tib;
+  if (bytes >= gib) return gib;
   return mib;
 }
 
