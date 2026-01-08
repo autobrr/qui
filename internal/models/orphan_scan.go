@@ -139,7 +139,7 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 			grace_period_minutes = excluded.grace_period_minutes,
 			ignore_paths = excluded.ignore_paths,
 			scan_interval_hours = excluded.scan_interval_hours,
-				preview_sort = excluded.preview_sort,
+			preview_sort = excluded.preview_sort,
 			max_files_per_run = excluded.max_files_per_run,
 			auto_cleanup_enabled = excluded.auto_cleanup_enabled,
 			auto_cleanup_max_files = excluded.auto_cleanup_max_files

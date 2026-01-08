@@ -4,6 +4,7 @@
 package orphanscan
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,6 +12,9 @@ import (
 	"sort"
 	"strings"
 )
+
+// ErrInUse indicates a deletion target contains files currently in use by torrents.
+var ErrInUse = errors.New("contains in-use torrent file")
 
 type deleteDisposition int
 
@@ -131,7 +135,7 @@ func safeDeleteTarget(scanRoot, target string, tfm *TorrentFileMap) (deleteDispo
 			// Symlink files should still be checked against TorrentFileMap to avoid
 			// deleting a directory that contains an in-use path.
 			if tfm.Has(normalizePath(p)) {
-				return fmt.Errorf("directory contains in-use torrent file: %s", p)
+				return fmt.Errorf("%w: %s", ErrInUse, p)
 			}
 			return nil
 		}
@@ -141,13 +145,13 @@ func safeDeleteTarget(scanRoot, target string, tfm *TorrentFileMap) (deleteDispo
 		}
 
 		if tfm.Has(normalizePath(p)) {
-			return fmt.Errorf("directory contains in-use torrent file: %s", p)
+			return fmt.Errorf("%w: %s", ErrInUse, p)
 		}
 		return nil
 	})
 	if err != nil {
 		// Treat in-use detection as a safe skip.
-		if strings.Contains(err.Error(), "in-use torrent file") {
+		if errors.Is(err, ErrInUse) {
 			return deleteDispositionSkippedInUse, nil
 		}
 		return 0, err

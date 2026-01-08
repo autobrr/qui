@@ -167,7 +167,7 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 	if payload.PreviewSort != nil {
 		// Empty is treated as default.
 		if *payload.PreviewSort != "" && *payload.PreviewSort != "size_desc" && *payload.PreviewSort != "directory_size_desc" {
-			RespondError(w, http.StatusBadRequest, "Invalid preview sort")
+			RespondError(w, http.StatusBadRequest, "Invalid preview sort: must be 'size_desc' or 'directory_size_desc'")
 			return
 		}
 		if *payload.PreviewSort == "" {
