@@ -46,17 +46,6 @@ Configure tags applied to cross-seed torrents based on how they were discovered:
 | Webhook Tags | Torrents added via `/apply` webhook | `["cross-seed"]` |
 | Inherit source torrent tags | Also copy tags from the matched source torrent | - |
 
-## Allowed Extra Files
-
-File patterns excluded from comparison when matching torrents. Adding patterns here **increases matches** by allowing torrents to match even if they differ in these files (e.g., one has an NFO, the other doesn't).
-
-- Plain strings match any path ending in the text (e.g., `.nfo` matches all `.nfo` files)
-- Glob patterns treat `/` as a folder separator (e.g., `*/*sample/*` matches sample folders)
-
-:::note
-These patterns only affect matching. Extra files in the incoming torrent trigger a recheck in all modes (reuse, hardlink, reflink) so qBittorrent can download them.
-:::
-
 ## External Program
 
 Optionally run an external program after successfully injecting a cross-seed torrent.
