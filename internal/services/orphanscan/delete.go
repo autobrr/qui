@@ -128,6 +128,11 @@ func safeDeleteTarget(scanRoot, target string, tfm *TorrentFileMap) (deleteDispo
 			if d.IsDir() {
 				return fs.SkipDir
 			}
+			// Symlink files should still be checked against TorrentFileMap to avoid
+			// deleting a directory that contains an in-use path.
+			if tfm.Has(normalizePath(p)) {
+				return fmt.Errorf("directory contains in-use torrent file: %s", p)
+			}
 			return nil
 		}
 

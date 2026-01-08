@@ -4,8 +4,10 @@
 package orphanscan
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -189,6 +191,45 @@ func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.
 	}
 	if _, err := os.Stat(sibling); err != nil {
 		t.Fatalf("expected sibling file to remain, stat err=%v", err)
+	}
+}
+
+func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "to-delete")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Create a symlink file inside the directory.
+	targetFile := filepath.Join(root, "real.txt")
+	if err := os.WriteFile(targetFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	linkPath := filepath.Join(dir, "linked.txt")
+	if err := os.Symlink(targetFile, linkPath); err != nil {
+		// Windows can require admin or Developer Mode for symlinks.
+		if errors.Is(err, os.ErrPermission) || strings.Contains(strings.ToLower(err.Error()), "required privilege") {
+			t.Skipf("symlink not permitted on this system: %v", err)
+		}
+		t.Fatalf("symlink: %v", err)
+	}
+
+	// Mark the symlink path as in-use by a torrent.
+	tfm := NewTorrentFileMap()
+	tfm.Add(normalizePath(linkPath))
+
+	disp, err := safeDeleteTarget(root, dir, tfm)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("expected directory to remain, stat err=%v", err)
 	}
 }
 
