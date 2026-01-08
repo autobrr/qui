@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -272,6 +273,56 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 
 // ListRuns lists recent runs for an instance.
 func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit int) ([]*OrphanScanRun, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	scanRunFromRows := func(rows *sql.Rows) ([]*OrphanScanRun, error) {
+		var runs []*OrphanScanRun
+		for rows.Next() {
+			var run OrphanScanRun
+			var scanPathsJSON sql.NullString
+			var errorMessage sql.NullString
+			var completedAt sql.NullTime
+
+			if err := rows.Scan(
+				&run.ID,
+				&run.InstanceID,
+				&run.Status,
+				&run.TriggeredBy,
+				&scanPathsJSON,
+				&run.FilesFound,
+				&run.FilesDeleted,
+				&run.FoldersDeleted,
+				&run.BytesReclaimed,
+				&run.Truncated,
+				&errorMessage,
+				&run.StartedAt,
+				&completedAt,
+			); err != nil {
+				return nil, err
+			}
+
+			if scanPathsJSON.Valid && scanPathsJSON.String != "" {
+				if err := json.Unmarshal([]byte(scanPathsJSON.String), &run.ScanPaths); err != nil {
+					return nil, err
+				}
+			}
+			if run.ScanPaths == nil {
+				run.ScanPaths = []string{}
+			}
+			if errorMessage.Valid {
+				run.ErrorMessage = errorMessage.String
+			}
+			if completedAt.Valid {
+				run.CompletedAt = &completedAt.Time
+			}
+
+			runs = append(runs, &run)
+		}
+		return runs, rows.Err()
+	}
+
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
@@ -286,50 +337,74 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 	}
 	defer rows.Close()
 
-	var runs []*OrphanScanRun
-	for rows.Next() {
-		var run OrphanScanRun
-		var scanPathsJSON sql.NullString
-		var errorMessage sql.NullString
-		var completedAt sql.NullTime
-
-		if err := rows.Scan(
-			&run.ID,
-			&run.InstanceID,
-			&run.Status,
-			&run.TriggeredBy,
-			&scanPathsJSON,
-			&run.FilesFound,
-			&run.FilesDeleted,
-			&run.FoldersDeleted,
-			&run.BytesReclaimed,
-			&run.Truncated,
-			&errorMessage,
-			&run.StartedAt,
-			&completedAt,
-		); err != nil {
-			return nil, err
-		}
-
-		if scanPathsJSON.Valid && scanPathsJSON.String != "" {
-			if err := json.Unmarshal([]byte(scanPathsJSON.String), &run.ScanPaths); err != nil {
-				return nil, err
-			}
-		}
-		if run.ScanPaths == nil {
-			run.ScanPaths = []string{}
-		}
-		if errorMessage.Valid {
-			run.ErrorMessage = errorMessage.String
-		}
-		if completedAt.Valid {
-			run.CompletedAt = &completedAt.Time
-		}
-
-		runs = append(runs, &run)
+	recentRuns, err := scanRunFromRows(rows)
+	if err != nil {
+		return nil, err
 	}
 
-	return runs, rows.Err()
+	activeRows, err := s.db.QueryContext(ctx, `
+		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
+		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
+		       error_message, started_at, completed_at
+		FROM orphan_scan_runs
+		WHERE instance_id = ?
+		  AND (status IN ('pending', 'scanning', 'deleting')
+		       OR (status = 'preview_ready' AND files_found > 0))
+		ORDER BY started_at DESC
+	`, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer activeRows.Close()
+
+	activeRuns, err := scanRunFromRows(activeRows)
+	if err != nil {
+		return nil, err
+	}
+
+	activeIDs := make(map[int64]struct{}, len(activeRuns))
+	byID := make(map[int64]*OrphanScanRun, len(recentRuns)+len(activeRuns))
+	for _, r := range activeRuns {
+		activeIDs[r.ID] = struct{}{}
+		byID[r.ID] = r
+	}
+	for _, r := range recentRuns {
+		if _, ok := byID[r.ID]; !ok {
+			byID[r.ID] = r
+		}
+	}
+
+	merged := make([]*OrphanScanRun, 0, len(byID))
+	for _, r := range byID {
+		merged = append(merged, r)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].StartedAt.Equal(merged[j].StartedAt) {
+			return merged[i].ID > merged[j].ID
+		}
+		return merged[i].StartedAt.After(merged[j].StartedAt)
+	})
+
+	// Enforce limit for non-active runs, but always include active runs so they are visible.
+	if len(activeIDs) == 0 {
+		if len(merged) > limit {
+			merged = merged[:limit]
+		}
+		return merged, nil
+	}
+
+	out := make([]*OrphanScanRun, 0, len(merged))
+	for _, r := range merged {
+		if _, isActive := activeIDs[r.ID]; isActive {
+			out = append(out, r)
+			continue
+		}
+		if len(out) < limit {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 // GetLastCompletedRun returns the last completed run for an instance.
@@ -363,6 +438,24 @@ func (s *OrphanScanStore) HasActiveRun(ctx context.Context, instanceID int) (boo
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// GetMostRecentActiveRun returns the most recent active run for an instance.
+// "Active" matches the same definition used by CreateRunIfNoActive.
+func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
+		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
+		       error_message, started_at, completed_at
+		FROM orphan_scan_runs
+		WHERE instance_id = ?
+		  AND (status IN ('pending', 'scanning', 'deleting')
+		       OR (status = 'preview_ready' AND files_found > 0))
+		ORDER BY started_at DESC
+		LIMIT 1
+	`, instanceID)
+
+	return s.scanRun(row)
 }
 
 // UpdateRunStatus updates the status of a run.

@@ -7,8 +7,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -216,6 +218,19 @@ func (h *OrphanScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) 
 	runID, err := h.service.TriggerScan(r.Context(), instanceID, "manual")
 	if err != nil {
 		if errors.Is(err, orphanscan.ErrScanInProgress) {
+			// Provide actionable context for clients even if the runs list isn't showing the active run.
+			if active, aErr := h.store.GetMostRecentActiveRun(r.Context(), instanceID); aErr == nil && active != nil {
+				RespondError(w, http.StatusConflict,
+					fmt.Sprintf(
+						"A scan is already in progress for this instance (runId=%d status=%s startedAt=%s)",
+						active.ID,
+						active.Status,
+						active.StartedAt.UTC().Format(time.RFC3339),
+					),
+				)
+				return
+			}
+
 			RespondError(w, http.StatusConflict, "A scan is already in progress for this instance")
 			return
 		}

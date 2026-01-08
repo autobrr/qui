@@ -1558,6 +1558,8 @@ export interface CrossSeedTorrentInfo {
   searchType?: string
   searchCategories?: number[]
   requiredCaps?: string[]
+  discLayout?: boolean
+  discMarker?: string
   // Pre-filtering information for UI context menu
   availableIndexers?: number[]
   filteredIndexers?: number[]

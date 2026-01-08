@@ -119,6 +119,8 @@ type TorrentInfo struct {
 	SearchType       string        `json:"search_type,omitempty"`       // Search type to use: tvsearch, movie, music, book, search
 	SearchCategories []int         `json:"search_categories,omitempty"` // Torznab categories required for this search
 	RequiredCaps     []string      `json:"required_caps,omitempty"`     // Required indexer capabilities (e.g., "tv-search", "movie-search", "music-search")
+	DiscLayout       bool          `json:"disc_layout,omitempty"`       // True when torrent uses disc folder structure (BDMV/VIDEO_TS)
+	DiscMarker       string        `json:"disc_marker,omitempty"`       // Marker directory that triggered disc layout detection
 	// Pre-filtering information for UI context menu
 	AvailableIndexers []int          `json:"available_indexers,omitempty"` // Indexers available after capability filtering
 	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering

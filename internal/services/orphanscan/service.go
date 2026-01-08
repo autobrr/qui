@@ -90,8 +90,9 @@ func (s *Service) loop(ctx context.Context) {
 func (s *Service) recoverStuckRuns(ctx context.Context) error {
 	// Mark old pending/scanning runs as failed (they won't resume)
 	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely
-	// Note: deleting is excluded - let user decide how to handle interrupted deletions
-	return s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"})
+	// Note: deleting is included here because a process restart means deletion is no longer in progress,
+	// and leaving it active would block future scans indefinitely.
+	return s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning", "deleting"})
 }
 
 func (s *Service) checkScheduledScans(ctx context.Context) {
@@ -243,8 +244,17 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		return s.store.UpdateRunStatus(ctx, runID, "canceled")
 
 	case "deleting":
-		// Deletion in progress - refuse to cancel mid-delete for safety
-		return ErrCannotCancelDuringDeletion
+		// If deletion is truly in progress (in-memory cancel func exists), refuse to cancel mid-delete.
+		// If there's no cancel func, we assume this is a stale DB state (e.g. after restart) and allow
+		// cancellation to unblock future scans.
+		s.cancelMu.Lock()
+		_, inProgress := s.cancelFuncs[runID]
+		s.cancelMu.Unlock()
+		if inProgress {
+			return ErrCannotCancelDuringDeletion
+		}
+		_ = s.store.UpdateRunWarning(ctx, runID, "Deletion was interrupted; marked canceled")
+		return s.store.UpdateRunStatus(ctx, runID, "canceled")
 
 	case "completed", "failed", "canceled":
 		return fmt.Errorf("%w: %s", ErrRunAlreadyFinished, run.Status)
@@ -580,10 +590,10 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteFile(scanRoot, f.FilePath, tfm)
+		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
-			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete file")
+			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
 			failedDeletes++
 
 			// Detect error type for user-facing message
@@ -779,13 +789,16 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFil
 
 // findScanRoot finds the scan root that contains the given path.
 func findScanRoot(path string, scanRoots []string) string {
+	nPath := normalizePath(path)
+
 	longest := ""
 	for _, root := range scanRoots {
-		if len(path) < len(root) || path[:len(root)] != root {
+		nRoot := normalizePath(root)
+		if len(nPath) < len(nRoot) || nPath[:len(nRoot)] != nRoot {
 			continue
 		}
 		// Ensure it's at a path boundary.
-		if len(path) > len(root) && path[len(root)] != filepath.Separator {
+		if len(nPath) > len(nRoot) && nPath[len(nRoot)] != filepath.Separator {
 			continue
 		}
 		if len(root) > len(longest) {

@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,6 +58,98 @@ func safeDeleteFile(scanRoot, target string, tfm *TorrentFileMap) (deleteDisposi
 	}
 
 	if err := os.Remove(target); err != nil {
+		if os.IsNotExist(err) {
+			return deleteDispositionSkippedMissing, nil
+		}
+		return 0, err
+	}
+	return deleteDispositionDeleted, nil
+}
+
+// safeDeleteTarget removes a file OR directory with safety checks.
+// For directories, it deletes recursively, but first verifies that no file within
+// the directory is currently referenced by TorrentFileMap.
+// Symlinks are never followed.
+func safeDeleteTarget(scanRoot, target string, tfm *TorrentFileMap) (deleteDisposition, error) {
+	// Must be absolute
+	if !filepath.IsAbs(target) {
+		return 0, fmt.Errorf("refusing non-absolute path: %s", target)
+	}
+
+	// Must not be the scan root itself
+	if filepath.Clean(target) == filepath.Clean(scanRoot) {
+		return 0, fmt.Errorf("refusing to delete scan root: %s", scanRoot)
+	}
+
+	// Must be within scan root (no path traversal)
+	rel, err := filepath.Rel(scanRoot, target)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return 0, fmt.Errorf("path escapes scan root: %s", target)
+	}
+
+	info, err := os.Lstat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return deleteDispositionSkippedMissing, nil
+		}
+		return 0, err
+	}
+
+	// Never delete symlinks by following them.
+	if info.Mode()&os.ModeSymlink != 0 {
+		// For symlinks, treat as a file and remove the link itself.
+		if tfm.Has(normalizePath(target)) {
+			return deleteDispositionSkippedInUse, nil
+		}
+		if err := os.Remove(target); err != nil {
+			if os.IsNotExist(err) {
+				return deleteDispositionSkippedMissing, nil
+			}
+			return 0, err
+		}
+		return deleteDispositionDeleted, nil
+	}
+
+	if !info.IsDir() {
+		return safeDeleteFile(scanRoot, target, tfm)
+	}
+
+	// Directory: first verify no contained file is now in use by a torrent.
+	err = filepath.WalkDir(target, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if os.IsNotExist(walkErr) {
+				return nil
+			}
+			return walkErr
+		}
+
+		// Do not follow symlink directories.
+		if d.Type()&fs.ModeSymlink != 0 {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		if tfm.Has(normalizePath(p)) {
+			return fmt.Errorf("directory contains in-use torrent file: %s", p)
+		}
+		return nil
+	})
+	if err != nil {
+		// Treat in-use detection as a safe skip.
+		if strings.Contains(err.Error(), "in-use torrent file") {
+			return deleteDispositionSkippedInUse, nil
+		}
+		return 0, err
+	}
+
+	// Now remove recursively.
+	if err := os.RemoveAll(target); err != nil {
 		if os.IsNotExist(err) {
 			return deleteDispositionSkippedMissing, nil
 		}

@@ -2844,6 +2844,13 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		},
 	}
 
+	// Expose disc layout detection for UI/consumers.
+	if response.TorrentInfo != nil {
+		policy := PolicyForSourceFiles(sourceFiles)
+		response.TorrentInfo.DiscLayout = policy.DiscLayout
+		response.TorrentInfo.DiscMarker = policy.DiscMarker
+	}
+
 	if response.TorrentInfo != nil {
 		response.TorrentInfo.TotalFiles = len(sourceFiles)
 		var totalSize int64
@@ -4439,6 +4446,9 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	// Use unified content type detection
 	contentInfo := DetermineContentType(contentDetectionRelease)
 
+	// Compute disc layout info from file structure (BDMV/VIDEO_TS)
+	addPolicy := PolicyForSourceFiles(sourceFiles)
+
 	// Get all available indexers first
 	var allIndexers []int
 	if s.jackettService != nil {
@@ -4469,6 +4479,8 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		SearchType:       contentInfo.SearchType,
 		SearchCategories: contentInfo.Categories,
 		RequiredCaps:     contentInfo.RequiredCaps,
+		DiscLayout:       addPolicy.DiscLayout,
+		DiscMarker:       addPolicy.DiscMarker,
 	}
 
 	// Initialize filtering state

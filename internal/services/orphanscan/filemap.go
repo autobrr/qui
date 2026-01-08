@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -45,9 +46,15 @@ func (m *TorrentFileMap) Len() int {
 }
 
 // normalizePath cleans and normalizes a path for consistent comparison.
-// Uses filepath.Clean (OS-specific separators). No case-folding.
+// Uses filepath.Clean (OS-specific separators).
+// On Windows, we also case-fold to lower to match filesystem semantics and
+// avoid false orphans from drive-letter/path casing differences.
 func normalizePath(path string) string {
-	return filepath.Clean(path)
+	p := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		p = strings.ToLower(p)
+	}
+	return p
 }
 
 // canonicalizeHash matches SyncManager's internal hash normalization.

@@ -79,6 +79,119 @@ func TestSafeDeleteFile_RefusesEscapingPath(t *testing.T) {
 	}
 }
 
+func TestSafeDeleteTarget_DeletesDirectoryRecursively(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	discDir := filepath.Join(root, "Movie.2024", "BDMV", "STREAM")
+	if err := os.MkdirAll(discDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileA := filepath.Join(root, "Movie.2024", "BDMV", "index.bdmv")
+	fileB := filepath.Join(discDir, "00000.m2ts")
+	if err := os.WriteFile(fileA, []byte("a"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := os.WriteFile(fileB, []byte("b"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+
+	unit := filepath.Join(root, "Movie.2024")
+	disp, err := safeDeleteTarget(root, unit, tfm)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionDeleted {
+		t.Fatalf("expected deleted disposition, got %v", disp)
+	}
+	if _, err := os.Stat(unit); !os.IsNotExist(err) {
+		t.Fatalf("expected directory removed, stat err=%v", err)
+	}
+}
+
+func TestSafeDeleteTarget_SkipsDirectoryWhenAnyFileInUse(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "Movie.2024", "BDMV")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileInUse := filepath.Join(dir, "index.bdmv")
+	fileOther := filepath.Join(dir, "STREAM", "00000.m2ts")
+	if err := os.MkdirAll(filepath.Dir(fileOther), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(fileInUse, []byte("a"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := os.WriteFile(fileOther, []byte("b"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+	tfm.Add(normalizePath(fileInUse))
+
+	unit := filepath.Join(root, "Movie.2024")
+	disp, err := safeDeleteTarget(root, unit, tfm)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+	}
+	if _, err := os.Stat(fileInUse); err != nil {
+		t.Fatalf("expected in-use file to remain, stat err=%v", err)
+	}
+}
+
+func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV", "STREAM")
+	if err := os.MkdirAll(bdmvDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Disc content.
+	fileA := filepath.Join(movieDir, "BDMV", "index.bdmv")
+	fileB := filepath.Join(bdmvDir, "00000.m2ts")
+	if err := os.WriteFile(fileA, []byte("a"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := os.WriteFile(fileB, []byte("b"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	// Sibling content in the parent folder.
+	sibling := filepath.Join(movieDir, "readme.txt")
+	if err := os.WriteFile(sibling, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+	markerUnit := filepath.Join(movieDir, "BDMV")
+	disp, err := safeDeleteTarget(root, markerUnit, tfm)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionDeleted {
+		t.Fatalf("expected deleted disposition, got %v", disp)
+	}
+	if _, err := os.Stat(markerUnit); !os.IsNotExist(err) {
+		t.Fatalf("expected marker directory removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(sibling); err != nil {
+		t.Fatalf("expected sibling file to remain, stat err=%v", err)
+	}
+}
+
 func TestCollectCandidateDirsForCleanup_CascadesToParents(t *testing.T) {
 	t.Parallel()
 
