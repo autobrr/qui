@@ -15,13 +15,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { PathCell } from "@/components/ui/path-cell"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
-import { Loader2 } from "lucide-react"
+import { Download, Loader2 } from "lucide-react"
 import { useMemo } from "react"
 
 // Tabs component for needed/eligible toggle
@@ -60,6 +61,10 @@ interface WorkflowPreviewDialogProps {
   showPreviewViewToggle?: boolean
   /** Whether the preview is currently loading (e.g., when switching views) */
   isLoadingPreview?: boolean
+  /** Callback to export all preview data to CSV */
+  onExport?: () => void
+  /** Whether export is in progress */
+  isExporting?: boolean
 }
 
 // Extract all field names from a condition tree
@@ -244,6 +249,8 @@ export function WorkflowPreviewDialog({
   onPreviewViewChange,
   showPreviewViewToggle = false,
   isLoadingPreview = false,
+  onExport,
+  isExporting = false,
 }: WorkflowPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
@@ -317,6 +324,7 @@ export function WorkflowPreviewDialog({
                       </th>
                     ))}
                     <th className="text-left p-2 font-medium bg-muted">Category</th>
+                    <th className="text-left p-2 font-medium bg-muted">Path</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -376,6 +384,9 @@ export function WorkflowPreviewDialog({
                             {t.category || "-"}
                           </TruncatedText>
                         </td>
+                        <td className="p-2 max-w-[200px]">
+                          <PathCell path={t.contentPath} />
+                        </td>
                       </tr>
                     )
                   })}
@@ -401,22 +412,42 @@ export function WorkflowPreviewDialog({
           </div>
         )}
 
-        <AlertDialogFooter className="mt-4">
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isConfirming}
-            className={
-              destructive
-                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                : warning
-                  ? "bg-amber-600 text-white hover:bg-amber-700"
-                  : ""
-            }
-          >
-            {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {confirmLabel}
-          </AlertDialogAction>
+        <AlertDialogFooter className="mt-4 sm:justify-between">
+          <div>
+            {onExport && preview && preview.totalMatches > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onExport}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Export CSV
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onConfirm}
+              disabled={isConfirming}
+              className={
+                destructive
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : warning
+                    ? "bg-amber-600 text-white hover:bg-amber-700"
+                    : ""
+              }
+            >
+              {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {confirmLabel}
+            </AlertDialogAction>
+          </div>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -292,6 +292,10 @@ When previewing a delete rule with a Free Space condition, a toggle allows switc
 
 The toggle only appears for delete rules that use the Free Space condition.
 
+**Preview features:**
+- **Path column** - Shows the content path for each torrent with copy-to-clipboard support
+- **Export CSV** - Download the full preview list (all pages) as a CSV file for external analysis
+
 **Cross-seed expansion in previews:**
 
 Cross-seeds are only expanded and displayed in the preview when using `Remove with files (include cross-seeds)` mode. In this mode, the preview shows all torrents that would be deleted together, with cross-seeds clearly marked. Other delete modes don't expand cross-seeds in the preview since they either preserve cross-seeds or don't consider them specially.

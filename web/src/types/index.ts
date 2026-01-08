@@ -355,6 +355,7 @@ export interface AutomationPreviewTorrent {
   addedOn: number
   uploaded: number
   downloaded: number
+  contentPath?: string
   isUnregistered?: boolean
   isCrossSeed?: boolean
   isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)

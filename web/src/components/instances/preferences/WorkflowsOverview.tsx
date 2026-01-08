@@ -48,7 +48,8 @@ import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
   parseImportJSON,
@@ -56,7 +57,7 @@ import {
   toExportFormat,
   toExportJSON
 } from "@/lib/workflow-utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse, PreviewView, RuleCondition } from "@/types"
+import type { Automation, AutomationActivity, AutomationPreviewResult, AutomationPreviewTorrent, InstanceResponse, PreviewView, RuleCondition } from "@/types"
 import type { DragEndEvent } from "@dnd-kit/core"
 import {
   DndContext,
@@ -253,6 +254,7 @@ export function WorkflowsOverview({
   const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const previewPageSize = 25
 
   const reorderRules = useMutation<
@@ -527,6 +529,55 @@ export function WorkflowsOverview({
       toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
     } finally {
       setIsLoadingPreviewView(false)
+    }
+  }
+
+  // CSV columns for automation preview export
+  const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
+    { header: "Name", accessor: t => t.name },
+    { header: "Hash", accessor: t => t.hash },
+    { header: "Tracker", accessor: t => t.tracker },
+    { header: "Size", accessor: t => formatBytes(t.size) },
+    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
+    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
+    { header: "Category", accessor: t => t.category },
+    { header: "Tags", accessor: t => t.tags },
+    { header: "State", accessor: t => t.state },
+    { header: "Added On", accessor: t => t.addedOn },
+    { header: "Path", accessor: t => t.contentPath ?? "" },
+  ]
+
+  const handleExportPreviewCsv = async () => {
+    if (!enableConfirm?.preview) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: AutomationPreviewTorrent[] = []
+      let offset = 0
+      const total = enableConfirm.preview.totalMatches
+
+      while (allItems.length < total) {
+        const result = await api.previewAutomation(enableConfirm.instanceId, {
+          ...enableConfirm.rule,
+          enabled: true,
+          previewLimit: pageSize,
+          previewOffset: offset,
+          previewView,
+        })
+        allItems.push(...result.examples)
+        offset += pageSize
+        if (result.examples.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      const ruleName = (enableConfirm.rule.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      downloadBlob(csv, `${ruleName}_preview.csv`)
+      toast.success(`Exported ${allItems.length} torrents to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -1314,6 +1365,8 @@ export function WorkflowsOverview({
         onPreviewViewChange={handlePreviewViewChange}
         showPreviewViewToggle={enableConfirm ? ruleUsesFreeSpace(enableConfirm.rule) : false}
         isLoadingPreview={isLoadingPreviewView}
+        onExport={handleExportPreviewCsv}
+        isExporting={isExporting}
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>

@@ -37,12 +37,14 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
-import { parseTrackerDomains } from "@/lib/utils"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { formatBytes, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
   AutomationInput,
   AutomationPreviewResult,
+  AutomationPreviewTorrent,
   PreviewView,
   RegexValidationError,
   RuleCondition
@@ -200,6 +202,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   // Speed limit units - track separately so they persist when value is cleared
   const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
@@ -753,6 +756,56 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
     } finally {
       setIsLoadingPreviewView(false)
+    }
+  }
+
+  // CSV columns for automation preview export
+  const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
+    { header: "Name", accessor: t => t.name },
+    { header: "Hash", accessor: t => t.hash },
+    { header: "Tracker", accessor: t => t.tracker },
+    { header: "Size", accessor: t => formatBytes(t.size) },
+    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
+    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
+    { header: "Category", accessor: t => t.category },
+    { header: "Tags", accessor: t => t.tags },
+    { header: "State", accessor: t => t.state },
+    { header: "Added On", accessor: t => t.addedOn },
+    { header: "Path", accessor: t => t.contentPath ?? "" },
+  ]
+
+  const handleExport = async () => {
+    if (!previewInput || !previewResult) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: AutomationPreviewTorrent[] = []
+      let offset = 0
+      const total = previewResult.totalMatches
+
+      while (allItems.length < total) {
+        const payload = {
+          ...buildPayload(previewInput),
+          previewLimit: pageSize,
+          previewOffset: offset,
+          previewView,
+        }
+        const result = await api.previewAutomation(instanceId, payload)
+        allItems.push(...result.examples)
+        offset += pageSize
+        // Safety check in case total changes
+        if (result.examples.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      const ruleName = (formState.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      downloadBlob(csv, `${ruleName}_preview.csv`)
+      toast.success(`Exported ${allItems.length} torrents to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -1798,6 +1851,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         onPreviewViewChange={handlePreviewViewChange}
         showPreviewViewToggle={isDeleteRule && deleteUsesFreeSpace}
         isLoadingPreview={isLoadingPreviewView}
+        onExport={handleExport}
+        isExporting={isExporting}
       />
     </>
   )

@@ -227,6 +227,7 @@ type PreviewTorrent struct {
 	AddedOn        int64   `json:"addedOn"`
 	Uploaded       int64   `json:"uploaded"`
 	Downloaded     int64   `json:"downloaded"`
+	ContentPath    string  `json:"contentPath,omitempty"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
 	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"`    // For category preview
 	IsHardlinkCopy bool    `json:"isHardlinkCopy,omitempty"` // Included via hardlink expansion (not ContentPath match)
@@ -260,6 +261,7 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 		AddedOn:        torrent.AddedOn,
 		Uploaded:       torrent.Uploaded,
 		Downloaded:     torrent.Downloaded,
+		ContentPath:    torrent.ContentPath,
 		IsCrossSeed:    isCrossSeed,
 		IsHardlinkCopy: isHardlinkCopy,
 		NumSeeds:       torrent.NumSeeds,
