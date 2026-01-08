@@ -532,6 +532,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [formState.actionCondition, formState.deleteEnabled, formState.exprDeleteMode])
 
+  // Auto-switch interval from 1 minute when FREE_SPACE delete condition is added
+  // The backend has a ~5 minute cooldown, so 1 minute intervals would be ineffective
+  // Only switch on user edits, not during initial hydration (respect saved config)
+  useEffect(() => {
+    if (isHydrating.current) return
+    if (formState.deleteEnabled && formState.intervalSeconds === 60) {
+      if (conditionUsesField(formState.actionCondition, "FREE_SPACE")) {
+        setFormState(prev => ({ ...prev, intervalSeconds: 300 })) // Switch to 5 minutes
+        toast.info("Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown")
+      }
+    }
+  }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds])
+
   // Build payload from form state (shared by preview and save)
   const buildPayload = (input: FormState): AutomationInput => {
     const conditions: ActionConditions = { schemaVersion: "1" }
@@ -1613,7 +1626,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="default">Default (15m)</SelectItem>
-                      <SelectItem value="60">1 minute</SelectItem>
+                      <SelectItem value="60" disabled={deleteUsesFreeSpace}>1 minute</SelectItem>
                       <SelectItem value="300">5 minutes</SelectItem>
                       <SelectItem value="900">15 minutes</SelectItem>
                       <SelectItem value="1800">30 minutes</SelectItem>
@@ -1632,6 +1645,27 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       )}
                     </SelectContent>
                   </Select>
+                  {deleteUsesFreeSpace && (
+                    <TooltipProvider delayDuration={150}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label="About Free Space cooldown"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[280px]">
+                          <p>After removing files, qui waits ~5 minutes before running Free Space deletes again to allow qBittorrent to refresh disk free space.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {deleteUsesFreeSpace && formState.intervalSeconds === 60 && (
+                    <span className="text-xs text-yellow-500">Effective minimum ~5m due to cooldown</span>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2">

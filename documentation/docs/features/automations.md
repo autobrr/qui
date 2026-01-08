@@ -305,6 +305,10 @@ Cross-seeds are only expanded and displayed in the preview when using `Remove wi
 The UI and API prevent combining `Remove (keep files)` mode with Free Space conditions. Since keep-files doesn't free disk space, such a rule could never satisfy the free space target and would match indefinitely.
 :::
 
+:::note
+After removing files, qui waits ~5 minutes before running Free Space deletes again to allow qBittorrent to refresh its disk free space reading. The UI prevents selecting 1 minute intervals for Free Space delete rules.
+:::
+
 ### Batching
 
 Torrents are grouped by action value and sent to qBittorrent in batches of up to 50 hashes per API call.
