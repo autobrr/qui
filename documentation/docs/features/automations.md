@@ -196,6 +196,17 @@ When a torrent matches the rule, the system finds other torrents that point to t
 - **Safety-first**: If verification can't complete for any reason, the entire group is skipped rather than risking broken torrents.
 - **Preview**: The delete preview shows all torrents that would be deleted, with cross-seeds marked.
 
+**Include hardlinked copies:**
+
+When "Include hardlinked copies" is enabled (only available with `deleteWithFilesIncludeCrossSeeds` mode), the system also deletes torrents that share the same underlying physical files via hardlinks, even if they have different Content Paths.
+
+- **Requires**: Local Filesystem Access must be enabled on the instance.
+- **Safe scope**: Only includes hardlinks that are fully contained within qBittorrent's torrent set. Never follows hardlinks to files outside qBittorrent (e.g., your media library).
+- **Preview**: Hardlink-expanded torrents are marked as "Cross-seed (hardlinked)" in the preview.
+- **Free Space projection**: When combined with Free Space conditions, hardlink groups are correctly deduplicated in the space projection - torrents sharing the same physical files are only counted once.
+
+This is useful when you have hardlinked copies of content across different locations in qBittorrent and want to clean up all copies together.
+
 ### Tag
 
 Add or remove tags from torrents.

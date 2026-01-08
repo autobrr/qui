@@ -32,6 +32,7 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
+import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
@@ -126,6 +127,7 @@ type FormState = {
   exprSeedingTimeValue?: number
   // Delete settings
   exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
@@ -160,6 +162,7 @@ const emptyFormState: FormState = {
   exprSeedingTimeMode: "no_change",
   exprSeedingTimeValue: undefined,
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
+  exprIncludeHardlinks: false,
   exprTags: [],
   exprTagMode: "full",
   exprUseTrackerAsTag: false,
@@ -219,7 +222,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
+  const { instances } = useInstances()
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const hasLocalFilesystemAccess = useMemo(
+    () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
+    [instances, instanceId]
+  )
 
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
@@ -375,6 +383,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprSeedingTimeMode: FormState["exprSeedingTimeMode"] = "no_change"
         let exprSeedingTimeValue: number | undefined
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
+        let exprIncludeHardlinks = false
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
         let exprUseTrackerAsTag = false
@@ -452,6 +461,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           if (conditions.delete?.enabled) {
             deleteEnabled = true
             exprDeleteMode = conditions.delete.mode ?? "deleteWithFilesPreserveCrossSeeds"
+            exprIncludeHardlinks = conditions.delete.includeHardlinks ?? false
           }
           if (conditions.tag?.enabled) {
             tagEnabled = true
@@ -492,6 +502,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprSeedingTimeMode,
           exprSeedingTimeValue,
           exprDeleteMode,
+          exprIncludeHardlinks,
           exprTags,
           exprTagMode,
           exprUseTrackerAsTag,
@@ -619,6 +630,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       conditions.delete = {
         enabled: true,
         mode: input.exprDeleteMode,
+        // Only include includeHardlinks when using include cross-seeds mode
+        includeHardlinks: input.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" ? input.exprIncludeHardlinks : undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -1539,6 +1552,41 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             )
                           })()}
                         </div>
+                        {/* Include Hardlinks checkbox - only for deleteWithFilesIncludeCrossSeeds mode */}
+                        {formState.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" && (
+                          <div className="flex items-center gap-2">
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={formState.exprIncludeHardlinks}
+                                      onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
+                                      disabled={!hasLocalFilesystemAccess}
+                                      className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
+                                    />
+                                    <span className={!hasLocalFilesystemAccess ? "opacity-50" : ""}>
+                                      Include hardlinked copies
+                                    </span>
+                                  </label>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-[320px]">
+                                  {hasLocalFilesystemAccess ? (
+                                    <p>
+                                      Also delete torrents that share the same underlying files via hardlinks.
+                                      Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.
+                                    </p>
+                                  ) : (
+                                    <p>
+                                      Requires &quot;Local Filesystem Access&quot; to be enabled in instance settings.
+                                    </p>
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

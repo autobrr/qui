@@ -898,6 +898,87 @@ func TestFindCrossSeedGroup(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// findHardlinkCopies tests
+// -----------------------------------------------------------------------------
+
+func TestFindHardlinkCopies(t *testing.T) {
+	// Create a Service with a nil sync manager (not needed for this test)
+	s := &Service{}
+
+	tests := []struct {
+		name           string
+		triggerHash    string
+		hardlinkGroups map[string][]string
+		wantCopies     []string
+	}{
+		{
+			name:        "trigger hash not in any group",
+			triggerHash: "not-found",
+			hardlinkGroups: map[string][]string{
+				"sig1": {"abc123", "def456"},
+			},
+			wantCopies: nil,
+		},
+		{
+			name:        "trigger is only member of group",
+			triggerHash: "abc123",
+			hardlinkGroups: map[string][]string{
+				"sig1": {"abc123"},
+			},
+			wantCopies: nil,
+		},
+		{
+			name:        "trigger has one hardlink copy",
+			triggerHash: "abc123",
+			hardlinkGroups: map[string][]string{
+				"sig1": {"abc123", "def456"},
+			},
+			wantCopies: []string{"def456"},
+		},
+		{
+			name:        "trigger has multiple hardlink copies",
+			triggerHash: "abc123",
+			hardlinkGroups: map[string][]string{
+				"sig1": {"abc123", "def456", "ghi789"},
+			},
+			wantCopies: []string{"def456", "ghi789"},
+		},
+		{
+			name:        "multiple groups, trigger in second",
+			triggerHash: "xyz999",
+			hardlinkGroups: map[string][]string{
+				"sig1": {"abc123", "def456"},
+				"sig2": {"xyz999", "uvw888"},
+			},
+			wantCopies: []string{"uvw888"},
+		},
+		{
+			name:           "nil hardlink groups",
+			triggerHash:    "abc123",
+			hardlinkGroups: nil,
+			wantCopies:     nil,
+		},
+		{
+			name:           "empty hardlink groups",
+			triggerHash:    "abc123",
+			hardlinkGroups: map[string][]string{},
+			wantCopies:     nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := s.findHardlinkCopies(tc.triggerHash, tc.hardlinkGroups)
+			if tc.wantCopies == nil {
+				assert.Nil(t, got)
+			} else {
+				assert.ElementsMatch(t, tc.wantCopies, got)
+			}
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
 // deleteFreesSpace tests with include mode
 // -----------------------------------------------------------------------------
 

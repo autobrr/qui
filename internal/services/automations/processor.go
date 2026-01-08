@@ -39,11 +39,12 @@ type torrentDesiredState struct {
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
 	// Delete (first rule to trigger wins)
-	shouldDelete   bool
-	deleteMode     string
-	deleteRuleID   int
-	deleteRuleName string
-	deleteReason   string
+	shouldDelete         bool
+	deleteMode           string
+	deleteIncludeHardlinks bool // Whether to expand deletion to hardlink copies
+	deleteRuleID         int
+	deleteRuleName       string
+	deleteReason         string
 }
 
 type ruleRunStats struct {
@@ -287,6 +288,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				if state.deleteMode == "" {
 					state.deleteMode = DeleteModeKeepFiles
 				}
+				state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
 				state.deleteRuleID = rule.ID
 				state.deleteRuleName = rule.Name
 				state.deleteReason = "condition matched"
@@ -446,6 +448,8 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
 // Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
+// When HardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
+// double-counting torrents that share the same physical files via hardlinks.
 func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, allTorrents []qbt.Torrent) {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
 		return
@@ -456,6 +460,24 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 		return
 	}
 
+	// First, check hardlink signature dedupe (if enabled and using include-cross-seeds mode).
+	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
+	// whole hardlink group via expansion; this avoids affecting other delete modes.
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
+		evalCtx.HardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		if sig, ok := evalCtx.HardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
+			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
+				// Already counted this hardlink group
+				return
+			}
+			// Mark signature as counted and add size
+			evalCtx.HardlinkSignaturesToClear[sig] = struct{}{}
+			evalCtx.SpaceToClear += torrent.Size
+			return
+		}
+	}
+
+	// Fall back to cross-seed key dedupe
 	crossSeedKey, ok := makeCrossSeedKey(torrent)
 	if !ok {
 		// If the torrent cannot be a cross-seed, we add the file size to the cumulative space to clear

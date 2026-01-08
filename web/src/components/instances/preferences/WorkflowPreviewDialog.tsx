@@ -338,9 +338,21 @@ export function WorkflowPreviewDialog({
                           </div>
                         </td>
                         <td className="p-2 max-w-[280px]">
-                          <TruncatedText className="block">
-                            {t.name}
-                          </TruncatedText>
+                          <div className="flex items-center gap-1.5">
+                            <TruncatedText className="block flex-1 min-w-0">
+                              {t.name}
+                            </TruncatedText>
+                            {/* Single cross-seed badge with appropriate variant based on expansion type */}
+                            {(t.isCrossSeed || t.isHardlinkCopy) && (
+                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
+                                t.isHardlinkCopy
+                                  ? "bg-violet-500/10 text-violet-600"
+                                  : "bg-blue-500/10 text-blue-600"
+                              }`}>
+                                {t.isHardlinkCopy ? "Cross-seed (hardlinked)" : "Cross-seed (same files)"}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatBytes(t.size)}

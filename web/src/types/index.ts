@@ -247,6 +247,7 @@ export interface PauseAction {
 export interface DeleteAction {
   enabled: boolean
   mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
   condition?: RuleCondition
 }
 
@@ -356,6 +357,7 @@ export interface AutomationPreviewTorrent {
   downloaded: number
   isUnregistered?: boolean
   isCrossSeed?: boolean
+  isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
   hardlinkScope?: string // none, torrents_only, outside_qbittorrent
   // Additional fields for dynamic columns
   numSeeds: number

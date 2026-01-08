@@ -335,6 +335,26 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed.", errors.New("invalid delete mode for free space condition")
 	}
 
+	// Validate includeHardlinks option
+	if payload.Conditions != nil && payload.Conditions.Delete != nil && payload.Conditions.Delete.IncludeHardlinks {
+		// Only valid when mode is deleteWithFilesIncludeCrossSeeds
+		if payload.Conditions.Delete.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
+			return http.StatusBadRequest, "includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'", errors.New("includeHardlinks requires include cross-seeds mode")
+		}
+		// Requires local filesystem access
+		instance, err := h.instanceStore.Get(ctx, instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return http.StatusNotFound, "Instance not found", err
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for includeHardlinks validation")
+			return http.StatusInternalServerError, "Failed to validate automation", err
+		}
+		if !instance.HasLocalFilesystemAccess {
+			return http.StatusBadRequest, "includeHardlinks requires Local Filesystem Access to be enabled on this instance", errors.New("local access required for hardlinks")
+		}
+	}
+
 	return 0, "", nil
 }
 
