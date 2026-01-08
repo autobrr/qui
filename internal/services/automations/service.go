@@ -1354,6 +1354,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
+			if len(batch) == 0 {
+				continue
+			}
+
 			if err := s.syncManager.SetLocation(ctx, instanceID, batch, path); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: move failed")
 				failedMovesForPath += len(batch)
