@@ -18,7 +18,7 @@ import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
-import { formatBytes } from "@/lib/utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
 import {
   DndContext,
   MouseSensor,
@@ -465,10 +465,10 @@ const CompactRow = memo(({
         </span>
         <div className="flex items-center gap-1">
           <span className="text-muted-foreground">Ratio:</span>
-          <span className={cn(
-            "font-medium",
-            displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
-          )}>
+          <span
+            className="font-medium"
+            style={{ color: getRatioColor(displayRatio) }}
+          >
             {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
           </span>
         </div>
