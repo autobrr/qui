@@ -920,6 +920,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   // Selection state for merging/renaming
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set())
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [showCustomizeDialog, setShowCustomizeDialog] = useState(false)
   const [customizeDisplayName, setCustomizeDisplayName] = useState("")
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[]; includedInStats: string[] } | null>(null)
@@ -1069,8 +1070,39 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     })
   }
 
+  const toggleGroupSelection = (customizationId: number) => {
+    setSelectedGroupId(prev => prev === customizationId ? null : customizationId)
+  }
+
   const clearSelection = () => {
     setSelectedDomains(new Set())
+    setSelectedGroupId(null)
+  }
+
+  // Merge into a group
+  const handleMergeIntoGroup = (targetGroupId: number, domain?: string) => {
+    const group = customizations?.find(c => c.id === targetGroupId)
+    if (!group) return
+
+    const domainsSet = new Set(selectedDomains)
+    if (domain) domainsSet.add(domain) // no-op if already present
+    const domainsToMerge = Array.from(domainsSet)
+
+    if (domainsToMerge.length === 0) return
+
+    // Merge into selected group
+    updateCustomization.mutate({
+      id: targetGroupId,
+      data: {
+        displayName: group.displayName,
+        domains: [...group.domains, ...domainsToMerge],
+        includedInStats: group.includedInStats ?? [],
+      }
+    }, {
+      onSuccess: () => {
+        clearSelection()
+      }
+    })
   }
 
   // Save customization (create or update)
@@ -1595,15 +1627,25 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
               const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
               const isSelected = selectedDomains.has(domain)
+              const isGroupSelected = selectedGroupId === customizationId
               const isMerged = originalDomains.length > 1
               const hasCustomization = Boolean(customizationId)
 
               return (
-                <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
+                <Card key={displayName} className={`overflow-hidden ${isSelected || isGroupSelected ? "ring-2 ring-primary" : ""}`}>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {!hasCustomization && (
+                        {hasCustomization ? (
+                          // Show group checkbox if no group selected or the group selected
+                          (selectedGroupId === null || isGroupSelected) && (
+                            <Checkbox
+                              checked={isGroupSelected}
+                              onCheckedChange={() => toggleGroupSelection(customizationId!)}
+                              className="shrink-0"
+                            />
+                          )
+                        ) : (
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => toggleSelection(domain)}
@@ -1629,32 +1671,49 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       </div>
                       <div className="flex items-center gap-1">
                         {hasCustomization && customizationId ? (
-                          <>
+                          // Show group merge if domains selected and if no other group is selected
+                          selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
+                              onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
                             >
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                              <Link2 className="h-3 w-3 text-primary" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                            >
-                              <Trash2 className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                          </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
+                              >
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                              >
+                                <Trash2 className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            </>
+                          )
                         ) : (
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0"
-                            onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              selectedGroupId
+                                ? handleMergeIntoGroup(selectedGroupId, domain)
+                                : openRenameDialog(domain)
+                            }}
                           >
-                            {selectedDomains.size > 0 ? (
+                            {selectedGroupId || selectedDomains.size > 0 ? (
                               <Link2 className="h-3 w-3 text-primary" />
                             ) : (
                               <Pencil className="h-3 w-3 text-muted-foreground" />
@@ -1815,6 +1874,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
                 const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
                 const isSelected = selectedDomains.has(domain)
+                const isGroupSelected = selectedGroupId === customizationId
                 const isMerged = originalDomains.length > 1
                 const hasCustomization = Boolean(customizationId)
                 const buffer = uploaded - downloaded
@@ -1823,10 +1883,19 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 return (
                   <TableRow
                     key={displayName}
-                    className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
+                    className={`group ${isSelected || isGroupSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
                   >
                     <TableCell className="w-8 pl-4">
-                      {!hasCustomization && (
+                      {hasCustomization ? (
+                        // Show group checkbox if no group selected or the group selected
+                        (selectedGroupId === null || isGroupSelected) && (
+                          <Checkbox
+                            checked={isGroupSelected}
+                            onCheckedChange={() => toggleGroupSelection(customizationId!)}
+                            className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
+                          />
+                        )
+                      ) : (
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={() => toggleSelection(domain)}
@@ -1854,24 +1923,41 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
                         <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
                           {hasCustomization && customizationId ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                              >
-                                <Pencil className="h-3 w-3 text-muted-foreground" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                              >
-                                <Trash2 className="h-3 w-3 text-muted-foreground" />
-                              </Button>
-                            </>
+                            // Show group merge if domains selected and if no other group is selected
+                            selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
+                                  >
+                                    <Link2 className="h-3 w-3 text-primary" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Merge selected trackers into this group</TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
+                                >
+                                  <Pencil className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </>
+                            )
                           ) : (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1879,9 +1965,14 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    selectedGroupId
+                                      ? handleMergeIntoGroup(selectedGroupId, domain)
+                                      : openRenameDialog(domain)
+                                  }}
                                 >
-                                  {selectedDomains.size > 0 ? (
+                                  {selectedGroupId || selectedDomains.size > 0 ? (
                                     <Link2 className="h-3 w-3 text-primary" />
                                   ) : (
                                     <Pencil className="h-3 w-3 text-muted-foreground" />
@@ -1889,7 +1980,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                                {selectedGroupId ? "Merge into group" : selectedDomains.size > 0 ? "Add to merge" : "Rename"}
                               </TooltipContent>
                             </Tooltip>
                           )}
