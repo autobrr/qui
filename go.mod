@@ -39,6 +39,7 @@ require (
 	golang.org/x/net v0.47.0
 	golang.org/x/oauth2 v0.33.0
 	golang.org/x/sync v0.18.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
 	golang.org/x/text v0.31.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -46,7 +47,7 @@ require (
 	modernc.org/sqlite v1.40.1
 )
 
-replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2
+replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20260101090144-934fa1613435
 
 require (
 	code.gitea.io/sdk/gitea v0.22.0 // indirect
@@ -109,7 +110,6 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 	lukechampine.com/blake3 v1.1.6 // indirect

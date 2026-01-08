@@ -1,0 +1,126 @@
+name: Claude Discussion Deduplication
+on:
+  discussion:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      discussion_number:
+        description: 'Discussion number to check for duplicates'
+        required: true
+        type: number
+
+jobs:
+  # Workaround: claude-code-action doesn't support 'discussion' events directly.
+  # This job catches the discussion event and re-triggers via workflow_dispatch.
+  dispatch:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'discussion' &&
+      (github.event.discussion.category.slug == 'issue-triage' ||
+       github.event.discussion.category.slug == 'feature-requests-ideas')
+    permissions:
+      actions: write
+    steps:
+      - name: Re-dispatch as workflow_dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run discussion-deduplication.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.repository.default_branch }} \
+            -f discussion_number=${{ github.event.discussion.number }}
+
+  deduplicate-discussion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      discussions: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup GitHub MCP Server
+        run: |
+          mkdir -p /tmp/mcp-config
+          cat > /tmp/mcp-config/mcp-servers.json << 'EOF'
+          {
+            "mcpServers": {
+              "github": {
+                "command": "docker",
+                "args": [
+                  "run",
+                  "-i",
+                  "--rm",
+                  "-e",
+                  "GITHUB_PERSONAL_ACCESS_TOKEN",
+                  "ghcr.io/github/github-mcp-server:v0.26.3"
+                ],
+                "env": {
+                  "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                }
+              }
+            }
+          }
+          EOF
+
+      - name: Run Claude Code for Deduplication
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: |
+            You're a deduplication assistant for GitHub discussions. Your task is to find potential duplicates and handle them appropriately.
+
+            Discussion Information:
+            - REPO: ${{ github.repository }}
+            - DISCUSSION_NUMBER: ${{ inputs.discussion_number || github.event.discussion.number }}
+            - CATEGORY: ${{ github.event.discussion.category.slug || 'manual-test' }}
+
+            TASK OVERVIEW:
+
+            1. First, get the current discussion details using mcp__github__get_discussion with:
+               - owner: "${{ github.repository_owner }}"
+               - repo: "${{ github.event.repository.name }}"
+               - discussionNumber: ${{ inputs.discussion_number || github.event.discussion.number }}
+
+            2. Search for potential duplicates using the gh CLI:
+               gh search issues --type discussion "SEARCH_TERMS" --repo ${{ github.repository }} --json number,title,url --limit 10
+               Replace SEARCH_TERMS with key terms from the discussion title/body.
+               Try multiple searches with different term combinations if needed.
+
+            3. For each potential match, use mcp__github__get_discussion to read its full content and compare.
+
+            4. Determine if any existing discussion is a duplicate:
+               - Consider title similarity, described problem/feature, and technical details
+               - A duplicate means the SAME issue/request, not just a related topic
+               - Only mark as duplicate if you're confident (>80% similar intent)
+               - Exclude the current discussion (number ${{ inputs.discussion_number || github.event.discussion.number }}) from matches
+
+            5A. IF DUPLICATE FOUND:
+                First, post a helpful comment linking to the original:
+                gh discussion comment ${{ inputs.discussion_number || github.event.discussion.number }} --repo ${{ github.repository }} --body "This appears to be a duplicate of #[ORIGINAL_NUMBER]. Please see the existing discussion for updates and add any additional context there."
+
+                Then, add the "duplicate" label using GraphQL:
+                - Get label IDs: gh label list --json name,id --limit 100
+                - Get discussion node ID: gh api graphql -f query='query { repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") { discussion(number: ${{ inputs.discussion_number || github.event.discussion.number }}) { id } } }'
+                - Add label: gh api graphql -f query='mutation { addLabelsToLabelable(input: {labelIds: ["LABEL_ID"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
+
+            5B. IF NOT A DUPLICATE:
+                Do nothing. Do not add labels or comments for unique discussions.
+                Simply report that no duplicate was found.
+
+            IMPORTANT GUIDELINES:
+            - Be conservative - only mark as duplicate if you're confident
+            - Always comment BEFORE adding the duplicate label
+            - The comment should be polite and helpful, linking to the original
+            - If unsure, err on the side of NOT marking as duplicate
+            - Do not comment on unique discussions
+          claude_args: |
+            --allowedTools "Bash(gh search:*),Bash(gh label list:*),Bash(gh api graphql:*),Bash(gh discussion comment:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
+            --max-turns 25
+            --mcp-config /tmp/mcp-config/mcp-servers.json
+          settings: |
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

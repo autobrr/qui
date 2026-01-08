@@ -71,28 +71,21 @@ const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
   { value: "days", label: "Days" },
 ]
 
+// Grouped torrent states matching FilterSidebar categories
+// These are expanded to individual qBittorrent states in columnFilterToExpr
 const TORRENT_STATES: { value: string; label: string }[] = [
   { value: "downloading", label: "Downloading" },
   { value: "uploading", label: "Seeding" },
-  { value: "forcedUP", label: "Forced (UP)" },
-  { value: "forcedDL", label: "Forced (DL)" },
-  { value: "pausedUP", label: "Paused (UP)" },
-  { value: "pausedDL", label: "Paused (DL)" },
-  { value: "stoppedUP", label: "Stopped (UP)" },
-  { value: "stoppedDL", label: "Stopped (DL)" },
-  { value: "queuedUP", label: "Queued (UP)" },
-  { value: "queuedDL", label: "Queued (DL)" },
-  { value: "stalledUP", label: "Stalled (UP)" },
-  { value: "stalledDL", label: "Stalled (DL)" },
-  { value: "error", label: "Error" },
-  { value: "missingFiles", label: "Missing Files" },
-  { value: "checkingUP", label: "Checking (UP)" },
-  { value: "checkingDL", label: "Checking (DL)" },
+  { value: "completed", label: "Completed" },
+  { value: "stopped", label: "Stopped" },
+  { value: "paused", label: "Paused" },
+  { value: "active", label: "Active" },
+  { value: "stalled", label: "Stalled" },
+  { value: "stalled_uploading", label: "Stalled (Up)" },
+  { value: "stalled_downloading", label: "Stalled (Down)" },
+  { value: "errored", label: "Error" },
+  { value: "checking", label: "Checking" },
   { value: "moving", label: "Moving" },
-  { value: "checkingResumeData", label: "Checking Resume Data" },
-  { value: "allocating", label: "Allocating" },
-  { value: "metaDL", label: "Fetching Metadata" },
-  { value: "unknown", label: "Unknown" },
 ]
 
 interface ValueInputProps {

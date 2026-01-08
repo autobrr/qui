@@ -19,9 +19,8 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		RSSAutomationTags:            []string{"old"},
 		SeededSearchTags:             []string{"old"},
 		CompletionSearchTags:         []string{"old"},
-		WebhookTags:                  []string{"old"},
-		IgnorePatterns:               []string{".nfo"},
-		TargetInstanceIDs:            []int{1},
+		WebhookTags:       []string{"old"},
+		TargetInstanceIDs: []int{1},
 		TargetIndexerIDs:             []int{2},
 		MaxResultsPerRun:             10,
 		FindIndividualEpisodes:       false,
@@ -37,9 +36,8 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		StartPaused:                  ptrBool(false),
 		Category:                     optionalString{Set: true, Value: &newCategory},
 		RSSAutomationTags:            &[]string{"new"},
-		SeededSearchTags:             &[]string{"new-seeded"},
-		IgnorePatterns:               &[]string{"*.srr"},
-		TargetInstanceIDs:            &[]int{3, 4},
+		SeededSearchTags:  &[]string{"new-seeded"},
+		TargetInstanceIDs: &[]int{3, 4},
 		TargetIndexerIDs:             &[]int{7},
 		MaxResultsPerRun:             ptrInt(25),
 		FindIndividualEpisodes:       ptrBool(true),
@@ -74,9 +72,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	}
 	if len(existing.WebhookTags) != 1 || existing.WebhookTags[0] != "old" {
 		t.Fatalf("unexpected webhook tags: %#v", existing.WebhookTags)
-	}
-	if len(existing.IgnorePatterns) != 1 || existing.IgnorePatterns[0] != "*.srr" {
-		t.Fatalf("unexpected ignore patterns: %#v", existing.IgnorePatterns)
 	}
 	if len(existing.TargetInstanceIDs) != 2 || existing.TargetInstanceIDs[0] != 3 || existing.TargetInstanceIDs[1] != 4 {
 		t.Fatalf("unexpected target instance ids: %#v", existing.TargetInstanceIDs)
@@ -140,3 +135,31 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 }
 
 func stringPtr(value string) *string { return &value }
+
+func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategorySuffix: true,
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	customCat := "cross-seed"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategorySuffix: ptrBool(false),
+		UseCustomCategory:      ptrBool(true),
+		CustomCategory:         &customCat,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if existing.UseCrossCategorySuffix {
+		t.Fatalf("expected useCrossCategorySuffix to be false")
+	}
+	if !existing.UseCustomCategory {
+		t.Fatalf("expected useCustomCategory to be true")
+	}
+	if existing.CustomCategory != "cross-seed" {
+		t.Fatalf("expected customCategory to be 'cross-seed', got %q", existing.CustomCategory)
+	}
+}
