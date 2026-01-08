@@ -114,6 +114,21 @@ function computeActivityStats(events: AutomationActivity[]): ActivityStats {
   return { deletionsToday, failedToday, lastActivity }
 }
 
+/** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
+function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
+  if (value === undefined) return null
+  if (value === -2) return "Global"
+  if (value === -1) return "Unlimited"
+  // For ratio, show 2 decimal places; for time, show whole number
+  return isRatio ? value.toFixed(2) : String(value)
+}
+
+/** Format speed limit for compact badge display: 0 = "∞", > 0 = number */
+function formatSpeedLimitCompact(kiB: number): string {
+  if (kiB === 0) return "∞"
+  return String(kiB)
+}
+
 function formatAction(action: AutomationActivity["action"]): string {
   switch (action) {
     case "deleted_ratio":
@@ -1098,8 +1113,15 @@ export function WorkflowsOverview({
                                           <div className="flex flex-wrap gap-1.5">
                                             {limits.map(([key, count]) => {
                                               const [type, limitKiB] = key.split(":")
-                                              const limitMiB = Number(limitKiB) / 1024
-                                              const label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
+                                              const numKiB = Number(limitKiB)
+                                              // 0 = Unlimited in qBittorrent per-torrent speed limits
+                                              let label: string
+                                              if (numKiB === 0) {
+                                                label = "Unlimited"
+                                              } else {
+                                                const limitMiB = numKiB / 1024
+                                                label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
+                                              }
                                               return (
                                                 <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
                                                   {type === "upload" ? "↑" : "↓"} {label} ({count})
@@ -1444,25 +1466,25 @@ function RulePreview({
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowUp className="h-3 w-3" />
-            {rule.conditions.speedLimits.uploadKiB}
+            {formatSpeedLimitCompact(rule.conditions.speedLimits.uploadKiB)}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.downloadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowDown className="h-3 w-3" />
-            {rule.conditions.speedLimits.downloadKiB}
+            {formatSpeedLimitCompact(rule.conditions.speedLimits.downloadKiB)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.ratioLimit !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Scale className="h-3 w-3" />
-            {rule.conditions.shareLimits.ratioLimit}
+            {formatShareLimit(rule.conditions.shareLimits.ratioLimit, true)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
-            {rule.conditions.shareLimits.seedingTimeMinutes}m
+            {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? "m" : ""}
           </Badge>
         )}
         {rule.conditions?.pause?.enabled && (

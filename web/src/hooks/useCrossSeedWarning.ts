@@ -84,7 +84,8 @@ export function useCrossSeedWarning({
         const torrent = torrents[i]
 
         // Use backend API for proper release matching (rls library)
-        const matches = await api.getLocalCrossSeedMatches(instanceId, torrent.hash)
+        // strict=true ensures we fail if overlap checks can't complete (delete safety)
+        const matches = await api.getLocalCrossSeedMatches(instanceId, torrent.hash, true)
 
         // Filter and dedupe matches - only include matches that share the same content_path
         for (const match of matches) {
