@@ -64,12 +64,11 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 			return err
 		}
 
-		// Don't follow symlink directories
+		// Skip symlinks entirely - we don't follow them for orphan detection.
+		// Note: d.IsDir() returns false for symlinks (doesn't follow target),
+		// so we just skip all symlinks regardless of what they point to.
 		if d.Type()&fs.ModeSymlink != 0 {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil // Skip symlink files too
+			return nil
 		}
 
 		// Skip directories entirely - they're not orphans, only files are
