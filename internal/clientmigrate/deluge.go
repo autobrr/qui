@@ -79,7 +79,7 @@ func (di *DelugeImport) Migrate() error {
 
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
-			log.Error().Err(err).Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
+			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
 			continue
 		}
 

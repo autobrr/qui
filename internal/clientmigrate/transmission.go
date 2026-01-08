@@ -188,7 +188,7 @@ func (i *TransmissionImport) Migrate() error {
 		}
 
 		if err = CopyFile(match, torrentOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could copy qBittorrent torrent file %s error %q", torrentOutFile, err)
+			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s error %q", torrentOutFile, err)
 			continue
 		}
 

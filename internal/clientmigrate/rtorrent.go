@@ -69,7 +69,7 @@ func (i *RTorrentImport) Migrate() error {
 
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
-			log.Error().Err(err).Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
+			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
 			continue
 		}
 
@@ -201,7 +201,7 @@ func (i *RTorrentImport) Migrate() error {
 		}
 
 		if err = CopyFile(match, torrentOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could copy qBittorrent torrent file %s error %q", torrentOutFile, err)
+			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s error %q", torrentOutFile, err)
 			continue
 		}
 
