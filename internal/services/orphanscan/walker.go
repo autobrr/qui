@@ -148,12 +148,19 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 	// Suppress any orphan units that are fully contained within a disc unit directory.
 	// This keeps previews clean and avoids redundant deletes (e.g., sibling files next to BDMV).
 	if len(discUnitPaths) > 0 {
+		// Pre-normalize disc unit paths once to avoid repeated normalization per comparison.
+		normalizedDiscUnits := make([]string, 0, len(discUnitPaths))
+		for du := range discUnitPaths {
+			normalizedDiscUnits = append(normalizedDiscUnits, normalizePath(du))
+		}
+
 		for unit := range orphanUnits {
-			for discUnit := range discUnitPaths {
-				if unit == discUnit {
+			normalizedUnit := normalizePath(unit)
+			for _, normalizedDiscUnit := range normalizedDiscUnits {
+				if normalizedUnit == normalizedDiscUnit {
 					continue
 				}
-				if isPathUnder(unit, discUnit) {
+				if isPathUnderNormalized(normalizedUnit, normalizedDiscUnit) {
 					delete(orphanUnits, unit)
 					break
 				}
@@ -272,8 +279,12 @@ func discOrphanUnitWithContext(scanRoot, filePath string, tfm *TorrentFileMap, u
 }
 
 func isPathUnder(childPath, parentPath string) bool {
-	child := normalizePath(childPath)
-	parent := normalizePath(parentPath)
+	return isPathUnderNormalized(normalizePath(childPath), normalizePath(parentPath))
+}
+
+// isPathUnderNormalized checks if child is strictly under parent.
+// Both paths must already be normalized via normalizePath.
+func isPathUnderNormalized(child, parent string) bool {
 	if child == parent {
 		return false
 	}
