@@ -133,7 +133,7 @@ func BuildContentGroupIndex(torrents []qbt.Torrent) map[string][]string {
 	// First pass: group torrents by normalized ContentPath
 	byContentPath := make(map[string][]string) // normalized path → list of hashes
 	for _, t := range torrents {
-		normalizedPath := normalizeContentPath(t.ContentPath)
+		normalizedPath := normalizePath(t.ContentPath)
 		if normalizedPath == "" {
 			continue // Skip torrents without ContentPath
 		}
@@ -155,23 +155,11 @@ func BuildContentGroupIndex(torrents []qbt.Torrent) map[string][]string {
 	return result
 }
 
-// normalizeContentPath standardizes a content path for comparison.
-// Lowercases, normalizes path separators, and removes trailing slashes.
-func normalizeContentPath(p string) string {
-	if p == "" {
-		return ""
-	}
-	p = strings.ToLower(p)
-	p = strings.ReplaceAll(p, "\\", "/")
-	p = strings.TrimSuffix(p, "/")
-	return p
-}
-
 // getContentBasename extracts just the folder/file name from a content path.
 // For "D:\Movies\Some.Movie.2024" returns "some.movie.2024" (lowercased).
 // This allows matching cross-seeds that have the same content but different parent directories.
 func getContentBasename(contentPath string) string {
-	normalized := normalizeContentPath(contentPath)
+	normalized := normalizePath(contentPath)
 	if normalized == "" {
 		return ""
 	}

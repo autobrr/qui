@@ -1102,7 +1102,7 @@ func TestBuildBasenameGroupIndex_CrossSeedPaths(t *testing.T) {
 		{Hash: "ulcx-hash", ContentPath: "D:\\UA_Linked\\ULCX\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"},
 		{Hash: "aither-hash", ContentPath: "D:\\UA_Linked\\AITHER\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"},
 		{Hash: "movies-hash", ContentPath: "D:\\Movies\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"}, // Original in different dir
-		{Hash: "other-hash", ContentPath: "D:\\Movies\\Different.Movie.2024.mkv"}, // Different movie
+		{Hash: "other-hash", ContentPath: "D:\\Movies\\Different.Movie.2024.mkv"},                                                   // Different movie
 	}
 
 	basenameGroupByHash := BuildBasenameGroupIndex(torrents)
