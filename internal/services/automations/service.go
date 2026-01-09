@@ -290,10 +290,13 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
-		// Add content count fields for debugging (using ContentPath matching, not basename)
-		pt.SameContentCount = getSameContentCount(torrent.Hash, false, evalCtx)
-		pt.UnregisteredSameContentCount = getUnregisteredSameContentCount(torrent.Hash, false, evalCtx)
-		pt.RegisteredSameContentCount = getRegisteredSameContentCount(torrent.Hash, false, evalCtx)
+		// Add content count fields for debugging
+		// When basename index is available (IncludeCrossSeeds used), show basename-based counts
+		// Otherwise show ContentPath-based counts
+		useBasename := evalCtx.BasenameGroupByHash != nil
+		pt.SameContentCount = getSameContentCount(torrent.Hash, useBasename, evalCtx)
+		pt.UnregisteredSameContentCount = getUnregisteredSameContentCount(torrent.Hash, useBasename, evalCtx)
+		pt.RegisteredSameContentCount = getRegisteredSameContentCount(torrent.Hash, useBasename, evalCtx)
 	}
 
 	return pt

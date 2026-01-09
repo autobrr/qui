@@ -200,6 +200,16 @@ func BuildBasenameGroupIndex(torrents []qbt.Torrent) map[string][]string {
 		byBasename[basename] = append(byBasename[basename], t.Hash)
 	}
 
+	// Debug: log groups with many members
+	for basename, hashes := range byBasename {
+		if len(hashes) >= 5 {
+			log.Trace().
+				Str("basename", basename).
+				Int("count", len(hashes)).
+				Msg("automations: basename group with 5+ members")
+		}
+	}
+
 	// Second pass: build hash → group mapping (only for groups with 2+ torrents)
 	result := make(map[string][]string)
 	for _, hashes := range byBasename {

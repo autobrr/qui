@@ -1093,6 +1093,40 @@ func TestBuildContentGroupIndex_WindowsPaths(t *testing.T) {
 	}
 }
 
+func TestBuildBasenameGroupIndex_CrossSeedPaths(t *testing.T) {
+	// Simulate cross-seeds with same content in different directories
+	// This is the real-world scenario: same movie uploaded to multiple trackers
+	// with hardlinks in tracker-specific directories
+	torrents := []qbt.Torrent{
+		{Hash: "rf-hash", ContentPath: "D:\\UA_Linked\\RF\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"},
+		{Hash: "ulcx-hash", ContentPath: "D:\\UA_Linked\\ULCX\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"},
+		{Hash: "aither-hash", ContentPath: "D:\\UA_Linked\\AITHER\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"},
+		{Hash: "movies-hash", ContentPath: "D:\\Movies\\Code.3.2025.2160p.AMZN.WEBRip.FAN.GRADE.HDR10.DoVi.x265.DDP5.1-RANSOM.mkv"}, // Original in different dir
+		{Hash: "other-hash", ContentPath: "D:\\Movies\\Different.Movie.2024.mkv"}, // Different movie
+	}
+
+	basenameGroupByHash := BuildBasenameGroupIndex(torrents)
+
+	// All 4 torrents with the same basename should be grouped together
+	group := basenameGroupByHash["rf-hash"]
+	if len(group) != 4 {
+		t.Errorf("expected basename group of 4, got %d", len(group))
+	}
+
+	// Verify all cross-seeds are in the same group
+	for _, hash := range []string{"rf-hash", "ulcx-hash", "aither-hash", "movies-hash"} {
+		g := basenameGroupByHash[hash]
+		if len(g) != 4 {
+			t.Errorf("hash %s: expected basename group of 4, got %d", hash, len(g))
+		}
+	}
+
+	// The different movie should not be in any group (only 1 torrent with that basename)
+	if _, ok := basenameGroupByHash["other-hash"]; ok {
+		t.Error("different movie should not be in basename group (no cross-seeds)")
+	}
+}
+
 func TestNormalizeName(t *testing.T) {
 	tests := []struct {
 		input    string
