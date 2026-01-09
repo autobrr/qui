@@ -71,7 +71,6 @@ const DECIMALS_BY_SPEED_UNIT: Record<number, number> = {
 
 // Format numeric value for display, avoiding floating-point artifacts
 function formatNumericInput(value: number, decimals: number): string {
-  if (value === 0) return "";
   return String(Number(value.toFixed(decimals)));
 }
 
@@ -145,7 +144,7 @@ export function LeafCondition({
 
   // Track duration unit for BETWEEN operator (shared for min/max)
   const [betweenDurationUnit, setBetweenDurationUnit] = useState<number>(() =>
-    detectDurationUnit(condition.minValue ?? 0)
+    detectDurationUnit(condition.minValue ?? condition.maxValue ?? 0)
   );
 
   // Track bytes unit separately so it persists when value is empty
@@ -155,7 +154,7 @@ export function LeafCondition({
 
   // Track bytes unit for BETWEEN operator (shared for min/max)
   const [betweenBytesUnit, setBetweenBytesUnit] = useState<number>(() =>
-    detectBytesUnit(condition.minValue ?? 0)
+    detectBytesUnit(condition.minValue ?? condition.maxValue ?? 0)
   );
 
   const handleFieldChange = (field: string) => {
@@ -185,8 +184,8 @@ export function LeafCondition({
     onChange({
       ...condition,
       operator: operator as ConditionOperator,
-      minValue: operator === "BETWEEN" ? 0 : undefined,
-      maxValue: operator === "BETWEEN" ? 0 : undefined,
+      minValue: undefined,
+      maxValue: undefined,
     });
   };
 
@@ -195,11 +194,11 @@ export function LeafCondition({
   };
 
   const handleMinValueChange = (value: string) => {
-    onChange({ ...condition, minValue: parseFloat(value) || 0 });
+    onChange({ ...condition, minValue: value === "" ? undefined : parseFloat(value) || 0 });
   };
 
   const handleMaxValueChange = (value: string) => {
-    onChange({ ...condition, maxValue: parseFloat(value) || 0 });
+    onChange({ ...condition, maxValue: value === "" ? undefined : parseFloat(value) || 0 });
   };
 
   const toggleNegate = () => {
@@ -212,8 +211,11 @@ export function LeafCondition({
 
   // Duration handling - parse seconds to display value using tracked unit
   const getDurationDisplay = (): { value: string; unit: number } => {
-    const secs = parseFloat(condition.value ?? "0") || 0;
-    if (secs === 0) return { value: "", unit: durationUnit };
+    // Check raw stored value to distinguish empty from "0"
+    if (condition.value == null || condition.value === "") {
+      return { value: "", unit: durationUnit };
+    }
+    const secs = parseFloat(condition.value) || 0;
     const display = secs / durationUnit;
     return { value: formatNumericInput(display, 2), unit: durationUnit };
   };
@@ -235,8 +237,11 @@ export function LeafCondition({
 
   // Speed handling - parse bytes/s to display value using tracked unit
   const getSpeedDisplay = (): { value: string; unit: number } => {
-    const bytesPerSec = parseFloat(condition.value ?? "0") || 0;
-    if (bytesPerSec === 0) return { value: "", unit: speedUnit };
+    // Check raw stored value to distinguish empty from "0"
+    if (condition.value == null || condition.value === "") {
+      return { value: "", unit: speedUnit };
+    }
+    const bytesPerSec = parseFloat(condition.value) || 0;
     const display = bytesPerSec / speedUnit;
     const decimals = DECIMALS_BY_SPEED_UNIT[speedUnit] ?? 2;
     return { value: formatNumericInput(display, decimals), unit: speedUnit };
@@ -259,19 +264,17 @@ export function LeafCondition({
 
   // BETWEEN duration display - convert seconds to display unit
   const getBetweenDurationDisplay = (): { minValue: string; maxValue: string; unit: number } => {
-    const minSecs = condition.minValue ?? 0;
-    const maxSecs = condition.maxValue ?? 0;
     return {
-      minValue: formatNumericInput(minSecs / betweenDurationUnit, 2),
-      maxValue: formatNumericInput(maxSecs / betweenDurationUnit, 2),
+      minValue: condition.minValue === undefined ? "" : formatNumericInput(condition.minValue / betweenDurationUnit, 2),
+      maxValue: condition.maxValue === undefined ? "" : formatNumericInput(condition.maxValue / betweenDurationUnit, 2),
       unit: betweenDurationUnit,
     };
   };
 
   const handleBetweenDurationChange = (minVal: string, maxVal: string, unit: number) => {
     setBetweenDurationUnit(unit);
-    const minNum = minVal === "" ? 0 : Math.round((parseFloat(minVal) || 0) * unit);
-    const maxNum = maxVal === "" ? 0 : Math.round((parseFloat(maxVal) || 0) * unit);
+    const minNum = minVal === "" ? undefined : Math.round((parseFloat(minVal) || 0) * unit);
+    const maxNum = maxVal === "" ? undefined : Math.round((parseFloat(maxVal) || 0) * unit);
     onChange({ ...condition, minValue: minNum, maxValue: maxNum });
   };
 
@@ -279,8 +282,11 @@ export function LeafCondition({
 
   // Bytes handling - parse bytes to display value using tracked unit
   const getBytesDisplay = (): { value: string; unit: number } => {
-    const bytes = parseFloat(condition.value ?? "0") || 0;
-    if (bytes === 0) return { value: "", unit: bytesUnit };
+    // Check raw stored value to distinguish empty from "0"
+    if (condition.value == null || condition.value === "") {
+      return { value: "", unit: bytesUnit };
+    }
+    const bytes = parseFloat(condition.value) || 0;
     const display = bytes / bytesUnit;
     const decimals = DECIMALS_BY_BYTES_UNIT[bytesUnit] ?? 2;
     return { value: formatNumericInput(display, decimals), unit: bytesUnit };
@@ -303,20 +309,18 @@ export function LeafCondition({
 
   // BETWEEN bytes display - convert bytes to display unit
   const getBetweenBytesDisplay = (): { minValue: string; maxValue: string; unit: number } => {
-    const minBytes = condition.minValue ?? 0;
-    const maxBytes = condition.maxValue ?? 0;
     const decimals = DECIMALS_BY_BYTES_UNIT[betweenBytesUnit] ?? 2;
     return {
-      minValue: formatNumericInput(minBytes / betweenBytesUnit, decimals),
-      maxValue: formatNumericInput(maxBytes / betweenBytesUnit, decimals),
+      minValue: condition.minValue === undefined ? "" : formatNumericInput(condition.minValue / betweenBytesUnit, decimals),
+      maxValue: condition.maxValue === undefined ? "" : formatNumericInput(condition.maxValue / betweenBytesUnit, decimals),
       unit: betweenBytesUnit,
     };
   };
 
   const handleBetweenBytesChange = (minVal: string, maxVal: string, unit: number) => {
     setBetweenBytesUnit(unit);
-    const minNum = minVal === "" ? 0 : Math.round((parseFloat(minVal) || 0) * unit);
-    const maxNum = maxVal === "" ? 0 : Math.round((parseFloat(maxVal) || 0) * unit);
+    const minNum = minVal === "" ? undefined : Math.round((parseFloat(minVal) || 0) * unit);
+    const maxNum = maxVal === "" ? undefined : Math.round((parseFloat(maxVal) || 0) * unit);
     onChange({ ...condition, minValue: minNum, maxValue: maxNum });
   };
 
