@@ -223,6 +223,66 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "speed limits enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				SpeedLimits: &models.SpeedLimitAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "share limits enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				ShareLimits: &models.ShareLimitsAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "pause enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "category enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				Category: &models.CategoryAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {

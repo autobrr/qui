@@ -417,13 +417,27 @@ const (
 )
 
 // conditionsUseFreeSpace checks if any action condition uses FREE_SPACE field.
-// Currently only delete actions use FREE_SPACE meaningfully.
 func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
 	if conditions == nil {
 		return false
 	}
-	if conditions.Delete != nil && conditions.Delete.Enabled {
-		return automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldFreeSpace)
+	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldFreeSpace) {
+		return true
+	}
+	if conditions.ShareLimits != nil && conditions.ShareLimits.Enabled && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldFreeSpace) {
+		return true
+	}
+	if conditions.Pause != nil && conditions.Pause.Enabled && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldFreeSpace) {
+		return true
+	}
+	if conditions.Delete != nil && conditions.Delete.Enabled && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldFreeSpace) {
+		return true
+	}
+	if conditions.Tag != nil && conditions.Tag.Enabled && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldFreeSpace) {
+		return true
+	}
+	if conditions.Category != nil && conditions.Category.Enabled && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldFreeSpace) {
+		return true
 	}
 	return false
 }
@@ -486,7 +500,9 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 
 // validateFreeSpacePathSource validates path-based free space source configuration.
 func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *models.Instance) (status int, msg string, err error) {
-	// Path-based free space is not supported on Windows
+	// Path-based free space is not supported on Windows.
+	// This is also enforced in validateFreeSpaceSourcePayload, but keep it here since
+	// validateFreeSpaceSource is unit-tested directly.
 	if runtime.GOOS == osWindows {
 		return http.StatusBadRequest, errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows")
 	}
