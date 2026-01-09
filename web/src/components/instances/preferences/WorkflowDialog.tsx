@@ -32,16 +32,20 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
+import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
-import { parseTrackerDomains } from "@/lib/utils"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { formatBytes, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
   AutomationInput,
   AutomationPreviewResult,
+  AutomationPreviewTorrent,
+  PreviewView,
   RegexValidationError,
   RuleCondition
 } from "@/types"
@@ -80,6 +84,19 @@ const ACTION_LABELS: Record<ActionType, string> = {
   category: "Category",
 }
 
+/**
+ * Recursively checks if a condition tree uses a specific field.
+ * Used to validate that FREE_SPACE conditions aren't paired with keep-files mode.
+ */
+function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
+  if (!condition) return false
+  if (condition.field === field) return true
+  if (condition.conditions) {
+    return condition.conditions.some(c => conditionUsesField(c, field))
+  }
+  return false
+}
+
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
 
@@ -111,7 +128,8 @@ type FormState = {
   exprSeedingTimeMode: "no_change" | "global" | "unlimited" | "custom"
   exprSeedingTimeValue?: number
   // Delete settings
-  exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
@@ -146,6 +164,7 @@ const emptyFormState: FormState = {
   exprSeedingTimeMode: "no_change",
   exprSeedingTimeValue: undefined,
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
+  exprIncludeHardlinks: false,
   exprTags: [],
   exprTagMode: "full",
   exprUseTrackerAsTag: false,
@@ -181,12 +200,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
+  const [previewView, setPreviewView] = useState<PreviewView>("needed")
+  const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   // Speed limit units - track separately so they persist when value is cleared
   const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const previewPageSize = 25
   const tagsInputRef = useRef<HTMLInputElement>(null)
+  // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
+  const isHydrating = useRef(true)
 
   const commitPendingTags = () => {
     if (tagsInputRef.current) {
@@ -201,7 +225,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
+  const { instances } = useInstances()
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const hasLocalFilesystemAccess = useMemo(
+    () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
+    [instances, instanceId]
+  )
 
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
@@ -331,6 +360,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
+    let cancelled = false
+
     if (open) {
       if (rule) {
         const isAllTrackers = rule.trackerPattern === "*"
@@ -355,6 +386,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprSeedingTimeMode: FormState["exprSeedingTimeMode"] = "no_change"
         let exprSeedingTimeValue: number | undefined
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
+        let exprIncludeHardlinks = false
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
         let exprUseTrackerAsTag = false
@@ -432,6 +464,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           if (conditions.delete?.enabled) {
             deleteEnabled = true
             exprDeleteMode = conditions.delete.mode ?? "deleteWithFilesPreserveCrossSeeds"
+            exprIncludeHardlinks = conditions.delete.includeHardlinks ?? false
           }
           if (conditions.tag?.enabled) {
             tagEnabled = true
@@ -472,6 +505,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprSeedingTimeMode,
           exprSeedingTimeValue,
           exprDeleteMode,
+          exprIncludeHardlinks,
           exprTags,
           exprTagMode,
           exprUseTrackerAsTag,
@@ -483,8 +517,47 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       } else {
         setFormState(emptyFormState)
       }
+      // Mark hydration complete after a microtask to ensure state is settled
+      // Use cancelled flag to avoid race condition if dialog closes before microtask runs
+      queueMicrotask(() => {
+        if (!cancelled) {
+          isHydrating.current = false
+        }
+      })
+    } else {
+      // Reset hydration flag when dialog closes so it's ready for next open
+      isHydrating.current = true
     }
+
+    return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
+
+  // Auto-switch delete mode from keep-files to deleteWithFiles when FREE_SPACE is used
+  // This prevents users from creating invalid combinations that the backend would reject
+  // Only toast on user edits, not during initial form hydration
+  useEffect(() => {
+    if (formState.deleteEnabled && formState.exprDeleteMode === "delete") {
+      if (conditionUsesField(formState.actionCondition, "FREE_SPACE")) {
+        setFormState(prev => ({ ...prev, exprDeleteMode: "deleteWithFiles" }))
+        if (!isHydrating.current) {
+          toast.info("Switched to 'Remove with files' because Free Space condition requires actual disk space to be freed")
+        }
+      }
+    }
+  }, [formState.actionCondition, formState.deleteEnabled, formState.exprDeleteMode])
+
+  // Auto-switch interval from 1 minute when FREE_SPACE delete condition is added
+  // The backend has a ~5 minute cooldown, so 1 minute intervals would be ineffective
+  // Only switch on user edits, not during initial hydration (respect saved config)
+  useEffect(() => {
+    if (isHydrating.current) return
+    if (formState.deleteEnabled && formState.intervalSeconds === 60) {
+      if (conditionUsesField(formState.actionCondition, "FREE_SPACE")) {
+        setFormState(prev => ({ ...prev, intervalSeconds: 300 })) // Switch to 5 minutes
+        toast.info("Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown")
+      }
+    }
+  }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = (input: FormState): AutomationInput => {
@@ -560,6 +633,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       conditions.delete = {
         enabled: true,
         mode: input.exprDeleteMode,
+        // Only include includeHardlinks when using include cross-seeds mode
+        includeHardlinks: input.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" ? input.exprIncludeHardlinks : undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -598,6 +673,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
 
+  // Check if delete rule uses FREE_SPACE field (shows preview view toggle)
+  const deleteUsesFreeSpace = useMemo(() => {
+    if (!formState.deleteEnabled) return false
+    return conditionUsesField(formState.actionCondition, "FREE_SPACE")
+  }, [formState.deleteEnabled, formState.actionCondition])
+
   // Count enabled actions
   const enabledActionsCount = [
     formState.speedLimitsEnabled,
@@ -609,15 +690,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   ].filter(Boolean).length
 
   const previewMutation = useMutation({
-    mutationFn: async (input: FormState) => {
+    mutationFn: async ({ input, view }: { input: FormState; view: PreviewView }) => {
       const payload = {
         ...buildPayload(input),
         previewLimit: previewPageSize,
         previewOffset: 0,
+        previewView: view,
       }
       return api.previewAutomation(instanceId, payload)
     },
-    onSuccess: (result, input) => {
+    onSuccess: (result, { input }) => {
       // Last warning before enabling a delete rule (even if 0 matches right now).
       setPreviewInput(input)
       setPreviewResult(result)
@@ -637,12 +719,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         ...buildPayload(previewInput),
         previewLimit: previewPageSize,
         previewOffset: previewResult.examples.length,
+        previewView: previewView,
       }
       return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result) => {
-      setPreviewResult(prev => prev? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches }: result
-      )
+      setPreviewResult(prev => prev ? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches } : result)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -654,6 +736,77 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     loadMorePreview.mutate()
+  }
+
+  // Handler for switching preview view - refetches with new view and resets pagination
+  const handlePreviewViewChange = async (newView: PreviewView) => {
+    if (!previewInput) return
+    setPreviewView(newView)
+    setIsLoadingPreviewView(true)
+    try {
+      const payload = {
+        ...buildPayload(previewInput),
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+        previewView: newView,
+      }
+      const result = await api.previewAutomation(instanceId, payload)
+      setPreviewResult(result)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+    } finally {
+      setIsLoadingPreviewView(false)
+    }
+  }
+
+  // CSV columns for automation preview export
+  const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
+    { header: "Name", accessor: t => t.name },
+    { header: "Hash", accessor: t => t.hash },
+    { header: "Tracker", accessor: t => t.tracker },
+    { header: "Size", accessor: t => formatBytes(t.size) },
+    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
+    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
+    { header: "Category", accessor: t => t.category },
+    { header: "Tags", accessor: t => t.tags },
+    { header: "State", accessor: t => t.state },
+    { header: "Added On", accessor: t => t.addedOn },
+    { header: "Path", accessor: t => t.contentPath ?? "" },
+  ]
+
+  const handleExport = async () => {
+    if (!previewInput || !previewResult) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: AutomationPreviewTorrent[] = []
+      let offset = 0
+      const total = previewResult.totalMatches
+
+      while (allItems.length < total) {
+        const payload = {
+          ...buildPayload(previewInput),
+          previewLimit: pageSize,
+          previewOffset: offset,
+          previewView,
+        }
+        const result = await api.previewAutomation(instanceId, payload)
+        allItems.push(...result.examples)
+        offset += pageSize
+        // Safety check in case total changes
+        if (result.examples.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      const ruleName = (formState.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      downloadBlob(csv, `${ruleName}_preview.csv`)
+      toast.success(`Exported ${allItems.length} torrents to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const createOrUpdate = useMutation({
@@ -784,7 +937,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // For delete and category rules, show preview as a last warning before enabling.
     const needsPreview = (isDeleteRule || isCategoryRule) && submitState.enabled
     if (needsPreview) {
-      previewMutation.mutate(submitState)
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      previewMutation.mutate({ input: submitState, view: "needed" })
     } else {
       createOrUpdate.mutate(submitState)
     }
@@ -1410,20 +1565,81 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Mode</Label>
-                          <Select
-                            value={formState.exprDeleteMode}
-                            onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
-                          >
-                            <SelectTrigger className="w-fit text-destructive">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove (keep files)</SelectItem>
-                              <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
-                              <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          {(() => {
+                            const usesFreeSpace = conditionUsesField(formState.actionCondition, "FREE_SPACE")
+                            const keepFilesDisabled = usesFreeSpace
+                            return (
+                              <Select
+                                value={formState.exprDeleteMode}
+                                onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
+                              >
+                                <SelectTrigger className="w-fit text-destructive">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <TooltipProvider delayDuration={150}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div>
+                                          <SelectItem
+                                            value="delete"
+                                            className="text-destructive focus:text-destructive"
+                                            disabled={keepFilesDisabled}
+                                          >
+                                            Remove (keep files)
+                                          </SelectItem>
+                                        </div>
+                                      </TooltipTrigger>
+                                      {keepFilesDisabled && (
+                                        <TooltipContent side="left" className="max-w-[280px]">
+                                          <p>Disabled when using Free Space condition. Keep-files mode cannot satisfy a free space target because no disk space is freed.</p>
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
+                                  <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
+                                  <SelectItem value="deleteWithFilesIncludeCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (include cross-seeds)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )
+                          })()}
                         </div>
+                        {/* Include Hardlinks checkbox - only for deleteWithFilesIncludeCrossSeeds mode */}
+                        {formState.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" && (
+                          <div className="flex items-center gap-2">
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={formState.exprIncludeHardlinks}
+                                      onChange={(e) => setFormState(prev => ({ ...prev, exprIncludeHardlinks: e.target.checked }))}
+                                      disabled={!hasLocalFilesystemAccess}
+                                      className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
+                                    />
+                                    <span className={!hasLocalFilesystemAccess ? "opacity-50" : ""}>
+                                      Include hardlinked copies
+                                    </span>
+                                  </label>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-[320px]">
+                                  {hasLocalFilesystemAccess ? (
+                                    <p>
+                                      Also delete torrents that share the same underlying files via hardlinks.
+                                      Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.
+                                    </p>
+                                  ) : (
+                                    <p>
+                                      Requires &quot;Local Filesystem Access&quot; to be enabled in instance settings.
+                                    </p>
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1487,7 +1703,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         setEnabledBeforePreview(formState.enabled)
                         const nextState = { ...formState, enabled: true }
                         setFormState(nextState)
-                        previewMutation.mutate(nextState)
+                        // Reset preview view to "needed" when starting a new preview
+                        setPreviewView("needed")
+                        previewMutation.mutate({ input: nextState, view: "needed" })
                       } else {
                         setFormState(prev => ({ ...prev, enabled: checked }))
                       }
@@ -1509,7 +1727,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="default">Default (15m)</SelectItem>
-                      <SelectItem value="60">1 minute</SelectItem>
+                      <SelectItem value="60" disabled={deleteUsesFreeSpace}>1 minute</SelectItem>
                       <SelectItem value="300">5 minutes</SelectItem>
                       <SelectItem value="900">15 minutes</SelectItem>
                       <SelectItem value="1800">30 minutes</SelectItem>
@@ -1528,6 +1746,27 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       )}
                     </SelectContent>
                   </Select>
+                  {deleteUsesFreeSpace && (
+                    <TooltipProvider delayDuration={150}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label="About Free Space cooldown"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[280px]">
+                          <p>After removing files, qui waits ~5 minutes before running Free Space deletes again to allow qBittorrent to refresh disk free space.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {deleteUsesFreeSpace && formState.intervalSeconds === 60 && (
+                    <span className="text-xs text-yellow-500">Effective minimum ~5m due to cooldown</span>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2">
@@ -1559,7 +1798,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           setShowConfirmDialog(open)
         }}
         title={
-          isDeleteRule? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule"): `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
+          isDeleteRule ? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule") : `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
         }
         description={
           previewResult && previewResult.totalMatches > 0 ? (
@@ -1608,6 +1847,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isConfirming={createOrUpdate.isPending}
         destructive={isDeleteRule && formState.enabled}
         warning={isCategoryRule}
+        previewView={previewView}
+        onPreviewViewChange={handlePreviewViewChange}
+        showPreviewViewToggle={isDeleteRule && deleteUsesFreeSpace}
+        isLoadingPreview={isLoadingPreviewView}
+        onExport={handleExport}
+        isExporting={isExporting}
       />
     </>
   )

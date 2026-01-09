@@ -46,6 +46,7 @@ type AutomationPayload struct {
 	Conditions      *models.ActionConditions `json:"conditions"`
 	PreviewLimit    *int                     `json:"previewLimit"`
 	PreviewOffset   *int                     `json:"previewOffset"`
+	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
 }
 
 // toModel converts the payload to an Automation model.
@@ -327,6 +328,33 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
+	// Validate FREE_SPACE condition is not combined with keep-files mode
+	// Keep-files mode doesn't free disk space, so a FREE_SPACE < X condition
+	// would match all eligible torrents indefinitely (foot-gun).
+	if deleteUsesKeepFilesWithFreeSpace(payload.Conditions) {
+		return http.StatusBadRequest, "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed.", errors.New("invalid delete mode for free space condition")
+	}
+
+	// Validate includeHardlinks option
+	if payload.Conditions != nil && payload.Conditions.Delete != nil && payload.Conditions.Delete.IncludeHardlinks {
+		// Only valid when mode is deleteWithFilesIncludeCrossSeeds
+		if payload.Conditions.Delete.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
+			return http.StatusBadRequest, "includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'", errors.New("includeHardlinks requires include cross-seeds mode")
+		}
+		// Requires local filesystem access
+		instance, err := h.instanceStore.Get(ctx, instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return http.StatusNotFound, "Instance not found", err
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for includeHardlinks validation")
+			return http.StatusInternalServerError, "Failed to validate automation", err
+		}
+		if !instance.HasLocalFilesystemAccess {
+			return http.StatusBadRequest, "includeHardlinks requires Local Filesystem Access to be enabled on this instance", errors.New("local access required for hardlinks")
+		}
+	}
+
 	return 0, "", nil
 }
 
@@ -355,6 +383,24 @@ func conditionsUseHardlink(conditions *models.ActionConditions) bool {
 		return true
 	}
 	return false
+}
+
+// deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
+// with a FREE_SPACE condition. This combination is a foot-gun because keep-files
+// doesn't free disk space, so the condition would match indefinitely.
+func deleteUsesKeepFilesWithFreeSpace(conditions *models.ActionConditions) bool {
+	if conditions == nil || conditions.Delete == nil || !conditions.Delete.Enabled {
+		return false
+	}
+
+	// Check if delete condition uses FREE_SPACE field
+	if !automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldFreeSpace) {
+		return false
+	}
+
+	// Check if mode is keep-files (or empty, which defaults to keep-files)
+	mode := conditions.Delete.Mode
+	return mode == "" || mode == models.DeleteModeKeepFiles
 }
 
 func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
@@ -475,8 +521,14 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Determine preview view mode (default: "needed")
+	previewView := payload.PreviewView
+	if previewView == "" {
+		previewView = "needed"
+	}
+
 	// Delete preview (existing logic)
-	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, previewLimit, previewOffset)
+	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, previewLimit, previewOffset, previewView)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
