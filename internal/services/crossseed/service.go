@@ -2835,12 +2835,17 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		return nil, fmt.Errorf("failed to find candidates: %w", err)
 	}
 
+	// Detect disc layout from source files
+	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
+
 	response := &CrossSeedResponse{
 		Success: false,
 		Results: make([]InstanceCrossSeedResult, 0),
 		TorrentInfo: &TorrentInfo{
-			Name: torrentName,
-			Hash: torrentHash,
+			Name:       torrentName,
+			Hash:       torrentHash,
+			DiscLayout: isDiscLayout,
+			DiscMarker: discMarker,
 		},
 	}
 
@@ -4472,6 +4477,9 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	// Use unified content type detection
 	contentInfo := DetermineContentType(contentDetectionRelease)
 
+	// Detect disc layout
+	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
+
 	// Get all available indexers first
 	var allIndexers []int
 	if s.jackettService != nil {
@@ -4502,6 +4510,8 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		SearchType:       contentInfo.SearchType,
 		SearchCategories: contentInfo.Categories,
 		RequiredCaps:     contentInfo.RequiredCaps,
+		DiscLayout:       isDiscLayout,
+		DiscMarker:       discMarker,
 	}
 
 	// Initialize filtering state
@@ -4864,6 +4874,9 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
 
+	// Detect disc layout for this torrent
+	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
+
 	sourceInfo := TorrentInfo{
 		InstanceID:       instanceID,
 		InstanceName:     instance.Name,
@@ -4876,6 +4889,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		SearchType:       contentInfo.SearchType,
 		SearchCategories: contentInfo.Categories,
 		RequiredCaps:     contentInfo.RequiredCaps,
+		DiscLayout:       isDiscLayout,
+		DiscMarker:       discMarker,
 	}
 
 	query := strings.TrimSpace(opts.Query)

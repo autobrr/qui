@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -90,8 +91,12 @@ func (s *Service) loop(ctx context.Context) {
 func (s *Service) recoverStuckRuns(ctx context.Context) error {
 	// Mark old pending/scanning runs as failed (they won't resume)
 	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely
-	// Note: deleting is excluded - let user decide how to handle interrupted deletions
-	return s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"})
+	// Note: deleting is included here because a process restart means deletion is no longer in progress,
+	// and leaving it active would block future scans indefinitely.
+	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning", "deleting"}); err != nil {
+		return fmt.Errorf("mark stuck runs failed: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) checkScheduledScans(ctx context.Context) {
@@ -243,8 +248,22 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		return s.store.UpdateRunStatus(ctx, runID, "canceled")
 
 	case "deleting":
-		// Deletion in progress - refuse to cancel mid-delete for safety
-		return ErrCannotCancelDuringDeletion
+		// If deletion is truly in progress (in-memory cancel func exists), refuse to cancel mid-delete.
+		// If there's no cancel func, we assume this is a stale DB state (e.g. after restart) and allow
+		// cancellation to unblock future scans.
+		s.cancelMu.Lock()
+		_, inProgress := s.cancelFuncs[runID]
+		s.cancelMu.Unlock()
+		if inProgress {
+			return ErrCannotCancelDuringDeletion
+		}
+		if warnErr := s.store.UpdateRunWarning(ctx, runID, "Deletion was interrupted; marked canceled"); warnErr != nil {
+			log.Warn().Err(warnErr).Int64("runID", runID).Msg("orphanscan: failed to set warning on interrupted deletion")
+		}
+		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
+			return fmt.Errorf("update run status: %w", err)
+		}
+		return nil
 
 	case "completed", "failed", "canceled":
 		return fmt.Errorf("%w: %s", ErrRunAlreadyFinished, run.Status)
@@ -322,6 +341,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			GracePeriodMinutes:  defaults.GracePeriodMinutes,
 			IgnorePaths:         defaults.IgnorePaths,
 			ScanIntervalHours:   defaults.ScanIntervalHours,
+			PreviewSort:         defaults.PreviewSort,
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
@@ -367,12 +387,12 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
-	// Walk each scan root and collect orphans
+	// Walk each scan root and collect orphans.
+	// Note: we intentionally do NOT enforce MaxFilesPerRun during the walk.
+	// We want the max-files cap to be applied *after sorting* so the preview
+	// and truncation reflect the user's configured ordering.
 	var allOrphans []OrphanFile
 	var walkErrors []string
-	truncated := false
-	remaining := settings.MaxFilesPerRun
-	var bytesFound int64
 
 	for _, root := range scanRoots {
 		if ctx.Err() != nil {
@@ -380,7 +400,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, wasTruncated, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, remaining)
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, runID)
@@ -392,15 +412,52 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 
 		allOrphans = append(allOrphans, orphans...)
-		for _, o := range orphans {
-			bytesFound += o.Size
-		}
-		remaining -= len(orphans)
+	}
 
-		if wasTruncated || remaining <= 0 {
-			truncated = true
-			break
+	// Deduplicate across scan roots.
+	// Some instances can produce overlapping scan roots (e.g. /data and /data/subdir),
+	// which would otherwise result in the same absolute path appearing multiple times.
+	allOrphans = dedupeOrphans(allOrphans)
+
+	previewSort := strings.TrimSpace(settings.PreviewSort)
+	if previewSort == "" {
+		previewSort = "size_desc"
+	}
+
+	sort.Slice(allOrphans, func(i, j int) bool {
+		a, b := allOrphans[i], allOrphans[j]
+
+		switch previewSort {
+		case "directory_size_desc":
+			da := strings.ToLower(filepath.Clean(filepath.Dir(a.Path)))
+			db := strings.ToLower(filepath.Clean(filepath.Dir(b.Path)))
+			if da != db {
+				return da < db
+			}
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
+		default: // "size_desc"
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
 		}
+	})
+
+	maxFiles := settings.MaxFilesPerRun
+	if maxFiles <= 0 {
+		maxFiles = DefaultSettings().MaxFilesPerRun
+	}
+	truncated := maxFiles > 0 && len(allOrphans) > maxFiles
+	if truncated {
+		allOrphans = allOrphans[:maxFiles]
+	}
+
+	var bytesFound int64
+	for _, o := range allOrphans {
+		bytesFound += o.Size
 	}
 
 	// If no orphans found but we had walk errors, all roots likely failed
@@ -476,6 +533,35 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
 }
 
+func dedupeOrphans(allOrphans []OrphanFile) []OrphanFile {
+	if len(allOrphans) <= 1 {
+		return allOrphans
+	}
+
+	byPath := make(map[string]OrphanFile, len(allOrphans))
+	for _, o := range allOrphans {
+		key := normalizePath(o.Path)
+		existing, ok := byPath[key]
+		if !ok {
+			byPath[key] = o
+			continue
+		}
+		if o.Size > existing.Size {
+			existing.Size = o.Size
+		}
+		if o.ModifiedAt.After(existing.ModifiedAt) {
+			existing.ModifiedAt = o.ModifiedAt
+		}
+		byPath[key] = existing
+	}
+
+	out := make([]OrphanFile, 0, len(byPath))
+	for _, o := range byPath {
+		out = append(out, o)
+	}
+	return out
+}
+
 // maybeAutoCleanup checks if auto-cleanup should be triggered for a scheduled scan.
 // Auto-cleanup is only performed when:
 // 1. The scan was triggered by the scheduler (not manual)
@@ -548,6 +634,20 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
+	// Load ignore paths before deletion loop
+	settings, err := s.store.GetSettings(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for deletion")
+	}
+	var ignorePaths []string
+	if settings != nil {
+		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
+		if err != nil {
+			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
+			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
+		}
+	}
+
 	// Get files for deletion
 	files, err := s.store.GetFilesForDeletion(ctx, runID)
 	if err != nil {
@@ -580,10 +680,10 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteFile(scanRoot, f.FilePath, tfm)
+		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm, ignorePaths)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
-			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete file")
+			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
 			failedDeletes++
 
 			// Detect error type for user-facing message
@@ -601,6 +701,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
 			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
+		case deleteDispositionSkippedIgnored:
+			s.updateFileStatus(ctx, f.ID, "skipped", "path is protected by ignore paths")
 		case deleteDispositionDeleted:
 			s.updateFileStatus(ctx, f.ID, "deleted", "")
 			filesDeleted++
@@ -613,19 +715,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// Clean up empty directories
-	settings, err := s.store.GetSettings(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for directory cleanup")
-	}
-	var ignorePaths []string
-	if settings != nil {
-		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
-		if err != nil {
-			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during directory cleanup, using unnormalized paths")
-			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
-		}
-	}
-
 	var foldersDeleted int
 	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
 	for _, dir := range candidateDirs {
@@ -779,13 +868,16 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFil
 
 // findScanRoot finds the scan root that contains the given path.
 func findScanRoot(path string, scanRoots []string) string {
+	nPath := normalizePath(path)
+
 	longest := ""
 	for _, root := range scanRoots {
-		if len(path) < len(root) || path[:len(root)] != root {
+		nRoot := normalizePath(root)
+		if len(nPath) < len(nRoot) || nPath[:len(nRoot)] != nRoot {
 			continue
 		}
 		// Ensure it's at a path boundary.
-		if len(path) > len(root) && path[len(root)] != filepath.Separator {
+		if len(nPath) > len(nRoot) && nPath[len(nRoot)] != filepath.Separator {
 			continue
 		}
 		if len(root) > len(longest) {
