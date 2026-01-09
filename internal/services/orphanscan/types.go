@@ -73,6 +73,7 @@ type Settings struct {
 	GracePeriodMinutes  int
 	IgnorePaths         []string
 	ScanIntervalHours   int
+	PreviewSort         string
 	MaxFilesPerRun      int
 	AutoCleanupEnabled  bool
 	AutoCleanupMaxFiles int
