@@ -51,6 +51,30 @@ const BYTES_INPUT_UNITS = [
   { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
 ];
 
+// Decimal precision by unit to avoid float artifacts (e.g., 24.199999999999818)
+const MiB = 1024 * 1024;
+const GiB = 1024 * 1024 * 1024;
+const TiB = 1024 * 1024 * 1024 * 1024;
+const KiB = 1024;
+
+const DECIMALS_BY_BYTES_UNIT: Record<number, number> = {
+  [MiB]: 0,
+  [GiB]: 1,
+  [TiB]: 2,
+};
+
+const DECIMALS_BY_SPEED_UNIT: Record<number, number> = {
+  1: 0,      // B/s
+  [KiB]: 0,  // KiB/s
+  [MiB]: 1,  // MiB/s
+};
+
+// Format numeric value for display, avoiding floating-point artifacts
+function formatNumericInput(value: number, decimals: number): string {
+  if (value === 0) return "";
+  return String(Number(value.toFixed(decimals)));
+}
+
 // Detect best bytes unit from value
 function detectBytesUnit(bytes: number): number {
   const tib = 1024 * 1024 * 1024 * 1024;
@@ -190,7 +214,8 @@ export function LeafCondition({
   const getDurationDisplay = (): { value: string; unit: number } => {
     const secs = parseFloat(condition.value ?? "0") || 0;
     if (secs === 0) return { value: "", unit: durationUnit };
-    return { value: String(secs / durationUnit), unit: durationUnit };
+    const display = secs / durationUnit;
+    return { value: formatNumericInput(display, 2), unit: durationUnit };
   };
 
   const durationDisplay = fieldType === "duration" ? getDurationDisplay() : null;
@@ -212,7 +237,9 @@ export function LeafCondition({
   const getSpeedDisplay = (): { value: string; unit: number } => {
     const bytesPerSec = parseFloat(condition.value ?? "0") || 0;
     if (bytesPerSec === 0) return { value: "", unit: speedUnit };
-    return { value: String(bytesPerSec / speedUnit), unit: speedUnit };
+    const display = bytesPerSec / speedUnit;
+    const decimals = DECIMALS_BY_SPEED_UNIT[speedUnit] ?? 2;
+    return { value: formatNumericInput(display, decimals), unit: speedUnit };
   };
 
   const speedDisplay = fieldType === "speed" ? getSpeedDisplay() : null;
@@ -235,8 +262,8 @@ export function LeafCondition({
     const minSecs = condition.minValue ?? 0;
     const maxSecs = condition.maxValue ?? 0;
     return {
-      minValue: minSecs === 0 ? "" : String(minSecs / betweenDurationUnit),
-      maxValue: maxSecs === 0 ? "" : String(maxSecs / betweenDurationUnit),
+      minValue: formatNumericInput(minSecs / betweenDurationUnit, 2),
+      maxValue: formatNumericInput(maxSecs / betweenDurationUnit, 2),
       unit: betweenDurationUnit,
     };
   };
@@ -254,7 +281,9 @@ export function LeafCondition({
   const getBytesDisplay = (): { value: string; unit: number } => {
     const bytes = parseFloat(condition.value ?? "0") || 0;
     if (bytes === 0) return { value: "", unit: bytesUnit };
-    return { value: String(bytes / bytesUnit), unit: bytesUnit };
+    const display = bytes / bytesUnit;
+    const decimals = DECIMALS_BY_BYTES_UNIT[bytesUnit] ?? 2;
+    return { value: formatNumericInput(display, decimals), unit: bytesUnit };
   };
 
   const bytesDisplay = fieldType === "bytes" ? getBytesDisplay() : null;
@@ -276,9 +305,10 @@ export function LeafCondition({
   const getBetweenBytesDisplay = (): { minValue: string; maxValue: string; unit: number } => {
     const minBytes = condition.minValue ?? 0;
     const maxBytes = condition.maxValue ?? 0;
+    const decimals = DECIMALS_BY_BYTES_UNIT[betweenBytesUnit] ?? 2;
     return {
-      minValue: minBytes === 0 ? "" : String(minBytes / betweenBytesUnit),
-      maxValue: maxBytes === 0 ? "" : String(maxBytes / betweenBytesUnit),
+      minValue: formatNumericInput(minBytes / betweenBytesUnit, decimals),
+      maxValue: formatNumericInput(maxBytes / betweenBytesUnit, decimals),
       unit: betweenBytesUnit,
     };
   };
