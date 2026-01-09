@@ -48,15 +48,13 @@ func TestLocalDiscUnitsOnPath(t *testing.T) {
 	})
 
 	t.Logf("disc units found: %d (truncated=%v)", len(orphans), truncated)
-	maxLog := 30
-	if len(orphans) < maxLog {
-		maxLog = len(orphans)
-	}
-	for i := 0; i < maxLog; i++ {
+	maxLog := min(30, len(orphans))
+	for i := range maxLog {
 		t.Logf("%3d) %s (size=%d)", i+1, orphans[i].Path, orphans[i].Size)
 	}
 }
 
+//nolint:revive // local-only diagnostic test; readability > lint thresholds
 func TestLocalAllUnitsOnPath(t *testing.T) {
 	// Local-only diagnostic test.
 	// Counts "orphan units" as the orphan scan sees them:
@@ -89,7 +87,7 @@ func TestLocalAllUnitsOnPath(t *testing.T) {
 	var totalBytes int64
 	var maxFilePath string
 	var maxFileSize int64
-	discUnitCache := make(map[string]string)
+	discUnitCache := make(map[string]discUnitDecision)
 
 	err = filepath.WalkDir(path, func(p string, d os.DirEntry, walkErr error) error {
 		select {
@@ -117,9 +115,9 @@ func TestLocalAllUnitsOnPath(t *testing.T) {
 			return nil
 		}
 
-		fi, err := d.Info()
-		if err != nil {
-			return nil
+		fi, infoErr := d.Info()
+		if infoErr != nil {
+			return nil //nolint:nilerr // best-effort local diagnostic
 		}
 
 		totalFiles++
@@ -168,11 +166,8 @@ func TestLocalAllUnitsOnPath(t *testing.T) {
 		return list[i].size > list[j].size
 	})
 
-	maxLog := 30
-	if len(list) < maxLog {
-		maxLog = len(list)
-	}
-	for i := 0; i < maxLog; i++ {
+	maxLog := min(30, len(list))
+	for i := range maxLog {
 		t.Logf("disc %3d) %s (size=%d)", i+1, list[i].path, list[i].size)
 	}
 }

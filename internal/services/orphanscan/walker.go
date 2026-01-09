@@ -9,11 +9,18 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
 
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
+
+// discUnitDecision represents the cached decision for disc-layout unit selection.
+type discUnitDecision struct {
+	chosenUnit      string // The unit path (or empty if grouping disabled)
+	disableGrouping bool   // True means return the file path itself, not a unit
+}
 
 // walkScanRoot walks a directory tree and returns orphan files not in the TorrentFileMap.
 // Only files are returned as orphans - directories are cleaned up separately after file deletion.
@@ -24,153 +31,220 @@ func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
 
 // walkScanRootDiscUnits walks a directory tree and returns only disc-layout orphan units.
 // This is intended for diagnostics/local tests to avoid materializing a huge orphan list.
-func walkScanRootDiscUnits(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxUnits int) ([]OrphanFile, bool, error) {
+func walkScanRootDiscUnits(
+	ctx context.Context, root string, tfm *TorrentFileMap,
+	ignorePaths []string, gracePeriod time.Duration, maxUnits int,
+) ([]OrphanFile, bool, error) {
 	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxUnits, func(_ string, isDiscUnit bool) bool {
 		return isDiscUnit
 	})
 }
 
-func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFileMap,
+type scanWalker struct {
+	ctx         context.Context
+	root        string
+	tfm         *TorrentFileMap
+	ignorePaths []string
+	gracePeriod time.Duration
+	maxFiles    int
+	unitFilter  func(unitPath string, isDiscUnit bool) bool
+
+	orphanUnits    map[string]*OrphanFile
+	discUnitsInUse map[string]struct{}
+	discUnitCache  map[string]discUnitDecision
+	discUnitPaths  map[string]struct{}
+	truncated      bool
+}
+
+func newScanWalker(
+	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
-	unitFilter func(unitPath string, isDiscUnit bool) bool) ([]OrphanFile, bool, error) {
+	unitFilter func(unitPath string, isDiscUnit bool) bool,
+) *scanWalker {
+	return &scanWalker{
+		ctx:            ctx,
+		root:           root,
+		tfm:            tfm,
+		ignorePaths:    ignorePaths,
+		gracePeriod:    gracePeriod,
+		maxFiles:       maxFiles,
+		unitFilter:     unitFilter,
+		orphanUnits:    make(map[string]*OrphanFile),
+		discUnitsInUse: make(map[string]struct{}),
+		discUnitCache:  make(map[string]discUnitDecision),
+		discUnitPaths:  make(map[string]struct{}),
+	}
+}
 
-	// We may collapse many files into a single orphan "unit" (e.g. disc-layout folders).
-	// Keyed by orphan unit path.
-	orphanUnits := make(map[string]*OrphanFile)
-	// Tracks disc units that must be considered in-use because at least one file under
-	// the disc unit is referenced by a torrent.
-	discUnitsInUse := make(map[string]struct{})
-	// Cache to avoid re-reading unit directories for every file in a disc layout.
-	// Keyed by "<candidateParentAbs>|<marker>" and stores the chosen unit path.
-	discUnitCache := make(map[string]string)
-	// Tracks disc unit paths (directories) so we can suppress other orphan units contained within.
-	discUnitPaths := make(map[string]struct{})
-
-	truncated := false
-
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		// Check for cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		if err != nil {
-			if os.IsPermission(err) {
-				return nil // Skip inaccessible, continue walk
-			}
-			return err
-		}
-
-		// Skip symlinks entirely - we don't follow them for orphan detection.
-		// Note: d.IsDir() returns false for symlinks (doesn't follow target),
-		// so we just skip all symlinks regardless of what they point to.
-		if d.Type()&fs.ModeSymlink != 0 {
-			return nil
-		}
-
-		// Skip directories entirely - they're not orphans, only files are
-		if d.IsDir() {
-			// But check ignore paths to skip entire subtrees
-			if isIgnoredPath(path, ignorePaths) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-
-		// Check ignore paths for files (boundary-safe prefix match)
-		if isIgnoredPath(path, ignorePaths) {
-			return nil
-		}
-
-		// Determine whether this file should be grouped into a disc-layout orphan unit.
-		unitPath, isDiscUnit := discOrphanUnitWithContext(root, path, tfm, discUnitCache)
-
-		// If in torrent file map, skip. For disc units, mark the unit as in-use to prevent
-		// unsafe partial deletes (disc folder would contain a live torrent file).
-		if tfm.Has(normalizePath(path)) {
-			if isDiscUnit {
-				discUnitsInUse[unitPath] = struct{}{}
-				delete(orphanUnits, unitPath)
-			}
-			return nil
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return nil // Skip files we can't stat
-		}
-
-		// Grace period check
-		if time.Since(info.ModTime()) < gracePeriod {
-			return nil
-		}
-
-		// If this belongs to a disc unit that is in-use, do not track it as an orphan.
-		if isDiscUnit {
-			if _, inUse := discUnitsInUse[unitPath]; inUse {
-				return nil
-			}
-			discUnitPaths[unitPath] = struct{}{}
-		}
-
-		if unitFilter != nil && !unitFilter(unitPath, isDiscUnit) {
-			return nil
-		}
-
-		// Cap check is on unique orphan units, not raw file count.
-		// When maxFiles <= 0, the scan is unbounded and truncation is disabled.
-		if _, exists := orphanUnits[unitPath]; !exists {
-			if maxFiles > 0 && len(orphanUnits) >= maxFiles {
-				truncated = true
-				return fs.SkipAll
-			}
-			orphanUnits[unitPath] = &OrphanFile{
-				Path:       unitPath,
-				Size:       0,
-				ModifiedAt: info.ModTime(),
-				Status:     FileStatusPending,
-			}
-		}
-
-		entry := orphanUnits[unitPath]
-		entry.Size += info.Size()
-		if info.ModTime().After(entry.ModifiedAt) {
-			entry.ModifiedAt = info.ModTime()
-		}
+func (w *scanWalker) walk(path string, d fs.DirEntry, walkErr error) error {
+	if err := w.checkCanceled(); err != nil {
+		return err
+	}
+	if walkErr != nil {
+		// WalkDir can call the callback with a nil DirEntry (e.g. root stat failure),
+		// so we must handle errors before touching d.
+		return w.handleWalkErr(walkErr)
+	}
+	if d == nil {
 		return nil
-	})
+	}
+	if d.Type()&fs.ModeSymlink != 0 {
+		return nil
+	}
+	if d.IsDir() {
+		return w.handleDir(path)
+	}
+	return w.handleFile(path, d)
+}
 
-	orphans := make([]OrphanFile, 0, len(orphanUnits))
-	// Suppress any orphan units that are fully contained within a disc unit directory.
-	// This keeps previews clean and avoids redundant deletes (e.g., sibling files next to BDMV).
-	if len(discUnitPaths) > 0 {
-		// Pre-normalize disc unit paths once to avoid repeated normalization per comparison.
-		normalizedDiscUnits := make([]string, 0, len(discUnitPaths))
-		for du := range discUnitPaths {
-			normalizedDiscUnits = append(normalizedDiscUnits, normalizePath(du))
+func (w *scanWalker) checkCanceled() error {
+	select {
+	case <-w.ctx.Done():
+		return fmt.Errorf("walk canceled: %w", w.ctx.Err())
+	default:
+		return nil
+	}
+}
+
+func (w *scanWalker) handleWalkErr(walkErr error) error {
+	if walkErr == nil {
+		return nil
+	}
+	if os.IsPermission(walkErr) {
+		return nil
+	}
+	return walkErr
+}
+
+func (w *scanWalker) handleDir(path string) error {
+	if isIgnoredPath(path, w.ignorePaths) {
+		return fs.SkipDir
+	}
+	return nil
+}
+
+func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
+	if isIgnoredPath(path, w.ignorePaths) {
+		return nil
+	}
+
+	unitPath, isDiscUnit := discOrphanUnitWithContext(w.root, path, w.tfm, w.discUnitCache, w.ignorePaths)
+	if w.tfm.Has(normalizePath(path)) {
+		w.markInUse(unitPath, isDiscUnit)
+		return nil
+	}
+
+	info, infoErr := d.Info()
+	if infoErr != nil {
+		return nil //nolint:nilerr // best-effort scan: ignore stat failures
+	}
+	if time.Since(info.ModTime()) < w.gracePeriod {
+		return nil
+	}
+	if isDiscUnit {
+		if w.isDiscUnitInUse(unitPath) {
+			return nil
 		}
+		w.discUnitPaths[unitPath] = struct{}{}
+	}
+	if w.unitFilter != nil && !w.unitFilter(unitPath, isDiscUnit) {
+		return nil
+	}
 
-		for unit := range orphanUnits {
-			normalizedUnit := normalizePath(unit)
-			for _, normalizedDiscUnit := range normalizedDiscUnits {
-				if normalizedUnit == normalizedDiscUnit {
-					continue
-				}
-				if isPathUnderNormalized(normalizedUnit, normalizedDiscUnit) {
-					delete(orphanUnits, unit)
-					break
-				}
-			}
+	return w.addOrUpdateUnit(unitPath, info)
+}
+
+func (w *scanWalker) markInUse(unitPath string, isDiscUnit bool) {
+	if !isDiscUnit {
+		return
+	}
+	w.discUnitsInUse[unitPath] = struct{}{}
+	delete(w.orphanUnits, unitPath)
+}
+
+func (w *scanWalker) isDiscUnitInUse(unitPath string) bool {
+	_, ok := w.discUnitsInUse[unitPath]
+	return ok
+}
+
+func (w *scanWalker) addOrUpdateUnit(unitPath string, info fs.FileInfo) error {
+	entry, exists := w.orphanUnits[unitPath]
+	if !exists {
+		if w.maxFiles > 0 && len(w.orphanUnits) >= w.maxFiles {
+			w.truncated = true
+			return fs.SkipAll
+		}
+		entry = &OrphanFile{Path: unitPath, Status: FileStatusPending}
+		w.orphanUnits[unitPath] = entry
+	}
+
+	entry.Size += info.Size()
+	if entry.ModifiedAt.IsZero() || info.ModTime().After(entry.ModifiedAt) {
+		entry.ModifiedAt = info.ModTime()
+	}
+	return nil
+}
+
+func containingDiscUnit(normUnit string, discRoots map[string]string) (string, bool) {
+	for normDisc, discUnitPath := range discRoots {
+		if normUnit == normDisc {
+			continue
+		}
+		if isPathUnderNormalized(normUnit, normDisc) {
+			return discUnitPath, true
 		}
 	}
-	for _, o := range orphanUnits {
+	return "", false
+}
+
+func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
+	if len(w.discUnitPaths) == 0 {
+		return
+	}
+
+	discRoots := make(map[string]string, len(w.discUnitPaths))
+	for du := range w.discUnitPaths {
+		discRoots[normalizePath(du)] = du
+	}
+
+	for unit, entry := range w.orphanUnits {
+		discUnitPath, ok := containingDiscUnit(normalizePath(unit), discRoots)
+		if !ok {
+			continue
+		}
+		w.mergeIntoDiscUnit(unit, discUnitPath, entry)
+	}
+}
+
+func (w *scanWalker) mergeIntoDiscUnit(unit, discUnitPath string, entry *OrphanFile) {
+	discEntry, ok := w.orphanUnits[discUnitPath]
+	if ok {
+		discEntry.Size += entry.Size
+		if entry.ModifiedAt.After(discEntry.ModifiedAt) {
+			discEntry.ModifiedAt = entry.ModifiedAt
+		}
+	}
+	delete(w.orphanUnits, unit)
+}
+
+func (w *scanWalker) orphans() []OrphanFile {
+	w.mergeSuppressedUnitsIntoDiscUnits()
+
+	orphans := make([]OrphanFile, 0, len(w.orphanUnits))
+	for _, o := range w.orphanUnits {
 		orphans = append(orphans, *o)
 	}
+	return orphans
+}
 
-	return orphans, truncated, err
+func walkScanRootWithUnitFilter(
+	ctx context.Context, root string, tfm *TorrentFileMap,
+	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
+	unitFilter func(unitPath string, isDiscUnit bool) bool,
+) ([]OrphanFile, bool, error) {
+	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter)
+	err := filepath.WalkDir(root, w.walk)
+	return w.orphans(), w.truncated, err
 }
 
 // discOrphanUnit detects whether a file path belongs to a disc-layout folder.
@@ -181,104 +255,138 @@ func walkScanRootWithUnitFilter(ctx context.Context, root string, tfm *TorrentFi
 //   - Prefers the parent directory above the marker as the unit root.
 //   - If the marker is directly under the scan root, the unit becomes the marker directory itself
 //     (to avoid attempting to delete the scan root).
-func discOrphanUnit(scanRoot, filePath string, cache map[string]string) (unitPath string, ok bool) {
+func discOrphanUnit(scanRoot, filePath string, cache map[string]discUnitDecision) (unitPath string, ok bool) {
 	// Backwards-compatible wrapper (used only by local diagnostic code).
-	return discOrphanUnitWithContext(scanRoot, filePath, nil, cache)
+	return discOrphanUnitWithContext(scanRoot, filePath, nil, cache, nil)
+}
+
+// findDiscMarker scans path segments for a disc-layout marker (BDMV, VIDEO_TS).
+// Returns the marker index, actual on-disk segment name, and uppercase marker.
+func findDiscMarker(segments []string) (markerIndex int, markerSegment, markerUpper string, found bool) {
+	for i, seg := range segments {
+		segUpper := strings.ToUpper(seg)
+		if slices.Contains(discLayoutMarkers, segUpper) {
+			return i, seg, segUpper, true
+		}
+	}
+	return -1, "", "", false
+}
+
+// buildDiscCandidatePaths builds the candidate parent and marker absolute paths.
+func buildDiscCandidatePaths(root string, segments []string, markerIndex int, markerSegment string) (candidateAbs, markerAbs string) {
+	var unitRel, markerRel string
+	if markerIndex == 0 {
+		unitRel = markerSegment
+		markerRel = markerSegment
+	} else {
+		unitRel = filepath.Join(segments[:markerIndex]...)
+		if unitRel == "." || unitRel == "" {
+			unitRel = markerSegment
+			markerRel = markerSegment
+		} else {
+			markerRel = filepath.Join(unitRel, markerSegment)
+		}
+	}
+	candidateAbs = filepath.Clean(filepath.Join(root, unitRel))
+	markerAbs = filepath.Clean(filepath.Join(root, markerRel))
+	return candidateAbs, markerAbs
+}
+
+// chooseDiscUnit decides whether to use the parent folder, marker folder, or disable grouping.
+func chooseDiscUnit(candidateAbs, markerAbs, markerUpper string, tfm *TorrentFileMap, ignorePaths []string) discUnitDecision {
+	parentProtected := len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(candidateAbs, ignorePaths)
+	markerProtected := len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(markerAbs, ignorePaths)
+
+	if parentProtected && markerProtected {
+		return discUnitDecision{disableGrouping: true}
+	}
+	if parentProtected {
+		return discUnitDecision{chosenUnit: markerAbs}
+	}
+	if markerProtected {
+		return discUnitDecision{disableGrouping: true}
+	}
+
+	// Neither protected: check torrent file safety
+	if discParentIsSafeDiscRoot(candidateAbs, markerUpper, tfm) {
+		return discUnitDecision{chosenUnit: candidateAbs}
+	}
+	return discUnitDecision{chosenUnit: markerAbs}
 }
 
 // discOrphanUnitWithContext detects whether a file path belongs to a disc-layout folder.
 // If so, it returns the deletion unit path (directory) that should represent the disc.
 //
 // Note: sibling orphan files are suppressed at the end of the scan if a parent disc unit is chosen.
-func discOrphanUnitWithContext(scanRoot, filePath string, tfm *TorrentFileMap, unitCache map[string]string) (unitPath string, ok bool) {
+// Respects ignorePaths to prevent grouping that would delete ignored content.
+func discRelativeSegments(root, path string) ([]string, bool) {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return nil, false
+	}
+
+	relDir := filepath.Dir(rel)
+	if relDir == "." {
+		return nil, false
+	}
+
+	return strings.Split(relDir, string(filepath.Separator)), true
+}
+
+func discUnitFromParentMarker(
+	originalPath, candidateAbs, markerAbs, markerUpper string,
+	tfm *TorrentFileMap,
+	unitCache map[string]discUnitDecision,
+	ignorePaths []string,
+) (unitPath string, ok bool) {
+	key := normalizePath(candidateAbs) + "|" + markerUpper
+	if unitCache != nil {
+		if decision, ok := unitCache[key]; ok {
+			if decision.disableGrouping {
+				return originalPath, false
+			}
+			return decision.chosenUnit, true
+		}
+	}
+
+	decision := chooseDiscUnit(candidateAbs, markerAbs, markerUpper, tfm, ignorePaths)
+	if unitCache != nil {
+		unitCache[key] = decision
+	}
+	if decision.disableGrouping {
+		return originalPath, false
+	}
+	return decision.chosenUnit, true
+}
+
+func discOrphanUnitWithContext(scanRoot, filePath string, tfm *TorrentFileMap, unitCache map[string]discUnitDecision, ignorePaths []string) (unitPath string, ok bool) {
 	root := filepath.Clean(scanRoot)
 	path := filepath.Clean(filePath)
 
-	// Work on a scan-root-relative path to avoid Windows drive letter edge cases.
-	rel, err := filepath.Rel(root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	segments, ok := discRelativeSegments(root, path)
+	if !ok {
 		return path, false
 	}
 
-	// Scan directory segments (exclude filename).
-	relDir := filepath.Dir(rel)
-	if relDir == "." {
-		return path, false
-	}
-	segments := strings.Split(relDir, string(filepath.Separator))
-
-	markerIndex := -1
-	marker := ""
-	for i, seg := range segments {
-		segUpper := strings.ToUpper(seg)
-		for _, m := range discLayoutMarkers {
-			if segUpper == m {
-				markerIndex = i
-				marker = m
-				break
-			}
-		}
-		if markerIndex != -1 {
-			break
-		}
-	}
-	if markerIndex == -1 {
+	markerIndex, markerSegment, markerUpper, found := findDiscMarker(segments)
+	if !found {
 		return path, false
 	}
 
-	// Build unit relative path.
-	var unitRel string
-	if markerIndex == 0 {
-		// Marker is directly under scan root; unit becomes the marker directory itself.
-		unitRel = marker
-	} else {
-		// Unit is the parent directory above the marker.
-		unitRel = filepath.Join(segments[:markerIndex]...)
-		if unitRel == "." || unitRel == "" {
-			unitRel = marker
-		}
-	}
-
-	// Resolve absolute paths.
-	candidateAbs := filepath.Clean(filepath.Join(root, unitRel))
-	markerAbs := filepath.Clean(filepath.Join(candidateAbs, marker))
-	if markerIndex == 0 {
-		markerAbs = filepath.Clean(filepath.Join(root, marker))
-	}
-
-	// Safety: never return scan root as a deletion unit.
+	candidateAbs, markerAbs := buildDiscCandidatePaths(root, segments, markerIndex, markerSegment)
 	if candidateAbs == root {
 		return markerAbs, true
 	}
 
-	// If the marker isn't directly under scan root, prefer deleting the parent folder
-	// when it's safe to do so. "Safe" here means: no sibling content that is referenced
-	// by any torrent file. This allows collapsing disc roots that contain extra filesystem
-	// cruft that isn't linked to any torrent.
 	if markerIndex > 0 {
-		key := normalizePath(candidateAbs) + "|" + marker
-		if unitCache != nil {
-			if v, ok := unitCache[key]; ok {
-				return v, true
-			}
-		}
+		return discUnitFromParentMarker(path, candidateAbs, markerAbs, markerUpper, tfm, unitCache, ignorePaths)
+	}
 
-		preferParent := discParentIsSafeDiscRoot(candidateAbs, marker, tfm)
-		chosen := markerAbs
-		if preferParent {
-			chosen = candidateAbs
-		}
-		if unitCache != nil {
-			unitCache[key] = chosen
-		}
-		return chosen, true
+	if len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(markerAbs, ignorePaths) {
+		return path, false
 	}
 
 	return markerAbs, true
-}
-
-func isPathUnder(childPath, parentPath string) bool {
-	return isPathUnderNormalized(normalizePath(childPath), normalizePath(parentPath))
 }
 
 // isPathUnderNormalized checks if child is strictly under parent.
@@ -296,31 +404,40 @@ func isPathUnderNormalized(child, parent string) bool {
 	return child[len(parent)] == filepath.Separator
 }
 
-func discParentIsPureDiscRoot(parentAbs string, marker string) bool {
+var discRootAllowedFiles = map[string]struct{}{
+	"DESKTOP.INI": {},
+	"THUMBS.DB":   {},
+	".DS_STORE":   {},
+}
+
+func discAllowedDirs(marker string) map[string]struct{} {
+	switch strings.ToUpper(marker) {
+	case "BDMV":
+		return map[string]struct{}{
+			"BDMV":        {},
+			"CERTIFICATE": {},
+		}
+	case "VIDEO_TS":
+		return map[string]struct{}{
+			"VIDEO_TS": {},
+			"AUDIO_TS": {},
+		}
+	default:
+		return map[string]struct{}{strings.ToUpper(marker): {}}
+	}
+}
+
+func discAllowedNames(marker string) (allowedDirs, allowedFiles map[string]struct{}) {
+	return discAllowedDirs(marker), discRootAllowedFiles
+}
+
+func discParentIsPureDiscRoot(parentAbs, marker string) bool {
 	entries, err := os.ReadDir(parentAbs)
 	if err != nil {
-		// If we can't confidently evaluate contents, don't risk deleting the parent folder.
 		return false
 	}
 
-	allowedDirs := map[string]struct{}{}
-	switch strings.ToUpper(marker) {
-	case "BDMV":
-		allowedDirs["BDMV"] = struct{}{}
-		allowedDirs["CERTIFICATE"] = struct{}{}
-	case "VIDEO_TS":
-		allowedDirs["VIDEO_TS"] = struct{}{}
-		allowedDirs["AUDIO_TS"] = struct{}{}
-	default:
-		allowedDirs[strings.ToUpper(marker)] = struct{}{}
-	}
-
-	allowedFiles := map[string]struct{}{
-		"DESKTOP.INI": {},
-		"THUMBS.DB":   {},
-		".DS_STORE":   {},
-	}
-
+	allowedDirs, allowedFiles := discAllowedNames(marker)
 	for _, e := range entries {
 		nameUpper := strings.ToUpper(e.Name())
 		if e.IsDir() {
@@ -338,36 +455,17 @@ func discParentIsPureDiscRoot(parentAbs string, marker string) bool {
 	return true
 }
 
-func discParentIsSafeDiscRoot(parentAbs string, marker string, tfm *TorrentFileMap) bool {
-	// If we don't have a torrent map, retain the stricter "pure disc root" behavior.
+func discParentIsSafeDiscRoot(parentAbs, marker string, tfm *TorrentFileMap) bool {
 	if tfm == nil {
 		return discParentIsPureDiscRoot(parentAbs, marker)
 	}
 
 	entries, err := os.ReadDir(parentAbs)
 	if err != nil {
-		// If we can't confidently evaluate contents, don't risk deleting the parent folder.
 		return false
 	}
 
-	allowedDirs := map[string]struct{}{}
-	switch strings.ToUpper(marker) {
-	case "BDMV":
-		allowedDirs["BDMV"] = struct{}{}
-		allowedDirs["CERTIFICATE"] = struct{}{}
-	case "VIDEO_TS":
-		allowedDirs["VIDEO_TS"] = struct{}{}
-		allowedDirs["AUDIO_TS"] = struct{}{}
-	default:
-		allowedDirs[strings.ToUpper(marker)] = struct{}{}
-	}
-
-	allowedFiles := map[string]struct{}{
-		"DESKTOP.INI": {},
-		"THUMBS.DB":   {},
-		".DS_STORE":   {},
-	}
-
+	allowedDirs, allowedFiles := discAllowedNames(marker)
 	for _, e := range entries {
 		nameUpper := strings.ToUpper(e.Name())
 		full := filepath.Join(parentAbs, e.Name())
@@ -375,7 +473,6 @@ func discParentIsSafeDiscRoot(parentAbs string, marker string, tfm *TorrentFileM
 			if _, ok := allowedDirs[nameUpper]; ok {
 				continue
 			}
-			// Any torrent file anywhere under this sibling dir makes it unsafe to delete the parent.
 			if tfm.HasAnyInDir(normalizePath(full)) {
 				return false
 			}
@@ -384,7 +481,6 @@ func discParentIsSafeDiscRoot(parentAbs string, marker string, tfm *TorrentFileM
 		if _, ok := allowedFiles[nameUpper]; ok {
 			continue
 		}
-		// Any torrent file that is this sibling file makes it unsafe to delete the parent.
 		if tfm.Has(normalizePath(full)) {
 			return false
 		}
@@ -395,14 +491,46 @@ func discParentIsSafeDiscRoot(parentAbs string, marker string, tfm *TorrentFileM
 
 // isIgnoredPath checks if path matches any ignore prefix with boundary safety.
 // Ensures /data/foo doesn't match /data/foobar (requires separator after prefix).
+// Uses normalizePath for consistent comparison across platforms (handles Windows casing).
 func isIgnoredPath(path string, ignorePaths []string) bool {
+	normPath := normalizePath(path)
 	for _, prefix := range ignorePaths {
-		if path == prefix {
+		normPrefix := normalizePath(prefix)
+		if normPath == normPrefix {
 			return true
 		}
-		if strings.HasPrefix(path, prefix) {
+		if strings.HasPrefix(normPath, normPrefix) {
 			// Ensure match is at path boundary
-			if len(path) > len(prefix) && path[len(prefix)] == filepath.Separator {
+			if len(normPath) > len(normPrefix) && normPath[len(normPrefix)] == filepath.Separator {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isPathProtectedByIgnorePaths checks if a path should not be deleted because:
+//  1. The path itself is ignored, OR
+//  2. The path contains any ignored descendant (any ignore path has this path as a parent)
+//
+// This prevents deleting directories that contain ignored content.
+func isPathProtectedByIgnorePaths(path string, ignorePaths []string) bool {
+	// Check if the path itself is ignored
+	if isIgnoredPath(path, ignorePaths) {
+		return true
+	}
+
+	// Check if any ignore path is a descendant of this path
+	normPath := normalizePath(path)
+	for _, ignorePath := range ignorePaths {
+		normIgnore := normalizePath(ignorePath)
+		// Skip if ignore path is the same as the target
+		if normIgnore == normPath {
+			continue
+		}
+		// Check if ignore path is under this path (boundary-safe)
+		if strings.HasPrefix(normIgnore, normPath) {
+			if len(normIgnore) > len(normPath) && normIgnore[len(normPath)] == filepath.Separator {
 				return true
 			}
 		}
@@ -411,7 +539,7 @@ func isIgnoredPath(path string, ignorePaths []string) bool {
 }
 
 // NormalizeIgnorePaths validates and normalizes ignore paths.
-// All paths must be absolute.
+// All paths must be absolute. Uses normalizePath for consistency (Windows casing).
 func NormalizeIgnorePaths(paths []string) ([]string, error) {
 	result := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -419,7 +547,7 @@ func NormalizeIgnorePaths(paths []string) ([]string, error) {
 		if !filepath.IsAbs(cleaned) {
 			return nil, fmt.Errorf("ignore path must be absolute: %s", p)
 		}
-		result = append(result, cleaned)
+		result = append(result, normalizePath(cleaned))
 	}
 	return result, nil
 }

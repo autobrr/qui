@@ -264,10 +264,10 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	return &run, nil
 }
 
-func finalizeRun(run *OrphanScanRun, scanPathsJSON sql.NullString, errorMessage sql.NullString, completedAt sql.NullTime) error {
+func finalizeRun(run *OrphanScanRun, scanPathsJSON, errorMessage sql.NullString, completedAt sql.NullTime) error {
 	if scanPathsJSON.Valid && scanPathsJSON.String != "" {
 		if err := json.Unmarshal([]byte(scanPathsJSON.String), &run.ScanPaths); err != nil {
-			return err
+			return fmt.Errorf("unmarshal scan paths: %w", err)
 		}
 	}
 	if run.ScanPaths == nil {
@@ -314,16 +314,32 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 
 		runs = append(runs, &run)
 	}
-	return runs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
+	}
+	return runs, nil
 }
 
 // ListRuns lists recent runs for an instance.
-func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit int) ([]*OrphanScanRun, error) {
+func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID, limit int) ([]*OrphanScanRun, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	recentRuns, err := s.listRunsRecent(ctx, instanceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	activeRuns, err := s.listRunsActive(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeRuns(recentRuns, activeRuns, limit), nil
+}
+
+func (s *OrphanScanStore) listRunsRecent(ctx context.Context, instanceID, limit int) ([]*OrphanScanRun, error) {
+	query := `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
 		       error_message, started_at, completed_at
@@ -331,18 +347,12 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 		WHERE instance_id = ?
 		ORDER BY started_at DESC
 		LIMIT ?
-	`, instanceID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	`
+	return s.scanRunsQuery(ctx, "query recent runs", query, instanceID, limit)
+}
 
-	recentRuns, err := s.scanRunsFromRows(rows)
-	if err != nil {
-		return nil, err
-	}
-
-	activeRows, err := s.db.QueryContext(ctx, `
+func (s *OrphanScanStore) listRunsActive(ctx context.Context, instanceID int) ([]*OrphanScanRun, error) {
+	query := `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
 		       error_message, started_at, completed_at
@@ -351,17 +361,21 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 		  AND (status IN ('pending', 'scanning', 'deleting')
 		       OR (status = 'preview_ready' AND files_found > 0))
 		ORDER BY started_at DESC
-	`, instanceID)
-	if err != nil {
-		return nil, err
-	}
-	defer activeRows.Close()
+	`
+	return s.scanRunsQuery(ctx, "query active runs", query, instanceID)
+}
 
-	activeRuns, err := s.scanRunsFromRows(activeRows)
+func (s *OrphanScanStore) scanRunsQuery(ctx context.Context, label, query string, args ...any) ([]*OrphanScanRun, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", label, err)
 	}
+	defer rows.Close()
 
+	return s.scanRunsFromRows(rows)
+}
+
+func mergeRuns(recentRuns, activeRuns []*OrphanScanRun, limit int) []*OrphanScanRun {
 	activeIDs := make(map[int64]struct{}, len(activeRuns))
 	byID := make(map[int64]*OrphanScanRun, len(recentRuns)+len(activeRuns))
 	for _, r := range activeRuns {
@@ -378,7 +392,6 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 	for _, r := range byID {
 		merged = append(merged, r)
 	}
-
 	sort.Slice(merged, func(i, j int) bool {
 		if merged[i].StartedAt.Equal(merged[j].StartedAt) {
 			return merged[i].ID > merged[j].ID
@@ -386,16 +399,22 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 		return merged[i].StartedAt.After(merged[j].StartedAt)
 	})
 
-	// Enforce limit for non-active runs, but always include active runs so they are visible.
 	if len(activeIDs) == 0 {
-		if len(merged) > limit {
-			merged = merged[:limit]
-		}
-		return merged, nil
+		return limitRuns(merged, limit)
 	}
+	return limitNonActive(merged, activeIDs, limit)
+}
 
-	out := make([]*OrphanScanRun, 0, len(merged))
-	for _, r := range merged {
+func limitRuns(runs []*OrphanScanRun, limit int) []*OrphanScanRun {
+	if len(runs) <= limit {
+		return runs
+	}
+	return runs[:limit]
+}
+
+func limitNonActive(runs []*OrphanScanRun, activeIDs map[int64]struct{}, limit int) []*OrphanScanRun {
+	out := make([]*OrphanScanRun, 0, len(runs))
+	for _, r := range runs {
 		if _, isActive := activeIDs[r.ID]; isActive {
 			out = append(out, r)
 			continue
@@ -404,7 +423,7 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID int, limit in
 			out = append(out, r)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // GetLastCompletedRun returns the last completed run for an instance.
@@ -594,127 +613,110 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 
 // ListFiles lists orphan files for a run with pagination.
 
+// scanOrphanScanFile scans a single row into an OrphanScanFile struct.
+func scanOrphanScanFile(rows *sql.Rows) (*OrphanScanFile, error) {
+	var f OrphanScanFile
+	var modifiedAt sql.NullTime
+	var errorMessage sql.NullString
+
+	if err := rows.Scan(&f.ID, &f.RunID, &f.FilePath, &f.FileSize, &modifiedAt, &f.Status, &errorMessage); err != nil {
+		return nil, fmt.Errorf("scan orphan file row: %w", err)
+	}
+	if modifiedAt.Valid {
+		f.ModifiedAt = &modifiedAt.Time
+	}
+	if errorMessage.Valid {
+		f.ErrorMessage = errorMessage.String
+	}
+	return &f, nil
+}
+
+// collectOrphanScanFiles reads all rows into a slice using the shared scanner.
+func collectOrphanScanFiles(rows *sql.Rows) ([]*OrphanScanFile, error) {
+	var files []*OrphanScanFile
+	for rows.Next() {
+		f, err := scanOrphanScanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate orphan file rows: %w", err)
+	}
+	return files, nil
+}
+
+// listFilesDirectorySorted loads all files and sorts by directory then size (in-memory).
+func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+		FROM orphan_scan_files
+		WHERE run_id = ?
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("query orphan files: %w", err)
+	}
+	defer rows.Close()
+
+	all, err := collectOrphanScanFiles(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		a, b := all[i], all[j]
+		da := strings.ToLower(filepath.Clean(filepath.Dir(a.FilePath)))
+		db := strings.ToLower(filepath.Clean(filepath.Dir(b.FilePath)))
+		if da != db {
+			return da < db
+		}
+		if a.FileSize != b.FileSize {
+			return a.FileSize > b.FileSize
+		}
+		return strings.ToLower(a.FilePath) < strings.ToLower(b.FilePath)
+	})
+
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset >= len(all) {
+		return []*OrphanScanFile{}, nil
+	}
+	end := min(offset+limit, len(all))
+	return all[offset:end], nil
+}
+
+// listFilesSizeSorted uses SQL ordering for efficiency.
+func (s *OrphanScanStore) listFilesSizeSorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+		FROM orphan_scan_files
+		WHERE run_id = ?
+		ORDER BY file_size DESC, file_path ASC
+		LIMIT ? OFFSET ?
+	`, runID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("query orphan files: %w", err)
+	}
+	defer rows.Close()
+
+	return collectOrphanScanFiles(rows)
+}
+
 func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, offset int, sortMode string) ([]*OrphanScanFile, error) {
-	// Default ordering matches historical behavior.
 	if sortMode == "" {
 		sortMode = "size_desc"
 	}
 
 	switch sortMode {
 	case "directory_size_desc":
-		// MaxFilesPerRun caps how many records exist for a run, so loading everything here
-		// stays bounded while letting us sort by derived fields (directory).
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT id, run_id, file_path, file_size, modified_at, status, error_message
-			FROM orphan_scan_files
-			WHERE run_id = ?
-		`, runID)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		var all []*OrphanScanFile
-		for rows.Next() {
-			var f OrphanScanFile
-			var modifiedAt sql.NullTime
-			var errorMessage sql.NullString
-
-			if err := rows.Scan(
-				&f.ID,
-				&f.RunID,
-				&f.FilePath,
-				&f.FileSize,
-				&modifiedAt,
-				&f.Status,
-				&errorMessage,
-			); err != nil {
-				return nil, err
-			}
-
-			if modifiedAt.Valid {
-				f.ModifiedAt = &modifiedAt.Time
-			}
-			if errorMessage.Valid {
-				f.ErrorMessage = errorMessage.String
-			}
-
-			all = append(all, &f)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-
-		sort.Slice(all, func(i, j int) bool {
-			a, b := all[i], all[j]
-			da := strings.ToLower(filepath.Clean(filepath.Dir(a.FilePath)))
-			db := strings.ToLower(filepath.Clean(filepath.Dir(b.FilePath)))
-			if da != db {
-				return da < db
-			}
-			if a.FileSize != b.FileSize {
-				return a.FileSize > b.FileSize
-			}
-			return strings.ToLower(a.FilePath) < strings.ToLower(b.FilePath)
-		})
-
-		if offset < 0 {
-			offset = 0
-		}
-		if limit <= 0 {
-			limit = 100
-		}
-		if offset >= len(all) {
-			return []*OrphanScanFile{}, nil
-		}
-		end := offset + limit
-		if end > len(all) {
-			end = len(all)
-		}
-		return all[offset:end], nil
-
-	default: // "size_desc"
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT id, run_id, file_path, file_size, modified_at, status, error_message
-			FROM orphan_scan_files
-			WHERE run_id = ?
-			ORDER BY file_size DESC
-			LIMIT ? OFFSET ?
-		`, runID, limit, offset)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		var files []*OrphanScanFile
-		for rows.Next() {
-			var f OrphanScanFile
-			var modifiedAt sql.NullTime
-			var errorMessage sql.NullString
-
-			if err := rows.Scan(
-				&f.ID,
-				&f.RunID,
-				&f.FilePath,
-				&f.FileSize,
-				&modifiedAt,
-				&f.Status,
-				&errorMessage,
-			); err != nil {
-				return nil, err
-			}
-
-			if modifiedAt.Valid {
-				f.ModifiedAt = &modifiedAt.Time
-			}
-			if errorMessage.Valid {
-				f.ErrorMessage = errorMessage.String
-			}
-
-			files = append(files, &f)
-		}
-
-		return files, rows.Err()
+		return s.listFilesDirectorySorted(ctx, runID, limit, offset)
+	default:
+		return s.listFilesSizeSorted(ctx, runID, limit, offset)
 	}
 }
 

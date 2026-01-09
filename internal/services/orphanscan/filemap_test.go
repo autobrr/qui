@@ -11,7 +11,7 @@ import (
 func TestNormalizePath_WindowsCaseInsensitive(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != goosWindows {
 		t.Skip("windows-only path normalization")
 	}
 
@@ -31,7 +31,7 @@ func TestNormalizePath_WindowsCaseInsensitive(t *testing.T) {
 func TestFindScanRoot_WindowsCaseInsensitive(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != goosWindows {
 		t.Skip("windows-only path matching")
 	}
 

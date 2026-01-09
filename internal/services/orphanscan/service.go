@@ -93,7 +93,10 @@ func (s *Service) recoverStuckRuns(ctx context.Context) error {
 	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely
 	// Note: deleting is included here because a process restart means deletion is no longer in progress,
 	// and leaving it active would block future scans indefinitely.
-	return s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning", "deleting"})
+	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning", "deleting"}); err != nil {
+		return fmt.Errorf("mark stuck runs failed: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) checkScheduledScans(ctx context.Context) {
@@ -254,8 +257,13 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		if inProgress {
 			return ErrCannotCancelDuringDeletion
 		}
-		_ = s.store.UpdateRunWarning(ctx, runID, "Deletion was interrupted; marked canceled")
-		return s.store.UpdateRunStatus(ctx, runID, "canceled")
+		if warnErr := s.store.UpdateRunWarning(ctx, runID, "Deletion was interrupted; marked canceled"); warnErr != nil {
+			log.Warn().Err(warnErr).Int64("runID", runID).Msg("orphanscan: failed to set warning on interrupted deletion")
+		}
+		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
+			return fmt.Errorf("update run status: %w", err)
+		}
+		return nil
 
 	case "completed", "failed", "canceled":
 		return fmt.Errorf("%w: %s", ErrRunAlreadyFinished, run.Status)
@@ -409,28 +417,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// Deduplicate across scan roots.
 	// Some instances can produce overlapping scan roots (e.g. /data and /data/subdir),
 	// which would otherwise result in the same absolute path appearing multiple times.
-	if len(allOrphans) > 1 {
-		byPath := make(map[string]OrphanFile, len(allOrphans))
-		for _, o := range allOrphans {
-			key := normalizePath(o.Path)
-			if existing, ok := byPath[key]; ok {
-				if o.Size > existing.Size {
-					existing.Size = o.Size
-				}
-				if o.ModifiedAt.After(existing.ModifiedAt) {
-					existing.ModifiedAt = o.ModifiedAt
-				}
-				byPath[key] = existing
-				continue
-			}
-			byPath[key] = o
-		}
-
-		allOrphans = allOrphans[:0]
-		for _, o := range byPath {
-			allOrphans = append(allOrphans, o)
-		}
-	}
+	allOrphans = dedupeOrphans(allOrphans)
 
 	previewSort := strings.TrimSpace(settings.PreviewSort)
 	if previewSort == "" {
@@ -546,6 +533,35 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
 }
 
+func dedupeOrphans(allOrphans []OrphanFile) []OrphanFile {
+	if len(allOrphans) <= 1 {
+		return allOrphans
+	}
+
+	byPath := make(map[string]OrphanFile, len(allOrphans))
+	for _, o := range allOrphans {
+		key := normalizePath(o.Path)
+		existing, ok := byPath[key]
+		if !ok {
+			byPath[key] = o
+			continue
+		}
+		if o.Size > existing.Size {
+			existing.Size = o.Size
+		}
+		if o.ModifiedAt.After(existing.ModifiedAt) {
+			existing.ModifiedAt = o.ModifiedAt
+		}
+		byPath[key] = existing
+	}
+
+	out := make([]OrphanFile, 0, len(byPath))
+	for _, o := range byPath {
+		out = append(out, o)
+	}
+	return out
+}
+
 // maybeAutoCleanup checks if auto-cleanup should be triggered for a scheduled scan.
 // Auto-cleanup is only performed when:
 // 1. The scan was triggered by the scheduler (not manual)
@@ -618,6 +634,20 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
+	// Load ignore paths before deletion loop
+	settings, err := s.store.GetSettings(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for deletion")
+	}
+	var ignorePaths []string
+	if settings != nil {
+		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
+		if err != nil {
+			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
+			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
+		}
+	}
+
 	// Get files for deletion
 	files, err := s.store.GetFilesForDeletion(ctx, runID)
 	if err != nil {
@@ -650,7 +680,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm)
+		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm, ignorePaths)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
@@ -671,6 +701,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
 			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
+		case deleteDispositionSkippedIgnored:
+			s.updateFileStatus(ctx, f.ID, "skipped", "path is protected by ignore paths")
 		case deleteDispositionDeleted:
 			s.updateFileStatus(ctx, f.ID, "deleted", "")
 			filesDeleted++
@@ -683,19 +715,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// Clean up empty directories
-	settings, err := s.store.GetSettings(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for directory cleanup")
-	}
-	var ignorePaths []string
-	if settings != nil {
-		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
-		if err != nil {
-			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during directory cleanup, using unnormalized paths")
-			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
-		}
-	}
-
 	var foldersDeleted int
 	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
 	for _, dir := range candidateDirs {

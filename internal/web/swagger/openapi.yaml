@@ -4874,6 +4874,12 @@ components:
         content_filtering_completed:
           type: boolean
           nullable: true
+        disc_layout:
+          type: boolean
+          description: True if this torrent contains disc-based media (Blu-ray/DVD)
+        disc_marker:
+          type: string
+          description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
 
     AsyncIndexerFilteringState:
       type: object

@@ -19,6 +19,11 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 )
 
+const (
+	previewSortSizeDesc          = "size_desc"
+	previewSortDirectorySizeDesc = "directory_size_desc"
+)
+
 type OrphanScanHandler struct {
 	store         *models.OrphanScanStore
 	instanceStore *models.InstanceStore
@@ -166,12 +171,12 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 	}
 	if payload.PreviewSort != nil {
 		// Empty is treated as default.
-		if *payload.PreviewSort != "" && *payload.PreviewSort != "size_desc" && *payload.PreviewSort != "directory_size_desc" {
+		if *payload.PreviewSort != "" && *payload.PreviewSort != previewSortSizeDesc && *payload.PreviewSort != previewSortDirectorySizeDesc {
 			RespondError(w, http.StatusBadRequest, "Invalid preview sort: must be 'size_desc' or 'directory_size_desc'")
 			return
 		}
 		if *payload.PreviewSort == "" {
-			settings.PreviewSort = "size_desc"
+			settings.PreviewSort = previewSortSizeDesc
 		} else {
 			settings.PreviewSort = *payload.PreviewSort
 		}

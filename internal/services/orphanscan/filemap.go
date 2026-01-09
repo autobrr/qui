@@ -10,6 +10,8 @@ import (
 	"sync"
 )
 
+const goosWindows = "windows"
+
 // TorrentFileMap is a thread-safe set of file paths belonging to torrents.
 type TorrentFileMap struct {
 	paths map[string]struct{}
@@ -75,7 +77,7 @@ func (m *TorrentFileMap) Len() int {
 // avoid false orphans from drive-letter/path casing differences.
 func normalizePath(path string) string {
 	p := filepath.Clean(path)
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		p = strings.ToLower(p)
 	}
 	return p

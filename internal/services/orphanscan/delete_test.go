@@ -102,7 +102,7 @@ func TestSafeDeleteTarget_DeletesDirectoryRecursively(t *testing.T) {
 	tfm := NewTorrentFileMap()
 
 	unit := filepath.Join(root, "Movie.2024")
-	disp, err := safeDeleteTarget(root, unit, tfm)
+	disp, err := safeDeleteTarget(root, unit, tfm, nil)
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestSafeDeleteTarget_SkipsDirectoryWhenAnyFileInUse(t *testing.T) {
 	tfm.Add(normalizePath(fileInUse))
 
 	unit := filepath.Join(root, "Movie.2024")
-	disp, err := safeDeleteTarget(root, unit, tfm)
+	disp, err := safeDeleteTarget(root, unit, tfm, nil)
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.
 
 	tfm := NewTorrentFileMap()
 	markerUnit := filepath.Join(movieDir, "BDMV")
-	disp, err := safeDeleteTarget(root, markerUnit, tfm)
+	disp, err := safeDeleteTarget(root, markerUnit, tfm, nil)
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(linkPath))
 
-	disp, err := safeDeleteTarget(root, dir, tfm)
+	disp, err := safeDeleteTarget(root, dir, tfm, nil)
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -303,5 +303,93 @@ func TestCollectCandidateDirsForCleanup_StopsAtNestedScanRoot(t *testing.T) {
 		if filepath.Clean(dir) == filepath.Clean(rootB) {
 			t.Fatalf("did not expect nested scan root in candidates: %q", dir)
 		}
+	}
+}
+
+func TestSafeDeleteTarget_SkipsWhenContainsIgnoredFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "to-delete")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileA := filepath.Join(dir, "orphan.txt")
+	fileB := filepath.Join(dir, "important.txt")
+	for _, p := range []string{fileA, fileB} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+	}
+
+	tfm := NewTorrentFileMap()
+	ignorePaths := []string{fileB}
+
+	disp, err := safeDeleteTarget(root, dir, tfm, ignorePaths)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionSkippedIgnored {
+		t.Fatalf("expected skipped-ignored disposition, got %v", disp)
+	}
+	// Verify directory still exists.
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("expected directory to remain, stat err=%v", err)
+	}
+}
+
+func TestSafeDeleteTarget_SkipsWhenTargetIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	file := filepath.Join(root, "important.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+	ignorePaths := []string{file}
+
+	disp, err := safeDeleteTarget(root, file, tfm, ignorePaths)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionSkippedIgnored {
+		t.Fatalf("expected skipped-ignored disposition, got %v", disp)
+	}
+	// Verify file still exists.
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("expected file to remain, stat err=%v", err)
+	}
+}
+
+func TestSafeDeleteTarget_AllowsDeleteWhenNoIgnorePaths(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "to-delete")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	file := filepath.Join(dir, "orphan.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+	ignorePaths := []string{} // No ignore paths
+
+	disp, err := safeDeleteTarget(root, dir, tfm, ignorePaths)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget error: %v", err)
+	}
+	if disp != deleteDispositionDeleted {
+		t.Fatalf("expected deleted disposition, got %v", disp)
+	}
+	// Verify directory was removed.
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("expected directory removed, stat err=%v", err)
 	}
 }
