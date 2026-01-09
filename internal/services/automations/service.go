@@ -351,6 +351,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
 	if rulesUseContentCountFields([]*models.Automation{rule}) {
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+		// Also build SavePath index if any content count field uses IncludeCrossSeeds
+		if rulesUseIncludeCrossSeeds([]*models.Automation{rule}) {
+			evalCtx.SavePathGroupByHash = BuildSavePathGroupIndex(torrents)
+		}
 	}
 
 	// Check if rule uses hardlink conditions and populate context
@@ -699,6 +703,10 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
 	if rulesUseContentCountFields([]*models.Automation{rule}) {
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+		// Also build SavePath index if any content count field uses IncludeCrossSeeds
+		if rulesUseIncludeCrossSeeds([]*models.Automation{rule}) {
+			evalCtx.SavePathGroupByHash = BuildSavePathGroupIndex(torrents)
+		}
 	}
 
 	// Check if rule uses hardlink conditions
@@ -920,6 +928,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
 	if rulesUseContentCountFields(eligibleRules) {
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+		// Also build SavePath index if any content count field uses IncludeCrossSeeds
+		if rulesUseIncludeCrossSeeds(eligibleRules) {
+			evalCtx.SavePathGroupByHash = BuildSavePathGroupIndex(torrents)
+		}
 	}
 
 	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE condition)
@@ -2146,6 +2158,36 @@ func rulesUseContentCountFields(rules []*models.Automation) bool {
 	return rulesUseCondition(rules, FieldSameContentCount) ||
 		rulesUseCondition(rules, FieldUnregisteredSameContentCount) ||
 		rulesUseCondition(rules, FieldRegisteredSameContentCount)
+}
+
+// rulesUseIncludeCrossSeeds checks if any enabled rule has IncludeCrossSeeds enabled
+// on a content count field condition.
+func rulesUseIncludeCrossSeeds(rules []*models.Automation) bool {
+	for _, rule := range rules {
+		if rule.Conditions == nil || !rule.Enabled {
+			continue
+		}
+		ac := rule.Conditions
+		if ac.SpeedLimits != nil && ConditionUsesIncludeCrossSeeds(ac.SpeedLimits.Condition) {
+			return true
+		}
+		if ac.ShareLimits != nil && ConditionUsesIncludeCrossSeeds(ac.ShareLimits.Condition) {
+			return true
+		}
+		if ac.Pause != nil && ConditionUsesIncludeCrossSeeds(ac.Pause.Condition) {
+			return true
+		}
+		if ac.Delete != nil && ConditionUsesIncludeCrossSeeds(ac.Delete.Condition) {
+			return true
+		}
+		if ac.Tag != nil && ConditionUsesIncludeCrossSeeds(ac.Tag.Condition) {
+			return true
+		}
+		if ac.Category != nil && ConditionUsesIncludeCrossSeeds(ac.Category.Condition) {
+			return true
+		}
+	}
+	return false
 }
 
 // rulesUseTrackerDisplayName checks if any enabled rule uses UseTrackerAsTag with UseDisplayName.

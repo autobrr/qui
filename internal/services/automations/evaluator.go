@@ -69,6 +69,10 @@ type EvalContext struct {
 	// ContentGroupByHash maps torrent hash to its content group (all torrents sharing same ContentPath).
 	// Used for SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT, REGISTERED_SAME_CONTENT_COUNT conditions.
 	ContentGroupByHash map[string][]string
+
+	// SavePathGroupByHash maps torrent hash to all torrents sharing the same SavePath.
+	// Used for cross-seed matching when IncludeCrossSeeds is enabled on content count fields.
+	SavePathGroupByHash map[string][]string
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -142,6 +146,39 @@ func BuildContentGroupIndex(torrents []qbt.Torrent) map[string][]string {
 			continue // No cross-seeds, skip single-torrent groups
 		}
 		// All torrents in this group share the same content
+		for _, h := range hashes {
+			result[h] = hashes
+		}
+	}
+
+	return result
+}
+
+// BuildSavePathGroupIndex builds a map of torrent hash → list of all hashes sharing the same SavePath.
+// This enables cross-seed matching when IncludeCrossSeeds is enabled on content count fields.
+// Uses normalized SavePath for case-insensitive, platform-agnostic comparison.
+func BuildSavePathGroupIndex(torrents []qbt.Torrent) map[string][]string {
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	// First pass: group torrents by normalized SavePath
+	bySavePath := make(map[string][]string) // normalized path → list of hashes
+	for _, t := range torrents {
+		normalizedPath := normalizeContentPath(t.SavePath) // reuse same normalization
+		if normalizedPath == "" {
+			continue // Skip torrents without SavePath
+		}
+		bySavePath[normalizedPath] = append(bySavePath[normalizedPath], t.Hash)
+	}
+
+	// Second pass: build hash → group mapping (only for groups with 2+ torrents)
+	result := make(map[string][]string)
+	for _, hashes := range bySavePath {
+		if len(hashes) < 2 {
+			continue // No cross-seeds, skip single-torrent groups
+		}
+		// All torrents in this group share the same SavePath
 		for _, h := range hashes {
 			result[h] = hashes
 		}
@@ -242,27 +279,56 @@ func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *Ev
 	return false
 }
 
-// getSameContentCount returns the total count of torrents sharing the same content (including self).
-// Returns 1 if no content group data is available (torrent only counts itself).
-func getSameContentCount(hash string, ctx *EvalContext) int {
-	if ctx == nil || ctx.ContentGroupByHash == nil {
-		return 1 // No data available, count only self
+// getContentGroup returns the group of torrents sharing content with the given torrent.
+// If includeCrossSeeds is true, also includes torrents sharing the same SavePath (cross-seeds).
+func getContentGroup(hash string, ctx *EvalContext, includeCrossSeeds bool) []string {
+	if ctx == nil {
+		return nil
 	}
-	group, ok := ctx.ContentGroupByHash[hash]
-	if !ok || len(group) == 0 {
+
+	// Start with ContentPath-based group
+	contentGroup := ctx.ContentGroupByHash[hash]
+
+	// If includeCrossSeeds is enabled, merge with SavePath-based group
+	if includeCrossSeeds && ctx.SavePathGroupByHash != nil {
+		savePathGroup := ctx.SavePathGroupByHash[hash]
+		if len(savePathGroup) > 0 {
+			// Merge both groups, deduplicating
+			merged := make(map[string]struct{})
+			for _, h := range contentGroup {
+				merged[h] = struct{}{}
+			}
+			for _, h := range savePathGroup {
+				merged[h] = struct{}{}
+			}
+			result := make([]string, 0, len(merged))
+			for h := range merged {
+				result = append(result, h)
+			}
+			return result
+		}
+	}
+
+	return contentGroup
+}
+
+// getSameContentCount returns the total count of torrents sharing the same content (including self).
+// If includeCrossSeeds is true, also includes torrents sharing the same SavePath.
+// Returns 1 if no content group data is available (torrent only counts itself).
+func getSameContentCount(hash string, ctx *EvalContext, includeCrossSeeds bool) int {
+	group := getContentGroup(hash, ctx, includeCrossSeeds)
+	if len(group) == 0 {
 		return 1 // Not in any group, count only self
 	}
 	return len(group)
 }
 
 // getUnregisteredSameContentCount returns the count of OTHER unregistered torrents sharing the same content.
+// If includeCrossSeeds is true, also includes torrents sharing the same SavePath.
 // Excludes the current torrent from the count.
-func getUnregisteredSameContentCount(hash string, ctx *EvalContext) int {
-	if ctx == nil || ctx.ContentGroupByHash == nil {
-		return 0 // No data available
-	}
-	group, ok := ctx.ContentGroupByHash[hash]
-	if !ok || len(group) == 0 {
+func getUnregisteredSameContentCount(hash string, ctx *EvalContext, includeCrossSeeds bool) int {
+	group := getContentGroup(hash, ctx, includeCrossSeeds)
+	if len(group) == 0 {
 		return 0 // Not in any group
 	}
 	count := 0
@@ -280,13 +346,11 @@ func getUnregisteredSameContentCount(hash string, ctx *EvalContext) int {
 }
 
 // getRegisteredSameContentCount returns the count of OTHER registered torrents sharing the same content.
+// If includeCrossSeeds is true, also includes torrents sharing the same SavePath.
 // Excludes the current torrent from the count.
-func getRegisteredSameContentCount(hash string, ctx *EvalContext) int {
-	if ctx == nil || ctx.ContentGroupByHash == nil {
-		return 0 // No data available
-	}
-	group, ok := ctx.ContentGroupByHash[hash]
-	if !ok || len(group) == 0 {
+func getRegisteredSameContentCount(hash string, ctx *EvalContext, includeCrossSeeds bool) int {
+	group := getContentGroup(hash, ctx, includeCrossSeeds)
+	if len(group) == 0 {
 		return 0 // Not in any group
 	}
 	count := 0
@@ -314,6 +378,28 @@ func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 	}
 	for _, child := range cond.Conditions {
 		if ConditionUsesField(child, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// ConditionUsesIncludeCrossSeeds checks if any content count field in the condition tree
+// has IncludeCrossSeeds enabled.
+func ConditionUsesIncludeCrossSeeds(cond *RuleCondition) bool {
+	if cond == nil {
+		return false
+	}
+	// Check if this is a content count field with IncludeCrossSeeds
+	if cond.IncludeCrossSeeds {
+		switch cond.Field {
+		case FieldSameContentCount, FieldUnregisteredSameContentCount, FieldRegisteredSameContentCount:
+			return true
+		}
+	}
+	// Recurse into child conditions
+	for _, child := range cond.Conditions {
+		if ConditionUsesIncludeCrossSeeds(child) {
 			return true
 		}
 	}
@@ -489,13 +575,13 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 
 	// Cross-seed count fields
 	case FieldSameContentCount:
-		count := getSameContentCount(torrent.Hash, ctx)
+		count := getSameContentCount(torrent.Hash, ctx, cond.IncludeCrossSeeds)
 		return compareInt64(int64(count), cond)
 	case FieldUnregisteredSameContentCount:
-		count := getUnregisteredSameContentCount(torrent.Hash, ctx)
+		count := getUnregisteredSameContentCount(torrent.Hash, ctx, cond.IncludeCrossSeeds)
 		return compareInt64(int64(count), cond)
 	case FieldRegisteredSameContentCount:
-		count := getRegisteredSameContentCount(torrent.Hash, ctx)
+		count := getRegisteredSameContentCount(torrent.Hash, ctx, cond.IncludeCrossSeeds)
 		return compareInt64(int64(count), cond)
 
 	// Boolean fields

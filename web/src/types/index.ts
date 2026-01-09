@@ -226,6 +226,8 @@ export interface RuleCondition {
   maxValue?: number
   regex?: boolean
   negate?: boolean
+  /** Include cross-seeds that share the same SavePath (for content count fields) */
+  includeCrossSeeds?: boolean
   conditions?: RuleCondition[]
 }
 

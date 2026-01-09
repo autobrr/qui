@@ -430,6 +430,12 @@ type RuleCondition struct {
 	Negate     bool              `json:"negate,omitempty"`
 	Conditions []*RuleCondition  `json:"conditions,omitempty"`
 	Compiled   *regexp.Regexp    `json:"-"` // compiled regex, not serialized
+
+	// IncludeCrossSeeds extends content count fields (SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT,
+	// REGISTERED_SAME_CONTENT_COUNT) to also count cross-seeds that share the same SavePath but may have
+	// different ContentPath. This is useful when cross-seeded torrents from different trackers have
+	// different naming conventions but point to the same files.
+	IncludeCrossSeeds bool `json:"includeCrossSeeds,omitempty"`
 }
 
 // IsGroup returns true if this condition is an AND/OR group containing child conditions.
