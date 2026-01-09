@@ -72,10 +72,10 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
-	lastApplied          map[int]map[string]time.Time // instanceID -> hash -> timestamp
-	lastRuleRun          map[ruleKey]time.Time        // per-rule cadence tracking
+	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
-	mu                   sync.RWMutex
+	mu                    sync.RWMutex
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
@@ -228,9 +228,15 @@ type PreviewTorrent struct {
 	Uploaded       int64   `json:"uploaded"`
 	Downloaded     int64   `json:"downloaded"`
 	ContentPath    string  `json:"contentPath,omitempty"`
+	SavePath       string  `json:"savePath,omitempty"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
 	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"`    // For category preview
 	IsHardlinkCopy bool    `json:"isHardlinkCopy,omitempty"` // Included via hardlink expansion (not ContentPath match)
+
+	// Content count fields for debugging
+	SameContentCount             int `json:"sameContentCount,omitempty"`
+	UnregisteredSameContentCount int `json:"unregisteredSameContentCount,omitempty"`
+	RegisteredSameContentCount   int `json:"registeredSameContentCount,omitempty"`
 
 	// Additional fields for dynamic columns based on filter conditions
 	NumSeeds      int64   `json:"numSeeds"`                // Active seeders (connected to)
@@ -262,6 +268,7 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 		Uploaded:       torrent.Uploaded,
 		Downloaded:     torrent.Downloaded,
 		ContentPath:    torrent.ContentPath,
+		SavePath:       torrent.SavePath,
 		IsCrossSeed:    isCrossSeed,
 		IsHardlinkCopy: isHardlinkCopy,
 		NumSeeds:       torrent.NumSeeds,
@@ -283,6 +290,13 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
+		// Add content count fields for debugging
+		// When basename index is available (IncludeCrossSeeds used), show basename-based counts
+		// Otherwise show ContentPath-based counts
+		useBasename := evalCtx.BasenameGroupByHash != nil
+		pt.SameContentCount = getSameContentCount(torrent.Hash, useBasename, evalCtx)
+		pt.UnregisteredSameContentCount = getUnregisteredSameContentCount(torrent.Hash, useBasename, evalCtx)
+		pt.RegisteredSameContentCount = getRegisteredSameContentCount(torrent.Hash, useBasename, evalCtx)
 	}
 
 	return pt
@@ -348,11 +362,21 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
-	// Check if rule uses hardlink conditions OR includeHardlinks and populate context
+	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
+	if rulesUseContentCountFields([]*models.Automation{rule}) {
+		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+		// Build basename index if any condition uses IncludeCrossSeeds
+		if rulesUseIncludeCrossSeeds([]*models.Automation{rule}) {
+			evalCtx.BasenameGroupByHash = BuildBasenameGroupIndex(torrents)
+		}
+	}
+
+	// Check if rule uses hardlink conditions and populate context
+	// Note: IncludeHardlinks is for delete ACTION expansion, not condition evaluation.
+	// We only need HardlinkScopeByHash if the condition actually uses HARDLINK_SCOPE.
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		cond := rule.Conditions.Delete.Condition
-		needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) || rule.Conditions.Delete.IncludeHardlinks
-		if needsHardlinkScope {
+		if ConditionUsesField(cond, FieldHardlinkScope) {
 			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 		}
 	}
@@ -456,17 +480,17 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	// Track processed ContentPaths to avoid re-expanding the same group
 	processedContentPaths := make(map[string]struct{})
 
-	// Compute hardlink groups if enabled
-	var hardlinkGroups map[string][]string
+	// Check if hardlink expansion is needed (IncludeHardlinks enabled)
 	includeHardlinks := rule.Conditions.Delete.IncludeHardlinks
-	if includeHardlinks && evalCtx != nil && evalCtx.HardlinkScopeByHash != nil {
-		hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
 
-		// For FREE_SPACE projection, build signature map for dedupe
-		if !eligibleMode && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
-			evalCtx.HardlinkSignatureByHash = buildHardlinkSignatureMap(hardlinkGroups)
-			evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
-		}
+	// For hardlink expansion, we compute scope and groups lazily after finding matches.
+	// This avoids expensive filesystem operations for non-matching torrents.
+	var hardlinkGroups map[string][]string
+	var hardlinkScopeByHash map[string]string
+
+	// If HARDLINK_SCOPE condition is used, scope was already computed in evalCtx
+	if evalCtx != nil && evalCtx.HardlinkScopeByHash != nil {
+		hardlinkScopeByHash = evalCtx.HardlinkScopeByHash
 	}
 
 	// Evaluate and expand incrementally (oldest first, per sort order)
@@ -503,13 +527,28 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue // Group skipped due to verification failure
 		}
 
-		// Expand with hardlink copies if enabled
-		if includeHardlinks && hardlinkGroups != nil {
-			hlCopies := s.findHardlinkCopies(torrent.Hash, hardlinkGroups)
-			for _, hlHash := range hlCopies {
-				if _, exists := expandedSet[hlHash]; !exists {
-					expandedSet[hlHash] = struct{}{}
-					hardlinkCopySet[hlHash] = struct{}{}
+		// Expand with hardlink copies if enabled (lazy computation)
+		if includeHardlinks {
+			// Compute hardlink scope and groups lazily on first match
+			if hardlinkScopeByHash == nil {
+				hardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+			}
+			if hardlinkGroups == nil && hardlinkScopeByHash != nil {
+				hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, hardlinkScopeByHash)
+
+				// For FREE_SPACE projection, build signature map for dedupe
+				if !eligibleMode && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+					evalCtx.HardlinkSignatureByHash = buildHardlinkSignatureMap(hardlinkGroups)
+					evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
+				}
+			}
+			if hardlinkGroups != nil {
+				hlCopies := s.findHardlinkCopies(torrent.Hash, hardlinkGroups)
+				for _, hlHash := range hlCopies {
+					if _, exists := expandedSet[hlHash]; !exists {
+						expandedSet[hlHash] = struct{}{}
+						hardlinkCopySet[hlHash] = struct{}{}
+					}
 				}
 			}
 		}
@@ -673,6 +712,15 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
+	}
+
+	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
+	if rulesUseContentCountFields([]*models.Automation{rule}) {
+		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+		// Build basename index if any condition uses IncludeCrossSeeds
+		if rulesUseIncludeCrossSeeds([]*models.Automation{rule}) {
+			evalCtx.BasenameGroupByHash = BuildBasenameGroupIndex(torrents)
+		}
 	}
 
 	// Check if rule uses hardlink conditions
@@ -891,9 +939,18 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
-	// On-demand hardlink detection (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
-	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
-	if instance.HasLocalFilesystemAccess && needsHardlinkScope {
+	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
+	if rulesUseContentCountFields(eligibleRules) {
+		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+		// Build basename index if any condition uses IncludeCrossSeeds
+		if rulesUseIncludeCrossSeeds(eligibleRules) {
+			evalCtx.BasenameGroupByHash = BuildBasenameGroupIndex(torrents)
+		}
+	}
+
+	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE condition)
+	// Note: IncludeHardlinks is handled lazily during delete expansion, not here.
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHardlinkScope) {
 		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 	}
 
@@ -1056,10 +1113,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// Compute hardlink groups for delete expansion if needed (and not already computed for FREE_SPACE)
 	// The hardlinkGroups variable is declared at the top of the function and may have been
 	// pre-computed for FREE_SPACE projection; only compute here if needed and not already done.
-	if hardlinkGroups == nil {
+	// Also lazily compute HardlinkScopeByHash if not already done (needed for IncludeHardlinks).
+	if hardlinkGroups == nil && instance.HasLocalFilesystemAccess {
 		for _, state := range states {
-			if state.shouldDelete && state.deleteIncludeHardlinks && evalCtx.HardlinkScopeByHash != nil {
-				hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
+			if state.shouldDelete && state.deleteIncludeHardlinks {
+				// Lazily compute hardlink scope if not already done
+				if evalCtx.HardlinkScopeByHash == nil {
+					evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+				}
+				if evalCtx.HardlinkScopeByHash != nil {
+					hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
+				}
 				break
 			}
 		}
@@ -2096,6 +2160,28 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 			return true
 		}
 		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// rulesUseContentCountFields checks if any enabled rule uses SAME_CONTENT_COUNT,
+// UNREGISTERED_SAME_CONTENT_COUNT, or REGISTERED_SAME_CONTENT_COUNT fields.
+func rulesUseContentCountFields(rules []*models.Automation) bool {
+	return rulesUseCondition(rules, FieldSameContentCount) ||
+		rulesUseCondition(rules, FieldUnregisteredSameContentCount) ||
+		rulesUseCondition(rules, FieldRegisteredSameContentCount)
+}
+
+// rulesUseIncludeCrossSeeds checks if any enabled rule has IncludeCrossSeeds enabled on a content count condition.
+func rulesUseIncludeCrossSeeds(rules []*models.Automation) bool {
+	for _, rule := range rules {
+		if rule.Conditions == nil || !rule.Enabled {
+			continue
+		}
+		del := rule.Conditions.Delete
+		if del != nil && del.Enabled && ConditionUsesIncludeCrossSeeds(del.Condition) {
 			return true
 		}
 	}
