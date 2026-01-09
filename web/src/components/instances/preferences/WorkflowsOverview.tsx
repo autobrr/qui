@@ -48,7 +48,8 @@ import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
   parseImportJSON,
@@ -56,7 +57,7 @@ import {
   toExportFormat,
   toExportJSON
 } from "@/lib/workflow-utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse } from "@/types"
+import type { Automation, AutomationActivity, AutomationPreviewResult, AutomationPreviewTorrent, InstanceResponse, PreviewView, RuleCondition } from "@/types"
 import type { DragEndEvent } from "@dnd-kit/core"
 import {
   DndContext,
@@ -80,6 +81,18 @@ import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } fr
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+
+/**
+ * Recursively checks if a condition tree uses a specific field.
+ */
+function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
+  if (!condition) return false
+  if (condition.field === field) return true
+  if (condition.conditions) {
+    return condition.conditions.some(c => conditionUsesField(c, field))
+  }
+  return false
+}
 
 interface ActivityStats {
   deletionsToday: number
@@ -239,6 +252,9 @@ export function WorkflowsOverview({
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
+  const [previewView, setPreviewView] = useState<PreviewView>("needed")
+  const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const previewPageSize = 25
 
   const reorderRules = useMutation<
@@ -350,8 +366,8 @@ export function WorkflowsOverview({
   })
 
   const previewRule = useMutation({
-    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
+    mutationFn: ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) =>
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0, previewView: view }),
     onSuccess: (preview, { instanceId, rule }) => {
       // Last warning before enabling a delete rule (even if 0 matches right now).
       setEnableConfirm({ instanceId, rule, preview })
@@ -363,10 +379,9 @@ export function WorkflowsOverview({
 
   const loadMorePreview = useMutation({
     mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset, previewView }),
     onSuccess: (preview) => {
-      setEnableConfirm(prev => prev? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }: prev
-      )
+      setEnableConfirm(prev => prev ? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } } : prev)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -481,10 +496,88 @@ export function WorkflowsOverview({
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
       // Enabling a delete or category rule - show preview first
-      previewRule.mutate({ instanceId, rule })
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
       // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
+    }
+  }
+
+  // Check if a delete rule uses FREE_SPACE field
+  const ruleUsesFreeSpace = (rule: Automation): boolean => {
+    if (!isDeleteRule(rule)) return false
+    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
+  }
+
+  // Handler for switching preview view - refetches with new view and resets pagination
+  const handlePreviewViewChange = async (newView: PreviewView) => {
+    if (!enableConfirm) return
+    setPreviewView(newView)
+    setIsLoadingPreviewView(true)
+    try {
+      const preview = await api.previewAutomation(enableConfirm.instanceId, {
+        ...enableConfirm.rule,
+        enabled: true,
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+        previewView: newView,
+      })
+      setEnableConfirm(prev => prev ? { ...prev, preview } : prev)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+    } finally {
+      setIsLoadingPreviewView(false)
+    }
+  }
+
+  // CSV columns for automation preview export
+  const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
+    { header: "Name", accessor: t => t.name },
+    { header: "Hash", accessor: t => t.hash },
+    { header: "Tracker", accessor: t => t.tracker },
+    { header: "Size", accessor: t => formatBytes(t.size) },
+    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
+    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
+    { header: "Category", accessor: t => t.category },
+    { header: "Tags", accessor: t => t.tags },
+    { header: "State", accessor: t => t.state },
+    { header: "Added On", accessor: t => t.addedOn },
+    { header: "Path", accessor: t => t.contentPath ?? "" },
+  ]
+
+  const handleExportPreviewCsv = async () => {
+    if (!enableConfirm?.preview) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: AutomationPreviewTorrent[] = []
+      let offset = 0
+      const total = enableConfirm.preview.totalMatches
+
+      while (allItems.length < total) {
+        const result = await api.previewAutomation(enableConfirm.instanceId, {
+          ...enableConfirm.rule,
+          enabled: true,
+          previewLimit: pageSize,
+          previewOffset: offset,
+          previewView,
+        })
+        allItems.push(...result.examples)
+        offset += pageSize
+        if (result.examples.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      const ruleName = (enableConfirm.rule.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      downloadBlob(csv, `${ruleName}_preview.csv`)
+      toast.success(`Exported ${allItems.length} torrents to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -1060,6 +1153,8 @@ export function WorkflowsOverview({
                                           label = "Torrent only"
                                         } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
                                           label = "Files kept due to cross-seeds"
+                                        } else if (deleteMode === "deleteWithFilesIncludeCrossSeeds") {
+                                          label = "With files + cross-seeds"
                                         } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
                                           label = "With files"
                                         } else {
@@ -1226,7 +1321,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`: "Enable Delete Rule"
+          enableConfirm && isCategoryRule(enableConfirm.rule) ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}` : "Enable Delete Rule"
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1258,6 +1353,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
+        condition={enableConfirm?.rule.conditions?.delete?.condition}
         onConfirm={confirmEnableRule}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
@@ -1265,6 +1361,12 @@ export function WorkflowsOverview({
         isConfirming={toggleEnabled.isPending}
         destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
+        previewView={previewView}
+        onPreviewViewChange={handlePreviewViewChange}
+        showPreviewViewToggle={enableConfirm ? ruleUsesFreeSpace(enableConfirm.rule) : false}
+        isLoadingPreview={isLoadingPreviewView}
+        onExport={handleExportPreviewCsv}
+        isExporting={isExporting}
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
@@ -1496,7 +1598,7 @@ function RulePreview({
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "+ XS": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
           </Badge>
         )}
         {rule.conditions?.tag?.enabled && (
