@@ -11,6 +11,10 @@ import (
 	"syscall"
 )
 
+// FILE_READ_ATTRIBUTES is the Windows access right for reading file attributes.
+// Required for GetFileInformationByHandle to reliably work on all filesystem types.
+const fileReadAttributes = 0x0080
+
 // FileID uniquely identifies a physical file on disk.
 // On Windows, this is the (VolumeSerialNumber, FileIndexHigh, FileIndexLow) tuple.
 // This type is comparable and can be used as a map key without allocations.
@@ -25,7 +29,7 @@ func (f FileID) IsZero() bool {
 	return f.VolumeSerialNumber == 0 && f.FileIndexHigh == 0 && f.FileIndexLow == 0
 }
 
-// GetFileID returns the FileID and link count for a file without allocations.
+// GetFileID returns the FileID and link count for a file with low-allocation overhead.
 // This is more efficient than LinkInfo when you don't need the string representation.
 func GetFileID(fi os.FileInfo, path string) (FileID, uint64, error) {
 	pathp, err := syscall.UTF16PtrFromString(path)
@@ -36,9 +40,11 @@ func GetFileID(fi os.FileInfo, path string) (FileID, uint64, error) {
 	if isSymlink(fi) {
 		attrs |= syscall.FILE_FLAG_OPEN_REPARSE_POINT
 	}
-	// Use full sharing mode to avoid failures when file is open by another process
+	// Use full sharing mode to avoid failures when file is open by another process.
+	// FILE_READ_ATTRIBUTES is required for GetFileInformationByHandle to work
+	// reliably across different Windows filesystem types.
 	shareMode := uint32(syscall.FILE_SHARE_READ | syscall.FILE_SHARE_WRITE | syscall.FILE_SHARE_DELETE)
-	h, err := syscall.CreateFile(pathp, 0, shareMode, nil, syscall.OPEN_EXISTING, attrs, 0)
+	h, err := syscall.CreateFile(pathp, fileReadAttributes, shareMode, nil, syscall.OPEN_EXISTING, attrs, 0)
 	if err != nil {
 		return FileID{}, 0, err
 	}

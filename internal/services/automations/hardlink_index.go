@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -203,12 +205,14 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	// Track: fileID -> {nlink, uniquePathCount}
 	globalFileIDMap := make(map[hardlink.FileID]*fileIDTracker)
 	seenPaths := make(map[string]struct{})
+	torrentsInvalidPaths := 0
 
 	// Also track per-torrent: which FileIDs it contains and whether all files are accessible
 	type torrentFileInfo struct {
-		fileIDs       []hardlink.FileID
-		allAccessible bool
-		hasHardlinks  bool // At least one file has nlink > 1
+		fileIDs        []hardlink.FileID
+		allAccessible  bool
+		hasHardlinks   bool // At least one file has nlink > 1
+		hasInvalidPath bool // At least one file path escapes save path
 	}
 	torrentInfoByHash := make(map[string]*torrentFileInfo)
 
@@ -222,6 +226,14 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 
 		for _, f := range files {
 			fullPath := buildFullPath(torrent.SavePath, f.Name)
+
+			// Reject paths that escape the torrent's save path to prevent malicious
+			// torrent metadata from causing Lstat on arbitrary filesystem locations.
+			if !isPathInsideBase(torrent.SavePath, fullPath) {
+				info.allAccessible = false
+				info.hasInvalidPath = true
+				continue
+			}
 
 			fi, err := os.Lstat(fullPath)
 			if err != nil {
@@ -256,6 +268,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 				}
 			}
 		}
+
+		if info.hasInvalidPath {
+			torrentsInvalidPaths++
+		}
 	}
 
 	// Phase 2: Compute scope and signature for each torrent
@@ -263,8 +279,13 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	torrentsInaccessible := 0
 
 	for hash, info := range torrentInfoByHash {
-		if len(info.fileIDs) == 0 {
-			// No accessible files - unknown scope
+		// If we couldn't inspect all files, treat scope as "unknown" by not adding to map.
+		// This ensures HARDLINK_SCOPE conditions never match for partially-inspected torrents.
+		if !info.allAccessible || len(info.fileIDs) == 0 {
+			// Only count as inaccessible if not already counted as invalid path
+			if !info.hasInvalidPath {
+				torrentsInaccessible++
+			}
 			continue
 		}
 
@@ -294,13 +315,8 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		index.ScopeByHash[hash] = scope
 
 		// Only include in duplicate index if:
-		// 1. All files are accessible
-		// 2. Has hardlinks (otherwise not a duplicate candidate)
-		// 3. No outside links (safe for expansion)
-		if !info.allAccessible {
-			torrentsInaccessible++
-			continue
-		}
+		// 1. Has hardlinks (otherwise not a duplicate candidate)
+		// 2. No outside links (safe for expansion)
 		if !info.hasHardlinks {
 			continue // Not a hardlink duplicate candidate
 		}
@@ -332,6 +348,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		index.Warnings = append(index.Warnings,
 			formatWarning(torrentsInaccessible, "torrent", "with inaccessible files (skipped)"))
 	}
+	if torrentsInvalidPaths > 0 {
+		index.Warnings = append(index.Warnings,
+			formatWarning(torrentsInvalidPaths, "torrent", "with file paths outside save path (skipped)"))
+	}
 
 	// Set builtAt at the end of successful build (not start) to avoid TTL issues with slow builds
 	index.builtAt = time.Now()
@@ -349,6 +369,7 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		Int("duplicateTorrents", len(index.SignatureByHash)).
 		Int("outsideLinks", torrentsWithOutsideLinks).
 		Int("inaccessible", torrentsInaccessible).
+		Int("invalidPaths", torrentsInvalidPaths).
 		Dur("buildTime", time.Since(startTime)).
 		Msg("automations: hardlink index built")
 
@@ -385,6 +406,30 @@ func formatWarning(count int, singular, suffix string) string {
 	return fmt.Sprintf("%d %ss %s", count, singular, suffix)
 }
 
+// isPathInsideBase checks if fullPath is safely contained within basePath.
+// Returns true if fullPath is inside basePath, false if it escapes (e.g., via ".." traversal).
+// This prevents malicious torrent metadata from causing Lstat on arbitrary paths.
+func isPathInsideBase(basePath, fullPath string) bool {
+	// Clean both paths to resolve any . or .. components
+	cleanBase := filepath.Clean(basePath)
+	cleanFull := filepath.Clean(fullPath)
+
+	// Get relative path from base to full
+	rel, err := filepath.Rel(cleanBase, cleanFull)
+	if err != nil {
+		return false
+	}
+
+	// Check if the relative path escapes the base:
+	// - ".." means direct parent traversal
+	// - Paths starting with "../" traverse upward
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return false
+	}
+
+	return true
+}
+
 // GetHardlinkCopies returns torrent hashes that share the same physical files as the trigger.
 // Uses O(1) lookup via the cached index. Returns nil if trigger has no hardlink duplicates.
 func (idx *HardlinkIndex) GetHardlinkCopies(triggerHash string) []string {
@@ -412,14 +457,15 @@ func (idx *HardlinkIndex) GetHardlinkCopies(triggerHash string) []string {
 }
 
 // GetHardlinkScope returns the hardlink scope for a torrent (none, torrents_only, outside_qbittorrent).
+// Returns empty string if the scope is unknown (torrent not in index, files inaccessible, etc.).
 func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
 	if idx == nil {
-		return HardlinkScopeNone
+		return ""
 	}
 	if scope, ok := idx.ScopeByHash[hash]; ok {
 		return scope
 	}
-	return HardlinkScopeNone
+	return ""
 }
 
 // InvalidateHardlinkIndex removes the cached index for an instance.
