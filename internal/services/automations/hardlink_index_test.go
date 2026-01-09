@@ -145,55 +145,6 @@ func TestIsPathInsideBase_RelativeCleanedPaths(t *testing.T) {
 	}
 }
 
-func TestFormatWarning(t *testing.T) {
-	tests := []struct {
-		name     string
-		count    int
-		singular string
-		suffix   string
-		expected string
-	}{
-		{
-			name:     "singular",
-			count:    1,
-			singular: "torrent",
-			suffix:   "with inaccessible files (skipped)",
-			expected: "1 torrent with inaccessible files (skipped)",
-		},
-		{
-			name:     "plural 2",
-			count:    2,
-			singular: "torrent",
-			suffix:   "with inaccessible files (skipped)",
-			expected: "2 torrents with inaccessible files (skipped)",
-		},
-		{
-			name:     "plural many",
-			count:    15,
-			singular: "torrent",
-			suffix:   "with hardlinks outside qBittorrent (excluded from expansion)",
-			expected: "15 torrents with hardlinks outside qBittorrent (excluded from expansion)",
-		},
-		{
-			name:     "zero (edge case)",
-			count:    0,
-			singular: "torrent",
-			suffix:   "test",
-			expected: "0 torrents test",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatWarning(tt.count, tt.singular, tt.suffix)
-			if result != tt.expected {
-				t.Errorf("formatWarning(%d, %q, %q) = %q, want %q",
-					tt.count, tt.singular, tt.suffix, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestIsPathInsideBase_OSSpecific(t *testing.T) {
 	// Platform-specific tests using actual filepath behavior
 	basePath := filepath.Join("data", "torrents")

@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,10 +42,6 @@ type HardlinkIndex struct {
 	// ScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent).
 	// Used for HARDLINK_SCOPE condition evaluation.
 	ScopeByHash map[string]string
-
-	// Warnings contains human-readable messages explaining why certain torrents
-	// couldn't be included in hardlink expansion (e.g., outside hardlinks, inaccessible files).
-	Warnings []string
 
 	// builtAt is when this index was built.
 	builtAt time.Time
@@ -156,7 +151,6 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		SignatureByHash:  make(map[string]string),
 		GroupBySignature: make(map[string][]string),
 		ScopeByHash:      make(map[string]string),
-		Warnings:         make([]string, 0),
 		digest:           digest,
 		// builtAt is set at the end of a successful build to avoid TTL issues with slow builds
 	}
@@ -181,7 +175,6 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for hardlink index build")
-		index.Warnings = append(index.Warnings, "Could not read torrent file lists from qBittorrent")
 
 		// Don't cache on context cancellation/deadline - a canceled request shouldn't poison the cache
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
@@ -195,11 +188,8 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
-	// Warn about partial results (some hashes missing from response)
-	if missingCount := len(hashes) - len(filesByHash); missingCount > 0 {
-		index.Warnings = append(index.Warnings,
-			formatWarning(missingCount, "torrent", "with missing file list (skipped)"))
-	}
+	// Note: partial results (missing hashes) are handled implicitly; torrents with missing file lists
+	// will have unknown hardlink scope and won't participate in expansion.
 
 	// Phase 1: Single pass to collect FileID info across all files
 	// Track: fileID -> {nlink, uniquePathCount}
@@ -339,20 +329,6 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		}
 	}
 
-	// Generate warnings
-	if torrentsWithOutsideLinks > 0 {
-		index.Warnings = append(index.Warnings,
-			formatWarning(torrentsWithOutsideLinks, "torrent", "with hardlinks outside qBittorrent (excluded from expansion)"))
-	}
-	if torrentsInaccessible > 0 {
-		index.Warnings = append(index.Warnings,
-			formatWarning(torrentsInaccessible, "torrent", "with inaccessible files (skipped)"))
-	}
-	if torrentsInvalidPaths > 0 {
-		index.Warnings = append(index.Warnings,
-			formatWarning(torrentsInvalidPaths, "torrent", "with file paths outside save path (skipped)"))
-	}
-
 	// Set builtAt at the end of successful build (not start) to avoid TTL issues with slow builds
 	index.builtAt = time.Now()
 
@@ -395,15 +371,6 @@ func computeFileIDSignature(fileIDs []hardlink.FileID) string {
 		fid.WriteToHash(h)
 	}
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-// formatWarning formats a count-based warning message with proper pluralization.
-// The suffix should be phrased to work with both singular and plural (e.g., "with X" not "has X").
-func formatWarning(count int, singular, suffix string) string {
-	if count == 1 {
-		return "1 " + singular + " " + suffix
-	}
-	return fmt.Sprintf("%d %ss %s", count, singular, suffix)
 }
 
 // isPathInsideBase checks if fullPath is safely contained within basePath.

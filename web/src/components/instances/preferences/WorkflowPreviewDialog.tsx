@@ -22,7 +22,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
-import { AlertTriangle, Download, Loader2 } from "lucide-react"
+import { Download, Loader2 } from "lucide-react"
 import { useMemo } from "react"
 
 // Tabs component for needed/eligible toggle
@@ -298,23 +298,6 @@ export function WorkflowPreviewDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
-
-        {/* Display warnings prominently when present */}
-        {preview?.warnings && preview.warnings.length > 0 && (
-          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 mt-2">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
-              <div className="space-y-1 text-sm">
-                <p className="font-medium text-yellow-600">Hardlink expansion warnings</p>
-                <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
-                  {preview.warnings.map((warning, i) => (
-                    <li key={i}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
 
         {preview && preview.examples.length > 0 && (
           <div className="flex-1 min-h-0 overflow-hidden border rounded-lg relative">

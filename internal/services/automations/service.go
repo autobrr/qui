@@ -70,10 +70,10 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
-	lastApplied          map[int]map[string]time.Time // instanceID -> hash -> timestamp
-	lastRuleRun          map[ruleKey]time.Time        // per-rule cadence tracking
+	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
-	mu                   sync.RWMutex
+	mu                    sync.RWMutex
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
@@ -472,12 +472,6 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		}
 	}
 
-	// Warn when IncludeHardlinks is enabled but local filesystem access is unavailable
-	if rule.Conditions.Delete.IncludeHardlinks && !includeHardlinks {
-		result.Warnings = append(result.Warnings,
-			"Hardlink expansion disabled: instance does not have local filesystem access")
-	}
-
 	// Evaluate and expand incrementally (oldest first, per sort order)
 	for _, torrent := range torrents {
 		// Skip if already included via a previous group expansion
@@ -532,11 +526,6 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	// Build result - iterate torrents slice for STABLE pagination order
 	result.TotalMatches = len(expandedSet)
 	result.CrossSeedCount = len(crossSeedSet)
-
-	// Add warnings from hardlink index to explain why expansion may have been limited
-	if hardlinkIndex != nil && len(hardlinkIndex.Warnings) > 0 {
-		result.Warnings = append(result.Warnings, hardlinkIndex.Warnings...)
-	}
 
 	matchIndex := 0
 	for _, torrent := range torrents {
