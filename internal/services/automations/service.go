@@ -491,14 +491,18 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 
 		// Found a match - expand to include cross-seeds
 		contentPath := normalizePath(torrent.ContentPath)
-		if _, processed := processedContentPaths[contentPath]; processed {
-			// Already processed this content path via another torrent
-			continue
+		if contentPath != "" {
+			if _, processed := processedContentPaths[contentPath]; processed {
+				// Already processed this content path via another torrent
+				continue
+			}
 		}
 
 		// Find cross-seed group and validate before committing
 		crossSeedGroup := findCrossSeedGroup(torrent, torrents)
-		processedContentPaths[contentPath] = struct{}{}
+		if contentPath != "" {
+			processedContentPaths[contentPath] = struct{}{}
+		}
 		if !s.expandGroupForPreview(ctx, instanceID, torrent, crossSeedGroup, expandedSet, crossSeedSet) {
 			continue // Group skipped due to verification failure
 		}
