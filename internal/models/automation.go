@@ -421,21 +421,16 @@ const (
 
 // RuleCondition represents a condition or group of conditions for filtering torrents.
 type RuleCondition struct {
-	Field      ConditionField    `json:"field,omitempty"`
-	Operator   ConditionOperator `json:"operator"`
-	Value      string            `json:"value,omitempty"`
-	MinValue   *float64          `json:"minValue,omitempty"`
-	MaxValue   *float64          `json:"maxValue,omitempty"`
-	Regex      bool              `json:"regex,omitempty"`
-	Negate     bool              `json:"negate,omitempty"`
-	Conditions []*RuleCondition  `json:"conditions,omitempty"`
-	Compiled   *regexp.Regexp    `json:"-"` // compiled regex, not serialized
-
-	// IncludeCrossSeeds extends content count fields (SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT,
-	// REGISTERED_SAME_CONTENT_COUNT) to also count cross-seeds that share the same SavePath but may have
-	// different ContentPath. This is useful when cross-seeded torrents from different trackers have
-	// different naming conventions but point to the same files.
-	IncludeCrossSeeds bool `json:"includeCrossSeeds,omitempty"`
+	Field             ConditionField    `json:"field,omitempty"`
+	Operator          ConditionOperator `json:"operator"`
+	Value             string            `json:"value,omitempty"`
+	MinValue          *float64          `json:"minValue,omitempty"`
+	MaxValue          *float64          `json:"maxValue,omitempty"`
+	Regex             bool              `json:"regex,omitempty"`
+	Negate            bool              `json:"negate,omitempty"`
+	Conditions        []*RuleCondition  `json:"conditions,omitempty"`
+	Compiled          *regexp.Regexp    `json:"-"`                           // compiled regex, not serialized
+	IncludeCrossSeeds bool              `json:"includeCrossSeeds,omitempty"` // For *_SAME_CONTENT_COUNT: also match by content basename (folder/file name)
 }
 
 // IsGroup returns true if this condition is an AND/OR group containing child conditions.

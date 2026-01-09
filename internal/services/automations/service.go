@@ -228,9 +228,15 @@ type PreviewTorrent struct {
 	Uploaded       int64   `json:"uploaded"`
 	Downloaded     int64   `json:"downloaded"`
 	ContentPath    string  `json:"contentPath,omitempty"`
+	SavePath       string  `json:"savePath,omitempty"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
 	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"`    // For category preview
 	IsHardlinkCopy bool    `json:"isHardlinkCopy,omitempty"` // Included via hardlink expansion (not ContentPath match)
+
+	// Content count fields for debugging
+	SameContentCount             int `json:"sameContentCount,omitempty"`
+	UnregisteredSameContentCount int `json:"unregisteredSameContentCount,omitempty"`
+	RegisteredSameContentCount   int `json:"registeredSameContentCount,omitempty"`
 
 	// Additional fields for dynamic columns based on filter conditions
 	NumSeeds      int64   `json:"numSeeds"`                // Active seeders (connected to)
@@ -262,6 +268,7 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 		Uploaded:       torrent.Uploaded,
 		Downloaded:     torrent.Downloaded,
 		ContentPath:    torrent.ContentPath,
+		SavePath:       torrent.SavePath,
 		IsCrossSeed:    isCrossSeed,
 		IsHardlinkCopy: isHardlinkCopy,
 		NumSeeds:       torrent.NumSeeds,
@@ -283,6 +290,10 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
+		// Add content count fields for debugging (using ContentPath matching, not basename)
+		pt.SameContentCount = getSameContentCount(torrent.Hash, false, evalCtx)
+		pt.UnregisteredSameContentCount = getUnregisteredSameContentCount(torrent.Hash, false, evalCtx)
+		pt.RegisteredSameContentCount = getRegisteredSameContentCount(torrent.Hash, false, evalCtx)
 	}
 
 	return pt
@@ -351,9 +362,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
 	if rulesUseContentCountFields([]*models.Automation{rule}) {
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
-		// Also build SavePath index if any content count field uses IncludeCrossSeeds
+		// Build basename index if any condition uses IncludeCrossSeeds
 		if rulesUseIncludeCrossSeeds([]*models.Automation{rule}) {
-			evalCtx.SavePathGroupByHash = BuildSavePathGroupIndex(torrents)
+			evalCtx.BasenameGroupByHash = BuildBasenameGroupIndex(torrents)
 		}
 	}
 
@@ -703,9 +714,9 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
 	if rulesUseContentCountFields([]*models.Automation{rule}) {
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
-		// Also build SavePath index if any content count field uses IncludeCrossSeeds
+		// Build basename index if any condition uses IncludeCrossSeeds
 		if rulesUseIncludeCrossSeeds([]*models.Automation{rule}) {
-			evalCtx.SavePathGroupByHash = BuildSavePathGroupIndex(torrents)
+			evalCtx.BasenameGroupByHash = BuildBasenameGroupIndex(torrents)
 		}
 	}
 
@@ -928,9 +939,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
 	if rulesUseContentCountFields(eligibleRules) {
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
-		// Also build SavePath index if any content count field uses IncludeCrossSeeds
+		// Build basename index if any condition uses IncludeCrossSeeds
 		if rulesUseIncludeCrossSeeds(eligibleRules) {
-			evalCtx.SavePathGroupByHash = BuildSavePathGroupIndex(torrents)
+			evalCtx.BasenameGroupByHash = BuildBasenameGroupIndex(torrents)
 		}
 	}
 
@@ -2160,30 +2171,14 @@ func rulesUseContentCountFields(rules []*models.Automation) bool {
 		rulesUseCondition(rules, FieldRegisteredSameContentCount)
 }
 
-// rulesUseIncludeCrossSeeds checks if any enabled rule has IncludeCrossSeeds enabled
-// on a content count field condition.
+// rulesUseIncludeCrossSeeds checks if any enabled rule has IncludeCrossSeeds enabled on a content count condition.
 func rulesUseIncludeCrossSeeds(rules []*models.Automation) bool {
 	for _, rule := range rules {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
 		}
-		ac := rule.Conditions
-		if ac.SpeedLimits != nil && ConditionUsesIncludeCrossSeeds(ac.SpeedLimits.Condition) {
-			return true
-		}
-		if ac.ShareLimits != nil && ConditionUsesIncludeCrossSeeds(ac.ShareLimits.Condition) {
-			return true
-		}
-		if ac.Pause != nil && ConditionUsesIncludeCrossSeeds(ac.Pause.Condition) {
-			return true
-		}
-		if ac.Delete != nil && ConditionUsesIncludeCrossSeeds(ac.Delete.Condition) {
-			return true
-		}
-		if ac.Tag != nil && ConditionUsesIncludeCrossSeeds(ac.Tag.Condition) {
-			return true
-		}
-		if ac.Category != nil && ConditionUsesIncludeCrossSeeds(ac.Category.Condition) {
+		del := rule.Conditions.Delete
+		if del != nil && del.Enabled && ConditionUsesIncludeCrossSeeds(del.Condition) {
 			return true
 		}
 	}

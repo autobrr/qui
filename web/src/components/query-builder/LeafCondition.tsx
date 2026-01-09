@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import type { ConditionField, ConditionOperator, RuleCondition } from "@/types";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, GitMerge, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { GitMerge, GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import {
   getFieldType,
@@ -212,13 +212,6 @@ export function LeafCondition({
   const toggleIncludeCrossSeeds = () => {
     onChange({ ...condition, includeCrossSeeds: !condition.includeCrossSeeds });
   };
-
-  // Check if field is a content count field that supports includeCrossSeeds
-  const isContentCountField = condition.field && [
-    "SAME_CONTENT_COUNT",
-    "UNREGISTERED_SAME_CONTENT_COUNT",
-    "REGISTERED_SAME_CONTENT_COUNT"
-  ].includes(condition.field);
 
   // Duration handling - parse seconds to display value using tracked unit
   const getDurationDisplay = (): { value: string; unit: number } => {
@@ -648,31 +641,34 @@ export function LeafCondition({
               </TooltipContent>
             </Tooltip>
           )}
-          {/* Include cross-seeds toggle for content count fields */}
-          {isContentCountField && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 px-2",
-                    condition.includeCrossSeeds && "bg-primary/10 text-primary"
-                  )}
-                  onClick={toggleIncludeCrossSeeds}
-                >
-                  <GitMerge className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {condition.includeCrossSeeds 
-                  ? "Including cross-seeds (matching by SavePath)" 
-                  : "Click to include cross-seeds (match by SavePath in addition to ContentPath)"}
-              </TooltipContent>
-            </Tooltip>
-          )}
         </div>
+      )}
+
+      {/* Include cross-seeds toggle (for content count fields) */}
+      {(condition.field === "SAME_CONTENT_COUNT" ||
+        condition.field === "UNREGISTERED_SAME_CONTENT_COUNT" ||
+        condition.field === "REGISTERED_SAME_CONTENT_COUNT") && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 px-2",
+                condition.includeCrossSeeds && "bg-primary/10 text-primary"
+              )}
+              onClick={toggleIncludeCrossSeeds}
+            >
+              <GitMerge className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {condition.includeCrossSeeds
+              ? "Cross-seeds included (matching by content folder name)"
+              : "Click to include cross-seeds with same folder name"}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {/* Remove button */}

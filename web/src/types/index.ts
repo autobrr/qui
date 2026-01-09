@@ -226,9 +226,9 @@ export interface RuleCondition {
   maxValue?: number
   regex?: boolean
   negate?: boolean
-  /** Include cross-seeds that share the same SavePath (for content count fields) */
-  includeCrossSeeds?: boolean
   conditions?: RuleCondition[]
+  /** For *_SAME_CONTENT_COUNT fields: also match by content basename (folder/file name) for cross-seed detection */
+  includeCrossSeeds?: boolean
 }
 
 export interface SpeedLimitAction {
