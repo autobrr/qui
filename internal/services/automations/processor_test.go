@@ -7,8 +7,12 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/metrics/collector"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -135,4 +139,108 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 	_, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when protected torrent is not in the same cross-seed group")
+}
+
+func TestRuleRunStats_CollectMetrics(t *testing.T) {
+	stats := ruleRunStats{
+		MatchedTrackers:                  2,
+		SpeedApplied:                     3,
+		SpeedConditionNotMet:             4,
+		ShareApplied:                     5,
+		ShareConditionNotMet:             6,
+		PauseApplied:                     7,
+		PauseConditionNotMet:             8,
+		TagConditionMet:                  9,
+		TagConditionNotMet:               10,
+		TagSkippedMissingUnregisteredSet: 11,
+		CategoryApplied:                  12,
+		CategoryConditionNotMet:          13,
+		CategoryBlocked:                  14,
+		DeleteApplied:                    15,
+		DeleteConditionNotMet:            16,
+	}
+	rule := &models.Automation{
+		ID:         1,
+		Name:       "test",
+		InstanceID: 1,
+	}
+
+	r := prometheus.NewRegistry()
+	metricsCollector := collector.NewAutomationCollector(r)
+	stats.CollectMetrics(rule, metricsCollector, "test_instance")
+
+	// Verify the metrics that should change were incremented
+	totalRunsMetric := metricsCollector.GetAutomationRuleRunTotal(1, "test_instance", 1, "test")
+	assert.Equal(t, 1.0, testutil.ToFloat64(totalRunsMetric))
+
+	actionPerformedMetric := metricsCollector.GetAutomationRuleRunActionTotal(1, "test_instance", 1, "test")
+	assert.Equal(t, 3.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("speed_limit")))
+	assert.Equal(t, 5.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("share_limit")))
+	assert.Equal(t, 7.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("pause")))
+	assert.Equal(t, 9.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("tag")))
+	assert.Equal(t, 12.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("category")))
+	assert.Equal(t, 15.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("delete")))
+
+	actionNotPerformedMetric := metricsCollector.GetAutomationRuleRunActionNotPerformedTotal(1, "test_instance", 1, "test")
+	assert.Equal(t, 11.0, testutil.ToFloat64(actionNotPerformedMetric.WithLabelValues("tag_skipped_missing_unregistered_set")))
+	assert.Equal(t, 14.0, testutil.ToFloat64(actionNotPerformedMetric.WithLabelValues("category_blocked")))
+}
+
+func TestProcessTorrents_Metrics(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash: "a",
+			Name: "source",
+		},
+	}
+
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				Category: &models.CategoryAction{
+					Enabled:  true,
+					Category: "tv.cross",
+				},
+			},
+		},
+	}
+
+	stats := make(map[int]*ruleRunStats)
+
+	states := processTorrents(torrents, rules, nil, sm, nil, stats)
+	require.Len(t, states, 1)
+	require.Equal(t, "a", states["a"].hash)
+	require.Equal(t, "source", states["a"].name)
+	require.Equal(t, 1, stats[1].MatchedTrackers)
+
+	r := prometheus.NewRegistry()
+	metricsCollector := collector.NewAutomationCollector(r)
+	stats[1].CollectMetrics(rules[0], metricsCollector, "test_instance")
+
+	// Verify the metrics that should change did indeed change
+	totalRunsMetric := metricsCollector.GetAutomationRuleRunTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
+	assert.Equal(t, 1.0, testutil.ToFloat64(totalRunsMetric))
+
+	totalTorrentsMatchedMetric := metricsCollector.GetAutomationRuleRunTorrentsMatchedTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
+	assert.Equal(t, 1.0, testutil.ToFloat64(totalTorrentsMatchedMetric))
+
+	actionPerformedMetric := metricsCollector.GetAutomationRuleRunActionTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
+	assert.Equal(t, 1.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("category")))
+
+	// Verify the metrics that should not change did not get changed
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("speed_limit")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("share_limit")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("pause")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("tag")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("delete")))
+
+	actionNotPerformedMetric := metricsCollector.GetAutomationRuleRunActionNotPerformedTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionNotPerformedMetric.WithLabelValues("tag_skipped_missing_unregistered_set")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionNotPerformedMetric.WithLabelValues("category_blocked")))
 }

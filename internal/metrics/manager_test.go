@@ -56,6 +56,16 @@ func TestMetricsManager_GetRegistry(t *testing.T) {
 	assert.IsType(t, &prometheus.Registry{}, registry)
 
 	assert.NotNil(t, manager.torrentCollector, "TorrentCollector should be registered")
+	assert.NotNil(t, manager.automationCollector, "AutomationCollector should be registered")
+}
+
+func TestMetricsManager_GetAutomationCollector(t *testing.T) {
+	manager := NewMetricsManager(nil, nil)
+
+	automationCollector := manager.GetAutomationCollector()
+
+	assert.NotNil(t, automationCollector)
+	assert.IsType(t, &collector.AutomationCollector{}, automationCollector)
 }
 
 func TestManager_RegistryIsolation(t *testing.T) {
@@ -159,4 +169,21 @@ func BenchmarkInstanceInfo_IDString(b *testing.B) {
 	for b.Loop() {
 		_ = instance.IDString()
 	}
+}
+
+func TestAutomationCollector_Describe(t *testing.T) {
+	r := prometheus.NewRegistry()
+	_ = collector.NewAutomationCollector(r)
+
+	descChan := make(chan *prometheus.Desc, 20)
+	r.Describe(descChan)
+	close(descChan)
+
+	var descs []*prometheus.Desc
+	for desc := range descChan {
+		descs = append(descs, desc)
+	}
+
+	// Should have all expected metrics descriptors
+	assert.Len(t, descs, 4, "Should have 4 metric descriptors")
 }
