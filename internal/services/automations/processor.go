@@ -43,6 +43,10 @@ type torrentDesiredState struct {
 	deleteRuleID   int
 	deleteRuleName string
 	deleteReason   string
+
+	// Move (first rule to trigger wins)
+	shouldMove bool
+	movePath   string
 }
 
 type ruleRunStats struct {
@@ -60,13 +64,17 @@ type ruleRunStats struct {
 	CategoryConditionNotMetOrBlocked int
 	DeleteApplied                    int
 	DeleteConditionNotMet            int
+	MoveApplied                      int
+	MoveConditionNotMet              int
+	MoveAlreadyAtDestination         int
+	MoveBlockedByCrossSeed           int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -286,6 +294,30 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 		}
 	}
+
+	// Move (first rule to trigger wins - skip if already set)
+	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
+		conditionMet := conditions.Move.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)
+		alreadyAtDest := inSavePath(torrent, conditions.Move.Path)
+
+		// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
+		if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex, evalCtx) {
+			if stats != nil {
+				stats.MoveApplied++
+			}
+			state.shouldMove = true
+			state.movePath = conditions.Move.Path
+		} else if stats != nil {
+			if !conditionMet {
+				stats.MoveConditionNotMet++
+			} else if alreadyAtDest {
+				stats.MoveAlreadyAtDestination++
+			} else {
+				stats.MoveBlockedByCrossSeed++
+			}
+		}
+	}
 }
 
 func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
@@ -309,6 +341,43 @@ func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCatego
 		}
 	}
 	return false
+}
+
+func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAction, crossSeedIndex map[crossSeedKey][]qbt.Torrent, evalCtx *EvalContext) bool {
+	if moveAction == nil || !moveAction.BlockIfCrossSeed {
+		return false
+	}
+	key, ok := makeCrossSeedKey(torrent)
+	if !ok {
+		return false
+	}
+	group, ok := crossSeedIndex[key]
+	if !ok || len(group) == 0 {
+		return false
+	}
+
+	// If condition is nil, it means "always apply" - all cross-seeds are considered matching,
+	// so don't block. This aligns with processRuleForTorrent where nil condition means unconditional apply.
+	if moveAction.Condition == nil {
+		return false
+	}
+
+	// If we have any other torrent in the same cross-seed group, evaluate the condition for each torrent.
+	// Block if any cross-seed does NOT match the condition.
+	for _, other := range group {
+		if other.Hash == torrent.Hash {
+			continue
+		}
+		if !EvaluateConditionWithContext(moveAction.Condition, other, evalCtx, 0) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func inSavePath(torrent qbt.Torrent, savePath string) bool {
+	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
 func containsStringFold(list []string, candidate string) bool {
@@ -396,7 +465,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldPause ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
-		state.shouldDelete
+		state.shouldDelete ||
+		state.shouldMove
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.
