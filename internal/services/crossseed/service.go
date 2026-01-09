@@ -3123,7 +3123,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("instanceName", candidate.InstanceName).
 			Str("torrentHash", torrentHash).
 			Str("discMarker", addPolicy.DiscMarker).
-			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and auto-resume disabled")
+			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and only resumed after full recheck")
 	}
 
 	// Check if we need rename alignment (folder/file names differ)
@@ -3131,6 +3131,11 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
+
+	// Force recheck is automatic (no user setting):
+	//  - Disc-layout torrents always trigger a recheck after injection
+	//  - Recheck-required matches (alignment/extras) trigger a recheck when SkipRecheck is OFF
+	forceRecheck := addPolicy.DiscLayout || (!req.SkipRecheck && (requiresAlignment || hasExtraFiles))
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
@@ -3244,9 +3249,22 @@ func (s *Service) processCrossSeedCandidate(
 		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
+			Bool("discLayout", addPolicy.DiscLayout).
 			Bool("requiresAlignment", requiresAlignment).
 			Bool("hasExtraFiles", hasExtraFiles).
 			Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
+		return result
+	}
+
+	if req.SkipRecheck && addPolicy.DiscLayout {
+		result.Status = "skipped_recheck"
+		result.Message = skippedRecheckMessage
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Bool("discLayout", addPolicy.DiscLayout).
+			Str("discMarker", addPolicy.DiscMarker).
+			Msg("Cross-seed skipped because disc layout requires recheck and skip recheck is enabled")
 		return result
 	}
 
@@ -3584,6 +3602,10 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
+	if addPolicy.DiscLayout {
+		result.Message += addPolicy.StatusSuffix()
+	}
+
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
 	alignmentSucceeded := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
 
@@ -3592,8 +3614,9 @@ func (s *Service) processCrossSeedCandidate(
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	// - alignmentSucceeded: only proceed if alignment worked (or wasn't needed)
 	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
+	needsRecheck := (addPolicy.DiscLayout && alignmentSucceeded) || needsRecheckAndResume
 
-	if needsRecheckAndResume {
+	if needsRecheck {
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
@@ -3605,11 +3628,9 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message += " - recheck failed, manual intervention required"
 		} else if addPolicy.ShouldSkipAutoResume() {
-			// Policy forces skip auto-resume (e.g., disc layout)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Bool("discLayout", addPolicy.DiscLayout).
 				Msg("Skipping auto-resume per add policy (recheck triggered)")
 			result.Message += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
@@ -3620,23 +3641,29 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Skipping auto-resume per user settings (recheck triggered)")
 			result.Message += " - auto-resume skipped per settings"
 		} else {
-			// Queue for background resume - threshold is calculated from tolerance setting
+			// Queue for background resume.
+			// Disc-layout torrents must only resume after a full (100%) recheck.
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
+				Bool("forceRecheck", forceRecheck).
 				Msg("Queuing torrent for recheck resume")
-			if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
+			queueErr := error(nil)
+			if addPolicy.DiscLayout {
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+			} else {
+				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+			}
+			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
 			}
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
 		if addPolicy.ShouldSkipAutoResume() {
-			// Policy forces skip auto-resume (e.g., disc layout)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Bool("discLayout", addPolicy.DiscLayout).
 				Msg("Skipping auto-resume for perfect match per add policy")
 			result.Message += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
@@ -3676,7 +3703,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("torrentHash", torrentHash).
 			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
 	} else if !startPaused && addPolicy.ShouldSkipAutoResume() {
-		// User wanted auto-start, but policy forces paused (e.g., disc layout)
+		// User wanted auto-start, but policy forces paused
 		result.Message += addPolicy.StatusSuffix()
 	}
 	result.Success = true
@@ -3716,7 +3743,7 @@ func normalizeHash(hash string) string {
 }
 
 // queueRecheckResume adds a torrent to the recheck resume queue.
-// It calculates the resume threshold from settings and sends to the worker channel.
+// The resume threshold is calculated from the size mismatch tolerance setting.
 func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) error {
 	// Get tolerance setting (GetAutomationSettings uses its own 5s timeout internally)
 	settings, err := s.GetAutomationSettings(ctx)
@@ -3732,18 +3759,24 @@ func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash s
 		resumeThreshold = 0.9 // Safety floor
 	}
 
+	return s.queueRecheckResumeWithThreshold(ctx, instanceID, hash, resumeThreshold)
+}
+
+// queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit threshold.
+// Use threshold=1.0 to require a full (100%) recheck before resuming.
+func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID int, hash string, threshold float64) error {
 	// Send to worker (non-blocking with buffer)
 	select {
 	case s.recheckResumeChan <- &pendingResume{
 		instanceID: instanceID,
 		hash:       hash,
-		threshold:  resumeThreshold,
+		threshold:  threshold,
 		addedAt:    time.Now(),
 	}:
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("hash", hash).
-			Float64("threshold", resumeThreshold).
+			Float64("threshold", threshold).
 			Int("pendingCount", len(s.recheckResumeChan)+1).
 			Msg("Added torrent to recheck resume queue")
 		return nil
@@ -9063,7 +9096,21 @@ func (s *Service) processHardlinkMode(
 			Str("instanceName", candidate.InstanceName).
 			Str("torrentHash", torrentHash).
 			Str("discMarker", addPolicy.DiscMarker).
-			Msg("[CROSSSEED] Hardlink mode: disc layout detected - torrent will be added paused and auto-resume disabled")
+			Msg("[CROSSSEED] Hardlink mode: disc layout detected - torrent will be added paused and only resumed after full recheck")
+	}
+
+	if req.SkipRecheck && addPolicy.DiscLayout {
+		return hardlinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "skipped_recheck",
+				Message:      skippedRecheckMessage,
+			},
+		}
 	}
 
 	// Handle skip_checking and pause behavior based on extras:
@@ -9118,9 +9165,12 @@ func (s *Service) processHardlinkMode(
 
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via hardlink mode (match: %s, files: %d/%d)", matchType, len(candidateTorrentFilesToLink), len(sourceFiles))
+	if addPolicy.DiscLayout {
+		statusMsg += addPolicy.StatusSuffix()
+	}
 
-	// Handle recheck and auto-resume when extras exist or disc layout detected
-	if hasExtras {
+	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
+	if hasExtras || addPolicy.DiscLayout {
 		// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
 		// and which are missing (extras to download)
 		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
@@ -9131,11 +9181,9 @@ func (s *Service) processHardlinkMode(
 				Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
 			statusMsg += " - recheck failed, manual intervention required"
 		} else if addPolicy.ShouldSkipAutoResume() {
-			// Policy forces skip auto-resume (e.g., disc layout)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Bool("discLayout", addPolicy.DiscLayout).
 				Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per add policy")
 			statusMsg += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
@@ -9152,7 +9200,13 @@ func (s *Service) processHardlinkMode(
 				Str("torrentHash", torrentHash).
 				Int("extraFiles", len(sourceFiles)-len(candidateTorrentFilesToLink)).
 				Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
-			if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
+			queueErr := error(nil)
+			if addPolicy.DiscLayout {
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+			} else {
+				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+			}
+			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
 			}
 		}
@@ -9545,7 +9599,21 @@ func (s *Service) processReflinkMode(
 			Str("instanceName", candidate.InstanceName).
 			Str("torrentHash", torrentHash).
 			Str("discMarker", addPolicy.DiscMarker).
-			Msg("[CROSSSEED] Reflink mode: disc layout detected - torrent will be added paused and auto-resume disabled")
+			Msg("[CROSSSEED] Reflink mode: disc layout detected - torrent will be added paused and only resumed after full recheck")
+	}
+
+	if req.SkipRecheck && addPolicy.DiscLayout {
+		return reflinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "skipped_recheck",
+				Message:      skippedRecheckMessage,
+			},
+		}
 	}
 
 	// Handle skip_checking and pause behavior based on extras:
@@ -9603,9 +9671,12 @@ func (s *Service) processReflinkMode(
 
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
+	if addPolicy.DiscLayout {
+		statusMsg += addPolicy.StatusSuffix()
+	}
 
-	// Handle recheck and auto-resume when extras exist or disc layout detected
-	if hasExtras {
+	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
+	if hasExtras || addPolicy.DiscLayout {
 		// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
 		// and which are missing (extras to download)
 		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
@@ -9616,11 +9687,9 @@ func (s *Service) processReflinkMode(
 				Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
 			statusMsg += " - recheck failed, manual intervention required"
 		} else if addPolicy.ShouldSkipAutoResume() {
-			// Policy forces skip auto-resume (e.g., disc layout)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Bool("discLayout", addPolicy.DiscLayout).
 				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per add policy")
 			statusMsg += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
@@ -9637,7 +9706,13 @@ func (s *Service) processReflinkMode(
 				Str("torrentHash", torrentHash).
 				Int("missingFiles", totalFiles-clonedFiles).
 				Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
-			if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
+			queueErr := error(nil)
+			if addPolicy.DiscLayout {
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+			} else {
+				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+			}
+			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
 			}
 		}
