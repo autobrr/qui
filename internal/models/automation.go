@@ -22,6 +22,7 @@ const (
 	DeleteModeKeepFiles                   = "delete"
 	DeleteModeWithFiles                   = "deleteWithFiles"
 	DeleteModeWithFilesPreserveCrossSeeds = "deleteWithFilesPreserveCrossSeeds"
+	DeleteModeWithFilesIncludeCrossSeeds  = "deleteWithFilesIncludeCrossSeeds"
 )
 
 // Tag mode constants
@@ -480,9 +481,10 @@ type PauseAction struct {
 
 // DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
-	Enabled   bool           `json:"enabled"`
-	Mode      string         `json:"mode"` // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled"`
+	Mode             string         `json:"mode"` // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
+	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
+	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
 // TagAction configures tagging with smart add/remove logic.

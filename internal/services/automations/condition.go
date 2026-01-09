@@ -86,6 +86,7 @@ const (
 	DeleteModeKeepFiles                   = models.DeleteModeKeepFiles
 	DeleteModeWithFiles                   = models.DeleteModeWithFiles
 	DeleteModeWithFilesPreserveCrossSeeds = models.DeleteModeWithFilesPreserveCrossSeeds
+	DeleteModeWithFilesIncludeCrossSeeds  = models.DeleteModeWithFilesIncludeCrossSeeds
 
 	// Operators
 	OperatorAnd                = models.OperatorAnd

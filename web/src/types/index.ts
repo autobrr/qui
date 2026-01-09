@@ -246,7 +246,8 @@ export interface PauseAction {
 
 export interface DeleteAction {
   enabled: boolean
-  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
   condition?: RuleCondition
 }
 
@@ -301,9 +302,12 @@ export interface AutomationInput {
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
 
+export type PreviewView = "needed" | "eligible"
+
 export interface AutomationPreviewInput extends AutomationInput {
   previewLimit?: number
   previewOffset?: number
+  previewView?: PreviewView
 }
 
 export interface AutomationActivity {
@@ -323,7 +327,7 @@ export interface AutomationActivity {
     seedingMinutes?: number
     seedingLimitMinutes?: number
     filesKept?: boolean
-    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
     limitKiB?: number
     count?: number
     type?: string
@@ -351,8 +355,10 @@ export interface AutomationPreviewTorrent {
   addedOn: number
   uploaded: number
   downloaded: number
+  contentPath?: string
   isUnregistered?: boolean
   isCrossSeed?: boolean
+  isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
   hardlinkScope?: string // none, torrents_only, outside_qbittorrent
   // Additional fields for dynamic columns
   numSeeds: number

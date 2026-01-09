@@ -1577,6 +1577,126 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		evalCtx  *EvalContext
+		expected bool
+	}{
+		{
+			name: "free space condition considers SpaceToClear - now above threshold",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorLessThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 150000000000, // 150GB to be cleared
+				// Effective: 550GB > 500GB, so condition (< 500GB) is false
+			},
+			expected: false,
+		},
+		{
+			name: "free space condition considers SpaceToClear - still below threshold",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorLessThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 50000000000,  // 50GB to be cleared
+				// Effective: 450GB < 500GB, so condition is true
+			},
+			expected: true,
+		},
+		{
+			name: "free space with zero SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorLessThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 0,
+			},
+			expected: true, // 400GB < 500GB
+		},
+		{
+			name: "free space greater than with SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 200000000000, // 200GB to be cleared
+				// Effective: 600GB > 500GB
+			},
+			expected: true,
+		},
+		{
+			name: "free space equal with SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorEqual,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    300000000000, // 300GB actual
+				SpaceToClear: 200000000000, // 200GB to be cleared
+				// Effective: 500GB == 500GB
+			},
+			expected: true,
+		},
+		{
+			name: "free space between with SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(400000000000), // 400GB
+				MaxValue: float64Ptr(600000000000), // 600GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    300000000000, // 300GB actual
+				SpaceToClear: 200000000000, // 200GB to be cleared
+				// Effective: 500GB, within [400GB, 600GB]
+			},
+			expected: true,
+		},
+		{
+			name: "free space between with SpaceToClear - outside range",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(400000000000), // 400GB
+				MaxValue: float64Ptr(500000000000), // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    300000000000, // 300GB actual
+				SpaceToClear: 300000000000, // 300GB to be cleared
+				// Effective: 600GB, outside [400GB, 500GB]
+			},
+			expected: false,
+		},
+	}
+
+	torrent := qbt.Torrent{Name: "Test"}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_Tags(t *testing.T) {
 	tests := []struct {
 		name     string

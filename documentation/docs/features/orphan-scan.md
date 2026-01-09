@@ -46,3 +46,8 @@ Directories are only scanned if at least one torrent points to them. If you dele
 2. Review the preview list of orphan files
 3. Confirm deletion
 4. Files are deleted and empty directories cleaned up
+
+## Preview Features
+
+- **Path column** - Shows the full file path with copy-to-clipboard support
+- **Export CSV** - Download the full preview list (all pages) as a CSV file

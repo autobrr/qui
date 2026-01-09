@@ -156,6 +156,7 @@ export const DELETE_MODES = [
   { value: "delete", label: "Remove from client" },
   { value: "deleteWithFiles", label: "Remove with files" },
   { value: "deleteWithFilesPreserveCrossSeeds", label: "Remove with files (preserve cross-seeds)" },
+  { value: "deleteWithFilesIncludeCrossSeeds", label: "Remove with files (include cross-seeds)" },
 ];
 
 // Field groups for organized selection
