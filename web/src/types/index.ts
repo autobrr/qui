@@ -377,6 +377,7 @@ export interface AutomationPreviewResult {
   totalMatches: number
   crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
+  warnings?: string[] // Warnings explaining why certain operations were skipped
 }
 
 export interface RegexValidationError {
