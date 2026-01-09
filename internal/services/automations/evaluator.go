@@ -338,8 +338,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAddedOnAge:
 		return compareAge(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOnAge:
-		// If completion_on is 0 (never completed), don't match
-		if torrent.CompletionOn == 0 {
+		// If completion_on is 0 or -1 (never completed), don't match
+		// qBittorrent uses -1 for incomplete torrents
+		if torrent.CompletionOn <= 0 {
 			return false
 		}
 		return compareAge(torrent.CompletionOn, cond, ctx)
