@@ -477,7 +477,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/", automationsHandler.Create)
 						r.Put("/order", automationsHandler.Reorder)
 						r.Post("/apply", automationsHandler.ApplyNow)
-						r.Post("/preview", automationsHandler.PreviewDeleteRule)
 						r.Post("/validate-regex", automationsHandler.ValidateRegex)
 						r.Get("/activity", automationsHandler.ListActivity)
 						r.Delete("/activity", automationsHandler.DeleteActivity)
