@@ -69,6 +69,11 @@ const (
 	FieldNumIncomplete = models.FieldNumIncomplete
 	FieldTrackersCount = models.FieldTrackersCount
 
+	// Cross-seed count fields
+	FieldSameContentCount             = models.FieldSameContentCount
+	FieldUnregisteredSameContentCount = models.FieldUnregisteredSameContentCount
+	FieldRegisteredSameContentCount   = models.FieldRegisteredSameContentCount
+
 	// Boolean fields
 	FieldPrivate        = models.FieldPrivate
 	FieldIsUnregistered = models.FieldIsUnregistered

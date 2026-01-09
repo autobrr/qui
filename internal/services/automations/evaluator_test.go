@@ -1025,6 +1025,74 @@ func TestBuildCategoryIndex(t *testing.T) {
 	}
 }
 
+func TestBuildContentGroupIndex(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Torrent.A", ContentPath: "/data/movies/Movie.A"},
+		{Hash: "hash2", Name: "Torrent.B", ContentPath: "/data/movies/Movie.A"}, // Same content path
+		{Hash: "hash3", Name: "Torrent.C", ContentPath: "/data/movies/Movie.A"}, // Same content path
+		{Hash: "hash4", Name: "Torrent.D", ContentPath: "/data/movies/Movie.B"}, // Different content path
+		{Hash: "hash5", Name: "Torrent.E", ContentPath: ""},                     // Empty content path
+		{Hash: "hash6", Name: "Torrent.F", ContentPath: "/DATA/MOVIES/Movie.A"}, // Same path, different case
+	}
+
+	contentGroupByHash := BuildContentGroupIndex(torrents)
+
+	// Should not be nil
+	if contentGroupByHash == nil {
+		t.Fatal("ContentGroupByHash should not be nil")
+	}
+
+	// hash1, hash2, hash3, hash6 should be in the same group (4 torrents)
+	group1 := contentGroupByHash["hash1"]
+	if len(group1) != 4 {
+		t.Errorf("expected group of 4 for hash1, got %d", len(group1))
+	}
+
+	// Verify same group reference for all members
+	group2 := contentGroupByHash["hash2"]
+	group3 := contentGroupByHash["hash3"]
+	group6 := contentGroupByHash["hash6"]
+	if len(group2) != 4 || len(group3) != 4 || len(group6) != 4 {
+		t.Errorf("all same-content torrents should have group of 4")
+	}
+
+	// hash4 should NOT be in the index (single torrent, no cross-seeds)
+	if _, ok := contentGroupByHash["hash4"]; ok {
+		t.Error("hash4 should not be in content group index (no cross-seeds)")
+	}
+
+	// hash5 should NOT be in the index (empty content path)
+	if _, ok := contentGroupByHash["hash5"]; ok {
+		t.Error("hash5 should not be in content group index (empty content path)")
+	}
+
+	// Verify group contains expected hashes
+	groupHashes := make(map[string]bool)
+	for _, h := range group1 {
+		groupHashes[h] = true
+	}
+	for _, expected := range []string{"hash1", "hash2", "hash3", "hash6"} {
+		if !groupHashes[expected] {
+			t.Errorf("group should contain %s", expected)
+		}
+	}
+}
+
+func TestBuildContentGroupIndex_WindowsPaths(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", ContentPath: "C:\\Data\\Movies\\Movie.A"},
+		{Hash: "hash2", ContentPath: "c:/data/movies/movie.a"}, // Same path, different format
+	}
+
+	contentGroupByHash := BuildContentGroupIndex(torrents)
+
+	// Both should be in the same group due to normalization
+	group := contentGroupByHash["hash1"]
+	if len(group) != 2 {
+		t.Errorf("expected group of 2 after Windows path normalization, got %d", len(group))
+	}
+}
+
 func TestNormalizeName(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -2003,6 +2071,146 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_ContentCountFields(t *testing.T) {
+	// Create a content group with 4 torrents sharing the same ContentPath
+	// hash1: registered
+	// hash2: unregistered
+	// hash3: unregistered
+	// hash4: registered
+	contentGroup := []string{"hash1", "hash2", "hash3", "hash4"}
+	unregisteredSet := map[string]struct{}{
+		"hash2": {},
+		"hash3": {},
+	}
+
+	ctx := &EvalContext{
+		ContentGroupByHash: map[string][]string{
+			"hash1": contentGroup,
+			"hash2": contentGroup,
+			"hash3": contentGroup,
+			"hash4": contentGroup,
+		},
+		UnregisteredSet: unregisteredSet,
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{
+			name: "SAME_CONTENT_COUNT equals 4",
+			cond: &RuleCondition{
+				Field:    FieldSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "4",
+			},
+			torrent:  qbt.Torrent{Hash: "hash1"},
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "SAME_CONTENT_COUNT greater than 2",
+			cond: &RuleCondition{
+				Field:    FieldSameContentCount,
+				Operator: OperatorGreaterThan,
+				Value:    "2",
+			},
+			torrent:  qbt.Torrent{Hash: "hash1"},
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "UNREGISTERED_SAME_CONTENT_COUNT equals 2 for registered torrent",
+			cond: &RuleCondition{
+				Field:    FieldUnregisteredSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "2",
+			},
+			torrent:  qbt.Torrent{Hash: "hash1"}, // registered, 2 other unregistered
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "UNREGISTERED_SAME_CONTENT_COUNT equals 1 for unregistered torrent (excludes self)",
+			cond: &RuleCondition{
+				Field:    FieldUnregisteredSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "1",
+			},
+			torrent:  qbt.Torrent{Hash: "hash2"}, // unregistered, 1 other unregistered (hash3)
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "REGISTERED_SAME_CONTENT_COUNT equals 2 for unregistered torrent",
+			cond: &RuleCondition{
+				Field:    FieldRegisteredSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "2",
+			},
+			torrent:  qbt.Torrent{Hash: "hash2"}, // unregistered, 2 registered siblings (hash1, hash4)
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "REGISTERED_SAME_CONTENT_COUNT equals 0 - delete only when no registered siblings",
+			cond: &RuleCondition{
+				Field:    FieldRegisteredSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Hash: "hash2"}, // has 2 registered siblings
+			ctx:      ctx,
+			expected: false,
+		},
+		{
+			name: "torrent not in any content group returns 1 for SAME_CONTENT_COUNT",
+			cond: &RuleCondition{
+				Field:    FieldSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "1",
+			},
+			torrent:  qbt.Torrent{Hash: "orphan"},
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "torrent not in any content group returns 0 for UNREGISTERED_SAME_CONTENT_COUNT",
+			cond: &RuleCondition{
+				Field:    FieldUnregisteredSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Hash: "orphan"},
+			ctx:      ctx,
+			expected: true,
+		},
+		{
+			name: "nil context returns 1 for SAME_CONTENT_COUNT",
+			cond: &RuleCondition{
+				Field:    FieldSameContentCount,
+				Operator: OperatorEqual,
+				Value:    "1",
+			},
+			torrent:  qbt.Torrent{Hash: "hash1"},
+			ctx:      nil,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}

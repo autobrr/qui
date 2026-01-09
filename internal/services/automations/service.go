@@ -72,10 +72,10 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
-	lastApplied          map[int]map[string]time.Time // instanceID -> hash -> timestamp
-	lastRuleRun          map[ruleKey]time.Time        // per-rule cadence tracking
+	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
-	mu                   sync.RWMutex
+	mu                    sync.RWMutex
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
@@ -346,6 +346,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		if len(healthCounts.TrackerDownSet) > 0 {
 			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 		}
+	}
+
+	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
+	if rulesUseContentCountFields([]*models.Automation{rule}) {
+		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
 	}
 
 	// Check if rule uses hardlink conditions OR includeHardlinks and populate context
@@ -675,6 +680,11 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
+	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
+	if rulesUseContentCountFields([]*models.Automation{rule}) {
+		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
+	}
+
 	// Check if rule uses hardlink conditions
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Category != nil {
 		cond := rule.Conditions.Category.Condition
@@ -889,6 +899,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
+	}
+
+	// Build content group index for SAME_CONTENT_COUNT/UNREGISTERED_SAME_CONTENT_COUNT/REGISTERED_SAME_CONTENT_COUNT
+	if rulesUseContentCountFields(eligibleRules) {
+		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
 	}
 
 	// On-demand hardlink detection (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
@@ -2100,6 +2115,14 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 		}
 	}
 	return false
+}
+
+// rulesUseContentCountFields checks if any enabled rule uses SAME_CONTENT_COUNT,
+// UNREGISTERED_SAME_CONTENT_COUNT, or REGISTERED_SAME_CONTENT_COUNT fields.
+func rulesUseContentCountFields(rules []*models.Automation) bool {
+	return rulesUseCondition(rules, FieldSameContentCount) ||
+		rulesUseCondition(rules, FieldUnregisteredSameContentCount) ||
+		rulesUseCondition(rules, FieldRegisteredSameContentCount)
 }
 
 // rulesUseTrackerDisplayName checks if any enabled rule uses UseTrackerAsTag with UseDisplayName.

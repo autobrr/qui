@@ -42,6 +42,11 @@ export const CONDITION_FIELDS = {
   NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
 
+  // Cross-seed count fields
+  SAME_CONTENT_COUNT: { label: "Same Content Count", type: "integer" as const, description: "Total torrents sharing the same content (including self)" },
+  UNREGISTERED_SAME_CONTENT_COUNT: { label: "Unregistered Same Content", type: "integer" as const, description: "Other unregistered torrents sharing the same content" },
+  REGISTERED_SAME_CONTENT_COUNT: { label: "Registered Same Content", type: "integer" as const, description: "Other registered torrents sharing the same content" },
+
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
@@ -192,6 +197,10 @@ export const FIELD_GROUPS = [
   {
     label: "Tracker",
     fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+  },
+  {
+    label: "Cross-Seeds",
+    fields: ["SAME_CONTENT_COUNT", "UNREGISTERED_SAME_CONTENT_COUNT", "REGISTERED_SAME_CONTENT_COUNT"],
   },
   {
     label: "Files",

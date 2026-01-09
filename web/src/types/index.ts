@@ -185,6 +185,10 @@ export type ConditionField =
   | "NUM_COMPLETE"
   | "NUM_INCOMPLETE"
   | "TRACKERS_COUNT"
+  // Cross-seed count fields
+  | "SAME_CONTENT_COUNT"
+  | "UNREGISTERED_SAME_CONTENT_COUNT"
+  | "REGISTERED_SAME_CONTENT_COUNT"
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"

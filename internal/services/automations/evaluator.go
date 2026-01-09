@@ -65,6 +65,10 @@ type EvalContext struct {
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
+
+	// ContentGroupByHash maps torrent hash to its content group (all torrents sharing same ContentPath).
+	// Used for SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT, REGISTERED_SAME_CONTENT_COUNT conditions.
+	ContentGroupByHash map[string][]string
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -111,6 +115,51 @@ func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[strin
 	}
 
 	return categoryIndex, categoryNames
+}
+
+// BuildContentGroupIndex builds a map of torrent hash → list of all hashes sharing the same ContentPath.
+// This enables SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT, and REGISTERED_SAME_CONTENT_COUNT conditions.
+// Uses normalized ContentPath for case-insensitive, platform-agnostic comparison.
+func BuildContentGroupIndex(torrents []qbt.Torrent) map[string][]string {
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	// First pass: group torrents by normalized ContentPath
+	byContentPath := make(map[string][]string) // normalized path → list of hashes
+	for _, t := range torrents {
+		normalizedPath := normalizeContentPath(t.ContentPath)
+		if normalizedPath == "" {
+			continue // Skip torrents without ContentPath
+		}
+		byContentPath[normalizedPath] = append(byContentPath[normalizedPath], t.Hash)
+	}
+
+	// Second pass: build hash → group mapping (only for groups with 2+ torrents)
+	result := make(map[string][]string)
+	for _, hashes := range byContentPath {
+		if len(hashes) < 2 {
+			continue // No cross-seeds, skip single-torrent groups
+		}
+		// All torrents in this group share the same content
+		for _, h := range hashes {
+			result[h] = hashes
+		}
+	}
+
+	return result
+}
+
+// normalizeContentPath standardizes a content path for comparison.
+// Lowercases, normalizes path separators, and removes trailing slashes.
+func normalizeContentPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	p = strings.ToLower(p)
+	p = strings.ReplaceAll(p, "\\", "/")
+	p = strings.TrimSuffix(p, "/")
+	return p
 }
 
 // existsInCategory checks if a different torrent with the exact same name exists in the target category.
@@ -191,6 +240,68 @@ func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *Ev
 		}
 	}
 	return false
+}
+
+// getSameContentCount returns the total count of torrents sharing the same content (including self).
+// Returns 1 if no content group data is available (torrent only counts itself).
+func getSameContentCount(hash string, ctx *EvalContext) int {
+	if ctx == nil || ctx.ContentGroupByHash == nil {
+		return 1 // No data available, count only self
+	}
+	group, ok := ctx.ContentGroupByHash[hash]
+	if !ok || len(group) == 0 {
+		return 1 // Not in any group, count only self
+	}
+	return len(group)
+}
+
+// getUnregisteredSameContentCount returns the count of OTHER unregistered torrents sharing the same content.
+// Excludes the current torrent from the count.
+func getUnregisteredSameContentCount(hash string, ctx *EvalContext) int {
+	if ctx == nil || ctx.ContentGroupByHash == nil {
+		return 0 // No data available
+	}
+	group, ok := ctx.ContentGroupByHash[hash]
+	if !ok || len(group) == 0 {
+		return 0 // Not in any group
+	}
+	count := 0
+	for _, h := range group {
+		if h == hash {
+			continue // Skip self
+		}
+		if ctx.UnregisteredSet != nil {
+			if _, isUnreg := ctx.UnregisteredSet[h]; isUnreg {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// getRegisteredSameContentCount returns the count of OTHER registered torrents sharing the same content.
+// Excludes the current torrent from the count.
+func getRegisteredSameContentCount(hash string, ctx *EvalContext) int {
+	if ctx == nil || ctx.ContentGroupByHash == nil {
+		return 0 // No data available
+	}
+	group, ok := ctx.ContentGroupByHash[hash]
+	if !ok || len(group) == 0 {
+		return 0 // Not in any group
+	}
+	count := 0
+	for _, h := range group {
+		if h == hash {
+			continue // Skip self
+		}
+		// Registered = not in UnregisteredSet
+		if ctx.UnregisteredSet == nil {
+			count++ // If no unregistered data, assume all are registered
+		} else if _, isUnreg := ctx.UnregisteredSet[h]; !isUnreg {
+			count++
+		}
+	}
+	return count
 }
 
 // ConditionUsesField checks if a condition tree references a specific field.
@@ -375,6 +486,17 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.NumIncomplete, cond)
 	case FieldTrackersCount:
 		return compareInt64(torrent.TrackersCount, cond)
+
+	// Cross-seed count fields
+	case FieldSameContentCount:
+		count := getSameContentCount(torrent.Hash, ctx)
+		return compareInt64(int64(count), cond)
+	case FieldUnregisteredSameContentCount:
+		count := getUnregisteredSameContentCount(torrent.Hash, ctx)
+		return compareInt64(int64(count), cond)
+	case FieldRegisteredSameContentCount:
+		count := getRegisteredSameContentCount(torrent.Hash, ctx)
+		return compareInt64(int64(count), cond)
 
 	// Boolean fields
 	case FieldPrivate:

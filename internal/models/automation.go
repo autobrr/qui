@@ -372,6 +372,11 @@ const (
 	FieldNumIncomplete ConditionField = "NUM_INCOMPLETE"
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
+	// Cross-seed count fields (counts of torrents sharing same ContentPath)
+	FieldSameContentCount             ConditionField = "SAME_CONTENT_COUNT"              // Total torrents with same content (including self)
+	FieldUnregisteredSameContentCount ConditionField = "UNREGISTERED_SAME_CONTENT_COUNT" // Unregistered torrents with same content (excluding self)
+	FieldRegisteredSameContentCount   ConditionField = "REGISTERED_SAME_CONTENT_COUNT"   // Registered torrents with same content (excluding self)
+
 	// Boolean fields
 	FieldPrivate        ConditionField = "PRIVATE"
 	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
@@ -482,7 +487,7 @@ type PauseAction struct {
 // DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
 	Enabled          bool           `json:"enabled"`
-	Mode             string         `json:"mode"` // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
+	Mode             string         `json:"mode"`                       // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
 	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
