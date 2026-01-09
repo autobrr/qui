@@ -39,12 +39,12 @@ type torrentDesiredState struct {
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
 	// Delete (first rule to trigger wins)
-	shouldDelete         bool
-	deleteMode           string
+	shouldDelete           bool
+	deleteMode             string
 	deleteIncludeHardlinks bool // Whether to expand deletion to hardlink copies
-	deleteRuleID         int
-	deleteRuleName       string
-	deleteReason         string
+	deleteRuleID           int
+	deleteRuleName         string
+	deleteReason           string
 }
 
 type ruleRunStats struct {
@@ -163,6 +163,11 @@ func processTorrents(
 		}
 	}
 
+	// Persist any active free space source state before returning
+	if evalCtx != nil {
+		evalCtx.PersistFreeSpaceSourceState()
+	}
+
 	return states
 }
 
@@ -171,6 +176,12 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
+	}
+
+	// Load the rule's free space source state before evaluating any conditions.
+	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
+	if evalCtx != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
 
 	// Speed limits
@@ -293,8 +304,12 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				state.deleteRuleName = rule.Name
 				state.deleteReason = "condition matched"
 
-				// Update the cumulative free space cleared for the "free space" condition
-				updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, allTorrents)
+				// Update the cumulative free space cleared for the "free space" condition.
+				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
+				// accidentally mutate a previously-loaded rule's projection state.
+				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
+					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, allTorrents)
+				}
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
 			}

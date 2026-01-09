@@ -130,6 +130,9 @@ type FormState = {
   // Delete settings
   exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
+  // Free space source settings (for FREE_SPACE conditions)
+  exprFreeSpaceSourceType: "qbittorrent" | "path"
+  exprFreeSpaceSourcePath: string
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
@@ -165,6 +168,8 @@ const emptyFormState: FormState = {
   exprSeedingTimeValue: undefined,
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
   exprIncludeHardlinks: false,
+  exprFreeSpaceSourceType: "qbittorrent",
+  exprFreeSpaceSourcePath: "",
   exprTags: [],
   exprTagMode: "full",
   exprUseTrackerAsTag: false,
@@ -227,6 +232,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? true
   const hasLocalFilesystemAccess = useMemo(
     () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
     [instances, instanceId]
@@ -387,6 +393,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprSeedingTimeValue: number | undefined
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
         let exprIncludeHardlinks = false
+        let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
+        let exprFreeSpaceSourcePath = ""
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
         let exprUseTrackerAsTag = false
@@ -394,6 +402,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
+
+        // Hydrate freeSpaceSource from rule
+        if (rule.freeSpaceSource) {
+          exprFreeSpaceSourceType = rule.freeSpaceSource.type ?? "qbittorrent"
+          if (rule.freeSpaceSource.type === "path") {
+            exprFreeSpaceSourcePath = rule.freeSpaceSource.path ?? ""
+          }
+        }
 
         if (conditions) {
           // Get condition from any enabled action (they should all be the same)
@@ -506,6 +522,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprSeedingTimeValue,
           exprDeleteMode,
           exprIncludeHardlinks,
+          exprFreeSpaceSourceType,
+          exprFreeSpaceSourcePath,
           exprTags,
           exprTagMode,
           exprUseTrackerAsTag,
@@ -558,6 +576,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
   }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds])
+
+  // Auto-switch free space source from "path" to "qbittorrent" on Windows (not supported)
+  // This must run during hydration to handle legacy workflows opened on Windows.
+  // Only toast after hydration to avoid noise when opening dialogs.
+  useEffect(() => {
+    if (!supportsFreeSpacePathSource && formState.exprFreeSpaceSourceType === "path") {
+      setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: "qbittorrent" }))
+      if (!isHydrating.current) {
+        toast.warning("Path-based free space source is not supported on Windows. Switched to qBittorrent default.")
+      }
+    }
+  }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = (input: FormState): AutomationInput => {
@@ -658,6 +688,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
+    // Build freeSpaceSource only if using a non-default source with a FREE_SPACE condition
+    const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
+    let freeSpaceSource: AutomationInput["freeSpaceSource"]
+    if (usesFreeSpace && input.exprFreeSpaceSourceType === "path" && input.exprFreeSpaceSourcePath) {
+      freeSpaceSource = {
+        type: "path",
+        path: input.exprFreeSpaceSourcePath,
+      }
+    } else if (input.exprFreeSpaceSourceType === "path" && input.exprFreeSpaceSourcePath) {
+      // Keep the path source even if FREE_SPACE isn't currently in the condition
+      // (user might add it later, or just want to preserve the setting)
+      freeSpaceSource = {
+        type: "path",
+        path: input.exprFreeSpaceSourcePath,
+      }
+    }
+
     return {
       name: input.name,
       trackerDomains: input.applyToAllTrackers ? [] : input.trackerDomains.filter(Boolean),
@@ -666,6 +713,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       sortOrder: input.sortOrder,
       intervalSeconds: input.intervalSeconds,
       conditions,
+      freeSpaceSource,
     }
   }
 
@@ -673,11 +721,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
 
-  // Check if delete rule uses FREE_SPACE field (shows preview view toggle)
-  const deleteUsesFreeSpace = useMemo(() => {
-    if (!formState.deleteEnabled) return false
+  // Check if condition uses FREE_SPACE field (for free space source UI - shown regardless of action)
+  const conditionUsesFreeSpace = useMemo(() => {
     return conditionUsesField(formState.actionCondition, "FREE_SPACE")
-  }, [formState.deleteEnabled, formState.actionCondition])
+  }, [formState.actionCondition])
+
+  // Check if delete rule uses FREE_SPACE field (for preview view toggle - only for delete rules)
+  const deleteUsesFreeSpace = formState.deleteEnabled && conditionUsesFreeSpace
 
   // Count enabled actions
   const enabledActionsCount = [
@@ -1303,7 +1353,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 onValueChange={(value: FormState["exprRatioLimitMode"]) => setFormState(prev => ({
                                   ...prev,
                                   exprRatioLimitMode: value,
-                                  exprRatioLimitValue: value === "custom" ? prev.exprRatioLimitValue : undefined
+                                  exprRatioLimitValue: value === "custom" ? prev.exprRatioLimitValue : undefined,
                                 }))}
                               >
                                 <SelectTrigger className="w-[140px]">
@@ -1328,7 +1378,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     const parsed = parseFloat(val)
                                     setFormState(prev => ({
                                       ...prev,
-                                      exprRatioLimitValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.exprRatioLimitValue)
+                                      exprRatioLimitValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.exprRatioLimitValue),
                                     }))
                                   }}
                                   placeholder="e.g. 2.0"
@@ -1345,7 +1395,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 onValueChange={(value: FormState["exprSeedingTimeMode"]) => setFormState(prev => ({
                                   ...prev,
                                   exprSeedingTimeMode: value,
-                                  exprSeedingTimeValue: value === "custom" ? prev.exprSeedingTimeValue : undefined
+                                  exprSeedingTimeValue: value === "custom" ? prev.exprSeedingTimeValue : undefined,
                                 }))}
                               >
                                 <SelectTrigger className="w-[140px]">
@@ -1369,7 +1419,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     const parsed = parseInt(val, 10)
                                     setFormState(prev => ({
                                       ...prev,
-                                      exprSeedingTimeValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.exprSeedingTimeValue)
+                                      exprSeedingTimeValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.exprSeedingTimeValue),
                                     }))
                                   }}
                                   placeholder="e.g. 1440"
@@ -1644,6 +1694,71 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     )}
                   </div>
                 </div>
+
+                {/* Free Space Source - shown whenever FREE_SPACE is used in conditions */}
+                {conditionUsesFreeSpace && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-sm font-medium">Free space source</Label>
+                      <TooltipProvider delayDuration={150}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                              aria-label="About free space source"
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-[320px]">
+                            <p>
+                              Choose where to read free space from. Default uses qBittorrent&apos;s
+                              reported free space. Use &quot;Path on server&quot; to check free space on
+                              a specific disk or mount point.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <Select
+                      value={formState.exprFreeSpaceSourceType}
+                      onValueChange={(value) => setFormState(prev => ({
+                        ...prev,
+                        exprFreeSpaceSourceType: value as FormState["exprFreeSpaceSourceType"],
+                      }))}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="qbittorrent">Default (qBittorrent)</SelectItem>
+                        <SelectItem value="path" disabled={!hasLocalFilesystemAccess || !supportsFreeSpacePathSource}>
+                          Path on server{!supportsFreeSpacePathSource ? " (not supported on Windows)" : !hasLocalFilesystemAccess ? " (requires Local Access)" : ""}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formState.exprFreeSpaceSourceType === "path" && supportsFreeSpacePathSource && (
+                      <div className="flex flex-col gap-1">
+                        <div className="relative">
+                          <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input
+                            value={formState.exprFreeSpaceSourcePath}
+                            onChange={(e) => setFormState(prev => ({
+                              ...prev,
+                              exprFreeSpaceSourcePath: e.target.value,
+                            }))}
+                            placeholder="/mnt/downloads"
+                            className="h-8 text-xs pl-7"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Enter the path to check free space on (e.g., a mount point)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {formState.categoryEnabled && (formState.exprIncludeCrossSeeds || formState.exprBlockIfCrossSeedInCategories.length > 0) && (
                   <div className="space-y-1.5">
