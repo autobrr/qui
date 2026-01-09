@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
   enabled: false,
   gracePeriodMinutes: 30,
   scanIntervalHours: 6,
+  previewSort: "size_desc",
   maxFilesPerRun: 100,
   ignorePaths: [],
   autoCleanupEnabled: false,
@@ -52,6 +53,7 @@ export function OrphanScanSettingsForm({
         enabled: settingsQuery.data.enabled,
         gracePeriodMinutes: settingsQuery.data.gracePeriodMinutes,
         scanIntervalHours: settingsQuery.data.scanIntervalHours,
+        previewSort: settingsQuery.data.previewSort ?? "size_desc",
         maxFilesPerRun: settingsQuery.data.maxFilesPerRun,
         ignorePaths: [...settingsQuery.data.ignorePaths],
         autoCleanupEnabled: settingsQuery.data.autoCleanupEnabled,
@@ -66,6 +68,7 @@ export function OrphanScanSettingsForm({
       enabled: nextSettings.enabled,
       gracePeriodMinutes: Math.max(1, nextSettings.gracePeriodMinutes),
       scanIntervalHours: Math.max(1, nextSettings.scanIntervalHours),
+      previewSort: nextSettings.previewSort,
       maxFilesPerRun: Math.max(1, Math.min(1000, nextSettings.maxFilesPerRun)),
       ignorePaths: nextSettings.ignorePaths.map(p => p.trim()).filter(Boolean),
       autoCleanupEnabled: nextSettings.autoCleanupEnabled,
@@ -227,6 +230,35 @@ export function OrphanScanSettingsForm({
                 </div>
               </div>
             </div>
+
+      <div className="space-y-2 sm:max-w-sm">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="preview-sort" className="text-sm font-medium">Preview Sort</Label>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[300px]">
+              <p>Controls how orphan preview results are ordered. The Max Files limit is applied after this sorting.</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <Select
+          value={settings.previewSort}
+          onValueChange={(value) => {
+            if (!value) return
+            setSettings(prev => ({ ...prev, previewSort: value as typeof settings.previewSort }))
+          }}
+        >
+          <SelectTrigger id="preview-sort" className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="size_desc">Size (largest first)</SelectItem>
+            <SelectItem value="directory_size_desc">Directory, then size</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
           </div>
 
           <div className="space-y-4">

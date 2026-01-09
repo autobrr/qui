@@ -385,6 +385,7 @@ export interface AutomationPreviewResult {
   totalMatches: number
   crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
+  warnings?: string[] // Warnings explaining why certain operations were skipped
 }
 
 export interface RegexValidationError {
@@ -1573,6 +1574,8 @@ export interface CrossSeedTorrentInfo {
   searchType?: string
   searchCategories?: number[]
   requiredCaps?: string[]
+  discLayout?: boolean
+  discMarker?: string
   // Pre-filtering information for UI context menu
   availableIndexers?: number[]
   filteredIndexers?: number[]
@@ -1861,6 +1864,8 @@ export type OrphanScanTriggerType = "manual" | "scheduled"
 
 export type OrphanScanFileStatus = "pending" | "deleted" | "skipped" | "failed"
 
+export type OrphanScanPreviewSort = "size_desc" | "directory_size_desc"
+
 export interface OrphanScanSettings {
   id?: number
   instanceId: number
@@ -1868,6 +1873,7 @@ export interface OrphanScanSettings {
   gracePeriodMinutes: number
   ignorePaths: string[]
   scanIntervalHours: number
+  previewSort: OrphanScanPreviewSort
   maxFilesPerRun: number
   autoCleanupEnabled: boolean
   autoCleanupMaxFiles: number
@@ -1880,6 +1886,7 @@ export interface OrphanScanSettingsUpdate {
   gracePeriodMinutes?: number
   ignorePaths?: string[]
   scanIntervalHours?: number
+  previewSort?: OrphanScanPreviewSort
   maxFilesPerRun?: number
   autoCleanupEnabled?: boolean
   autoCleanupMaxFiles?: number

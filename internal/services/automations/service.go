@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -23,7 +22,6 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -349,11 +347,15 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 
 	// Check if rule uses hardlink conditions OR includeHardlinks and populate context
+	var hardlinkIndex *HardlinkIndex
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		cond := rule.Conditions.Delete.Condition
 		needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) || rule.Conditions.Delete.IncludeHardlinks
 		if needsHardlinkScope {
-			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+			hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
+			if hardlinkIndex != nil {
+				evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+			}
 		}
 	}
 
@@ -379,7 +381,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	// For "include cross-seeds" mode, use specialized preview
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, limit, offset, eligibleMode)
+		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, limit, offset, eligibleMode)
 	}
 
 	// Standard delete modes (non-include-cross-seeds)
@@ -438,6 +440,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
+	hardlinkIndex *HardlinkIndex,
 	limit, offset int,
 	eligibleMode bool,
 ) (*PreviewResult, error) {
@@ -456,15 +459,12 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	// Track processed ContentPaths to avoid re-expanding the same group
 	processedContentPaths := make(map[string]struct{})
 
-	// Compute hardlink groups if enabled
-	var hardlinkGroups map[string][]string
+	// Use hardlink index if enabled and available
 	includeHardlinks := rule.Conditions.Delete.IncludeHardlinks
-	if includeHardlinks && evalCtx != nil && evalCtx.HardlinkScopeByHash != nil {
-		hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
-
-		// For FREE_SPACE projection, build signature map for dedupe
+	if includeHardlinks && hardlinkIndex != nil {
+		// For FREE_SPACE projection, use signature map from index for dedupe
 		if !eligibleMode && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
-			evalCtx.HardlinkSignatureByHash = buildHardlinkSignatureMap(hardlinkGroups)
+			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
 			evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
 		}
 	}
@@ -504,8 +504,8 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		}
 
 		// Expand with hardlink copies if enabled
-		if includeHardlinks && hardlinkGroups != nil {
-			hlCopies := s.findHardlinkCopies(torrent.Hash, hardlinkGroups)
+		if includeHardlinks && hardlinkIndex != nil {
+			hlCopies := hardlinkIndex.GetHardlinkCopies(torrent.Hash)
 			for _, hlHash := range hlCopies {
 				if _, exists := expandedSet[hlHash]; !exists {
 					expandedSet[hlHash] = struct{}{}
@@ -679,7 +679,10 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Category != nil {
 		cond := rule.Conditions.Category.Condition
 		if ConditionUsesField(cond, FieldHardlinkScope) {
-			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+			hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+			if hardlinkIndex != nil {
+				evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+			}
 		}
 	}
 
@@ -891,15 +894,18 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
-	// On-demand hardlink detection (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
+	// On-demand hardlink index (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
+	// The cached index provides scope detection AND hardlink grouping in a single build.
+	var hardlinkIndex *HardlinkIndex
 	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
 	if instance.HasLocalFilesystemAccess && needsHardlinkScope {
-		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
+		if hardlinkIndex != nil {
+			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+		}
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
-	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
-	var hardlinkGroups map[string][]string
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
 		// Initialize per-rule free space states.
 		// Each rule gets its own projection state (keyed by source + rule ID),
@@ -943,9 +949,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
 		// Must happen BEFORE processTorrents() so SpaceToClear is correctly deduplicated.
-		if rulesNeedHardlinkSignatureMap(eligibleRules) && evalCtx.HardlinkScopeByHash != nil {
-			hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
-			evalCtx.HardlinkSignatureByHash = buildHardlinkSignatureMap(hardlinkGroups)
+		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
+			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+			evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
 		}
 	}
 
@@ -1084,18 +1090,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// Track hashes that have been processed for hardlink expansion
 	includedHardlinkHashes := make(map[string]struct{})
 
-	// Compute hardlink groups for delete expansion if needed (and not already computed for FREE_SPACE)
-	// The hardlinkGroups variable is declared at the top of the function and may have been
-	// pre-computed for FREE_SPACE projection; only compute here if needed and not already done.
-	if hardlinkGroups == nil {
-		for _, state := range states {
-			if state.shouldDelete && state.deleteIncludeHardlinks && evalCtx.HardlinkScopeByHash != nil {
-				hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
-				break
-			}
-		}
-	}
-
 	for hash, state := range states {
 		torrent := torrentByHash[hash]
 
@@ -1181,28 +1175,26 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 					keepingFiles = false
 				}
 
-				// Expand with hardlink copies if enabled
-				if state.deleteIncludeHardlinks && hardlinkGroups != nil {
-					hlCopies := s.findHardlinkCopies(hash, hardlinkGroups)
-					for _, hlHash := range hlCopies {
-						// Skip if already in hashesToDelete or already processed
-						alreadyIncluded := false
-						for _, h := range hashesToDelete {
-							if h == hlHash {
-								alreadyIncluded = true
-								break
-							}
-						}
-						if alreadyIncluded {
-							continue
-						}
-						if _, processed := includedHardlinkHashes[hlHash]; processed {
-							continue
-						}
-						hashesToDelete = append(hashesToDelete, hlHash)
-						includedHardlinkHashes[hlHash] = struct{}{}
-					}
+				// Expand with hardlink copies if enabled (O(1) lookup via cached index)
+				if state.deleteIncludeHardlinks && hardlinkIndex != nil {
+					hlCopies := hardlinkIndex.GetHardlinkCopies(hash)
 					if len(hlCopies) > 0 {
+						// Build set from hashesToDelete for O(1) membership check
+						toDeleteSet := make(map[string]struct{}, len(hashesToDelete))
+						for _, h := range hashesToDelete {
+							toDeleteSet[h] = struct{}{}
+						}
+						for _, hlHash := range hlCopies {
+							// Skip if already in hashesToDelete or already processed
+							if _, inDelete := toDeleteSet[hlHash]; inDelete {
+								continue
+							}
+							if _, processed := includedHardlinkHashes[hlHash]; processed {
+								continue
+							}
+							hashesToDelete = append(hashesToDelete, hlHash)
+							includedHardlinkHashes[hlHash] = struct{}{}
+						}
 						logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
 					}
 				}
@@ -2147,14 +2139,16 @@ func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
 	return false
 }
 
-// rulesUseIncludeHardlinks checks if any enabled delete rule has IncludeHardlinks enabled.
+// rulesUseIncludeHardlinks checks if any enabled delete rule has IncludeHardlinks enabled
+// with the include-cross-seeds mode (the only mode that can actually expand hardlink groups).
 func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
 	for _, rule := range rules {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
 		}
 		del := rule.Conditions.Delete
-		if del != nil && del.Enabled && del.IncludeHardlinks {
+		// IncludeHardlinks only makes sense with the include-cross-seeds delete mode
+		if del != nil && del.Enabled && del.IncludeHardlinks && del.Mode == DeleteModeWithFilesIncludeCrossSeeds {
 			return true
 		}
 	}
@@ -2195,126 +2189,6 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 	return result
 }
 
-// fileIDInfo holds file identity and link count for hardlink scope detection.
-type fileIDInfo struct {
-	nlink uint64
-	paths map[string]struct{}
-}
-
-// detectHardlinkScope computes the hardlink scope for each torrent.
-// Returns a map of torrent hash to scope value (none, torrents_only, outside_qbittorrent).
-func (s *Service) detectHardlinkScope(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]string {
-	result := make(map[string]string)
-
-	hashes := make([]string, 0, len(torrents))
-	torrentByHash := make(map[string]qbt.Torrent)
-	for _, t := range torrents {
-		hashes = append(hashes, t.Hash)
-		torrentByHash[t.Hash] = t
-	}
-
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).
-			Msg("automations: failed to fetch files for hardlink scope detection")
-		// Return empty map - scope defaults to "none" in evaluator
-		return result
-	}
-
-	// Build fileID accounting map across ALL torrents first
-	// Key: fileID (unique physical file identifier)
-	// Value: link count and set of paths pointing to this file
-	fileIDMap := make(map[string]*fileIDInfo)
-
-	for hash, files := range filesByHash {
-		torrent := torrentByHash[hash]
-		for _, f := range files {
-			fullPath := buildFullPath(torrent.SavePath, f.Name)
-
-			info, err := os.Lstat(fullPath)
-			if err != nil {
-				continue // Skip inaccessible files
-			}
-			if !info.Mode().IsRegular() {
-				continue // Skip directories and non-regular files
-			}
-
-			fileID, nlink, err := hardlink.LinkInfo(info, fullPath)
-			if err != nil {
-				continue // Skip files we can't get info for
-			}
-
-			if fileIDMap[fileID] == nil {
-				fileIDMap[fileID] = &fileIDInfo{
-					nlink: nlink,
-					paths: make(map[string]struct{}),
-				}
-			}
-			fileIDMap[fileID].paths[fullPath] = struct{}{}
-		}
-	}
-
-	// Now compute scope for each torrent
-	for hash, files := range filesByHash {
-		torrent := torrentByHash[hash]
-		scope := HardlinkScopeNone
-		filesAccessible := 0
-
-		for _, f := range files {
-			fullPath := buildFullPath(torrent.SavePath, f.Name)
-
-			info, err := os.Lstat(fullPath)
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-
-			fileID, nlink, err := hardlink.LinkInfo(info, fullPath)
-			if err != nil {
-				continue // Skip files we can't get info for
-			}
-
-			filesAccessible++
-
-			if nlink <= 1 {
-				continue // Not hardlinked, but file was accessible
-			}
-
-			// File has hardlinks (nlink > 1)
-			idInfo := fileIDMap[fileID]
-			if idInfo == nil {
-				continue
-			}
-
-			inTorrentSetCount := uint64(len(idInfo.paths))
-
-			if nlink > inTorrentSetCount {
-				// At least one link is outside the torrent set
-				scope = HardlinkScopeOutsideQBitTorrent
-				break // outside_qbittorrent wins - no need to check more files
-			}
-
-			// All links are within the torrent set
-			if scope != HardlinkScopeOutsideQBitTorrent {
-				scope = HardlinkScopeTorrentsOnly
-			}
-		}
-
-		// Only add to result if at least one file was accessible
-		// Unknown scope (no accessible files) = not added = won't match any condition
-		if filesAccessible > 0 {
-			result[hash] = scope
-		}
-	}
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Int("totalTorrents", len(torrents)).
-		Int("scopeComputed", len(result)).
-		Msg("automations: hardlink scope detection completed")
-
-	return result
-}
-
 // buildFullPath constructs the full path for a torrent file.
 // qBittorrent always returns forward slashes, so we normalize using filepath.FromSlash.
 func buildFullPath(basePath, filePath string) string {
@@ -2327,117 +2201,6 @@ func buildFullPath(basePath, filePath string) string {
 		return cleaned
 	}
 	return filepath.Join(normalizedBase, cleaned)
-}
-
-// computeHardlinkGroups finds groups of torrents that share the same underlying files via hardlinks.
-// It only considers torrents with scope "torrents_only" (all hardlinks are within qBittorrent).
-// Returns a map of file signature -> slice of torrent hashes with that signature.
-// The file signature is a sorted, joined string of all file IDs in the torrent.
-func (s *Service) computeHardlinkGroups(
-	ctx context.Context,
-	instanceID int,
-	torrents []qbt.Torrent,
-	scopeByHash map[string]string,
-) map[string][]string {
-	groups := make(map[string][]string)
-
-	// Filter to only torrents_only scope (safe for hardlink expansion)
-	var safeTorrents []qbt.Torrent
-	torrentByHash := make(map[string]qbt.Torrent)
-	for _, t := range torrents {
-		scope := scopeByHash[t.Hash]
-		if scope == HardlinkScopeTorrentsOnly {
-			safeTorrents = append(safeTorrents, t)
-			torrentByHash[t.Hash] = t
-		}
-	}
-
-	if len(safeTorrents) == 0 {
-		return groups
-	}
-
-	// Get file lists for safe torrents
-	hashes := make([]string, 0, len(safeTorrents))
-	for _, t := range safeTorrents {
-		hashes = append(hashes, t.Hash)
-	}
-
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).
-			Msg("automations: failed to fetch files for hardlink grouping")
-		return groups
-	}
-
-	// Compute file signature for each torrent
-	for hash, files := range filesByHash {
-		torrent := torrentByHash[hash]
-		var fileIDs []string
-
-		for _, f := range files {
-			fullPath := buildFullPath(torrent.SavePath, f.Name)
-
-			info, err := os.Lstat(fullPath)
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-
-			fileID, _, err := hardlink.LinkInfo(info, fullPath)
-			if err != nil {
-				continue
-			}
-			fileIDs = append(fileIDs, fileID)
-		}
-
-		if len(fileIDs) == 0 {
-			continue
-		}
-
-		// Sort and join to create a stable signature
-		sort.Strings(fileIDs)
-		signature := strings.Join(fileIDs, ";")
-
-		groups[signature] = append(groups[signature], hash)
-	}
-
-	return groups
-}
-
-// findHardlinkCopies returns the hashes of other torrents that share the same
-// underlying files (via hardlinks) as the trigger torrent.
-// Only returns torrents that are "torrents_only" scope (no outside hardlinks).
-// The trigger's own hash is NOT included in the result.
-func (s *Service) findHardlinkCopies(
-	triggerHash string,
-	hardlinkGroups map[string][]string,
-) []string {
-	for _, hashes := range hardlinkGroups {
-		for _, h := range hashes {
-			if h == triggerHash {
-				// Found the group containing trigger
-				var copies []string
-				for _, other := range hashes {
-					if other != triggerHash {
-						copies = append(copies, other)
-					}
-				}
-				return copies
-			}
-		}
-	}
-	return nil
-}
-
-// buildHardlinkSignatureMap creates a reverse map (hash -> signature) from hardlink groups.
-// This is used for FREE_SPACE projection dedupe when includeHardlinks is enabled.
-func buildHardlinkSignatureMap(hardlinkGroups map[string][]string) map[string]string {
-	result := make(map[string]string)
-	for sig, hashes := range hardlinkGroups {
-		for _, hash := range hashes {
-			result[hash] = sig
-		}
-	}
-	return result
 }
 
 // applySpeedLimits applies upload or download limits in batches, logging and recording failures.
