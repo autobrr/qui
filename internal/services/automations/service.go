@@ -353,11 +353,12 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
 	}
 
-	// Check if rule uses hardlink conditions OR includeHardlinks and populate context
+	// Check if rule uses hardlink conditions and populate context
+	// Note: IncludeHardlinks is for delete ACTION expansion, not condition evaluation.
+	// We only need HardlinkScopeByHash if the condition actually uses HARDLINK_SCOPE.
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		cond := rule.Conditions.Delete.Condition
-		needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) || rule.Conditions.Delete.IncludeHardlinks
-		if needsHardlinkScope {
+		if ConditionUsesField(cond, FieldHardlinkScope) {
 			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 		}
 	}
@@ -461,17 +462,17 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	// Track processed ContentPaths to avoid re-expanding the same group
 	processedContentPaths := make(map[string]struct{})
 
-	// Compute hardlink groups if enabled
-	var hardlinkGroups map[string][]string
+	// Check if hardlink expansion is needed (IncludeHardlinks enabled)
 	includeHardlinks := rule.Conditions.Delete.IncludeHardlinks
-	if includeHardlinks && evalCtx != nil && evalCtx.HardlinkScopeByHash != nil {
-		hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
 
-		// For FREE_SPACE projection, build signature map for dedupe
-		if !eligibleMode && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
-			evalCtx.HardlinkSignatureByHash = buildHardlinkSignatureMap(hardlinkGroups)
-			evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
-		}
+	// For hardlink expansion, we compute scope and groups lazily after finding matches.
+	// This avoids expensive filesystem operations for non-matching torrents.
+	var hardlinkGroups map[string][]string
+	var hardlinkScopeByHash map[string]string
+
+	// If HARDLINK_SCOPE condition is used, scope was already computed in evalCtx
+	if evalCtx != nil && evalCtx.HardlinkScopeByHash != nil {
+		hardlinkScopeByHash = evalCtx.HardlinkScopeByHash
 	}
 
 	// Evaluate and expand incrementally (oldest first, per sort order)
@@ -508,13 +509,28 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue // Group skipped due to verification failure
 		}
 
-		// Expand with hardlink copies if enabled
-		if includeHardlinks && hardlinkGroups != nil {
-			hlCopies := s.findHardlinkCopies(torrent.Hash, hardlinkGroups)
-			for _, hlHash := range hlCopies {
-				if _, exists := expandedSet[hlHash]; !exists {
-					expandedSet[hlHash] = struct{}{}
-					hardlinkCopySet[hlHash] = struct{}{}
+		// Expand with hardlink copies if enabled (lazy computation)
+		if includeHardlinks {
+			// Compute hardlink scope and groups lazily on first match
+			if hardlinkScopeByHash == nil {
+				hardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+			}
+			if hardlinkGroups == nil && hardlinkScopeByHash != nil {
+				hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, hardlinkScopeByHash)
+
+				// For FREE_SPACE projection, build signature map for dedupe
+				if !eligibleMode && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+					evalCtx.HardlinkSignatureByHash = buildHardlinkSignatureMap(hardlinkGroups)
+					evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
+				}
+			}
+			if hardlinkGroups != nil {
+				hlCopies := s.findHardlinkCopies(torrent.Hash, hardlinkGroups)
+				for _, hlHash := range hlCopies {
+					if _, exists := expandedSet[hlHash]; !exists {
+						expandedSet[hlHash] = struct{}{}
+						hardlinkCopySet[hlHash] = struct{}{}
+					}
 				}
 			}
 		}
@@ -906,9 +922,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.ContentGroupByHash = BuildContentGroupIndex(torrents)
 	}
 
-	// On-demand hardlink detection (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
-	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
-	if instance.HasLocalFilesystemAccess && needsHardlinkScope {
+	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE condition)
+	// Note: IncludeHardlinks is handled lazily during delete expansion, not here.
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHardlinkScope) {
 		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 	}
 
@@ -1071,10 +1087,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// Compute hardlink groups for delete expansion if needed (and not already computed for FREE_SPACE)
 	// The hardlinkGroups variable is declared at the top of the function and may have been
 	// pre-computed for FREE_SPACE projection; only compute here if needed and not already done.
-	if hardlinkGroups == nil {
+	// Also lazily compute HardlinkScopeByHash if not already done (needed for IncludeHardlinks).
+	if hardlinkGroups == nil && instance.HasLocalFilesystemAccess {
 		for _, state := range states {
-			if state.shouldDelete && state.deleteIncludeHardlinks && evalCtx.HardlinkScopeByHash != nil {
-				hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
+			if state.shouldDelete && state.deleteIncludeHardlinks {
+				// Lazily compute hardlink scope if not already done
+				if evalCtx.HardlinkScopeByHash == nil {
+					evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+				}
+				if evalCtx.HardlinkScopeByHash != nil {
+					hardlinkGroups = s.computeHardlinkGroups(ctx, instanceID, torrents, evalCtx.HardlinkScopeByHash)
+				}
 				break
 			}
 		}
