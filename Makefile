@@ -116,7 +116,7 @@ fmt:
 # Lint code (changed files only - fast feedback for AI iteration)
 lint:
 	@echo "Linting changed Go code..."
-	golangci-lint run --new-from-merge-base=main --timeout=5m
+	golangci-lint run --new-from-merge-base=develop --timeout=5m
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
 
