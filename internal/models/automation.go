@@ -414,6 +414,12 @@ const (
 	OperatorBetween            ConditionOperator = "BETWEEN"
 	OperatorMatches            ConditionOperator = "MATCHES" // regex
 
+	// Percentage operators (for content count fields)
+	OperatorGreaterThanPercent        ConditionOperator = "GREATER_THAN_PERCENT"
+	OperatorGreaterThanOrEqualPercent ConditionOperator = "GREATER_THAN_OR_EQUAL_PERCENT"
+	OperatorLessThanPercent           ConditionOperator = "LESS_THAN_PERCENT"
+	OperatorLessThanOrEqualPercent    ConditionOperator = "LESS_THAN_OR_EQUAL_PERCENT"
+
 	// Cross-category lookup operators (NAME field only)
 	OperatorExistsIn   ConditionOperator = "EXISTS_IN"   // exact name match in target category
 	OperatorContainsIn ConditionOperator = "CONTAINS_IN" // partial name match in target category

@@ -577,9 +577,19 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(int64(count), cond)
 	case FieldUnregisteredSameContentCount:
 		count := getUnregisteredSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+		// Handle percentage operators
+		if isPercentOperator(cond.Operator) {
+			total := getSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+			return comparePercent(count, total, cond)
+		}
 		return compareInt64(int64(count), cond)
 	case FieldRegisteredSameContentCount:
 		count := getRegisteredSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+		// Handle percentage operators
+		if isPercentOperator(cond.Operator) {
+			total := getSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+			return comparePercent(count, total, cond)
+		}
 		return compareInt64(int64(count), cond)
 
 	// Boolean fields
@@ -841,6 +851,48 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 			return false
 		}
 		return float64(value) >= *cond.MinValue && float64(value) <= *cond.MaxValue
+	default:
+		return false
+	}
+}
+
+// isPercentOperator returns true if the operator is a percentage-based operator.
+func isPercentOperator(op ConditionOperator) bool {
+	switch op {
+	case OperatorGreaterThanPercent, OperatorGreaterThanOrEqualPercent,
+		OperatorLessThanPercent, OperatorLessThanOrEqualPercent:
+		return true
+	default:
+		return false
+	}
+}
+
+// comparePercent compares a count as a percentage of total against the condition value.
+// The condition value should be a percentage (0-100).
+// For example, if count=3 and total=4, the percentage is 75%.
+func comparePercent(count, total int, cond *RuleCondition) bool {
+	if total == 0 {
+		return false // Avoid division by zero
+	}
+
+	// Parse the condition value as percentage (0-100)
+	condPercent, err := strconv.ParseFloat(cond.Value, 64)
+	if err != nil {
+		return false
+	}
+
+	// Calculate actual percentage
+	actualPercent := (float64(count) / float64(total)) * 100
+
+	switch cond.Operator {
+	case OperatorGreaterThanPercent:
+		return actualPercent > condPercent
+	case OperatorGreaterThanOrEqualPercent:
+		return actualPercent >= condPercent
+	case OperatorLessThanPercent:
+		return actualPercent < condPercent
+	case OperatorLessThanOrEqualPercent:
+		return actualPercent <= condPercent
 	default:
 		return false
 	}

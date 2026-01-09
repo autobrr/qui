@@ -605,12 +605,16 @@ export function LeafCondition({
       ) : (
         <div className="flex items-center gap-1">
           <Input
-            type={isNumericType(fieldType) ? "number" : "text"}
+            type={isNumericType(fieldType) || isPercentOperator(condition.operator) ? "number" : "text"}
             className="h-8 w-32 flex-1"
             value={condition.value ?? ""}
             onChange={(e) => handleValueChange(e.target.value)}
-            placeholder={getPlaceholder(fieldType)}
+            placeholder={isPercentOperator(condition.operator) ? "0-100" : getPlaceholder(fieldType)}
           />
+          {/* Show % indicator for percentage operators */}
+          {isPercentOperator(condition.operator) && (
+            <span className="text-muted-foreground text-sm">%</span>
+          )}
           {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
           {fieldType === "string" &&
             condition.operator !== "MATCHES" &&
@@ -688,6 +692,10 @@ export function LeafCondition({
 
 function isNumericType(type: string): boolean {
   return ["bytes", "duration", "float", "speed", "integer"].includes(type);
+}
+
+function isPercentOperator(operator: string | undefined): boolean {
+  return operator?.includes("PERCENT") ?? false;
 }
 
 function getPlaceholder(type: string): string {

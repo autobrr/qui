@@ -109,6 +109,12 @@ const (
 	OperatorBetween            = models.OperatorBetween
 	OperatorMatches            = models.OperatorMatches
 
+	// Percentage operators (for content count fields)
+	OperatorGreaterThanPercent        = models.OperatorGreaterThanPercent
+	OperatorGreaterThanOrEqualPercent = models.OperatorGreaterThanOrEqualPercent
+	OperatorLessThanPercent           = models.OperatorLessThanPercent
+	OperatorLessThanOrEqualPercent    = models.OperatorLessThanOrEqualPercent
+
 	// Cross-category lookup operators (NAME field only)
 	OperatorExistsIn   = models.OperatorExistsIn
 	OperatorContainsIn = models.OperatorContainsIn

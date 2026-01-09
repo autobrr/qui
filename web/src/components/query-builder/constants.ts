@@ -220,6 +220,17 @@ export const NAME_SPECIAL_OPERATORS = [
   { value: "CONTAINS_IN", label: "similar exists in" },
 ];
 
+// Percentage operators for content count fields (UNREGISTERED_SAME_CONTENT_COUNT, REGISTERED_SAME_CONTENT_COUNT)
+export const PERCENT_OPERATORS = [
+  { value: "GREATER_THAN_PERCENT", label: "> %" },
+  { value: "GREATER_THAN_OR_EQUAL_PERCENT", label: ">= %" },
+  { value: "LESS_THAN_PERCENT", label: "< %" },
+  { value: "LESS_THAN_OR_EQUAL_PERCENT", label: "<= %" },
+];
+
+// Fields that support percentage operators (comparing count as % of total)
+const PERCENT_ENABLED_FIELDS = ["UNREGISTERED_SAME_CONTENT_COUNT", "REGISTERED_SAME_CONTENT_COUNT"];
+
 // Helper to get operators for a field
 export function getOperatorsForField(field: string) {
   const type = getFieldType(field);
@@ -228,6 +239,11 @@ export function getOperatorsForField(field: string) {
   // Add special cross-category operators for NAME field only
   if (field === "NAME") {
     return [...baseOperators, ...NAME_SPECIAL_OPERATORS];
+  }
+
+  // Add percentage operators for content count fields
+  if (PERCENT_ENABLED_FIELDS.includes(field)) {
+    return [...baseOperators, ...PERCENT_OPERATORS];
   }
 
   return baseOperators;

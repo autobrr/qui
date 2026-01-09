@@ -212,6 +212,11 @@ export type ConditionOperator =
   | "LESS_THAN_OR_EQUAL"
   | "BETWEEN"
   | "MATCHES"
+  // Percentage operators (for content count fields)
+  | "GREATER_THAN_PERCENT"
+  | "GREATER_THAN_OR_EQUAL_PERCENT"
+  | "LESS_THAN_PERCENT"
+  | "LESS_THAN_OR_EQUAL_PERCENT"
   // Cross-category lookup operators (NAME field only)
   | "EXISTS_IN"
   | "CONTAINS_IN"
