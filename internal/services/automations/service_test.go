@@ -898,39 +898,44 @@ func TestFindCrossSeedGroup(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// findHardlinkCopies tests
+// HardlinkIndex.GetHardlinkCopies tests
 // -----------------------------------------------------------------------------
 
-func TestFindHardlinkCopies(t *testing.T) {
-	// Create a Service with a nil sync manager (not needed for this test)
-	s := &Service{}
-
+func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	tests := []struct {
-		name           string
-		triggerHash    string
-		hardlinkGroups map[string][]string
-		wantCopies     []string
+		name             string
+		triggerHash      string
+		signatureByHash  map[string]string
+		groupBySignature map[string][]string
+		wantCopies       []string
 	}{
 		{
 			name:        "trigger hash not in any group",
 			triggerHash: "not-found",
-			hardlinkGroups: map[string][]string{
+			signatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+			},
+			groupBySignature: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: nil,
 		},
 		{
-			name:        "trigger is only member of group",
-			triggerHash: "abc123",
-			hardlinkGroups: map[string][]string{
-				"sig1": {"abc123"},
-			},
-			wantCopies: nil,
+			name:             "trigger is only member of group (singleton filtered out)",
+			triggerHash:      "abc123",
+			signatureByHash:  map[string]string{}, // Singleton groups are filtered, so no entry
+			groupBySignature: map[string][]string{},
+			wantCopies:       nil,
 		},
 		{
 			name:        "trigger has one hardlink copy",
 			triggerHash: "abc123",
-			hardlinkGroups: map[string][]string{
+			signatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+			},
+			groupBySignature: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: []string{"def456"},
@@ -938,7 +943,12 @@ func TestFindHardlinkCopies(t *testing.T) {
 		{
 			name:        "trigger has multiple hardlink copies",
 			triggerHash: "abc123",
-			hardlinkGroups: map[string][]string{
+			signatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+				"ghi789": "sig1",
+			},
+			groupBySignature: map[string][]string{
 				"sig1": {"abc123", "def456", "ghi789"},
 			},
 			wantCopies: []string{"def456", "ghi789"},
@@ -946,29 +956,44 @@ func TestFindHardlinkCopies(t *testing.T) {
 		{
 			name:        "multiple groups, trigger in second",
 			triggerHash: "xyz999",
-			hardlinkGroups: map[string][]string{
+			signatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+				"xyz999": "sig2",
+				"uvw888": "sig2",
+			},
+			groupBySignature: map[string][]string{
 				"sig1": {"abc123", "def456"},
 				"sig2": {"xyz999", "uvw888"},
 			},
 			wantCopies: []string{"uvw888"},
 		},
 		{
-			name:           "nil hardlink groups",
-			triggerHash:    "abc123",
-			hardlinkGroups: nil,
-			wantCopies:     nil,
+			name:             "nil index returns nil",
+			triggerHash:      "abc123",
+			signatureByHash:  nil,
+			groupBySignature: nil,
+			wantCopies:       nil,
 		},
 		{
-			name:           "empty hardlink groups",
-			triggerHash:    "abc123",
-			hardlinkGroups: map[string][]string{},
-			wantCopies:     nil,
+			name:             "empty index returns nil",
+			triggerHash:      "abc123",
+			signatureByHash:  map[string]string{},
+			groupBySignature: map[string][]string{},
+			wantCopies:       nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := s.findHardlinkCopies(tc.triggerHash, tc.hardlinkGroups)
+			var idx *HardlinkIndex
+			if tc.signatureByHash != nil || tc.groupBySignature != nil {
+				idx = &HardlinkIndex{
+					SignatureByHash:  tc.signatureByHash,
+					GroupBySignature: tc.groupBySignature,
+				}
+			}
+			got := idx.GetHardlinkCopies(tc.triggerHash)
 			if tc.wantCopies == nil {
 				assert.Nil(t, got)
 			} else {
