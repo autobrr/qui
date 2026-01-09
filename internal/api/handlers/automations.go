@@ -441,9 +441,14 @@ func (h *AutomationHandler) validateFreeSpaceSourcePayload(ctx context.Context, 
 
 	usesFreeSpace := conditionsUseFreeSpace(conditions)
 
-	// Only fetch instance for path type (needed to check local filesystem access)
+	// Only fetch instance when FREE_SPACE is actually used and path type is selected
+	// (needed to check local filesystem access)
 	var instance *models.Instance
-	if source.Type == models.FreeSpaceSourcePath {
+	if usesFreeSpace && source.Type == models.FreeSpaceSourcePath {
+		if h.instanceStore == nil {
+			return http.StatusInternalServerError, "Failed to validate automation", errors.New("instance store is nil")
+		}
+
 		inst, err := h.instanceStore.Get(ctx, instanceID)
 		if err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {

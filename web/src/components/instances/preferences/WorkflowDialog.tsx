@@ -212,6 +212,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
+  const [freeSpaceSourcePathError, setFreeSpaceSourcePathError] = useState<string | null>(null)
   const previewPageSize = 25
   const tagsInputRef = useRef<HTMLInputElement>(null)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
@@ -589,6 +590,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType])
 
+  const validateFreeSpaceSource = (state: FormState): boolean => {
+    const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
+    if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
+      setFreeSpaceSourcePathError(null)
+      return true
+    }
+
+    const trimmedPath = state.exprFreeSpaceSourcePath.trim()
+    if (trimmedPath === "") {
+      setFreeSpaceSourcePathError("Path is required when using 'Path on server'.")
+      toast.error("Enter a path or switch Free space source back to Default (qBittorrent)")
+      return false
+    }
+
+    setFreeSpaceSourcePathError(null)
+    return true
+  }
+
   // Build payload from form state (shared by preview and save)
   const buildPayload = (input: FormState): AutomationInput => {
     const conditions: ActionConditions = { schemaVersion: "1" }
@@ -688,21 +707,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    // Build freeSpaceSource only if using a non-default source with a FREE_SPACE condition
     const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
+    const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
     let freeSpaceSource: AutomationInput["freeSpaceSource"]
-    if (usesFreeSpace && input.exprFreeSpaceSourceType === "path" && input.exprFreeSpaceSourcePath) {
-      freeSpaceSource = {
-        type: "path",
-        path: input.exprFreeSpaceSourcePath,
-      }
-    } else if (input.exprFreeSpaceSourceType === "path" && input.exprFreeSpaceSourcePath) {
+    if (usesFreeSpace && input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
+      freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
+    } else if (input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
       // Keep the path source even if FREE_SPACE isn't currently in the condition
       // (user might add it later, or just want to preserve the setting)
-      freeSpaceSource = {
-        type: "path",
-        path: input.exprFreeSpaceSourcePath,
-      }
+      freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
     }
 
     return {
@@ -897,6 +910,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       exprTags: formState.exprUseTrackerAsTag ? [] : parsedTags,
     }
 
+    if (!validateFreeSpaceSource(submitState)) {
+      return
+    }
+
     // Sync the input display and formState (for UI consistency after save)
     if (tagsInputRef.current) {
       tagsInputRef.current.value = parsedTags.join(", ")
@@ -998,6 +1015,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const handleConfirmSave = () => {
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
+    if (!validateFreeSpaceSource(formState)) {
+      return
+    }
     createOrUpdate.mutate(formState)
   }
 
@@ -1723,10 +1743,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </div>
                     <Select
                       value={formState.exprFreeSpaceSourceType}
-                      onValueChange={(value) => setFormState(prev => ({
-                        ...prev,
-                        exprFreeSpaceSourceType: value as FormState["exprFreeSpaceSourceType"],
-                      }))}
+                      onValueChange={(value) => {
+                        const nextType = value as FormState["exprFreeSpaceSourceType"]
+                        setFormState(prev => ({
+                          ...prev,
+                          exprFreeSpaceSourceType: nextType,
+                        }))
+                        if (nextType !== "path") {
+                          setFreeSpaceSourcePathError(null)
+                        }
+                      }}
                     >
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Select source" />
@@ -1744,14 +1770,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                           <Input
                             value={formState.exprFreeSpaceSourcePath}
-                            onChange={(e) => setFormState(prev => ({
-                              ...prev,
-                              exprFreeSpaceSourcePath: e.target.value,
-                            }))}
+                            onChange={(e) => {
+                              const nextPath = e.target.value
+                              setFormState(prev => ({
+                                ...prev,
+                                exprFreeSpaceSourcePath: nextPath,
+                              }))
+                              if (freeSpaceSourcePathError && nextPath.trim() !== "") {
+                                setFreeSpaceSourcePathError(null)
+                              }
+                            }}
                             placeholder="/mnt/downloads"
-                            className="h-8 text-xs pl-7"
+                            className={`h-8 text-xs pl-7 ${freeSpaceSourcePathError ? "border-destructive/50" : ""}`}
                           />
                         </div>
+                        {freeSpaceSourcePathError && (
+                          <p className="text-xs text-destructive">{freeSpaceSourcePathError}</p>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           Enter the path to check free space on (e.g., a mount point)
                         </p>
@@ -1815,8 +1850,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       }
                       // When enabling a delete or category rule, show preview first
                       if (checked && (isDeleteRule || isCategoryRule)) {
-                        setEnabledBeforePreview(formState.enabled)
                         const nextState = { ...formState, enabled: true }
+                        if (!validateFreeSpaceSource(nextState)) {
+                          return
+                        }
+                        setEnabledBeforePreview(formState.enabled)
                         setFormState(nextState)
                         // Reset preview view to "needed" when starting a new preview
                         setPreviewView("needed")

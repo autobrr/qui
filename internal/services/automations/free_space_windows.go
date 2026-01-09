@@ -34,8 +34,13 @@ func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 	resolved := resolveFreeSpaceSource(src)
 	switch resolved.Type {
 	case models.FreeSpaceSourcePath:
+		trimmed := strings.TrimSpace(resolved.Path)
+		if trimmed == "" {
+			return FreeSpaceSourceKeyQBittorrent
+		}
+
 		// Clean path for consistent keys
-		cleanPath := filepath.Clean(strings.TrimSpace(resolved.Path))
+		cleanPath := filepath.Clean(trimmed)
 		return "path:" + cleanPath
 	default:
 		return FreeSpaceSourceKeyQBittorrent
