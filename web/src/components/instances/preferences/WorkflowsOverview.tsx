@@ -824,14 +824,24 @@ export function WorkflowsOverview({
                         <p className="text-sm text-muted-foreground">
                           No automations configured yet.
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateDialog(instance.id)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add your first rule
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateDialog(instance.id)}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add your first rule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openImportDialog(instance.id)}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
