@@ -241,6 +241,14 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
 }
 
+// GetClient returns a client for an instance, creating one if needed
+func (sm *SyncManager) GetClient(ctx context.Context, instanceID int) (*Client, error) {
+	if sm == nil || sm.clientPool == nil {
+		return nil, fmt.Errorf("client pool unavailable")
+	}
+	return sm.clientPool.GetClient(ctx, instanceID)
+}
+
 // getFilesManager returns the current files manager in a thread-safe manner
 // Returns nil if no files manager is set
 func (sm *SyncManager) getFilesManager() FilesManager {
