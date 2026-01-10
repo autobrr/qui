@@ -1395,6 +1395,17 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			expected: false,
 		},
 		{
+			name: "completion_on_age unset (-1 qBittorrent) - does not match",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorGreaterThanOrEqual,
+				Value:    "86400", // 1 day
+			},
+			torrent:  qbt.Torrent{CompletionOn: -1}, // qBittorrent uses -1 for incomplete torrents
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
 			name: "completion_on_age between - matches",
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
