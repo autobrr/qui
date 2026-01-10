@@ -251,7 +251,12 @@ export function WorkflowsOverview({
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
-  const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
+  const [enableConfirm, setEnableConfirm] = useState<{
+    instanceId: number
+    rule: Automation
+    preview: AutomationPreviewResult | null
+    isInitialLoading: boolean
+  } | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -366,14 +371,29 @@ export function WorkflowsOverview({
   })
 
   const previewRule = useMutation({
-    mutationFn: ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0, previewView: view }),
-    onSuccess: (preview, { instanceId, rule }) => {
-      // Last warning before enabling a delete rule (even if 0 matches right now).
-      setEnableConfirm({ instanceId, rule, preview })
+    mutationFn: async ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) => {
+      const minDelay = new Promise(resolve => setTimeout(resolve, 1000))
+      try {
+        const preview = await api.previewAutomation(instanceId, {
+          ...rule,
+          enabled: true,
+          previewLimit: previewPageSize,
+          previewOffset: 0,
+          previewView: view,
+        })
+        await minDelay
+        return preview
+      } catch (error) {
+        await minDelay
+        throw error
+      }
+    },
+    onSuccess: (preview) => {
+      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+      setEnableConfirm(null)
     },
   })
 
@@ -381,7 +401,17 @@ export function WorkflowsOverview({
     mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
       api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset, previewView }),
     onSuccess: (preview) => {
-      setEnableConfirm(prev => prev ? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } } : prev)
+      setEnableConfirm(prev => {
+        if (!prev?.preview) return prev
+        return {
+          ...prev,
+          preview: {
+            ...prev.preview,
+            examples: [...prev.preview.examples, ...preview.examples],
+            totalMatches: preview.totalMatches,
+          },
+        }
+      })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -498,6 +528,8 @@ export function WorkflowsOverview({
       // Enabling a delete or category rule - show preview first
       // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
+      setIsLoadingPreviewView(false)
+      setEnableConfirm({ instanceId, rule, preview: null, isInitialLoading: true })
       previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
       // Disabling or non-destructive rule - just toggle
@@ -524,7 +556,7 @@ export function WorkflowsOverview({
         previewOffset: 0,
         previewView: newView,
       })
-      setEnableConfirm(prev => prev ? { ...prev, preview } : prev)
+      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
     } finally {
@@ -589,7 +621,7 @@ export function WorkflowsOverview({
   }
 
   const handleLoadMorePreview = () => {
-    if (!enableConfirm) {
+    if (!enableConfirm?.preview) {
       return
     }
     loadMorePreview.mutate({
@@ -1353,7 +1385,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
-        condition={enableConfirm?.rule.conditions?.delete?.condition}
+        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
         onConfirm={confirmEnableRule}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
@@ -1367,6 +1399,7 @@ export function WorkflowsOverview({
         isLoadingPreview={isLoadingPreviewView}
         onExport={handleExportPreviewCsv}
         isExporting={isExporting}
+        isInitialLoading={enableConfirm?.isInitialLoading ?? false}
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
