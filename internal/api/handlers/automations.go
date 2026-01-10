@@ -44,6 +44,9 @@ type AutomationPayload struct {
 	SortOrder       *int                     `json:"sortOrder"`
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
+	PreviewLimit    *int                     `json:"previewLimit"`
+	PreviewOffset   *int                     `json:"previewOffset"`
+	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
 }
 
 // toModel converts the payload to an Automation model.
@@ -461,6 +464,108 @@ func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Reques
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
+}
+
+// previewActionType represents which preview action to perform.
+type previewActionType int
+
+const (
+	previewActionNone previewActionType = iota
+	previewActionDelete
+	previewActionCategory
+	previewActionBoth // error case
+)
+
+// detectPreviewAction determines which preview action is enabled in the payload.
+func detectPreviewAction(conditions *models.ActionConditions) previewActionType {
+	hasDelete := conditions != nil && conditions.Delete != nil && conditions.Delete.Enabled
+	hasCategory := conditions != nil && conditions.Category != nil && conditions.Category.Enabled
+
+	switch {
+	case hasDelete && hasCategory:
+		return previewActionBoth
+	case hasCategory:
+		return previewActionCategory
+	case hasDelete:
+		return previewActionDelete
+	default:
+		return previewActionNone
+	}
+}
+
+func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	var payload AutomationPayload
+	if err = json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode preview payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	action := detectPreviewAction(payload.Conditions)
+	switch action {
+	case previewActionBoth:
+		RespondError(w, http.StatusBadRequest, "Cannot preview rule with both delete and category actions enabled")
+		return
+	case previewActionNone:
+		RespondError(w, http.StatusBadRequest, "Preview requires either delete or category action to be enabled")
+		return
+	case previewActionDelete, previewActionCategory:
+		// Valid actions - continue processing
+	}
+
+	automation := payload.toModel(instanceID, 0)
+	previewLimit, previewOffset := payload.previewPagination()
+
+	if action == previewActionCategory {
+		h.handleCategoryPreview(w, r.Context(), instanceID, automation, previewLimit, previewOffset)
+		return
+	}
+
+	h.handleDeletePreview(w, r.Context(), instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
+}
+
+// previewPagination extracts limit and offset from payload with defaults.
+func (p *AutomationPayload) previewPagination() (limit, offset int) {
+	if p.PreviewLimit != nil {
+		limit = *p.PreviewLimit
+	}
+	if p.PreviewOffset != nil {
+		offset = *p.PreviewOffset
+	}
+	return
+}
+
+func (h *AutomationHandler) handleCategoryPreview(w http.ResponseWriter, ctx context.Context, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewCategoryRule(ctx, instanceID, automation, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *AutomationHandler) handleDeletePreview(w http.ResponseWriter, ctx context.Context, instanceID int, automation *models.Automation, limit, offset int, previewView string) {
+	if previewView == "" {
+		previewView = "needed"
+	}
+	result, err := h.service.PreviewDeleteRule(ctx, instanceID, automation, limit, offset, previewView)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
 }
 
 // RegexValidationError represents a regex compilation error at a specific path in the condition tree.
