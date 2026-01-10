@@ -39,6 +39,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/publictrackers"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -488,6 +489,7 @@ func (app *Application) runServer() {
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
 	logExclusionsStore := models.NewLogExclusionsStore(db)
+	publicTrackerSettingsStore := models.NewPublicTrackerSettingsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
@@ -581,6 +583,8 @@ func (app *Application) runServer() {
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
+
+	publicTrackersService := publictrackers.NewService(publicTrackerSettingsStore, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -696,6 +700,7 @@ func (app *Application) runServer() {
 		OrphanScanService:                orphanScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		PublicTrackersService:            publicTrackersService,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.

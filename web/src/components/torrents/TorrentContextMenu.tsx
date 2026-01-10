@@ -31,6 +31,7 @@ import {
   FolderOpen,
   Gauge,
   GitBranch,
+  ListFilter,
   Pause,
   Play,
   Radio,
@@ -83,6 +84,7 @@ interface TorrentContextMenuProps {
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
   onFilterChange?: (filters: TorrentFilters) => void
+  onPreparePublicTrackerAction?: (hashes: string[], torrents: Torrent[]) => void
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -118,6 +120,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onCrossSeedSearch,
   isCrossSeedSearching = false,
   onFilterChange,
+  onPreparePublicTrackerAction,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -336,6 +339,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Radio className="mr-2 h-4 w-4" />
           Reannounce {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
+        {onPreparePublicTrackerAction && (
+          <ContextMenuItem
+            onClick={() => onPreparePublicTrackerAction(hashes, torrents)}
+            disabled={isPending}
+          >
+            <ListFilter className="mr-2 h-4 w-4" />
+            Manage Public Trackers {count > 1 ? `(${count})` : ""}
+          </ContextMenuItem>
+        )}
         {seqDlMixed ? (
           <>
             <ContextMenuItem
