@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -44,6 +45,7 @@ type AutomationPayload struct {
 	SortOrder       *int                     `json:"sortOrder"`
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
+	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	PreviewLimit    *int                     `json:"previewLimit"`
 	PreviewOffset   *int                     `json:"previewOffset"`
 	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
@@ -66,6 +68,7 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		TrackerPattern:  trackerPattern,
 		TrackerDomains:  normalizedDomains,
 		Conditions:      p.Conditions,
+		FreeSpaceSource: p.FreeSpaceSource,
 		Enabled:         true,
 		IntervalSeconds: p.IntervalSeconds,
 	}
@@ -355,34 +358,34 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
+	// Validate FreeSpaceSource (validates type and path requirements)
+	if status, msg, err := h.validateFreeSpaceSourcePayload(ctx, instanceID, payload.FreeSpaceSource, payload.Conditions); err != nil {
+		return status, msg, err
+	}
+
 	return 0, "", nil
 }
 
-// conditionsUseHardlink checks if any action condition uses HARDLINK_SCOPE field.
-// This field requires local filesystem access to work.
-func conditionsUseHardlink(conditions *models.ActionConditions) bool {
+// conditionsUseField checks if any enabled action condition uses the specified field.
+func conditionsUseField(conditions *models.ActionConditions, field automations.ConditionField) bool {
 	if conditions == nil {
 		return false
 	}
-	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldHardlinkScope) {
-		return true
+	check := func(enabled bool, cond *automations.RuleCondition) bool {
+		return enabled && automations.ConditionUsesField(cond, field)
 	}
-	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	return false
+	c := conditions
+	return (c.SpeedLimits != nil && check(c.SpeedLimits.Enabled, c.SpeedLimits.Condition)) ||
+		(c.ShareLimits != nil && check(c.ShareLimits.Enabled, c.ShareLimits.Condition)) ||
+		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
+		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
+		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
+		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition))
+}
+
+// conditionsUseHardlink checks if any enabled action condition uses HARDLINK_SCOPE field.
+func conditionsUseHardlink(conditions *models.ActionConditions) bool {
+	return conditionsUseField(conditions, automations.FieldHardlinkScope)
 }
 
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
@@ -401,6 +404,104 @@ func deleteUsesKeepFilesWithFreeSpace(conditions *models.ActionConditions) bool 
 	// Check if mode is keep-files (or empty, which defaults to keep-files)
 	mode := conditions.Delete.Mode
 	return mode == "" || mode == models.DeleteModeKeepFiles
+}
+
+const (
+	osWindows                           = "windows"
+	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
+)
+
+// conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
+func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
+	return conditionsUseField(conditions, automations.FieldFreeSpace)
+}
+
+// validateFreeSpaceSourcePayload validates the FreeSpaceSource in the automation payload.
+func (h *AutomationHandler) validateFreeSpaceSourcePayload(ctx context.Context, instanceID int, source *models.FreeSpaceSource, conditions *models.ActionConditions) (status int, msg string, err error) {
+	if source == nil {
+		return 0, "", nil
+	}
+
+	// Path-based free space is not supported on Windows (enforce regardless of whether FREE_SPACE is used)
+	if runtime.GOOS == osWindows && source.Type == models.FreeSpaceSourcePath {
+		return http.StatusBadRequest, errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows")
+	}
+
+	usesFreeSpace := conditionsUseFreeSpace(conditions)
+
+	// Only fetch instance when FREE_SPACE is actually used and path type is selected
+	needsInstance := usesFreeSpace && source.Type == models.FreeSpaceSourcePath
+	if !needsInstance {
+		return validateFreeSpaceSource(source, nil, usesFreeSpace)
+	}
+
+	if h.instanceStore == nil {
+		return http.StatusInternalServerError, "Failed to validate automation", errors.New("instance store is nil")
+	}
+
+	instance, err := h.instanceStore.Get(ctx, instanceID)
+	if errors.Is(err, models.ErrInstanceNotFound) {
+		return http.StatusNotFound, "Instance not found", fmt.Errorf("instance not found for FreeSpaceSource validation: %w", err)
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for FreeSpaceSource validation")
+		return http.StatusInternalServerError, "Failed to validate automation", fmt.Errorf("failed to get instance: %w", err)
+	}
+
+	return validateFreeSpaceSource(source, instance, usesFreeSpace)
+}
+
+// validateFreeSpaceSource validates the FreeSpaceSource configuration.
+// Returns (status, message, error) if invalid, or (0, "", nil) if valid.
+func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.Instance, usesFreeSpace bool) (status int, msg string, err error) {
+	// If workflow doesn't use FREE_SPACE, any source config is acceptable (will be ignored)
+	if !usesFreeSpace {
+		return 0, "", nil
+	}
+
+	// nil or empty means default (qbittorrent) - always valid
+	if source == nil || source.Type == "" || source.Type == models.FreeSpaceSourceQBittorrent {
+		return 0, "", nil
+	}
+
+	switch source.Type {
+	case models.FreeSpaceSourcePath:
+		return validateFreeSpacePathSource(source, instance)
+	default:
+		return http.StatusBadRequest, "Invalid free space source type. Use 'qbittorrent' or 'path'.", errors.New("invalid source type")
+	}
+}
+
+// validateFreeSpacePathSource validates path-based free space source configuration.
+func validateFreeSpacePathSource(source *models.FreeSpaceSource, instance *models.Instance) (status int, msg string, err error) {
+	// Path-based free space is not supported on Windows.
+	// This is also enforced in validateFreeSpaceSourcePayload, but keep it here since
+	// validateFreeSpaceSource is unit-tested directly.
+	if runtime.GOOS == osWindows {
+		return http.StatusBadRequest, errMsgWindowsPathSourceNotSupported, errors.New("path source not supported on Windows")
+	}
+
+	// Path type requires local filesystem access
+	if instance == nil || !instance.HasLocalFilesystemAccess {
+		return http.StatusBadRequest, "Free space path source requires Local Filesystem Access. Enable it in instance settings first.", errors.New("local access required for path source")
+	}
+
+	// Path must be non-empty
+	if source.Path == "" {
+		return http.StatusBadRequest, "Free space path source requires a path", errors.New("path required")
+	}
+
+	// Path must be absolute
+	if !strings.HasPrefix(source.Path, "/") {
+		return http.StatusBadRequest, "Free space path must be an absolute path (start with /)", errors.New("path must be absolute")
+	}
+
+	// Reject paths with .. for safety
+	if strings.Contains(source.Path, "..") {
+		return http.StatusBadRequest, "Free space path cannot contain '..'", errors.New("path contains parent directory reference")
+	}
+
+	return 0, "", nil
 }
 
 func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
