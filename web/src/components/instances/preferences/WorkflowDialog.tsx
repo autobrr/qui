@@ -203,6 +203,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [isInitialLoading, setIsInitialLoading] = useState(false)
   // Speed limit units - track separately so they persist when value is cleared
   const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
@@ -481,7 +482,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
         }
 
-        setFormState({
+        const newState: FormState = {
           name: rule.name,
           trackerPattern: rule.trackerPattern,
           trackerDomains: mappedDomains,
@@ -513,7 +514,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprCategory,
           exprIncludeCrossSeeds,
           exprBlockIfCrossSeedInCategories,
-        })
+        }
+        setFormState(newState)
       } else {
         setFormState(emptyFormState)
       }
@@ -525,7 +527,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         }
       })
     } else {
-      // Reset hydration flag when dialog closes so it's ready for next open
+      // Reset flags when dialog closes so they're ready for next open
       isHydrating.current = true
     }
 
@@ -697,16 +699,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         previewOffset: 0,
         previewView: view,
       }
-      return api.previewAutomation(instanceId, payload)
+      const minDelay = new Promise(resolve => setTimeout(resolve, 1000))
+      try {
+        const result = await api.previewAutomation(instanceId, payload)
+        await minDelay
+        return result
+      } catch (error) {
+        await minDelay
+        throw error
+      }
     },
     onSuccess: (result, { input }) => {
       // Last warning before enabling a delete rule (even if 0 matches right now).
       setPreviewInput(input)
       setPreviewResult(result)
-      setShowConfirmDialog(true)
+      setIsInitialLoading(false)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+      setIsInitialLoading(false)
+      setShowConfirmDialog(false)
     },
   })
 
@@ -939,6 +951,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (needsPreview) {
       // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
+      // Open dialog immediately with loading state
+      setPreviewResult(null)
+      setIsInitialLoading(true)
+      setShowConfirmDialog(true)
       previewMutation.mutate({ input: submitState, view: "needed" })
     } else {
       createOrUpdate.mutate(submitState)
@@ -1705,6 +1721,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         setFormState(nextState)
                         // Reset preview view to "needed" when starting a new preview
                         setPreviewView("needed")
+                        // Open dialog immediately with loading state
+                        setPreviewResult(null)
+                        setIsInitialLoading(true)
+                        setShowConfirmDialog(true)
                         previewMutation.mutate({ input: nextState, view: "needed" })
                       } else {
                         setFormState(prev => ({ ...prev, enabled: checked }))
@@ -1794,6 +1814,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             }
             setPreviewResult(null)
             setPreviewInput(null)
+            setIsInitialLoading(false)
           }
           setShowConfirmDialog(open)
         }}
@@ -1853,6 +1874,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isLoadingPreview={isLoadingPreviewView}
         onExport={handleExport}
         isExporting={isExporting}
+        isInitialLoading={isInitialLoading}
       />
     </>
   )
