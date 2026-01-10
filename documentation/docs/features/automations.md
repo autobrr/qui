@@ -46,7 +46,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Downloaded | Bytes downloaded |
 | Uploaded | Bytes uploaded |
 | Amount Left | Remaining bytes |
-| Free Space | Free space on the instance's filesystem (updates on Delete, oldest first) |
+| Free Space | Free space on disk (configurable source - see [Free Space Source](#free-space-source)) |
 
 #### Time Fields
 | Field | Description |
@@ -322,6 +322,25 @@ The UI and API prevent combining `Remove (keep files)` mode with Free Space cond
 
 :::note
 After removing files, qui waits ~5 minutes before running Free Space deletes again to allow qBittorrent to refresh its disk free space reading. The UI prevents selecting 1 minute intervals for Free Space delete rules.
+:::
+
+#### Free Space Source
+
+By default, Free Space uses qBittorrent's reported free space (based on its default download location). If you have multiple disks or want to manage a specific mount point, select "Path on server" and enter the path to that disk.
+
+| Source | Description |
+|--------|-------------|
+| Default (qBittorrent) | Uses qBittorrent's reported free space |
+| Path on server | Reads free space from a specific filesystem path |
+
+:::note
+Path on server requires "Local Filesystem Access" to be enabled on the instance.
+:::
+
+If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
+
+:::note
+On Windows, Path on server is not supported and Free Space always uses qBittorrent's reported free space. The UI disables the option and switches legacy workflows back to the default when opened.
 :::
 
 ### Batching
