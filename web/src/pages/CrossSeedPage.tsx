@@ -26,6 +26,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -294,6 +295,7 @@ function HardlinkModeSettings() {
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+    fallbackToRegularMode: boolean
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
@@ -317,6 +319,7 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
 
@@ -382,6 +385,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
       onSuccess: () => {
@@ -550,6 +554,24 @@ function HardlinkModeSettings() {
                                   <SelectItem value="by-instance">By Instance</SelectItem>
                                 </SelectContent>
                               </Select>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`fallback-${instance.id}`}
+                                checked={form.fallbackToRegularMode}
+                                onCheckedChange={(checked) =>
+                                  handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
+                                }
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                  Fallback to regular mode on error
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode using existing files.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </>
@@ -2297,7 +2319,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">Skip recheck-required matches</Label>
-                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment or extra files</p>
+                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.</p>
                   </div>
                   <Switch
                     id="skip-recheck"

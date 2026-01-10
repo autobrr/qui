@@ -84,7 +84,7 @@ import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinu
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
-import { cn, formatBytes } from "@/lib/utils"
+import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
@@ -714,10 +714,10 @@ function SwipeableCard({
             </span>
             <div className="flex items-center gap-1">
               <span className="text-muted-foreground">Ratio:</span>
-              <span className={cn(
-                "font-medium",
-                displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
-              )}>
+              <span
+                className="font-medium"
+                style={{ color: getRatioColor(displayRatio) }}
+              >
                 {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
               </span>
             </div>
@@ -768,10 +768,10 @@ function SwipeableCard({
               {/* Ratio on the left */}
               <div className="flex items-center gap-1">
                 <span className="text-muted-foreground">Ratio:</span>
-                <span className={cn(
-                  "font-medium",
-                  displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
-                )}>
+                <span
+                  className="font-medium"
+                  style={{ color: getRatioColor(displayRatio) }}
+                >
                   {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
                 </span>
               </div>
