@@ -235,8 +235,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
-  const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? true
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const hasLocalFilesystemAccess = useMemo(
     () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
@@ -635,6 +635,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
       setFreeSpaceSourcePathError(null)
       return true
+    }
+
+    // Reject if path source is selected but not supported (safety net for edge cases)
+    if (!supportsFreeSpacePathSource) {
+      setFreeSpaceSourcePathError("Path-based free space source is not supported on Windows.")
+      toast.error("Switch Free space source to Default (qBittorrent)")
+      return false
+    }
+    if (!hasLocalFilesystemAccess) {
+      setFreeSpaceSourcePathError("Path-based free space source requires Local Filesystem Access.")
+      toast.error("Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)")
+      return false
     }
 
     const trimmedPath = state.exprFreeSpaceSourcePath.trim()
