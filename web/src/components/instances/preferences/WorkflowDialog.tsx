@@ -35,10 +35,11 @@ import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
-import { formatBytes, parseTrackerDomains } from "@/lib/utils"
+import { cn, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
@@ -51,7 +52,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2, Plus, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
@@ -235,10 +236,28 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { instances } = useInstances()
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? true
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const hasLocalFilesystemAccess = useMemo(
     () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
     [instances, instanceId]
   )
+
+  // Callback for path autocomplete suggestion selection
+  const handleFreeSpacePathSelect = useCallback((path: string) => {
+    setFormState(prev => ({ ...prev, exprFreeSpaceSourcePath: path }))
+    setFreeSpaceSourcePathError(null)
+  }, [])
+
+  // Path autocomplete for free space source
+  const {
+    suggestions: freeSpaceSuggestions,
+    handleInputChange: handleFreeSpacePathInputChange,
+    handleSelect: handleFreeSpacePathSelectSuggestion,
+    handleKeyDown: handleFreeSpacePathKeyDown,
+    highlightedIndex: freeSpaceHighlightedIndex,
+    showSuggestions: showFreeSpaceSuggestions,
+    inputRef: freeSpacePathInputRef,
+  } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
 
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
@@ -1767,6 +1786,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         }))
                         if (nextType !== "path") {
                           setFreeSpaceSourcePathError(null)
+                          // Clear autocomplete state to prevent stale suggestions
+                          handleFreeSpacePathInputChange("")
                         }
                       }}
                     >
@@ -1783,22 +1804,50 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.exprFreeSpaceSourceType === "path" && supportsFreeSpacePathSource && (
                       <div className="flex flex-col gap-1">
                         <div className="relative">
-                          <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
                           <Input
+                            ref={supportsPathAutocomplete ? freeSpacePathInputRef : undefined}
                             value={formState.exprFreeSpaceSourcePath}
+                            autoComplete="off"
+                            spellCheck={false}
+                            onKeyDown={supportsPathAutocomplete ? handleFreeSpacePathKeyDown : undefined}
                             onChange={(e) => {
                               const nextPath = e.target.value
                               setFormState(prev => ({
                                 ...prev,
                                 exprFreeSpaceSourcePath: nextPath,
                               }))
+                              if (supportsPathAutocomplete) {
+                                handleFreeSpacePathInputChange(nextPath)
+                              }
                               if (freeSpaceSourcePathError && nextPath.trim() !== "") {
                                 setFreeSpaceSourcePathError(null)
                               }
                             }}
                             placeholder="/mnt/downloads"
-                            className={`h-8 text-xs pl-7 ${freeSpaceSourcePathError ? "border-destructive/50" : ""}`}
+                            className={cn("h-8 text-xs pl-7", freeSpaceSourcePathError && "border-destructive/50")}
                           />
+                          {supportsPathAutocomplete && showFreeSpaceSuggestions && freeSpaceSuggestions.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md">
+                              <div className="max-h-40 overflow-y-auto py-1">
+                                {freeSpaceSuggestions.map((entry, idx) => (
+                                  <button
+                                    key={entry}
+                                    type="button"
+                                    title={entry}
+                                    className={cn(
+                                      "w-full px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-left",
+                                      freeSpaceHighlightedIndex === idx ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
+                                    )}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => handleFreeSpacePathSelectSuggestion(entry)}
+                                  >
+                                    <span className="block truncate">{entry}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                         {freeSpaceSourcePathError && (
                           <p className="text-xs text-destructive">{freeSpaceSourcePathError}</p>
