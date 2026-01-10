@@ -366,31 +366,24 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	return 0, "", nil
 }
 
+// usesHardlinkScope checks if a condition uses the HARDLINK_SCOPE field.
+func usesHardlinkScope(condition *automations.RuleCondition) bool {
+	return automations.ConditionUsesField(condition, automations.FieldHardlinkScope)
+}
+
 // conditionsUseHardlink checks if any action condition uses HARDLINK_SCOPE field.
 // This field requires local filesystem access to work.
 func conditionsUseHardlink(conditions *models.ActionConditions) bool {
 	if conditions == nil {
 		return false
 	}
-	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldHardlinkScope) {
-		return true
-	}
-	return false
+	c := conditions
+	return (c.SpeedLimits != nil && usesHardlinkScope(c.SpeedLimits.Condition)) ||
+		(c.ShareLimits != nil && usesHardlinkScope(c.ShareLimits.Condition)) ||
+		(c.Pause != nil && usesHardlinkScope(c.Pause.Condition)) ||
+		(c.Delete != nil && usesHardlinkScope(c.Delete.Condition)) ||
+		(c.Tag != nil && usesHardlinkScope(c.Tag.Condition)) ||
+		(c.Category != nil && usesHardlinkScope(c.Category.Condition))
 }
 
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode

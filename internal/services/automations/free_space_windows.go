@@ -91,19 +91,3 @@ func GetFreeSpaceBytesForSource(
 	}
 }
 
-// getFreeSpaceBytes returns the free space in bytes based on the rule's FreeSpaceSource configuration.
-// On Windows, only qBittorrent source is supported.
-//
-// Deprecated: Use GetFreeSpaceBytesForSource instead for nil-safe access.
-func getFreeSpaceBytes(
-	ctx context.Context,
-	syncManager *qbittorrent.SyncManager,
-	instance *models.Instance,
-	rule *models.Automation,
-) (int64, error) {
-	var src *models.FreeSpaceSource
-	if rule != nil {
-		src = rule.FreeSpaceSource
-	}
-	return GetFreeSpaceBytesForSource(ctx, syncManager, instance, src)
-}

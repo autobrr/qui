@@ -97,24 +97,6 @@ func GetFreeSpaceBytesForSource(
 	}
 }
 
-// getFreeSpaceBytes returns the free space in bytes based on the rule's FreeSpaceSource configuration.
-// For qBittorrent source: uses the client's reported free space.
-// For path source: reads free space from the local filesystem path.
-//
-// Deprecated: Use GetFreeSpaceBytesForSource instead for nil-safe access.
-func getFreeSpaceBytes(
-	ctx context.Context,
-	syncManager *qbittorrent.SyncManager,
-	instance *models.Instance,
-	rule *models.Automation,
-) (int64, error) {
-	var src *models.FreeSpaceSource
-	if rule != nil {
-		src = rule.FreeSpaceSource
-	}
-	return GetFreeSpaceBytesForSource(ctx, syncManager, instance, src)
-}
-
 // getLocalFreeSpaceBytes returns the available bytes on the filesystem containing the given path.
 func getLocalFreeSpaceBytes(path string) (int64, error) {
 	var stat unix.Statfs_t
