@@ -544,6 +544,18 @@ func (s *OrphanScanStore) UpdateRunWarning(ctx context.Context, runID int64, war
 	return err
 }
 
+// MarkDeletingRunsFailed marks any runs currently in "deleting" as failed.
+// This is intended to run at service startup so interrupted deletions don't
+// remain stuck in a non-terminal state after a restart.
+func (s *OrphanScanStore) MarkDeletingRunsFailed(ctx context.Context, errorMessage string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE orphan_scan_runs
+		SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE status = 'deleting'
+	`, errorMessage)
+	return err
+}
+
 // MarkStuckRunsFailed marks old pending/scanning runs as failed.
 func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold time.Duration, statuses []string) error {
 	cutoff := time.Now().Add(-threshold)
