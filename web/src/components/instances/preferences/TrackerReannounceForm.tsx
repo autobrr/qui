@@ -23,7 +23,7 @@ import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
@@ -142,6 +142,22 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     return processed
   }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons])
 
+  const selectedTrackerValues = useMemo(() => {
+    const { domainToCustomization } = trackerCustomizationMaps
+    const result: string[] = []
+    const seen = new Set<string>()
+
+    for (const domain of normalizeTrackerDomains(settings.trackers)) {
+      const customization = domainToCustomization.get(domain)
+      const value = customization ? customization.domains.join(",") : domain
+      if (seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+
+    return result
+  }, [settings.trackers, trackerCustomizationMaps])
+
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
 
@@ -179,6 +195,13 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     const normalized = trimmed.toLowerCase()
     setSettings((prev) => {
       const values = prev[field]
+      if (field === "trackers") {
+        const next = normalizeTrackerDomains([...values, trimmed])
+        return {
+          ...prev,
+          trackers: next,
+        }
+      }
       if (values.some((entry) => entry.toLowerCase() === normalized)) {
         return prev
       }
@@ -520,8 +543,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
               </div>
               <MultiSelect
                 options={trackerOptions}
-                selected={settings.trackers}
-                onChange={(values) => setSettings((prev) => ({ ...prev, trackers: values }))}
+                selected={selectedTrackerValues}
+                onChange={(values) => setSettings((prev) => ({ ...prev, trackers: normalizeTrackerDomains(values) }))}
                 placeholder="Select tracker domains..."
                 creatable
                 onCreateOption={(value) => appendUniqueValue("trackers", value)}
@@ -800,7 +823,7 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
     excludeTags: settings.excludeTags,
     tags: [...settings.tags],
     excludeTrackers: settings.excludeTrackers,
-    trackers: [...settings.trackers],
+    trackers: normalizeTrackerDomains(settings.trackers),
     aggressive: settings.aggressive,
   }
 }
@@ -825,7 +848,7 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
     excludeTags: settings.excludeTags,
     tags: normalizeList(settings.tags),
     excludeTrackers: settings.excludeTrackers,
-    trackers: normalizeList(settings.trackers),
+    trackers: normalizeTrackerDomains(settings.trackers),
     aggressive: settings.aggressive,
   }
 }

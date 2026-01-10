@@ -39,7 +39,7 @@ import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
-import { cn, formatBytes, parseTrackerDomains } from "@/lib/utils"
+import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
@@ -746,10 +746,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
     }
 
+    const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
+
     return {
       name: input.name,
-      trackerDomains: input.applyToAllTrackers ? [] : input.trackerDomains.filter(Boolean),
-      trackerPattern: input.applyToAllTrackers ? "*" : input.trackerDomains.filter(Boolean).join(","),
+      trackerDomains,
+      trackerPattern: input.applyToAllTrackers ? "*" : trackerDomains.join(","),
       enabled: input.enabled,
       sortOrder: input.sortOrder,
       intervalSeconds: input.intervalSeconds,
