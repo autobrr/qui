@@ -53,6 +53,7 @@ import type {
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
@@ -258,6 +259,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     showSuggestions: showFreeSpaceSuggestions,
     inputRef: freeSpacePathInputRef,
   } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
+
+  // Container and position for autocomplete dropdown portal (inside dialog, outside scroll)
+  const dropdownContainerRef = useRef<HTMLDivElement>(null)
+  const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  useEffect(() => {
+    if (showFreeSpaceSuggestions && freeSpaceSuggestions.length > 0 && freeSpacePathInputRef.current && dropdownContainerRef.current) {
+      const inputRect = freeSpacePathInputRef.current.getBoundingClientRect()
+      const containerRect = dropdownContainerRef.current.getBoundingClientRect()
+      setDropdownRect({
+        top: inputRect.bottom - containerRect.top,
+        left: inputRect.left - containerRect.left,
+        width: inputRect.width,
+      })
+    } else {
+      setDropdownRect(null)
+    }
+  }, [showFreeSpaceSuggestions, freeSpaceSuggestions.length, freeSpacePathInputRef])
 
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
@@ -1060,6 +1079,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-4xl lg:max-w-5xl max-h-[90dvh] flex flex-col">
+          {/* Container for portaled dropdowns - outside scroll area but inside dialog */}
+          <div ref={dropdownContainerRef} className="absolute inset-0 pointer-events-none overflow-visible" style={{ zIndex: 100 }}>
+            {/* Dropdown portals render here */}
+          </div>
           <DialogHeader>
             <DialogTitle>{rule ? "Edit Workflow" : "Add Workflow"}</DialogTitle>
           </DialogHeader>
@@ -1827,28 +1850,36 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             placeholder="/mnt/downloads"
                             className={cn("h-8 text-xs pl-7", freeSpaceSourcePathError && "border-destructive/50")}
                           />
-                          {supportsPathAutocomplete && showFreeSpaceSuggestions && freeSpaceSuggestions.length > 0 && (
-                            <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md">
-                              <div className="max-h-40 overflow-y-auto py-1">
-                                {freeSpaceSuggestions.map((entry, idx) => (
-                                  <button
-                                    key={entry}
-                                    type="button"
-                                    title={entry}
-                                    className={cn(
-                                      "w-full px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-left",
-                                      freeSpaceHighlightedIndex === idx ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
-                                    )}
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => handleFreeSpacePathSelectSuggestion(entry)}
-                                  >
-                                    <span className="block truncate">{entry}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         </div>
+                        {dropdownRect && dropdownContainerRef.current && createPortal(
+                          <div
+                            className="absolute rounded-md border bg-popover text-popover-foreground shadow-md pointer-events-auto"
+                            style={{
+                              top: dropdownRect.top,
+                              left: dropdownRect.left,
+                              width: dropdownRect.width,
+                            }}
+                          >
+                            <div className="max-h-40 overflow-y-auto py-1">
+                              {freeSpaceSuggestions.map((entry, idx) => (
+                                <button
+                                  key={entry}
+                                  type="button"
+                                  title={entry}
+                                  className={cn(
+                                    "w-full px-3 py-1.5 text-xs text-left",
+                                    freeSpaceHighlightedIndex === idx ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground"
+                                  )}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => handleFreeSpacePathSelectSuggestion(entry)}
+                                >
+                                  <span className="block truncate">{entry}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>,
+                          dropdownContainerRef.current
+                        )}
                         {freeSpaceSourcePathError && (
                           <p className="text-xs text-destructive">{freeSpaceSourcePathError}</p>
                         )}
