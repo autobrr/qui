@@ -243,6 +243,9 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 
 // GetClient returns a client for an instance, creating one if needed
 func (sm *SyncManager) GetClient(ctx context.Context, instanceID int) (*Client, error) {
+	if sm == nil || sm.clientPool == nil {
+		return nil, fmt.Errorf("client pool unavailable")
+	}
 	return sm.clientPool.GetClient(ctx, instanceID)
 }
 

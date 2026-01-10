@@ -406,7 +406,7 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	if c.isHealthy && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+	if c.IsHealthy() && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
 		return nil
 	}
 
