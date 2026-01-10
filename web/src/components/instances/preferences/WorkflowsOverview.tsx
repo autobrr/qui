@@ -388,8 +388,7 @@ export function WorkflowsOverview({
         throw error
       }
     },
-    onSuccess: (preview, { instanceId, rule }) => {
-      // Last warning before enabling a delete rule (even if 0 matches right now).
+    onSuccess: (preview) => {
       setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
     },
     onError: (error) => {
@@ -622,7 +621,7 @@ export function WorkflowsOverview({
   }
 
   const handleLoadMorePreview = () => {
-    if (!enableConfirm) {
+    if (!enableConfirm?.preview) {
       return
     }
     loadMorePreview.mutate({

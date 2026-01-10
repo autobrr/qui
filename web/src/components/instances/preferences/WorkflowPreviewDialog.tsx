@@ -277,6 +277,9 @@ export function WorkflowPreviewDialog({
             <AnimatedLogo className="h-16 w-16" />
             <p className="text-sm text-muted-foreground">Loading preview. This might take a while...</p>
           </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     )

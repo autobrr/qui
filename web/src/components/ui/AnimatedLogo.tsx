@@ -16,6 +16,8 @@ export function AnimatedLogo({ className }: AnimatedLogoProps) {
       fill="none"
       viewBox="0 0 1024 1024"
       preserveAspectRatio="xMidYMid meet"
+      aria-hidden="true"
+      focusable="false"
       className={cn("h-12 w-12", className)}
     >
       <style>
@@ -26,6 +28,11 @@ export function AnimatedLogo({ className }: AnimatedLogoProps) {
           }
           .animated-logo-element {
             animation: logo-bounce 1s ease-in-out infinite alternate;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .animated-logo-element {
+              animation: none;
+            }
           }
         `}
       </style>
