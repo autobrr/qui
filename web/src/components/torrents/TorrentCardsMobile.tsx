@@ -33,7 +33,9 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -474,7 +476,8 @@ const TrackerIcon = ({ title, fallback, src, size = "md", className }: TrackerIc
 }
 
 const getTrackerDisplayMeta = (tracker?: string) => {
-  if (!tracker) {
+  const host = extractTrackerHost(tracker)
+  if (!host) {
     return {
       host: "",
       fallback: "#",
@@ -482,18 +485,7 @@ const getTrackerDisplayMeta = (tracker?: string) => {
     }
   }
 
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-
-  let host = trimmed
-  try {
-    if (trimmed.includes("://")) {
-      const url = new URL(trimmed)
-      host = url.hostname
-    }
-  } catch {
-    // Keep host as trimmed value if URL parsing fails
-  }
+  const fallbackLetter = host.charAt(0).toUpperCase()
 
   return {
     host,
@@ -515,6 +507,7 @@ function SwipeableCard({
   viewMode,
   supportsTrackerHealth,
   trackerIcons,
+  trackerCustomizationLookup,
 }: {
   torrent: Torrent
   isSelected: boolean
@@ -527,6 +520,7 @@ function SwipeableCard({
   viewMode: ViewMode
   supportsTrackerHealth: boolean
   trackerIcons?: Record<string, string>
+  trackerCustomizationLookup?: TrackerCustomizationLookup
 }) {
 
   // Use number for timeoutId in browser
@@ -589,7 +583,18 @@ function SwipeableCard({
   )
   const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
   const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
-  const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
+  // Resolve custom display name from customizations
+  const trackerDisplayInfo = useMemo(() => {
+    if (!trackerCustomizationLookup || trackerCustomizationLookup.size === 0) {
+      return { displayName: trackerMeta.host, primaryDomain: trackerMeta.host, isCustomized: false }
+    }
+    return resolveTrackerDisplay(trackerMeta.host, trackerCustomizationLookup)
+  }, [trackerMeta.host, trackerCustomizationLookup])
+  // Use primary domain for icon lookup (so merged trackers share icons)
+  const iconDomain = trackerDisplayInfo.primaryDomain || trackerMeta.host
+  const trackerIconSrc = iconDomain ? trackerIcons?.[iconDomain] ?? null : null
+  // Display name is either custom name or hostname
+  const trackerDisplayName = trackerDisplayInfo.displayName || trackerMeta.title
 
   return (
     <div
@@ -689,21 +694,12 @@ function SwipeableCard({
           <div className="flex items-center gap-2 mb-1">
             <div className="flex-1 min-w-0 overflow-hidden">
               <div className="w-full overflow-x-auto scrollbar-thin">
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <TrackerIcon
-                    title={trackerMeta.title}
-                    fallback={trackerMeta.fallback}
-                    src={trackerIconSrc}
-                    size="sm"
-                    className="flex-shrink-0"
-                  />
-                  <h3 className={cn(
-                    "font-medium text-sm inline-block",
-                    selectionMode && "pr-8"
-                  )} title={displayName}>
-                    {displayName}
-                  </h3>
-                </div>
+                <h3 className={cn(
+                  "font-medium text-sm inline-block whitespace-nowrap",
+                  selectionMode && "pr-8"
+                )} title={displayName}>
+                  {displayName}
+                </h3>
               </div>
             </div>
             <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
@@ -738,21 +734,6 @@ function SwipeableCard({
             )}>
               {displayName}
             </h3>
-            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground truncate h-4">
-            {trackerMeta.title && (
-              <>
-                <TrackerIcon
-                  title={trackerMeta.title}
-                  fallback={trackerMeta.fallback}
-                  src={trackerIconSrc}
-                  size="xs"
-                />
-                <span className="truncate" title={trackerMeta.title}>
-                  {trackerMeta.title}
-                </span>
-              </>
-            )}
-            </div>
           </div>
 
           {/* Progress bar */}
@@ -820,12 +801,23 @@ function SwipeableCard({
         </>
       )}
 
-      {/* Bottom row: Category/Tags and Status/Speeds - only for compact and full views */}
+      {/* Bottom row: Tracker/Category/Tags and Status/Speeds - only for compact and full views */}
       {viewMode === "compact" ? (
-        /* Compact version: Category/tags on left, percentage/speeds on right */
+        /* Compact version: Tracker/Category/tags on left, percentage/speeds on right */
         <div className="flex items-center justify-between gap-2 text-xs mt-1">
-          {/* Left side: Category and Tags */}
+          {/* Left side: Tracker, Category and Tags */}
           <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
+            {trackerDisplayName && (
+              <span className="flex items-center gap-1 flex-shrink-0" title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}>
+                <TrackerIcon
+                  title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}
+                  fallback={trackerMeta.fallback}
+                  src={trackerIconSrc}
+                  size="xs"
+                />
+                {trackerDisplayName}
+              </span>
+            )}
             {displayCategory && (
               <span className="flex items-center gap-1 flex-shrink-0">
                 <Folder className="h-3 w-3" />
@@ -869,15 +861,28 @@ function SwipeableCard({
           </div>
         </div>
       ) : viewMode === "normal" ? (
-        /* Full version: Original layout */
+        /* Full version: Original layout with tracker, category, tags */
         <div className="flex items-center justify-between gap-2 min-h-[20px]">
-          {/* Category */}
-          {displayCategory && (
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <Folder className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{displayCategory}</span>
-            </div>
-          )}
+          {/* Left side: Tracker and Category */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {trackerDisplayName && (
+              <div className="flex items-center gap-1" title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}>
+                <TrackerIcon
+                  title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}
+                  fallback={trackerMeta.fallback}
+                  src={trackerIconSrc}
+                  size="xs"
+                />
+                <span className="text-xs text-muted-foreground">{trackerDisplayName}</span>
+              </div>
+            )}
+            {displayCategory && (
+              <div className="flex items-center gap-1">
+                <Folder className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">{displayCategory}</span>
+              </div>
+            )}
+          </div>
 
           {/* Tags - aligned to the right */}
           {displayTags && (
@@ -997,6 +1002,30 @@ export function TorrentCardsMobile({
     trackerIconsRef.current = latest
     return latest
   }, [trackerIconsQuery.data])
+
+  // Tracker customizations for custom display names and merged domains
+  const trackerCustomizationsQuery = useTrackerCustomizations()
+  const trackerCustomizationsRef = useRef<{ key: string; lookup: TrackerCustomizationLookup } | undefined>(undefined)
+  const trackerCustomizationLookup = useMemo(() => {
+    const latest = trackerCustomizationsQuery.data
+    if (!latest) {
+      return trackerCustomizationsRef.current?.lookup ?? new Map()
+    }
+
+    // Build a cache key from ids + updatedAt to detect any changes
+    const newKey = getTrackerCustomizationsCacheKey(latest)
+
+    // Check if the lookup has changed using the cache key
+    const previous = trackerCustomizationsRef.current
+    if (previous && previous.key === newKey) {
+      return previous.lookup
+    }
+
+    // Build a new lookup map from the customizations
+    const newLookup = buildTrackerCustomizationLookup(latest)
+    trackerCustomizationsRef.current = { key: newKey, lookup: newLookup }
+    return newLookup
+  }, [trackerCustomizationsQuery.data])
 
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
@@ -1542,7 +1571,7 @@ export function TorrentCardsMobile({
 
     // Include cross-seed hashes if user opted to delete them
     const crossSeedHashes = deleteCrossSeeds
-      ? crossSeedWarning.affectedTorrents.map(t => t.hash)
+      ? crossSeedWarning.affectedTorrents.map((t) => t.hash)
       : []
     const hashesToDelete = [...hashes, ...crossSeedHashes]
 
@@ -1864,6 +1893,7 @@ export function TorrentCardsMobile({
                   viewMode={viewMode}
                   supportsTrackerHealth={supportsTrackerHealth}
                   trackerIcons={trackerIcons}
+                  trackerCustomizationLookup={trackerCustomizationLookup}
                 />
               </div>
             )
@@ -2352,7 +2382,7 @@ export function TorrentCardsMobile({
                   }
                 }}
                 className={`w-full pl-9 ${globalFilter ? "ring-1 ring-primary/50" : ""
-                  } ${globalFilter && /[*?[\]]/.test(globalFilter) ? "ring-1 ring-primary" : ""}`}
+                } ${globalFilter && /[*?[\]]/.test(globalFilter) ? "ring-1 ring-primary" : ""}`}
                 autoFocus
               />
               {globalFilter && (

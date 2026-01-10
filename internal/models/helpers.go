@@ -40,6 +40,31 @@ func SanitizeStringSlice(values []string) []string {
 	return result
 }
 
+// SanitizeCommaSeparatedStringSlice splits values on comma, trims whitespace, removes empty strings,
+// lowercases entries, and deduplicates case-insensitively.
+func SanitizeCommaSeparatedStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(values))
+	var result []string
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			lower := strings.ToLower(trimmed)
+			if _, exists := seen[lower]; exists {
+				continue
+			}
+			seen[lower] = struct{}{}
+			result = append(result, lower)
+		}
+	}
+	return result
+}
+
 // EncodeStringSliceJSON marshals a string slice to JSON. Returns "[]" for empty/nil slices.
 func EncodeStringSliceJSON(values []string) (string, error) {
 	if len(values) == 0 {

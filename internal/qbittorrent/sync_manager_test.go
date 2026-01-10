@@ -8,6 +8,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestNormalizeHashes(t *testing.T) {
@@ -369,4 +371,183 @@ type stubTorrentLookup struct {
 func (s *stubTorrentLookup) GetTorrent(hash string) (qbt.Torrent, bool) {
 	torrent, ok := s.torrents[hash]
 	return torrent, ok
+}
+
+// stubTrackerCustomizationLister implements TrackerCustomizationLister for testing
+type stubTrackerCustomizationLister struct {
+	customizations []*models.TrackerCustomization
+}
+
+func (s *stubTrackerCustomizationLister) List(context.Context) ([]*models.TrackerCustomization, error) {
+	return s.customizations, nil
+}
+
+func TestSortTorrentsByTracker_WithCustomDisplayNames(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, &stubTrackerCustomizationLister{
+		customizations: []*models.TrackerCustomization{
+			{
+				DisplayName: "My Tracker",
+				Domains:     []string{"tracker1.example.com", "tracker2.example.com"},
+			},
+			{
+				DisplayName: "Another Tracker",
+				Domains:     []string{"another.tracker.org"},
+			},
+		},
+	})
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Tracker: "https://tracker1.example.com/announce", Name: "Torrent A"},
+		{Hash: "hash2", Tracker: "https://unknown.tracker.net/announce", Name: "Torrent B"},
+		{Hash: "hash3", Tracker: "https://tracker2.example.com/announce", Name: "Torrent C"},
+		{Hash: "hash4", Tracker: "https://another.tracker.org/announce", Name: "Torrent D"},
+		{Hash: "hash5", Tracker: "", Name: "Torrent E"},
+	}
+
+	sm.sortTorrentsByTracker(torrents, false)
+
+	// Expected order (ascending):
+	// 1. "another tracker" (another.tracker.org)
+	// 2. "my tracker" (tracker1.example.com) - first by primary domain
+	// 3. "my tracker" (tracker2.example.com) - second because both share display name
+	// 4. "unknown.tracker.net" (no customization, uses domain as display name)
+	// 5. Empty tracker (no tracker, sorted to end)
+
+	require.Equal(t, "hash4", torrents[0].Hash, "Another Tracker should come first (alphabetically)")
+	require.Equal(t, "hash1", torrents[1].Hash, "My Tracker (tracker1) should be second")
+	require.Equal(t, "hash3", torrents[2].Hash, "My Tracker (tracker2) should be third (same display name, different domain)")
+	require.Equal(t, "hash2", torrents[3].Hash, "Unknown tracker should be fourth")
+	require.Equal(t, "hash5", torrents[4].Hash, "Empty tracker should be last")
+
+	// Test descending order - note: torrents without trackers always sort to end (hasDomain check is not reversed)
+	sm.sortTorrentsByTracker(torrents, true)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "Unknown tracker should be first in desc (z > u > m > a)")
+	require.Equal(t, "hash3", torrents[1].Hash, "My Tracker (tracker2) should be second in desc")
+	require.Equal(t, "hash1", torrents[2].Hash, "My Tracker (tracker1) should be third in desc")
+	require.Equal(t, "hash4", torrents[3].Hash, "Another Tracker should be fourth in desc")
+	require.Equal(t, "hash5", torrents[4].Hash, "Empty tracker still at end in desc (no tracker = sorted last)")
+}
+
+func TestSortTorrentsByTracker_MergedDomainsStayTogether(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, &stubTrackerCustomizationLister{
+		customizations: []*models.TrackerCustomization{
+			{
+				DisplayName: "Private Tracker",
+				Domains:     []string{"old.domain.com", "new.domain.com", "backup.domain.org"},
+			},
+		},
+	})
+
+	// Torrents from different domains that are all merged under "Private Tracker"
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Tracker: "https://old.domain.com/announce", Name: "From Old"},
+		{Hash: "hash2", Tracker: "https://new.domain.com/announce", Name: "From New"},
+		{Hash: "hash3", Tracker: "https://backup.domain.org/announce", Name: "From Backup"},
+		{Hash: "hash4", Tracker: "https://other.site.net/announce", Name: "From Other"},
+	}
+
+	sm.sortTorrentsByTracker(torrents, false)
+
+	// "other.site.net" (o) comes before "private tracker" (p) alphabetically
+	// Within "Private Tracker" group, domains are sorted alphabetically (backup < new < old)
+	require.Equal(t, "hash4", torrents[0].Hash, "other.site.net first (o < p)")
+	require.Equal(t, "hash3", torrents[1].Hash, "backup.domain.org second (private tracker group, backup < new < old)")
+	require.Equal(t, "hash2", torrents[2].Hash, "new.domain.com third")
+	require.Equal(t, "hash1", torrents[3].Hash, "old.domain.com fourth")
+}
+
+func TestSortTorrentsByTracker_NoCustomizations(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+	// No customization store set, should use domains as display names
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Tracker: "https://zebra.com/announce", Name: "Torrent A"},
+		{Hash: "hash2", Tracker: "https://apple.com/announce", Name: "Torrent B"},
+		{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"},
+	}
+
+	sm.sortTorrentsByTracker(torrents, false)
+
+	// Should sort by domain alphabetically
+	require.Equal(t, "hash2", torrents[0].Hash, "apple.com should be first")
+	require.Equal(t, "hash3", torrents[1].Hash, "mango.com should be second")
+	require.Equal(t, "hash1", torrents[2].Hash, "zebra.com should be third")
+}
+
+func TestSortCrossInstanceTorrentsByTracker_EmptyTrackersGoToEnd(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []CrossInstanceTorrentView{
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash1", Tracker: "", Name: "No Tracker"}}, InstanceName: "Instance1"},
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash2", Tracker: "https://zebra.com/announce", Name: "Zebra"}}, InstanceName: "Instance1"},
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash3", Tracker: "https://apple.com/announce", Name: "Apple"}}, InstanceName: "Instance2"},
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash4", Tracker: "", Name: "Also No Tracker"}}, InstanceName: "Instance2"},
+	}
+
+	// Test ascending: empty trackers should go to the end
+	sm.sortCrossInstanceTorrentsByTracker(torrents, false)
+
+	require.Equal(t, "hash3", torrents[0].Hash, "apple.com should be first")
+	require.Equal(t, "hash2", torrents[1].Hash, "zebra.com should be second")
+	require.Equal(t, "hash1", torrents[2].Hash, "empty tracker should be third (sorted by instance then name)")
+	require.Equal(t, "hash4", torrents[3].Hash, "empty tracker should be fourth")
+
+	// Test descending: empty trackers should STILL go to the end (not beginning)
+	// Within the empty group, they sort by instance name then name in descending order
+	sm.sortCrossInstanceTorrentsByTracker(torrents, true)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "zebra.com should be first in desc")
+	require.Equal(t, "hash3", torrents[1].Hash, "apple.com should be second in desc")
+	// Empty trackers at end, but within empty group: Instance2 > Instance1 in desc
+	require.Equal(t, "hash4", torrents[2].Hash, "empty tracker Instance2 should be third")
+	require.Equal(t, "hash1", torrents[3].Hash, "empty tracker Instance1 should be fourth")
+}
+
+func TestSortCrossInstanceTorrentsByTracker_WithCustomNames(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, &stubTrackerCustomizationLister{
+		customizations: []*models.TrackerCustomization{
+			{ID: 1, DisplayName: "ABC Tracker", Domains: []string{"zebra.com"}},
+			{ID: 2, DisplayName: "XYZ Tracker", Domains: []string{"apple.com"}},
+		},
+	})
+
+	torrents := []CrossInstanceTorrentView{
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash1", Tracker: "https://zebra.com/announce", Name: "Torrent A"}}, InstanceName: "Instance1"},
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash2", Tracker: "https://apple.com/announce", Name: "Torrent B"}}, InstanceName: "Instance2"},
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"}}, InstanceName: "Instance1"},
+	}
+
+	sm.sortCrossInstanceTorrentsByTracker(torrents, false)
+
+	// ABC Tracker (zebra.com) comes before mango.com before XYZ Tracker (apple.com)
+	require.Equal(t, "hash1", torrents[0].Hash, "ABC Tracker (zebra.com) should be first")
+	require.Equal(t, "hash3", torrents[1].Hash, "mango.com should be second")
+	require.Equal(t, "hash2", torrents[2].Hash, "XYZ Tracker (apple.com) should be third")
+}
+
+func TestSortCrossInstanceTorrentsByTracker_UnknownTrackersGoToEnd(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []CrossInstanceTorrentView{
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash1", Tracker: "unknown", Name: "Unknown Tracker"}}, InstanceName: "Instance1"},
+		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash2", Tracker: "https://valid.com/announce", Name: "Valid"}}, InstanceName: "Instance1"},
+	}
+
+	sm.sortCrossInstanceTorrentsByTracker(torrents, false)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "valid tracker should come first")
+	require.Equal(t, "hash1", torrents[1].Hash, "unknown tracker should go to end")
 }

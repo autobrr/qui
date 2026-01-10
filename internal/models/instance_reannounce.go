@@ -208,7 +208,7 @@ func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *Instance
 	}
 	clone.Categories = SanitizeStringSlice(clone.Categories)
 	clone.Tags = SanitizeStringSlice(clone.Tags)
-	clone.Trackers = SanitizeStringSlice(clone.Trackers)
+	clone.Trackers = SanitizeCommaSeparatedStringSlice(clone.Trackers)
 	return &clone
 }
 

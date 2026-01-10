@@ -474,7 +474,7 @@ func TestTorrentHasTag(t *testing.T) {
 
 func TestSelectMatchingRules(t *testing.T) {
 	// Create a minimal SyncManager for domain extraction
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	tests := []struct {
 		name        string
