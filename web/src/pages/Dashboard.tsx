@@ -2331,7 +2331,7 @@ export function Dashboard() {
                     return (
                       <div key={sectionId}>
                         {/* Responsive layout so each instance mounts once */}
-                        <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                           {statsData.map(instanceData => (
                             <InstanceCard
                               key={instanceData.instance.id}
