@@ -347,7 +347,7 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 		return nil
 	}
 
-	freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
+	freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, rule.FreeSpaceSource)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
 		return fmt.Errorf("failed to get free space: %w", err)
@@ -1069,20 +1069,52 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
+	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
-		freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
-			return fmt.Errorf("failed to get free space: %w", err)
+		// Initialize per-rule free space states.
+		// Each rule gets its own projection state (keyed by source + rule ID),
+		// ensuring rules with different thresholds on the same disk don't interfere.
+		evalCtx.FreeSpaceStates = make(map[string]*FreeSpaceSourceState)
+
+		// First, cache free space by source key to avoid redundant disk reads
+		freeSpaceBySourceKey := make(map[string]int64)
+		for _, r := range eligibleRules {
+			if !rulesUseCondition([]*models.Automation{r}, FieldFreeSpace) {
+				continue
+			}
+			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
+			if _, cached := freeSpaceBySourceKey[sourceKey]; cached {
+				continue
+			}
+
+			// Get free space for this source
+			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource)
+			if err != nil {
+				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
+				return fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
+			}
+			freeSpaceBySourceKey[sourceKey] = freeSpace
 		}
-		evalCtx.FreeSpace = freeSpace
-		evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
+
+		// Now create per-rule states using cached free space values
+		for _, r := range eligibleRules {
+			if !rulesUseCondition([]*models.Automation{r}, FieldFreeSpace) {
+				continue
+			}
+			ruleKey := GetFreeSpaceRuleKey(r)
+			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
+			evalCtx.FreeSpaceStates[ruleKey] = &FreeSpaceSourceState{
+				FreeSpace:                 freeSpaceBySourceKey[sourceKey],
+				SpaceToClear:              0,
+				FilesToClear:              make(map[crossSeedKey]struct{}),
+				HardlinkSignaturesToClear: make(map[string]struct{}),
+			}
+		}
 
 		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
 		// Must happen BEFORE processTorrents() so SpaceToClear is correctly deduplicated.
 		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
 			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
-			evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
 		}
 	}
 
