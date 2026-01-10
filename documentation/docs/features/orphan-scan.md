@@ -17,8 +17,10 @@ Finds and removes files in your download directories that aren't associated with
 3. You preview the list before confirming deletion
 4. Empty directories are cleaned up after file deletion
 
-:::danger
-If multiple qBittorrent instances share the same download directory, files from other instances **will be flagged as orphans.** Use separate directories per instance or add shared paths to ignore paths.
+:::info
+If you have multiple **active** qBittorrent instances with `Has local filesystem access` enabled, and their torrent `SavePath` directories overlap, qui also protects files referenced by torrents from those other instances (even when scanning a single instance).
+
+To do this safely, qui must be able to determine whether scan roots overlap. If any other local-access instance is unreachable/not ready, the scan fails to avoid false positives.
 :::
 
 <LocalFilesystemDocker />
