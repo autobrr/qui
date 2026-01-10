@@ -366,24 +366,26 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	return 0, "", nil
 }
 
-// usesHardlinkScope checks if a condition uses the HARDLINK_SCOPE field.
-func usesHardlinkScope(condition *automations.RuleCondition) bool {
-	return automations.ConditionUsesField(condition, automations.FieldHardlinkScope)
-}
-
-// conditionsUseHardlink checks if any action condition uses HARDLINK_SCOPE field.
-// This field requires local filesystem access to work.
-func conditionsUseHardlink(conditions *models.ActionConditions) bool {
+// conditionsUseField checks if any enabled action condition uses the specified field.
+func conditionsUseField(conditions *models.ActionConditions, field automations.ConditionField) bool {
 	if conditions == nil {
 		return false
 	}
+	check := func(enabled bool, cond *automations.RuleCondition) bool {
+		return enabled && automations.ConditionUsesField(cond, field)
+	}
 	c := conditions
-	return (c.SpeedLimits != nil && usesHardlinkScope(c.SpeedLimits.Condition)) ||
-		(c.ShareLimits != nil && usesHardlinkScope(c.ShareLimits.Condition)) ||
-		(c.Pause != nil && usesHardlinkScope(c.Pause.Condition)) ||
-		(c.Delete != nil && usesHardlinkScope(c.Delete.Condition)) ||
-		(c.Tag != nil && usesHardlinkScope(c.Tag.Condition)) ||
-		(c.Category != nil && usesHardlinkScope(c.Category.Condition))
+	return (c.SpeedLimits != nil && check(c.SpeedLimits.Enabled, c.SpeedLimits.Condition)) ||
+		(c.ShareLimits != nil && check(c.ShareLimits.Enabled, c.ShareLimits.Condition)) ||
+		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
+		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
+		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
+		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition))
+}
+
+// conditionsUseHardlink checks if any enabled action condition uses HARDLINK_SCOPE field.
+func conditionsUseHardlink(conditions *models.ActionConditions) bool {
+	return conditionsUseField(conditions, automations.FieldHardlinkScope)
 }
 
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
@@ -409,23 +411,9 @@ const (
 	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
 )
 
-// actionUsesFreeSpace checks if an action is enabled and uses FREE_SPACE field.
-func actionUsesFreeSpace(enabled bool, condition *automations.RuleCondition) bool {
-	return enabled && automations.ConditionUsesField(condition, automations.FieldFreeSpace)
-}
-
-// conditionsUseFreeSpace checks if any action condition uses FREE_SPACE field.
+// conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
 func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
-	if conditions == nil {
-		return false
-	}
-	c := conditions
-	return (c.SpeedLimits != nil && actionUsesFreeSpace(c.SpeedLimits.Enabled, c.SpeedLimits.Condition)) ||
-		(c.ShareLimits != nil && actionUsesFreeSpace(c.ShareLimits.Enabled, c.ShareLimits.Condition)) ||
-		(c.Pause != nil && actionUsesFreeSpace(c.Pause.Enabled, c.Pause.Condition)) ||
-		(c.Delete != nil && actionUsesFreeSpace(c.Delete.Enabled, c.Delete.Condition)) ||
-		(c.Tag != nil && actionUsesFreeSpace(c.Tag.Enabled, c.Tag.Condition)) ||
-		(c.Category != nil && actionUsesFreeSpace(c.Category.Enabled, c.Category.Condition))
+	return conditionsUseField(conditions, automations.FieldFreeSpace)
 }
 
 // validateFreeSpaceSourcePayload validates the FreeSpaceSource in the automation payload.
