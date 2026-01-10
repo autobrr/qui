@@ -14,14 +14,14 @@ import { Clock, Download, Upload } from "lucide-react"
 import React from "react"
 import { toast } from "sonner"
 
-// Convert bytes/s to MiB/s for display
-function bytesToMiB(bytes: number): number {
-  return bytes === 0 ? 0 : bytes / (1024 * 1024)
+// Convert KiB/s to MiB/s for display (qBittorrent API uses KiB/s for speed limits)
+function kibToMiB(kib: number): number {
+  return kib === 0 ? 0 : kib / 1024
 }
 
-// Convert MiB/s to bytes/s for API
-function mibToBytes(mib: number): number {
-  return mib === 0 ? 0 : Math.round(mib * 1024 * 1024)
+// Convert MiB/s to KiB/s for API (qBittorrent API uses KiB/s for speed limits)
+function mibToKiB(mib: number): number {
+  return mib === 0 ? 0 : Math.round(mib * 1024)
 }
 
 // Day options for scheduler
@@ -55,7 +55,7 @@ function SpeedLimitInput({
   // Sync local value from props when not focused
   React.useEffect(() => {
     if (!isFocused) {
-      const displayValue = bytesToMiB(value)
+      const displayValue = kibToMiB(value)
       setLocalValue(displayValue === 0 ? "" : displayValue.toFixed(1))
     }
   }, [value, isFocused])
@@ -77,7 +77,7 @@ function SpeedLimitInput({
             setLocalValue(e.target.value)
             const mibValue = e.target.value === "" ? 0 : parseFloat(e.target.value)
             if (!isNaN(mibValue) && mibValue >= 0) {
-              onChange(mibToBytes(mibValue))
+              onChange(mibToKiB(mibValue))
             }
           }}
           onBlur={() => setIsFocused(false)}
