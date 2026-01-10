@@ -416,30 +416,23 @@ const (
 	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
 )
 
+// actionUsesFreeSpace checks if an action is enabled and uses FREE_SPACE field.
+func actionUsesFreeSpace(enabled bool, condition *automations.RuleCondition) bool {
+	return enabled && automations.ConditionUsesField(condition, automations.FieldFreeSpace)
+}
+
 // conditionsUseFreeSpace checks if any action condition uses FREE_SPACE field.
 func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
 	if conditions == nil {
 		return false
 	}
-	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldFreeSpace) {
-		return true
-	}
-	if conditions.ShareLimits != nil && conditions.ShareLimits.Enabled && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldFreeSpace) {
-		return true
-	}
-	if conditions.Pause != nil && conditions.Pause.Enabled && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldFreeSpace) {
-		return true
-	}
-	if conditions.Delete != nil && conditions.Delete.Enabled && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldFreeSpace) {
-		return true
-	}
-	if conditions.Tag != nil && conditions.Tag.Enabled && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldFreeSpace) {
-		return true
-	}
-	if conditions.Category != nil && conditions.Category.Enabled && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldFreeSpace) {
-		return true
-	}
-	return false
+	c := conditions
+	return (c.SpeedLimits != nil && actionUsesFreeSpace(c.SpeedLimits.Enabled, c.SpeedLimits.Condition)) ||
+		(c.ShareLimits != nil && actionUsesFreeSpace(c.ShareLimits.Enabled, c.ShareLimits.Condition)) ||
+		(c.Pause != nil && actionUsesFreeSpace(c.Pause.Enabled, c.Pause.Condition)) ||
+		(c.Delete != nil && actionUsesFreeSpace(c.Delete.Enabled, c.Delete.Condition)) ||
+		(c.Tag != nil && actionUsesFreeSpace(c.Tag.Enabled, c.Tag.Condition)) ||
+		(c.Category != nil && actionUsesFreeSpace(c.Category.Enabled, c.Category.Condition))
 }
 
 // validateFreeSpaceSourcePayload validates the FreeSpaceSource in the automation payload.
@@ -456,22 +449,22 @@ func (h *AutomationHandler) validateFreeSpaceSourcePayload(ctx context.Context, 
 	usesFreeSpace := conditionsUseFreeSpace(conditions)
 
 	// Only fetch instance when FREE_SPACE is actually used and path type is selected
-	// (needed to check local filesystem access)
-	var instance *models.Instance
-	if usesFreeSpace && source.Type == models.FreeSpaceSourcePath {
-		if h.instanceStore == nil {
-			return http.StatusInternalServerError, "Failed to validate automation", errors.New("instance store is nil")
-		}
+	needsInstance := usesFreeSpace && source.Type == models.FreeSpaceSourcePath
+	if !needsInstance {
+		return validateFreeSpaceSource(source, nil, usesFreeSpace)
+	}
 
-		inst, err := h.instanceStore.Get(ctx, instanceID)
-		if err != nil {
-			if errors.Is(err, models.ErrInstanceNotFound) {
-				return http.StatusNotFound, "Instance not found", fmt.Errorf("instance not found for FreeSpaceSource validation: %w", err)
-			}
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for FreeSpaceSource validation")
-			return http.StatusInternalServerError, "Failed to validate automation", fmt.Errorf("failed to get instance: %w", err)
-		}
-		instance = inst
+	if h.instanceStore == nil {
+		return http.StatusInternalServerError, "Failed to validate automation", errors.New("instance store is nil")
+	}
+
+	instance, err := h.instanceStore.Get(ctx, instanceID)
+	if errors.Is(err, models.ErrInstanceNotFound) {
+		return http.StatusNotFound, "Instance not found", fmt.Errorf("instance not found for FreeSpaceSource validation: %w", err)
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for FreeSpaceSource validation")
+		return http.StatusInternalServerError, "Failed to validate automation", fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	return validateFreeSpaceSource(source, instance, usesFreeSpace)
