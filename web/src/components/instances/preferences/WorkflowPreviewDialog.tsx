@@ -24,6 +24,7 @@ import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Download, Loader2 } from "lucide-react"
 import { useMemo } from "react"
+import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
 // Tabs component for needed/eligible toggle
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -65,6 +66,8 @@ interface WorkflowPreviewDialogProps {
   onExport?: () => void
   /** Whether export is in progress */
   isExporting?: boolean
+  /** Whether the initial preview is loading (dialog just opened, waiting for first results) */
+  isInitialLoading?: boolean
 }
 
 // Extract all field names from a condition tree
@@ -251,6 +254,7 @@ export function WorkflowPreviewDialog({
   isLoadingPreview = false,
   onExport,
   isExporting = false,
+  isInitialLoading = false,
 }: WorkflowPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
@@ -263,6 +267,20 @@ export function WorkflowPreviewDialog({
       col.triggerFields.some(f => fields.has(f))
     )
   }, [condition])
+
+  // Show loading state when initial preview is being fetched
+  if (isInitialLoading) {
+    return (
+      <AlertDialog open={open} onOpenChange={onOpenChange}>
+        <AlertDialogContent className="sm:max-w-md">
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <AnimatedLogo className="h-16 w-16" />
+            <p className="text-sm text-muted-foreground">Loading preview. This might take a while...</p>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+    )
+  }
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
