@@ -48,6 +48,11 @@ type Service struct {
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
 
+	// Memoize "settled" status per instance/recovery to avoid repeating the 60s settling check
+	// on every scan. This resets automatically when the client recovers (recovery time changes).
+	settledMu           sync.RWMutex
+	settledRecoveryTime map[int]time.Time
+
 	// Providers for testing (nil = use real sync manager)
 	getAllTorrentsProvider       func(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	getTorrentFilesBatchProvider func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
@@ -66,13 +71,49 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		cfg.StuckRunThreshold = DefaultConfig().StuckRunThreshold
 	}
 	return &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		store:         store,
-		syncManager:   syncManager,
-		instanceMu:    make(map[int]*sync.Mutex),
-		cancelFuncs:   make(map[int64]context.CancelFunc),
+		cfg:                 cfg,
+		instanceStore:       instanceStore,
+		store:               store,
+		syncManager:         syncManager,
+		instanceMu:          make(map[int]*sync.Mutex),
+		cancelFuncs:         make(map[int64]context.CancelFunc),
+		settledRecoveryTime: make(map[int]time.Time),
 	}
+}
+
+func (s *Service) isSettledForRecovery(instanceID int, recoveryTime time.Time) bool {
+	if recoveryTime.IsZero() {
+		return false
+	}
+
+	s.settledMu.RLock()
+	settledRecoveryTime, ok := s.settledRecoveryTime[instanceID]
+	s.settledMu.RUnlock()
+
+	return ok && settledRecoveryTime.Equal(recoveryTime)
+}
+
+func (s *Service) markSettledForRecovery(instanceID int, recoveryTime time.Time) {
+	if recoveryTime.IsZero() {
+		return
+	}
+
+	s.settledMu.Lock()
+	s.settledRecoveryTime[instanceID] = recoveryTime
+	s.settledMu.Unlock()
+}
+
+func (s *Service) clearSettledForRecovery(instanceID int, recoveryTime time.Time) {
+	if recoveryTime.IsZero() {
+		return
+	}
+
+	s.settledMu.Lock()
+	settledRecoveryTime, ok := s.settledRecoveryTime[instanceID]
+	if ok && settledRecoveryTime.Equal(recoveryTime) {
+		delete(s.settledRecoveryTime, instanceID)
+	}
+	s.settledMu.Unlock()
 }
 
 // getAllTorrents returns all torrents for an instance, using the provider if set.
@@ -237,19 +278,25 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 				return
 			}
 
-			// Pre-check 3: Settling (expensive - samples 4x over 60s)
-			settleResult, settleErr := s.checkSettled(ctx, scan.instanceID, client)
-			if settleErr != nil {
-				log.Debug().Err(settleErr).Int("instance", scan.instanceID).
-					Msg("orphanscan: skipping scheduled scan (settling check error)")
-				return
-			}
-			if !settleResult.settled {
-				log.Debug().
-					Int("instance", scan.instanceID).
-					Str("reason", settleResult.reason).
-					Msg("orphanscan: skipping scheduled scan (not settled)")
-				return
+			recoveryTime := client.GetLastRecoveryTime()
+			if !s.isSettledForRecovery(scan.instanceID, recoveryTime) {
+				// Pre-check 3: Settling (expensive - samples 4x over 60s)
+				settleResult, settleErr := s.checkSettled(ctx, scan.instanceID, client)
+				if settleErr != nil {
+					log.Debug().Err(settleErr).Int("instance", scan.instanceID).
+						Msg("orphanscan: skipping scheduled scan (settling check error)")
+					return
+				}
+				if !settleResult.settled {
+					log.Debug().
+						Int("instance", scan.instanceID).
+						Str("reason", settleResult.reason).
+						Msg("orphanscan: skipping scheduled scan (not settled)")
+					return
+				}
+
+				// Avoid a second 60s settling loop inside buildFileMap for this scheduled run.
+				s.markSettledForRecovery(scan.instanceID, recoveryTime)
 			}
 
 			// All pre-checks passed - now safe to create run and execute
@@ -1096,7 +1143,7 @@ type buildFileMapResult struct {
 	torrentCount int
 }
 
-func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileMapResult, error) {
+func (s *Service) buildFileMap(ctx context.Context, instanceID int) (result *buildFileMapResult, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -1105,26 +1152,47 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileM
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
+	recoveryTime := client.GetLastRecoveryTime()
+	defer func() {
+		if err != nil {
+			s.clearSettledForRecovery(instanceID, recoveryTime)
+		}
+	}()
+
 	if readinessErr := checkReadinessGates(client); readinessErr != nil {
 		return nil, readinessErr
 	}
 
-	// Step 2: Run settling check (samples torrent state multiple times)
-	settleResult, err := s.checkSettled(ctx, instanceID, client)
-	if err != nil {
-		return nil, fmt.Errorf("settling check failed: %w", err)
-	}
-	if !settleResult.settled {
-		return nil, fmt.Errorf("instance not settled: %s", settleResult.reason)
-	}
+	var torrents []qbt.Torrent
+	if s.isSettledForRecovery(instanceID, recoveryTime) {
+		torrents, err = s.getAllTorrents(ctx, instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get torrents: %w", err)
+		}
+		if len(torrents) == 0 {
+			return nil, fmt.Errorf("no torrents returned - instance not ready")
+		}
+		log.Debug().
+			Int("torrentCount", len(torrents)).
+			Msg("orphanscan: skipping settling check (already settled)")
+	} else {
+		// Step 2: Run settling check (samples torrent state multiple times)
+		settleResult, settleErr := s.checkSettled(ctx, instanceID, client)
+		if settleErr != nil {
+			return nil, fmt.Errorf("settling check failed: %w", settleErr)
+		}
+		if !settleResult.settled {
+			return nil, fmt.Errorf("instance not settled: %s", settleResult.reason)
+		}
 
-	log.Info().
-		Int("torrentCount", len(settleResult.torrents)).
-		Float64("maxCheckingPct", settleResult.maxCheckingPct).
-		Msg("orphanscan: settling check passed")
+		log.Info().
+			Int("torrentCount", len(settleResult.torrents)).
+			Float64("maxCheckingPct", settleResult.maxCheckingPct).
+			Msg("orphanscan: settling check passed")
+		torrents = settleResult.torrents
+	}
 
 	// Step 3: Fetch and validate file data
-	torrents := settleResult.torrents
 	hashToTorrent, hashes := buildTorrentHashLookup(torrents)
 
 	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
@@ -1138,7 +1206,9 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileM
 	}
 
 	// Step 4: Build file map from validated data
-	return buildFileMapFromTorrents(hashToTorrent, filesByHash, len(torrents)), nil
+	result = buildFileMapFromTorrents(hashToTorrent, filesByHash, len(torrents))
+	s.markSettledForRecovery(instanceID, recoveryTime)
+	return result, nil
 }
 
 // buildTorrentHashLookup creates a hash-to-torrent lookup map and hash list.
