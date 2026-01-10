@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,6 +24,14 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
+
+// healthChecker is the subset of *qbittorrent.Client methods needed for readiness checks.
+// Extracted as an interface to enable unit testing without a real qBittorrent connection.
+type healthChecker interface {
+	IsHealthy() bool
+	GetLastRecoveryTime() time.Time
+	GetLastSyncUpdate() time.Time
+}
 
 // Service handles orphan file scanning and deletion.
 type Service struct {
@@ -38,6 +47,16 @@ type Service struct {
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
+
+	// Memoize "settled" status per instance/recovery to avoid repeating the 60s settling check
+	// on every scan. This resets automatically when the client recovers (recovery time changes).
+	settledMu           sync.RWMutex
+	settledRecoveryTime map[int]time.Time
+
+	// Providers for testing (nil = use real sync manager)
+	getAllTorrentsProvider       func(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	getTorrentFilesBatchProvider func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	getClientProvider            func(ctx context.Context, instanceID int) (healthChecker, error)
 }
 
 // NewService creates a new orphan scan service.
@@ -52,13 +71,85 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		cfg.StuckRunThreshold = DefaultConfig().StuckRunThreshold
 	}
 	return &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		store:         store,
-		syncManager:   syncManager,
-		instanceMu:    make(map[int]*sync.Mutex),
-		cancelFuncs:   make(map[int64]context.CancelFunc),
+		cfg:                 cfg,
+		instanceStore:       instanceStore,
+		store:               store,
+		syncManager:         syncManager,
+		instanceMu:          make(map[int]*sync.Mutex),
+		cancelFuncs:         make(map[int64]context.CancelFunc),
+		settledRecoveryTime: make(map[int]time.Time),
 	}
+}
+
+func (s *Service) isSettledForRecovery(instanceID int, recoveryTime time.Time) bool {
+	if recoveryTime.IsZero() {
+		return false
+	}
+
+	s.settledMu.RLock()
+	settledRecoveryTime, ok := s.settledRecoveryTime[instanceID]
+	s.settledMu.RUnlock()
+
+	return ok && settledRecoveryTime.Equal(recoveryTime)
+}
+
+func (s *Service) markSettledForRecovery(instanceID int, recoveryTime time.Time) {
+	if recoveryTime.IsZero() {
+		return
+	}
+
+	s.settledMu.Lock()
+	s.settledRecoveryTime[instanceID] = recoveryTime
+	s.settledMu.Unlock()
+}
+
+func (s *Service) clearSettledForRecovery(instanceID int, recoveryTime time.Time) {
+	if recoveryTime.IsZero() {
+		return
+	}
+
+	s.settledMu.Lock()
+	settledRecoveryTime, ok := s.settledRecoveryTime[instanceID]
+	if ok && settledRecoveryTime.Equal(recoveryTime) {
+		delete(s.settledRecoveryTime, instanceID)
+	}
+	s.settledMu.Unlock()
+}
+
+// getAllTorrents returns all torrents for an instance, using the provider if set.
+func (s *Service) getAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	if s.getAllTorrentsProvider != nil {
+		return s.getAllTorrentsProvider(ctx, instanceID)
+	}
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get all torrents: %w", err)
+	}
+	return torrents, nil
+}
+
+// getTorrentFilesBatch returns files for multiple torrents, using the provider if set.
+func (s *Service) getTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	if s.getTorrentFilesBatchProvider != nil {
+		return s.getTorrentFilesBatchProvider(ctx, instanceID, hashes)
+	}
+	files, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, fmt.Errorf("get torrent files batch: %w", err)
+	}
+	return files, nil
+}
+
+// getClient returns a client for an instance, using the provider if set.
+func (s *Service) getClient(ctx context.Context, instanceID int) (healthChecker, error) {
+	if s.getClientProvider != nil {
+		return s.getClientProvider(ctx, instanceID)
+	}
+	client, err := s.syncManager.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get client: %w", err)
+	}
+	return client, nil
 }
 
 // Start starts the background scheduler.
@@ -156,7 +247,6 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 
 	// Launch goroutines for each due scan (jitter handled via timer)
 	for _, scan := range due {
-		scan := scan // capture
 		go func() {
 			// Wait for jitter-adjusted trigger time
 			delay := time.Until(scan.triggerAt)
@@ -173,11 +263,47 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 				return
 			}
 
-			// TriggerScan internally uses context.Background() for the scan goroutine
-			// so shutdown won't cancel in-progress scans, only prevents new starts
+			// Pre-check 1: Get client (cheap, before 60s settling)
+			client, clientErr := s.getClient(ctx, scan.instanceID)
+			if clientErr != nil {
+				log.Debug().Err(clientErr).Int("instance", scan.instanceID).
+					Msg("orphanscan: skipping scheduled scan (client unavailable)")
+				return
+			}
+
+			// Pre-check 2: Readiness gates (health, recovery grace, sync freshness)
+			if readinessErr := checkReadinessGates(client); readinessErr != nil {
+				log.Debug().Err(readinessErr).Int("instance", scan.instanceID).
+					Msg("orphanscan: skipping scheduled scan (readiness check failed)")
+				return
+			}
+
+			recoveryTime := client.GetLastRecoveryTime()
+			if !s.isSettledForRecovery(scan.instanceID, recoveryTime) {
+				// Pre-check 3: Settling (expensive - samples 4x over 60s)
+				settleResult, settleErr := s.checkSettled(ctx, scan.instanceID, client)
+				if settleErr != nil {
+					log.Debug().Err(settleErr).Int("instance", scan.instanceID).
+						Msg("orphanscan: skipping scheduled scan (settling check error)")
+					return
+				}
+				if !settleResult.settled {
+					log.Debug().
+						Int("instance", scan.instanceID).
+						Str("reason", settleResult.reason).
+						Msg("orphanscan: skipping scheduled scan (not settled)")
+					return
+				}
+
+				// Avoid a second 60s settling loop inside buildFileMap for this scheduled run.
+				s.markSettledForRecovery(scan.instanceID, recoveryTime)
+			}
+
+			// All pre-checks passed - now safe to create run and execute
 			if _, err := s.TriggerScan(ctx, scan.instanceID, "scheduled"); err != nil {
 				if !errors.Is(err, ErrScanInProgress) {
-					log.Error().Err(err).Int("instance", scan.instanceID).Msg("orphanscan: scheduled scan failed")
+					log.Error().Err(err).Int("instance", scan.instanceID).
+						Msg("orphanscan: scheduled scan failed")
 				}
 			}
 		}()
@@ -349,7 +475,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 
 	// Build file map
-	tfm, scanRoots, err := s.buildFileMap(ctx, instanceID)
+	result, err := s.buildFileMap(ctx, instanceID)
 	if err != nil {
 		// Check if this was a cancellation - preserve canceled status instead of marking failed
 		if ctx.Err() != nil {
@@ -361,7 +487,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
-	log.Info().Int("files", tfm.Len()).Int("roots", len(scanRoots)).Msg("orphanscan: built file map")
+	tfm := result.fileMap
+	scanRoots := result.scanRoots
+
+	log.Info().
+		Int("files", tfm.Len()).
+		Int("roots", len(scanRoots)).
+		Int("torrentCount", result.torrentCount).
+		Msg("orphanscan: built file map")
 
 	// Update scan paths
 	if err := s.store.UpdateRunScanPaths(ctx, runID, scanRoots); err != nil {
@@ -627,12 +760,13 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// Build fresh file map for re-checking
-	tfm, _, err := s.buildFileMap(ctx, instanceID)
+	fileMapResult, err := s.buildFileMap(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
 		s.failRun(ctx, runID, fmt.Sprintf("failed to rebuild file map: %v", err))
 		return
 	}
+	tfm := fileMapResult.fileMap
 
 	// Load ignore paths before deletion loop
 	settings, err := s.store.GetSettings(ctx, instanceID)
@@ -811,50 +945,330 @@ func (s *Service) updateFileStatus(ctx context.Context, fileID int64, status, er
 	}
 }
 
-func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFileMap, []string, error) {
-	// Add timeout to prevent indefinite blocking if qBittorrent is unresponsive
+// settlingResult contains the result of stability sampling
+type settlingResult struct {
+	settled        bool
+	reason         string
+	torrents       []qbt.Torrent // Final torrent list (reuse in buildFileMap)
+	maxCheckingPct float64       // Max checking% seen across all samples
+}
+
+// checkReadinessGates performs cheap pre-checks before expensive settling.
+// Returns nil if all checks pass, otherwise an error describing the failure.
+func checkReadinessGates(client healthChecker) error {
+	if !client.IsHealthy() {
+		return errors.New("qBittorrent client is unhealthy")
+	}
+
+	recoveryTime := client.GetLastRecoveryTime()
+	if !recoveryTime.IsZero() && time.Since(recoveryTime) < RecoveryGracePeriod {
+		return fmt.Errorf(
+			"qBittorrent recovered %v ago, waiting for grace period (%v)",
+			time.Since(recoveryTime).Round(time.Second), RecoveryGracePeriod)
+	}
+
+	lastSync := client.GetLastSyncUpdate()
+	if lastSync.IsZero() {
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	if !recoveryTime.IsZero() && lastSync.Before(recoveryTime) {
+		return errors.New("instance not ready: waiting for sync after recovery")
+	}
+
+	if time.Since(lastSync) > MaxSyncAge {
+		return fmt.Errorf("sync data stale (last sync %v ago, threshold %v)",
+			time.Since(lastSync).Round(time.Second), MaxSyncAge)
+	}
+
+	return nil
+}
+
+// SampleStats holds statistics from a single torrent sample.
+// Exported for testing.
+type SampleStats struct {
+	Count       int
+	CheckingPct float64
+	MetaDlPct   float64
+}
+
+// EvaluateSettlingSamples analyzes sample statistics to determine if qBit is settled.
+// This is a pure function extracted for testability.
+// syncAge is time since last sync (pass time.Since(lastSyncTime) from caller).
+func EvaluateSettlingSamples(stats []SampleStats, syncAge time.Duration) (settled bool, reason string, maxCheckingPct float64) {
+	if len(stats) == 0 {
+		return false, "no samples provided", 0
+	}
+
+	// Check 1: Zero torrents is always suspicious
+	if stats[len(stats)-1].Count == 0 {
+		return false, "no torrents returned - instance not ready", 0
+	}
+
+	// Check 2: Samples must be stable within tolerance and detect batch loading
+	seriesStr, minMax, batchJump := analyzeCountSeries(stats)
+	tolerance := max(minMax.max/1000, SettlingCountToleranceMin) // 0.1% or minimum
+	if minMax.max-minMax.min > tolerance {
+		return false, fmt.Sprintf("torrent count not stable: [%s] (delta %d > tolerance %d)",
+			seriesStr, minMax.max-minMax.min, tolerance), 0
+	}
+	if batchJump > 0 {
+		return false, fmt.Sprintf("torrent count jump of %d detected: [%s] (batch loading)", batchJump, seriesStr), 0
+	}
+
+	// Check 3: Max checking% across ALL samples must be below threshold
+	for _, st := range stats {
+		maxCheckingPct = max(maxCheckingPct, st.CheckingPct)
+	}
+	if maxCheckingPct > MaxCheckingStatePercent {
+		return false, fmt.Sprintf("%.1f%% of torrents in checking state (threshold: %.1f%%)",
+			maxCheckingPct, MaxCheckingStatePercent), maxCheckingPct
+	}
+
+	// Check 4: Sync must be recent
+	if syncAge > MaxSyncAge {
+		return false, fmt.Sprintf("sync data stale (last sync %v ago, threshold %v)",
+			syncAge.Round(time.Second), MaxSyncAge), maxCheckingPct
+	}
+
+	return true, "", maxCheckingPct
+}
+
+// countMinMax holds min/max values from sample analysis.
+type countMinMax struct{ min, max int }
+
+// analyzeCountSeries computes count series string, min/max, and detects batch loading jumps.
+// Returns the series string, min/max values, and first batch jump >= 50 (or 0 if none).
+func analyzeCountSeries(stats []SampleStats) (seriesStr string, minMax countMinMax, batchJump int) {
+	counts := make([]string, len(stats))
+	minMax = countMinMax{min: stats[0].Count, max: stats[0].Count}
+
+	for i, st := range stats {
+		counts[i] = strconv.Itoa(st.Count)
+		minMax.min = min(minMax.min, st.Count)
+		minMax.max = max(minMax.max, st.Count)
+
+		// Detect batch loading (step increase >= 50)
+		if i > 0 && batchJump == 0 {
+			if jump := st.Count - stats[i-1].Count; jump >= 50 {
+				batchJump = jump
+			}
+		}
+	}
+
+	return strings.Join(counts, ", "), minMax, batchJump
+}
+
+// countTorrentStates counts torrents in checking/loading and metaDL states.
+func countTorrentStates(torrents []qbt.Torrent) (checkingCount, metaDlCount int) {
+	for i := range torrents {
+		switch torrents[i].State {
+		case qbt.TorrentStateCheckingResumeData,
+			qbt.TorrentStateCheckingDl,
+			qbt.TorrentStateCheckingUp,
+			qbt.TorrentStateAllocating:
+			checkingCount++
+		case qbt.TorrentStateMetaDl:
+			metaDlCount++
+		default:
+			// Other states don't affect settling check
+		}
+	}
+	return checkingCount, metaDlCount
+}
+
+// calculateStatePercentages computes checking and metaDL percentages.
+func calculateStatePercentages(total, checkingCount, metaDlCount int) (checkingPct, metaDlPct float64) {
+	if total > 0 {
+		checkingPct = float64(checkingCount) / float64(total) * 100
+		metaDlPct = float64(metaDlCount) / float64(total) * 100
+	}
+	return checkingPct, metaDlPct
+}
+
+// checkSettled samples torrent state multiple times to ensure qBit has finished loading.
+// Returns error if context cancelled, otherwise returns settlingResult with final torrent list.
+// Takes client to check sync freshness at the end.
+func (s *Service) checkSettled(ctx context.Context, instanceID int, client healthChecker) (*settlingResult, error) {
+	var stats []SampleStats
+	var finalTorrents []qbt.Torrent
+
+	for i := range SettlingSampleCount {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("settling check canceled: %w", ctx.Err())
+			case <-time.After(SettlingSampleInterval):
+			}
+		}
+
+		torrents, err := s.getAllTorrents(ctx, instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get torrents (sample %d): %w", i+1, err)
+		}
+
+		checkingCount, metaDlCount := countTorrentStates(torrents)
+		checkingPct, metaDlPct := calculateStatePercentages(len(torrents), checkingCount, metaDlCount)
+
+		stats = append(stats, SampleStats{
+			Count:       len(torrents),
+			CheckingPct: checkingPct,
+			MetaDlPct:   metaDlPct,
+		})
+		finalTorrents = torrents
+
+		log.Debug().
+			Int("sample", i+1).
+			Int("count", len(torrents)).
+			Int("checking", checkingCount).
+			Int("metaDl", metaDlCount).
+			Float64("checkingPct", checkingPct).
+			Float64("metaDlPct", metaDlPct).
+			Msg("orphanscan: settling sample")
+	}
+
+	// Use pure function for evaluation
+	settled, reason, maxCheckingPct := EvaluateSettlingSamples(stats, time.Since(client.GetLastSyncUpdate()))
+	return &settlingResult{
+		settled:        settled,
+		reason:         reason,
+		torrents:       finalTorrents,
+		maxCheckingPct: maxCheckingPct,
+	}, nil
+}
+
+// buildFileMapResult contains the file map plus metadata for storage
+type buildFileMapResult struct {
+	fileMap      *TorrentFileMap
+	scanRoots    []string
+	torrentCount int
+}
+
+func (s *Service) buildFileMap(ctx context.Context, instanceID int) (result *buildFileMapResult, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	// Step 1: Get client and verify readiness
+	client, err := s.getClient(ctx, instanceID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get torrents: %w", err)
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+	recoveryTime := client.GetLastRecoveryTime()
+	defer func() {
+		if err != nil {
+			s.clearSettledForRecovery(instanceID, recoveryTime)
+		}
+	}()
+
+	if readinessErr := checkReadinessGates(client); readinessErr != nil {
+		return nil, readinessErr
 	}
 
-	// Build hash→torrent lookup with both original and canonical forms
-	// SyncManager.GetTorrentFilesBatch returns map keyed by canonicalizeHash (lowercase+trimmed)
-	hashToTorrent := make(map[string]qbt.Torrent, len(torrents)*2)
-	hashes := make([]string, 0, len(torrents))
-	for _, t := range torrents {
-		hashes = append(hashes, t.Hash)
-		// Store under both original and canonical to handle either key format
-		hashToTorrent[t.Hash] = t
-		hashToTorrent[canonicalizeHash(t.Hash)] = t
+	var torrents []qbt.Torrent
+	if s.isSettledForRecovery(instanceID, recoveryTime) {
+		torrents, err = s.getAllTorrents(ctx, instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get torrents: %w", err)
+		}
+		if len(torrents) == 0 {
+			return nil, fmt.Errorf("no torrents returned - instance not ready")
+		}
+		log.Debug().
+			Int("torrentCount", len(torrents)).
+			Msg("orphanscan: skipping settling check (already settled)")
+	} else {
+		// Step 2: Run settling check (samples torrent state multiple times)
+		settleResult, settleErr := s.checkSettled(ctx, instanceID, client)
+		if settleErr != nil {
+			return nil, fmt.Errorf("settling check failed: %w", settleErr)
+		}
+		if !settleResult.settled {
+			return nil, fmt.Errorf("instance not settled: %s", settleResult.reason)
+		}
+
+		log.Info().
+			Int("torrentCount", len(settleResult.torrents)).
+			Float64("maxCheckingPct", settleResult.maxCheckingPct).
+			Msg("orphanscan: settling check passed")
+		torrents = settleResult.torrents
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	// Step 3: Fetch and validate file data
+	hashToTorrent, hashes := buildTorrentHashLookup(torrents)
+
+	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
+	filesByHash, err := s.getTorrentFilesBatch(filesCtx, instanceID, hashes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get torrent files: %w", err)
+		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 
+	if err := validateFileCompleteness(torrents, filesByHash); err != nil {
+		return nil, err
+	}
+
+	// Step 4: Build file map from validated data
+	result = buildFileMapFromTorrents(hashToTorrent, filesByHash, len(torrents))
+	s.markSettledForRecovery(instanceID, recoveryTime)
+	return result, nil
+}
+
+// buildTorrentHashLookup creates a hash-to-torrent lookup map and hash list.
+func buildTorrentHashLookup(torrents []qbt.Torrent) (hashToTorrent map[string]qbt.Torrent, hashes []string) {
+	hashToTorrent = make(map[string]qbt.Torrent, len(torrents)*2)
+	hashes = make([]string, 0, len(torrents))
+	for i := range torrents {
+		hashes = append(hashes, torrents[i].Hash)
+		hashToTorrent[torrents[i].Hash] = torrents[i]
+		hashToTorrent[canonicalizeHash(torrents[i].Hash)] = torrents[i]
+	}
+	return hashToTorrent, hashes
+}
+
+// validateFileCompleteness checks that all eligible torrents have file data.
+func validateFileCompleteness(torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) error {
+	var missingFilesCount, eligibleCount int
+	for i := range torrents {
+		if torrents[i].State == qbt.TorrentStateMetaDl {
+			continue // Not eligible - legitimately has no files
+		}
+		eligibleCount++
+		canonHash := canonicalizeHash(torrents[i].Hash)
+		if files, ok := filesByHash[canonHash]; !ok || len(files) == 0 {
+			missingFilesCount++
+		}
+	}
+
+	if missingFilesCount > MaxMissingFilesCount {
+		return fmt.Errorf(
+			"%d eligible torrents returned no files - partial data detected (scheduled scans will retry)",
+			missingFilesCount)
+	}
+
+	log.Info().
+		Int("torrents", len(torrents)).
+		Int("eligible", eligibleCount).
+		Int("missingFiles", missingFilesCount).
+		Msg("orphanscan: file map completeness passed")
+	return nil
+}
+
+// buildFileMapFromTorrents constructs the file map and scan roots from torrent data.
+func buildFileMapFromTorrents(hashToTorrent map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, torrentCount int) *buildFileMapResult {
 	tfm := NewTorrentFileMap()
 	scanRoots := make(map[string]struct{})
 
-	// Iterate the returned map - keys are canonical (lowercase)
 	for hash, files := range filesByHash {
 		t, ok := hashToTorrent[hash]
 		if !ok {
-			continue // Shouldn't happen given double-keying
+			continue
 		}
 		savePath := filepath.Clean(t.SavePath)
 		if !filepath.IsAbs(savePath) {
-			continue // Skip non-absolute paths
+			continue
 		}
 		scanRoots[savePath] = struct{}{}
 
 		for _, f := range files {
-			fullPath := filepath.Join(savePath, f.Name)
-			tfm.Add(normalizePath(fullPath))
+			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
 		}
 	}
 
@@ -863,7 +1277,11 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFil
 		roots = append(roots, r)
 	}
 
-	return tfm, roots, nil
+	return &buildFileMapResult{
+		fileMap:      tfm,
+		scanRoots:    roots,
+		torrentCount: torrentCount,
+	}
 }
 
 // findScanRoot finds the scan root that contains the given path.
