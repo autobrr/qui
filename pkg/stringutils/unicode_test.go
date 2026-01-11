@@ -95,6 +95,11 @@ func TestNormalizeForMatching(t *testing.T) {
 		{"hyphen", "Spider-Man", "spider man"},
 		{"multiple hyphens", "X-Men: Days of Future Past", "x men days of future past"},
 
+		// Ampersand handling
+		{"ampersand", "His & Hers", "his and hers"},
+		{"ampersand no spaces", "Law&Order", "law and order"},
+		{"ampersand with spaces", "Will & Grace", "will and grace"},
+
 		// Combined
 		{"all punctuation", "Bob's Place: Spider-Man", "bobs place spider man"},
 		{"unicode and punctuation", "Shōgun: The Warrior's Way", "shogun the warriors way"},
@@ -200,6 +205,16 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"curly vs straight apostrophe",
 			"It's Always Sunny",
 			"It's Always Sunny",
+		},
+		{
+			"ampersand vs and",
+			"His & Hers S01",
+			"His and Hers S01",
+		},
+		{
+			"ampersand law and order",
+			"Law & Order SVU",
+			"Law and Order SVU",
 		},
 	}
 
