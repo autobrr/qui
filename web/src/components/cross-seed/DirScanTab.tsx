@@ -587,6 +587,9 @@ function SettingsDialog({ open, onOpenChange, settings }: SettingsDialogProps) {
                 }))
               }
             />
+            <p className="text-xs text-muted-foreground">
+              Allows small size differences when comparing files (useful for minor repacks). Keep low for best accuracy.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -604,39 +607,77 @@ function SettingsDialog({ open, onOpenChange, settings }: SettingsDialogProps) {
                 }))
               }
             />
+            <p className="text-xs text-muted-foreground">
+              Only used for partial matches. Requires at least this % of the torrent’s data to already be on disk.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Switch
-              id="allow-partial"
-              checked={form.allowPartial}
-              onCheckedChange={(checked) =>
-                setForm((prev) => ({ ...prev, allowPartial: checked }))
-              }
-            />
-            <Label htmlFor="allow-partial">Allow partial matches</Label>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="allow-partial"
+                checked={form.allowPartial}
+                onCheckedChange={(checked) =>
+                  setForm((prev) => ({ ...prev, allowPartial: checked }))
+                }
+              />
+              <Label htmlFor="allow-partial" className="flex items-center gap-1">
+                Allow partial matches
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Allows adding torrents even when the torrent has extra/missing files compared to what’s on disk. qBittorrent may download missing files into the save path.
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Useful for packs/extras; be careful if scanning your *arr library folders.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Switch
-              id="skip-piece-boundary"
-              checked={form.skipPieceBoundarySafetyCheck}
-              onCheckedChange={(checked) =>
-                setForm((prev) => ({ ...prev, skipPieceBoundarySafetyCheck: checked }))
-              }
-            />
-            <Label htmlFor="skip-piece-boundary">Skip piece boundary safety check</Label>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="skip-piece-boundary"
+                checked={form.skipPieceBoundarySafetyCheck}
+                onCheckedChange={(checked) =>
+                  setForm((prev) => ({ ...prev, skipPieceBoundarySafetyCheck: checked }))
+                }
+              />
+              <Label htmlFor="skip-piece-boundary" className="flex items-center gap-1">
+                Skip piece boundary safety check
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="size-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    When disabled, qui will block partial matches where downloading missing files could overlap pieces that include your already-present content.
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Only relevant for partial matches. Disable (recommended) for extra safety.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Switch
-              id="start-paused"
-              checked={form.startPaused}
-              onCheckedChange={(checked) =>
-                setForm((prev) => ({ ...prev, startPaused: checked }))
-              }
-            />
-            <Label htmlFor="start-paused">Start torrents paused</Label>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="start-paused"
+                checked={form.startPaused}
+                onCheckedChange={(checked) =>
+                  setForm((prev) => ({ ...prev, startPaused: checked }))
+                }
+              />
+              <Label htmlFor="start-paused">Start torrents paused</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Adds Dir Scan matches in a paused state (useful if you want to review before seeding).
+            </p>
           </div>
 
           <div className="space-y-2">
