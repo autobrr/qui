@@ -299,6 +299,10 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 		//nolint:goconst // standard qBittorrent API values
 		options["paused"] = "true"
 		options["stopped"] = "true"
+	} else {
+		// Force start even if the instance default is "add paused".
+		options["paused"] = "false"
+		options["stopped"] = "false"
 	}
 
 	return options
