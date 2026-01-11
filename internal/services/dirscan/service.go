@@ -239,7 +239,7 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 		cancel()
 	}
 
-	if err := s.store.UpdateRunCanceled(ctx, run.ID); err != nil {
+	if err := s.store.UpdateRunCanceled(context.Background(), run.ID); err != nil {
 		return fmt.Errorf("update run canceled: %w", err)
 	}
 	return nil
@@ -335,6 +335,12 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 
 	// If the scan was canceled during search/inject, mark as canceled instead of "completed".
 	if ctx.Err() != nil {
+		// Persist partial progress for observability.
+		filesFound := scanResult.TotalFiles + scanResult.SkippedFiles
+		if err := s.store.UpdateRunStats(context.Background(), runID, filesFound, scanResult.SkippedFiles, matchesFound, torrentsAdded); err != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to persist run stats before cancel")
+		}
+
 		l.Info().Msg("dirscan: scan canceled during search/inject")
 		if err := s.store.UpdateRunCanceled(context.Background(), runID); err != nil {
 			l.Error().Err(err).Msg("dirscan: failed to mark run as canceled")
