@@ -180,8 +180,9 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 		return 0, fmt.Errorf("create run: %w", err)
 	}
 
-	// Create cancellable context for this run
-	runCtx, cancel := context.WithCancel(ctx)
+	// Create cancellable context for this run.
+	// Use Background() as parent so the scan survives after the HTTP request completes.
+	runCtx, cancel := context.WithCancel(context.Background())
 	s.cancelMu.Lock()
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
@@ -309,7 +310,8 @@ func (s *Service) handleCancellation(ctx context.Context, runID int64, l *zerolo
 		return false
 	}
 	l.Info().Msgf("dirscan: scan canceled %s", phase)
-	if err := s.store.UpdateRunCanceled(ctx, runID); err != nil {
+	// Use background context since the run context is canceled
+	if err := s.store.UpdateRunCanceled(context.Background(), runID); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as canceled")
 	}
 	return true
@@ -377,8 +379,9 @@ func (s *Service) runScanPhase(ctx context.Context, path string, runID int64, l 
 }
 
 // markRunFailed marks a run as failed with the given error message.
-func (s *Service) markRunFailed(ctx context.Context, runID int64, errMsg string, l *zerolog.Logger) {
-	if err := s.store.UpdateRunFailed(ctx, runID, errMsg); err != nil {
+// Uses background context to ensure the status update completes even if the run context is canceled.
+func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, l *zerolog.Logger) {
+	if err := s.store.UpdateRunFailed(context.Background(), runID, errMsg); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as failed")
 	}
 }
