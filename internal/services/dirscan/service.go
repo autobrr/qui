@@ -45,6 +45,11 @@ type Service struct {
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
 
+	// Components for search/match/inject
+	parser   *Parser
+	searcher *Searcher
+	injector *Injector
+
 	// Per-directory mutex to prevent overlapping scans.
 	directoryMu map[int]*sync.Mutex
 	mu          sync.Mutex // protects directoryMu map
@@ -74,12 +79,20 @@ func NewService(
 		cfg.MaxJitter = DefaultConfig().MaxJitter
 	}
 
+	// Initialize components
+	parser := NewParser(nil) // nil uses default normalizer
+	searcher := NewSearcher(jackettService, parser)
+	injector := NewInjector(jackettService, syncManager)
+
 	return &Service{
 		cfg:            cfg,
 		store:          store,
 		instanceStore:  instanceStore,
 		syncManager:    syncManager,
 		jackettService: jackettService,
+		parser:         parser,
+		searcher:       searcher,
+		injector:       injector,
 		directoryMu:    make(map[int]*sync.Mutex),
 		cancelFuncs:    make(map[int64]context.CancelFunc),
 	}
@@ -287,20 +300,40 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	// Phase 2: Searching - Search indexers for matches
-	// TODO: Implement - will search Torznab indexers for each searchee
-	_ = scanResult // Used in future phases
+	// Get settings for matching configuration
+	settings, err := s.store.GetSettings(ctx)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get settings")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("get settings: %v", err), &l)
+		return
+	}
+	if settings == nil {
+		settings = &models.DirScanSettings{
+			MatchMode:            models.MatchModeStrict,
+			SizeTolerancePercent: 2.0,
+		}
+	}
 
-	// Phase 3: Injecting - Inject matched torrents
-	// TODO: Implement in Phase 4
+	// Create matcher with settings
+	matchMode := MatchModeStrict
+	if settings.MatchMode == models.MatchModeFlexible {
+		matchMode = MatchModeFlexible
+	}
+	matcher := NewMatcher(matchMode, settings.SizeTolerancePercent)
 
-	// For now, mark as completed with 0 matches
-	if err := s.store.UpdateRunCompleted(ctx, runID, 0, 0); err != nil {
+	// Phase 2 & 3: Search, match, and inject
+	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, scanResult, settings, matcher, runID, &l)
+
+	// Mark run as completed
+	if err := s.store.UpdateRunCompleted(ctx, runID, matchesFound, torrentsAdded); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as completed")
 		return
 	}
 
-	l.Info().Msg("dirscan: scan completed")
+	l.Info().
+		Int("matchesFound", matchesFound).
+		Int("torrentsAdded", torrentsAdded).
+		Msg("dirscan: scan completed")
 }
 
 // handleCancellation checks for context cancellation and updates the run status.
@@ -376,6 +409,223 @@ func (s *Service) runScanPhase(ctx context.Context, path string, runID int64, l 
 		Msg("dirscan: scan phase complete")
 
 	return scanResult, true
+}
+
+// runSearchAndInjectPhase searches indexers for each searchee and injects matches.
+func (s *Service) runSearchAndInjectPhase(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	scanResult *ScanResult,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	runID int64,
+	l *zerolog.Logger,
+) (matchesFound, torrentsAdded int) {
+	// Update status to searching
+	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusSearching); err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to update run status to searching")
+	}
+
+	for _, searchee := range scanResult.Searchees {
+		// Check for cancellation
+		if ctx.Err() != nil {
+			l.Info().Msg("dirscan: search phase canceled")
+			return matchesFound, torrentsAdded
+		}
+
+		match := s.processSearchee(ctx, dir, searchee, settings, matcher, l)
+		if match != nil {
+			matchesFound++
+			if match.injected {
+				torrentsAdded++
+			}
+		}
+	}
+
+	return matchesFound, torrentsAdded
+}
+
+// searcheeMatch holds the result of processing a searchee.
+type searcheeMatch struct {
+	searchee      *Searchee
+	torrentData   []byte
+	parsedTorrent *ParsedTorrent
+	matchResult   *MatchResult
+	injected      bool
+}
+
+// processSearchee searches for and processes a single searchee.
+func (s *Service) processSearchee(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	searchee *Searchee,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	l *zerolog.Logger,
+) *searcheeMatch {
+	searcheeSize := CalculateTotalSize(searchee)
+	minSize, maxSize := CalculateSizeRange(searcheeSize, settings.SizeTolerancePercent)
+
+	l.Debug().
+		Str("name", searchee.Name).
+		Int64("size", searcheeSize).
+		Int("files", len(searchee.Files)).
+		Msg("dirscan: searching for searchee")
+
+	// Search indexers
+	response := s.searchForSearchee(ctx, searchee, l)
+	if response == nil || len(response.Results) == 0 {
+		return nil
+	}
+
+	l.Debug().
+		Str("name", searchee.Name).
+		Int("results", len(response.Results)).
+		Msg("dirscan: got search results")
+
+	// Try to match and inject
+	return s.tryMatchResults(ctx, dir, searchee, response, minSize, maxSize, settings, matcher, l)
+}
+
+// searchForSearchee searches indexers and waits for results.
+func (s *Service) searchForSearchee(
+	ctx context.Context,
+	searchee *Searchee,
+	l *zerolog.Logger,
+) *jackett.SearchResponse {
+	resultsCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+
+	searchReq := &SearchRequest{
+		Searchee: searchee,
+		Limit:    50,
+		OnAllComplete: func(response *jackett.SearchResponse, err error) {
+			if err != nil {
+				errCh <- err
+				return
+			}
+			resultsCh <- response
+		},
+	}
+
+	if err := s.searcher.Search(ctx, searchReq); err != nil {
+		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search failed")
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search error")
+		return nil
+	case response := <-resultsCh:
+		return response
+	}
+}
+
+// tryMatchResults iterates through search results trying to find and inject a match.
+func (s *Service) tryMatchResults(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	searchee *Searchee,
+	response *jackett.SearchResponse,
+	minSize, maxSize int64,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	l *zerolog.Logger,
+) *searcheeMatch {
+	for i := range response.Results {
+		result := &response.Results[i]
+
+		if result.Size < minSize || result.Size > maxSize {
+			continue
+		}
+
+		match := s.tryMatchAndInject(ctx, dir, searchee, result, settings, matcher, l)
+		if match != nil {
+			return match
+		}
+	}
+	return nil
+}
+
+// tryMatchAndInject downloads a torrent, matches files, and injects if successful.
+func (s *Service) tryMatchAndInject(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	searchee *Searchee,
+	result *jackett.SearchResult,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	l *zerolog.Logger,
+) *searcheeMatch {
+	torrentData, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+		IndexerID:   result.IndexerID,
+		DownloadURL: result.DownloadURL,
+		GUID:        result.GUID,
+	})
+	if err != nil {
+		l.Debug().Err(err).Str("title", result.Title).Msg("dirscan: failed to download torrent")
+		return nil
+	}
+
+	parsed, err := ParseTorrentBytes(torrentData)
+	if err != nil {
+		l.Debug().Err(err).Str("title", result.Title).Msg("dirscan: failed to parse torrent")
+		return nil
+	}
+
+	matchResult := matcher.Match(searchee, parsed.Files)
+	if !matchResult.IsMatch {
+		l.Debug().
+			Str("title", result.Title).
+			Float64("matchRatio", matchResult.MatchRatio).
+			Msg("dirscan: no match")
+		return nil
+	}
+
+	l.Info().
+		Str("name", searchee.Name).
+		Str("torrent", parsed.Name).
+		Str("hash", parsed.InfoHash).
+		Float64("matchRatio", matchResult.MatchRatio).
+		Msg("dirscan: found match")
+
+	injectReq := &InjectRequest{
+		InstanceID:     dir.TargetInstanceID,
+		Searchee:       searchee,
+		SearchResult:   result,
+		QbitPathPrefix: dir.QbitPathPrefix,
+		Category:       settings.Category,
+		Tags:           settings.Tags,
+		StartPaused:    settings.StartPaused,
+	}
+
+	injectResult, err := s.injector.Inject(ctx, injectReq)
+	if err != nil {
+		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to inject torrent")
+		return &searcheeMatch{
+			searchee:      searchee,
+			torrentData:   torrentData,
+			parsedTorrent: parsed,
+			matchResult:   matchResult,
+			injected:      false,
+		}
+	}
+
+	l.Info().
+		Str("name", searchee.Name).
+		Bool("success", injectResult.Success).
+		Msg("dirscan: injected torrent")
+
+	return &searcheeMatch{
+		searchee:      searchee,
+		torrentData:   torrentData,
+		parsedTorrent: parsed,
+		matchResult:   matchResult,
+		injected:      injectResult.Success,
+	}
 }
 
 // markRunFailed marks a run as failed with the given error message.

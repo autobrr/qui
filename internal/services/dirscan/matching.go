@@ -4,8 +4,12 @@
 package dirscan
 
 import (
+	"bytes"
+	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 // MatchMode defines how strictly files are compared.
@@ -330,4 +334,62 @@ func CalculateTotalSize(searchee *Searchee) int64 {
 		total += f.Size
 	}
 	return total
+}
+
+// ParsedTorrent holds parsed torrent metadata.
+type ParsedTorrent struct {
+	Name        string
+	InfoHash    string
+	Files       []TorrentFile
+	TotalSize   int64
+	PieceLength int64
+	PieceCount  int
+}
+
+// ParseTorrentBytes parses a .torrent file and extracts file information.
+func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
+	mi, err := metainfo.Load(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("parse torrent: %w", err)
+	}
+
+	info, err := mi.UnmarshalInfo()
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal info: %w", err)
+	}
+
+	parsed := &ParsedTorrent{
+		Name:        info.BestName(),
+		InfoHash:    mi.HashInfoBytes().HexString(),
+		PieceLength: info.PieceLength,
+		PieceCount:  info.NumPieces(),
+	}
+
+	// Build file list with byte offsets
+	var offset int64
+	if len(info.Files) == 0 {
+		// Single-file torrent
+		parsed.Files = []TorrentFile{{
+			Path:   info.BestName(),
+			Size:   info.Length,
+			Offset: 0,
+		}}
+		parsed.TotalSize = info.Length
+	} else {
+		// Multi-file torrent
+		parsed.Files = make([]TorrentFile, 0, len(info.Files))
+		for i := range info.Files {
+			f := &info.Files[i]
+			tf := TorrentFile{
+				Path:   filepath.Join(f.BestPath()...),
+				Size:   f.Length,
+				Offset: offset,
+			}
+			parsed.Files = append(parsed.Files, tf)
+			offset += f.Length
+		}
+		parsed.TotalSize = offset
+	}
+
+	return parsed, nil
 }
