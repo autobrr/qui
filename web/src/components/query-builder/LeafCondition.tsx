@@ -326,6 +326,41 @@ export function LeafCondition({
 
   const betweenBytesDisplay = (fieldType === "bytes" && condition.operator === "BETWEEN") ? getBetweenBytesDisplay() : null;
 
+  // Percentage handling - stored as 0-1, displayed as 0-100
+  const getPercentageDisplay = (): string => {
+    if (condition.value == null || condition.value === "") {
+      return "";
+    }
+    const stored = parseFloat(condition.value) || 0;
+    return formatNumericInput(stored * 100, 2);
+  };
+
+  const handlePercentageChange = (displayValue: string) => {
+    if (displayValue === "") {
+      onChange({ ...condition, value: "" });
+    } else {
+      const percent = parseFloat(displayValue) || 0;
+      const stored = percent / 100;
+      onChange({ ...condition, value: String(stored) });
+    }
+  };
+
+  // BETWEEN percentage display - convert 0-1 to 0-100 for display
+  const getBetweenPercentageDisplay = (): { minValue: string; maxValue: string } => {
+    return {
+      minValue: condition.minValue === undefined ? "" : formatNumericInput(condition.minValue * 100, 2),
+      maxValue: condition.maxValue === undefined ? "" : formatNumericInput(condition.maxValue * 100, 2),
+    };
+  };
+
+  const handleBetweenPercentageChange = (minVal: string, maxVal: string) => {
+    const minNum = minVal === "" ? undefined : (parseFloat(minVal) || 0) / 100;
+    const maxNum = maxVal === "" ? undefined : (parseFloat(maxVal) || 0) / 100;
+    onChange({ ...condition, minValue: minNum, maxValue: maxNum });
+  };
+
+  const betweenPercentageDisplay = (fieldType === "percentage" && condition.operator === "BETWEEN") ? getBetweenPercentageDisplay() : null;
+
   return (
     <div
       ref={setNodeRef}
@@ -454,6 +489,25 @@ export function LeafCondition({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      ) : condition.operator === "BETWEEN" && fieldType === "percentage" && betweenPercentageDisplay ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={betweenPercentageDisplay.minValue}
+            onChange={(e) => handleBetweenPercentageChange(e.target.value, betweenPercentageDisplay.maxValue)}
+            placeholder="Min"
+          />
+          <span className="text-muted-foreground">-</span>
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={betweenPercentageDisplay.maxValue}
+            onChange={(e) => handleBetweenPercentageChange(betweenPercentageDisplay.minValue, e.target.value)}
+            placeholder="Max"
+          />
+          <span className="text-sm text-muted-foreground">%</span>
         </div>
       ) : condition.operator === "BETWEEN" ? (
         <div className="flex items-center gap-1">
@@ -584,6 +638,17 @@ export function LeafCondition({
             </SelectContent>
           </Select>
         </div>
+      ) : fieldType === "percentage" ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={getPercentageDisplay()}
+            onChange={(e) => handlePercentageChange(e.target.value)}
+            placeholder="0-100"
+          />
+          <span className="text-sm text-muted-foreground">%</span>
+        </div>
       ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
         // Category selector for category-related conditions when categories available
         <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
@@ -656,7 +721,7 @@ export function LeafCondition({
 }
 
 function isNumericType(type: string): boolean {
-  return ["bytes", "duration", "float", "speed", "integer"].includes(type);
+  return ["bytes", "duration", "float", "percentage", "speed", "integer"].includes(type);
 }
 
 function getPlaceholder(type: string): string {
@@ -667,6 +732,8 @@ function getPlaceholder(type: string): string {
       return "Seconds";
     case "float":
       return "0.0";
+    case "percentage":
+      return "0-100";
     case "speed":
       return "Bytes/s";
     case "integer":
