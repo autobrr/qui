@@ -57,6 +57,7 @@ Each scan directory has its own configuration:
 - **Directory Path**: the path qui scans (recursively).
 - **qBittorrent Path Prefix**: optional path mapping for container setups (when qui and qBittorrent see different root paths).
 - **Target qBittorrent Instance**: where matched torrents are added.
+- **Category override**: optional. If set, overrides the global **Default Category** for torrents injected from this scan directory.
 - **Scan Interval (minutes)**: how often to rescan the directory (minimum 60 minutes).
 - **Enabled**: enable/disable the directory without deleting it.
 

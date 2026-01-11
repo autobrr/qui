@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { MultiSelect } from "@/components/ui/multi-select"
 import {
   Select,
   SelectContent,
@@ -67,7 +68,10 @@ import {
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { api } from "@/lib/api"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import {
   useCancelDirScan,
   useCreateDirScanDirectory,
@@ -88,6 +92,7 @@ import type {
   DirScanRunStatus,
   Instance
 } from "@/types"
+import { useQueries } from "@tanstack/react-query"
 
 interface DirScanTabProps {
   instances: Instance[]
@@ -265,6 +270,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         open={showSettingsDialog}
         onOpenChange={setShowSettingsDialog}
         settings={settings}
+        instances={directoryWithLocalFs}
       />
 
       {/* Directory Dialog */}
@@ -352,6 +358,7 @@ function DirectoryCard({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>Target: {targetInstance?.name ?? "Unknown"}</span>
             <span>Interval: {directory.scanIntervalMinutes}m</span>
+            {directory.category && <span>Category: {directory.category}</span>}
             {directory.lastScanAt && (
               <span>Last scan: {formatRelativeTime(directory.lastScanAt)}</span>
             )}
@@ -513,9 +520,10 @@ interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   settings: ReturnType<typeof useDirScanSettings>["data"]
+  instances: Instance[]
 }
 
-function SettingsDialog({ open, onOpenChange, settings }: SettingsDialogProps) {
+function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDialogProps) {
   const updateSettings = useUpdateDirScanSettings()
   const [form, setForm] = useState({
     matchMode: settings?.matchMode ?? "strict" as DirScanMatchMode,
@@ -527,6 +535,79 @@ function SettingsDialog({ open, onOpenChange, settings }: SettingsDialogProps) {
     category: settings?.category ?? "",
     tags: settings?.tags ?? [],
   })
+
+  const instanceIds = useMemo(
+    () => Array.from(new Set(instances.map((i) => i.id).filter((id) => id > 0))),
+    [instances]
+  )
+
+  const metadataQueries = useQueries({
+    queries: instanceIds.map((instanceId) => ({
+      queryKey: ["instance-metadata", instanceId],
+      queryFn: async () => {
+        const [categories, tags, preferences] = await Promise.all([
+          api.getCategories(instanceId),
+          api.getTags(instanceId),
+          api.getInstancePreferences(instanceId),
+        ])
+        return { categories, tags, preferences }
+      },
+      staleTime: 60_000,
+      gcTime: 1_800_000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+      placeholderData: (previousData: unknown) => previousData,
+      enabled: open,
+    })),
+  })
+
+  const aggregatedMetadata = useMemo(() => {
+    const categories: Record<string, { name: string; savePath: string }> = {}
+    const tags = new Set<string>()
+
+    for (const q of metadataQueries) {
+      const data = q.data as undefined | { categories: Record<string, { name: string; savePath: string }>; tags: string[] }
+      if (!data) continue
+      for (const [name, cat] of Object.entries(data.categories ?? {})) {
+        categories[name] = cat
+      }
+      for (const tag of data.tags ?? []) {
+        tags.add(tag)
+      }
+    }
+
+    return { categories, tags: Array.from(tags) }
+  }, [metadataQueries])
+
+  const categorySelectOptions = useMemo(() => {
+    const selected = form.category ? [form.category] : []
+    return buildCategorySelectOptions(aggregatedMetadata.categories, selected)
+  }, [aggregatedMetadata.categories, form.category])
+
+  const tagSelectOptions = useMemo(
+    () => buildTagSelectOptions(aggregatedMetadata.tags, form.tags),
+    [aggregatedMetadata.tags, form.tags]
+  )
+
+  const defaultCategoryPlaceholder = useMemo(() => {
+    if (instanceIds.length === 0) {
+      return "No qBittorrent instances with local access"
+    }
+    if (categorySelectOptions.length === 0) {
+      return "Type to add a category"
+    }
+    return "No category"
+  }, [instanceIds.length, categorySelectOptions.length])
+
+  const tagPlaceholder = useMemo(() => {
+    if (instanceIds.length === 0) {
+      return "No qBittorrent instances with local access"
+    }
+    if (tagSelectOptions.length === 0) {
+      return "Type to add tags"
+    }
+    return "No tags"
+  }, [instanceIds.length, tagSelectOptions.length])
 
   const handleSave = useCallback(() => {
     updateSettings.mutate(form, {
@@ -682,14 +763,33 @@ function SettingsDialog({ open, onOpenChange, settings }: SettingsDialogProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category">Default Category</Label>
-            <Input
-              id="category"
-              placeholder="Leave empty for no category"
-              value={form.category}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, category: e.target.value }))
+            <Label>Default Category</Label>
+            <MultiSelect
+              options={categorySelectOptions}
+              selected={form.category ? [form.category] : []}
+              onChange={(values) =>
+                setForm((prev) => ({ ...prev, category: values.at(-1) ?? "" }))
               }
+              placeholder={defaultCategoryPlaceholder}
+              creatable
+              disabled={updateSettings.isPending}
+            />
+            <p className="text-xs text-muted-foreground">
+              Category for injected torrents when the scan directory doesn’t override it.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Tags</Label>
+            <MultiSelect
+              options={tagSelectOptions}
+              selected={form.tags}
+              onChange={(values) =>
+                setForm((prev) => ({ ...prev, tags: values }))
+              }
+              placeholder={tagPlaceholder}
+              creatable
+              disabled={updateSettings.isPending}
             />
           </div>
         </div>
@@ -726,10 +826,18 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
   const [form, setForm] = useState<DirScanDirectoryCreate>(() => ({
     path: directory?.path ?? "",
     qbitPathPrefix: directory?.qbitPathPrefix ?? "",
+    category: directory?.category ?? "",
     enabled: directory?.enabled ?? true,
     targetInstanceId: directory?.targetInstanceId ?? defaultTargetInstanceId,
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
   }))
+
+  const { data: targetInstanceMetadata, isError: targetInstanceMetadataError } = useInstanceMetadata(form.targetInstanceId)
+
+  const directoryCategoryOptions = useMemo(() => {
+    const selected = form.category ? [form.category] : []
+    return buildCategorySelectOptions(targetInstanceMetadata?.categories ?? {}, selected)
+  }, [targetInstanceMetadata?.categories, form.category])
 
   // Reset form when directory or dialog state changes
   useEffect(() => {
@@ -738,6 +846,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
       setForm({
         path: directory.path,
         qbitPathPrefix: directory.qbitPathPrefix ?? "",
+        category: directory.category ?? "",
         enabled: directory.enabled,
         targetInstanceId: directory.targetInstanceId,
         scanIntervalMinutes: directory.scanIntervalMinutes,
@@ -746,6 +855,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
       setForm({
         path: "",
         qbitPathPrefix: "",
+        category: "",
         enabled: true,
         targetInstanceId: defaultTargetInstanceId,
         scanIntervalMinutes: 1440,
@@ -842,6 +952,30 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Category Override</Label>
+            <MultiSelect
+              options={directoryCategoryOptions}
+              selected={form.category ? [form.category] : []}
+              onChange={(values) =>
+                setForm((prev) => ({ ...prev, category: values.at(-1) ?? "" }))
+              }
+              placeholder={
+                directoryCategoryOptions.length ? "Use global default category" : "Type to add a category"
+              }
+              creatable
+              disabled={isPending}
+            />
+            {targetInstanceMetadataError && (
+              <p className="text-xs text-muted-foreground">
+                Could not load categories from qBittorrent. You can still type a custom value.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Optional. When set, overrides the global default category for this directory.
+            </p>
           </div>
 
           <div className="space-y-2">

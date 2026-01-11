@@ -133,6 +133,7 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 type DirScanDirectoryPayload struct {
 	Path                *string `json:"path"`
 	QbitPathPrefix      *string `json:"qbitPathPrefix"`
+	Category            *string `json:"category"`
 	Enabled             *bool   `json:"enabled"`
 	ArrInstanceID       *int    `json:"arrInstanceId"`
 	TargetInstanceID    *int    `json:"targetInstanceId"`
@@ -200,6 +201,9 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 	if payload.QbitPathPrefix != nil {
 		dir.QbitPathPrefix = *payload.QbitPathPrefix
 	}
+	if payload.Category != nil {
+		dir.Category = *payload.Category
+	}
 	if payload.Enabled != nil {
 		dir.Enabled = *payload.Enabled
 	}
@@ -266,6 +270,7 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	params := &models.DirScanDirectoryUpdateParams{
 		Path:                payload.Path,
 		QbitPathPrefix:      payload.QbitPathPrefix,
+		Category:            payload.Category,
 		Enabled:             payload.Enabled,
 		ArrInstanceID:       payload.ArrInstanceID,
 		TargetInstanceID:    payload.TargetInstanceID,

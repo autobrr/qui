@@ -333,8 +333,17 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	// Phase 2 & 3: Search, match, and inject
 	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, scanResult, fileIDIndex, settings, matcher, runID, &l)
 
+	// If the scan was canceled during search/inject, mark as canceled instead of "completed".
+	if ctx.Err() != nil {
+		l.Info().Msg("dirscan: scan canceled during search/inject")
+		if err := s.store.UpdateRunCanceled(context.Background(), runID); err != nil {
+			l.Error().Err(err).Msg("dirscan: failed to mark run as canceled")
+		}
+		return
+	}
+
 	// Mark run as completed
-	if err := s.store.UpdateRunCompleted(ctx, runID, matchesFound, torrentsAdded); err != nil {
+	if err := s.store.UpdateRunCompleted(context.Background(), runID, matchesFound, torrentsAdded); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as completed")
 		return
 	}
@@ -744,6 +753,11 @@ func (s *Service) tryMatchAndInject(
 
 	l.Info().Str("name", searchee.Name).Str("torrent", parsed.Name).Str("hash", parsed.InfoHash).Msg("dirscan: found match")
 
+	category := settings.Category
+	if dir.Category != "" {
+		category = dir.Category
+	}
+
 	injectReq := &InjectRequest{
 		InstanceID:     dir.TargetInstanceID,
 		TorrentBytes:   torrentData,
@@ -752,7 +766,7 @@ func (s *Service) tryMatchAndInject(
 		MatchResult:    matchResult,
 		SearchResult:   result,
 		QbitPathPrefix: dir.QbitPathPrefix,
-		Category:       settings.Category,
+		Category:       category,
 		Tags:           settings.Tags,
 		StartPaused:    settings.StartPaused,
 	}
