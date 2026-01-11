@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -27,6 +28,20 @@ type categoryEntry struct {
 	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
 }
 
+// FreeSpaceSourceState tracks free space projection state for a single source.
+// Each source (qBittorrent or path) has its own state to correctly handle
+// workflows that target different disks.
+type FreeSpaceSourceState struct {
+	// FreeSpace is the base free space in bytes from this source.
+	FreeSpace int64
+	// SpaceToClear is the cumulative disk space that will be freed by deletions.
+	SpaceToClear int64
+	// FilesToClear tracks cross-seed keys already counted to avoid double-counting.
+	FilesToClear map[crossSeedKey]struct{}
+	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
+	HardlinkSignaturesToClear map[string]struct{}
+}
+
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
@@ -37,18 +52,24 @@ type EvalContext struct {
 	HardlinkScopeByHash map[string]string
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
-	// FreeSpace is the free space on the instance's filesystem
+	// FreeSpace is the free space on the instance's filesystem (current active source)
 	FreeSpace int64
-	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition
+	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
 	SpaceToClear int64
-	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds
+	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
 	FilesToClear map[crossSeedKey]struct{}
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
 	// Only populated when includeHardlinks is enabled for FREE_SPACE rules.
 	HardlinkSignatureByHash map[string]string
-	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection.
+	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection (current active source).
 	// Torrents with the same signature share physical files and should only be counted once.
 	HardlinkSignaturesToClear map[string]struct{}
+	// FreeSpaceStates maps rule keys to their projection state.
+	// Rule keys are "sourceKey|rule:<id>" where sourceKey is "qbt" or "path:/some/path".
+	// Each rule gets its own state to prevent interference between rules with different thresholds.
+	FreeSpaceStates map[string]*FreeSpaceSourceState
+	// ActiveFreeSpaceSource is the rule key currently loaded into the top-level fields.
+	ActiveFreeSpaceSource string
 
 	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
@@ -983,4 +1004,60 @@ func splitTags(raw string) []string {
 		}
 	}
 	return result
+}
+
+// LoadFreeSpaceSourceState loads the projection state for the given source key into evalCtx.
+// If the source key differs from the currently active source, the current state is persisted
+// to FreeSpaceStates before loading the new source.
+// Does nothing if sourceKey is empty or FreeSpaceStates is nil.
+func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
+	if ctx == nil || sourceKey == "" || ctx.FreeSpaceStates == nil {
+		return
+	}
+
+	// Already loaded
+	if ctx.ActiveFreeSpaceSource == sourceKey {
+		return
+	}
+
+	// Persist current state before switching
+	if ctx.ActiveFreeSpaceSource != "" {
+		ctx.PersistFreeSpaceSourceState()
+	}
+
+	// Load new source state
+	state, ok := ctx.FreeSpaceStates[sourceKey]
+	if !ok || state == nil {
+		// Source not found - set FreeSpace to MaxInt64 so FREE_SPACE conditions won't match.
+		// Using 0 would cause "< threshold" comparisons to always trigger, which is dangerous.
+		ctx.FreeSpace = math.MaxInt64
+		ctx.SpaceToClear = 0
+		ctx.FilesToClear = nil
+		ctx.HardlinkSignaturesToClear = nil
+		ctx.ActiveFreeSpaceSource = ""
+		return
+	}
+
+	ctx.FreeSpace = state.FreeSpace
+	ctx.SpaceToClear = state.SpaceToClear
+	ctx.FilesToClear = state.FilesToClear
+	ctx.HardlinkSignaturesToClear = state.HardlinkSignaturesToClear
+	ctx.ActiveFreeSpaceSource = sourceKey
+}
+
+// PersistFreeSpaceSourceState persists the current projection state back to FreeSpaceStates.
+// Does nothing if no source is currently active.
+func (ctx *EvalContext) PersistFreeSpaceSourceState() {
+	if ctx == nil || ctx.ActiveFreeSpaceSource == "" || ctx.FreeSpaceStates == nil {
+		return
+	}
+
+	state := ctx.FreeSpaceStates[ctx.ActiveFreeSpaceSource]
+	if state == nil {
+		return
+	}
+
+	state.SpaceToClear = ctx.SpaceToClear
+	state.FilesToClear = ctx.FilesToClear
+	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }

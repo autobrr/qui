@@ -289,6 +289,12 @@ export interface ActionConditions {
   category?: CategoryAction
 }
 
+export type FreeSpaceSource =
+  | { type: "qbittorrent" }
+  | { type: "path"; path: string }
+
+export type FreeSpaceSourceType = FreeSpaceSource["type"]
+
 export interface Automation {
   id: number
   instanceId: number
@@ -296,6 +302,7 @@ export interface Automation {
   trackerPattern: string
   trackerDomains?: string[]
   conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
   enabled: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
@@ -308,6 +315,7 @@ export interface AutomationInput {
   trackerPattern?: string
   trackerDomains?: string[]
   conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
   enabled?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
@@ -424,6 +432,7 @@ export interface InstanceCapabilities {
   supportsSubcategories: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
+  supportsFreeSpacePathSource: boolean
   webAPIVersion?: string
 }
 

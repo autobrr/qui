@@ -152,6 +152,7 @@ export function OrphanScanPreviewDialog({
                   <th className="text-left p-2 font-medium bg-muted">Path</th>
                   <th className="text-right p-2 font-medium bg-muted">Size</th>
                   <th className="text-right p-2 font-medium bg-muted">Modified</th>
+                  <th className="text-left p-2 font-medium bg-muted">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,11 +167,21 @@ export function OrphanScanPreviewDialog({
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                       {f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "-"}
                     </td>
+                    <td className="p-2">
+                      <div className="text-xs font-mono text-muted-foreground">
+                        {f.status}
+                        {f.errorMessage ? (
+                          <div className="mt-1 text-[11px] text-muted-foreground/80 whitespace-pre-wrap break-all">
+                            {f.errorMessage}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {runQuery.isLoading && files.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
                       Loading…
                     </td>
@@ -178,7 +189,7 @@ export function OrphanScanPreviewDialog({
                 )}
                 {!runQuery.isLoading && files.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
                       No files to display.
                     </td>
                   </tr>
