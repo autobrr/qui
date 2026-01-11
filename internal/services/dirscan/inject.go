@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/models"
@@ -19,14 +20,16 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/reflinktree"
+	"github.com/rs/zerolog/log"
 )
 
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
-	jackettService JackettDownloader
-	syncManager    TorrentAdder
-	torrentChecker TorrentChecker
-	instanceStore  InstanceProvider
+	jackettService            JackettDownloader
+	syncManager               TorrentAdder
+	torrentChecker            TorrentChecker
+	instanceStore             InstanceProvider
+	trackerCustomizationStore trackerCustomizationProvider
 }
 
 // JackettDownloader is the interface for downloading torrent files.
@@ -48,18 +51,24 @@ type InstanceProvider interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
+type trackerCustomizationProvider interface {
+	List(ctx context.Context) ([]*models.TrackerCustomization, error)
+}
+
 // NewInjector creates a new injector.
 func NewInjector(
 	jackettService JackettDownloader,
 	syncManager TorrentAdder,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
+	trackerCustomizationStore trackerCustomizationProvider,
 ) *Injector {
 	return &Injector{
-		jackettService: jackettService,
-		syncManager:    syncManager,
-		torrentChecker: torrentChecker,
-		instanceStore:  instanceStore,
+		jackettService:            jackettService,
+		syncManager:               syncManager,
+		torrentChecker:            torrentChecker,
+		instanceStore:             instanceStore,
+		trackerCustomizationStore: trackerCustomizationStore,
 	}
 }
 
@@ -168,6 +177,21 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		savePath, addMode, err = i.materializeLinkTree(ctx, instance, req)
 		if err != nil {
 			if instance.FallbackToRegularMode {
+				linkMode := "hardlink"
+				if instance.UseReflinks {
+					linkMode = "reflink"
+				}
+				fallbackReason := "link-tree creation failed"
+				if errors.Is(err, syscall.EXDEV) {
+					fallbackReason = "invalid cross-device link"
+				}
+				log.Warn().
+					Err(err).
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Str("linkMode", linkMode).
+					Str("reason", fallbackReason).
+					Msg("dirscan: falling back to regular mode")
 				savePath = i.calculateSavePath(req)
 				addMode = "regular"
 			} else {
@@ -281,7 +305,12 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 
 	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
 	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
-	destDir := buildLinkDestDir(instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, incomingTrackerDomain)
+	indexerName := ""
+	if req.SearchResult != nil {
+		indexerName = req.SearchResult.Indexer
+	}
+	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName)
+	destDir := buildLinkDestDir(instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
 
 	if err := os.MkdirAll(instance.HardlinkBaseDir, 0o755); err != nil {
 		return "", "", fmt.Errorf("create hardlink base dir: %w", err)
@@ -332,7 +361,17 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 	return "", "", errors.New("no link mode enabled")
 }
 
-func buildLinkDestDir(instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, incomingTrackerDomain string) string {
+func (i *Injector) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain string, indexerName string) string {
+	var customizations []*models.TrackerCustomization
+	if i.trackerCustomizationStore != nil {
+		if customs, err := i.trackerCustomizationStore.List(ctx); err == nil {
+			customizations = customs
+		}
+	}
+	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
+}
+
+func buildLinkDestDir(instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, trackerDisplayName string) string {
 	baseDir := instance.HardlinkBaseDir
 
 	isolationFolder := ""
@@ -342,9 +381,9 @@ func buildLinkDestDir(instance *models.Instance, torrentHash, torrentName string
 
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
-		display := incomingTrackerDomain
+		display := trackerDisplayName
 		if display == "" {
-			display = "unknown-tracker"
+			display = "Unknown"
 		}
 		if isolationFolder != "" {
 			return filepath.Join(baseDir, pathutil.SanitizePathSegment(display), isolationFolder)

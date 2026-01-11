@@ -78,6 +78,7 @@ func NewService(
 	syncManager *qbittorrent.SyncManager,
 	jackettService *jackett.Service,
 	arrService *arr.Service, // optional, for external ID lookup
+	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -89,7 +90,7 @@ func NewService(
 	// Initialize components
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
-	injector := NewInjector(jackettService, syncManager, syncManager, instanceStore)
+	injector := NewInjector(jackettService, syncManager, syncManager, instanceStore, trackerCustomizationStore)
 
 	return &Service{
 		cfg:            cfg,
