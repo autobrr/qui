@@ -122,6 +122,11 @@ func (s *Scanner) processDirEntry(ctx context.Context, entry fs.DirEntry, entryP
 		return
 	}
 
+	if alreadySeeding, _ := s.CheckAlreadySeeding(searchee); alreadySeeding {
+		result.SkippedFiles += len(searchee.Files)
+		return
+	}
+
 	result.Searchees = append(result.Searchees, searchee)
 	for _, f := range searchee.Files {
 		result.TotalFiles++
@@ -133,6 +138,11 @@ func (s *Scanner) processDirEntry(ctx context.Context, entry fs.DirEntry, entryP
 func (s *Scanner) processFileEntry(entryPath string, result *ScanResult) {
 	searchee, err := s.scanSingleFile(entryPath)
 	if err != nil || searchee == nil {
+		return
+	}
+
+	if alreadySeeding, _ := s.CheckAlreadySeeding(searchee); alreadySeeding {
+		result.SkippedFiles++
 		return
 	}
 

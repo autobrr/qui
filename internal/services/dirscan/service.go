@@ -298,7 +298,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	l.Info().Str("path", dir.Path).Msg("dirscan: starting scan")
 
 	// Phase 1: Scanning - Walk directory and collect files
-	scanResult, ok := s.runScanPhase(ctx, dir.Path, runID, &l)
+	scanResult, ok := s.runScanPhase(ctx, dir, runID, &l)
 	if !ok {
 		return
 	}
@@ -387,13 +387,20 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 
 // runScanPhase executes the directory scanning phase.
 // Returns the scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, path string, runID int64, l *zerolog.Logger) (*ScanResult, bool) {
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, runID int64, l *zerolog.Logger) (*ScanResult, bool) {
 	scanner := NewScanner()
 
-	// TODO: Build FileID index from qBittorrent torrents for already-seeding detection
-	// This will be implemented when we have the SyncManager integration
+	// Build FileID index from qBittorrent torrents for already-seeding detection.
+	// This is best-effort; if it fails, scanning continues without seeding skips.
+	if s.syncManager != nil {
+		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, l); err != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
+		} else if len(index) > 0 {
+			scanner.SetFileIDIndex(index)
+		}
+	}
 
-	scanResult, err := scanner.ScanDirectory(ctx, path)
+	scanResult, err := scanner.ScanDirectory(ctx, dir.Path)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to scan directory")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), l)
@@ -627,12 +634,48 @@ func (s *Service) tryMatchResults(
 			continue
 		}
 
+		if exists, ok := s.searchResultAlreadyExists(ctx, dir.TargetInstanceID, result, l); ok && exists {
+			continue
+		}
+
 		match := s.tryMatchAndInject(ctx, dir, searchee, result, settings, matcher, l)
 		if match != nil {
 			return match
 		}
 	}
 	return nil
+}
+
+func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int, result *jackett.SearchResult, l *zerolog.Logger) (exists bool, checked bool) {
+	if s == nil || s.injector == nil || result == nil {
+		return false, false
+	}
+
+	var hashes []string
+	if result.InfoHashV1 != "" {
+		hashes = append(hashes, result.InfoHashV1)
+	}
+	if result.InfoHashV2 != "" {
+		hashes = append(hashes, result.InfoHashV2)
+	}
+	if len(hashes) == 0 {
+		return false, false
+	}
+
+	exists, err := s.injector.TorrentExistsAny(ctx, instanceID, hashes)
+	if err != nil {
+		if l != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to check torrent exists from search result hashes")
+		}
+		return false, true
+	}
+	if exists && l != nil {
+		l.Debug().
+			Str("title", result.Title).
+			Strs("hashes", hashes).
+			Msg("dirscan: search result already in qBittorrent")
+	}
+	return exists, true
 }
 
 // tryMatchAndInject downloads a torrent, matches files, and injects if successful.

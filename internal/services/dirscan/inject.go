@@ -75,6 +75,20 @@ func (i *Injector) TorrentExists(ctx context.Context, instanceID int, hash strin
 	return exists, nil
 }
 
+func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes []string) (bool, error) {
+	if i.torrentChecker == nil {
+		return false, nil
+	}
+	if len(hashes) == 0 {
+		return false, nil
+	}
+	_, exists, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	if err != nil {
+		return false, fmt.Errorf("check torrent exists: %w", err)
+	}
+	return exists, nil
+}
+
 // InjectRequest contains parameters for injecting a torrent.
 type InjectRequest struct {
 	// InstanceID is the target qBittorrent instance.

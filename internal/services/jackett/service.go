@@ -1804,14 +1804,14 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 
-	s.applyProwlarrWorkaround(idx, paramsMap)
-
 	var searchFn func() ([]Result, error)
 	switch idx.Backend {
 	case models.TorznabBackendNative:
 		if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
+
+		// Note: the prowlarr workaround only applies to the prowlarr backend.
 
 		if opts.logSearchActivity {
 			log.Debug().
@@ -1839,6 +1839,10 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
+
+		// Apply the year->query workaround after capability processing so that
+		// ID-driven searches which lose IDs can still restore the original query.
+		s.applyProwlarrWorkaround(idx, paramsMap)
 
 		if opts.logSearchActivity {
 			log.Debug().
