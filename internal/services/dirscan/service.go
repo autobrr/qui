@@ -9,16 +9,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/moistari/rls"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -473,7 +476,34 @@ func (s *Service) processSearchee(
 
 	// Parse metadata and determine content type
 	meta := s.parser.Parse(searchee.Name)
+
+	// Prefer the largest video file name for content detection (mirrors cross-seed's "largest file" heuristic).
+	arrLookupName := searchee.Name
+	if contentFile := selectLargestVideoFile(searchee.Files); contentFile != nil {
+		base := filepath.Base(contentFile.Path)
+		name := strings.TrimSuffix(base, filepath.Ext(base))
+		if name != "" {
+			arrLookupName = name
+			fileMeta := s.parser.Parse(name)
+			if shouldPreferFileMetadata(meta, fileMeta) {
+				applyFileMetadata(meta, fileMeta)
+			}
+		}
+	}
+
 	contentInfo := crossseed.DetermineContentType(meta.Release)
+	if contentInfo.IsMusic && hasAnyVideoFile(searchee.Files) && meta.Release != nil {
+		forced := *meta.Release
+		if forced.Series > 0 || forced.Episode > 0 {
+			forced.Type = rls.Episode
+		} else {
+			forced.Type = rls.Movie
+		}
+		contentInfo = crossseed.DetermineContentType(&forced)
+		meta.IsMusic = false
+		meta.IsTV = contentInfo.ContentType == "tv"
+		meta.IsMovie = contentInfo.ContentType == "movie"
+	}
 
 	l.Debug().
 		Str("name", searchee.Name).
@@ -497,7 +527,7 @@ func (s *Service) processSearchee(
 	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
-	s.lookupExternalIDs(ctx, meta, contentInfo.ContentType, searchee.Name, l)
+	s.lookupExternalIDs(ctx, meta, contentInfo.ContentType, arrLookupName, l)
 
 	// Search indexers
 	response := s.searchForSearchee(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, l)
