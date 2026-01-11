@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -53,6 +54,7 @@ type scanWalker struct {
 	discUnitsInUse map[string]struct{}
 	discUnitCache  map[string]discUnitDecision
 	discUnitPaths  map[string]struct{}
+	seenInodes     map[inodeKey]struct{}
 	truncated      bool
 }
 
@@ -73,7 +75,33 @@ func newScanWalker(
 		discUnitsInUse: make(map[string]struct{}),
 		discUnitCache:  make(map[string]discUnitDecision),
 		discUnitPaths:  make(map[string]struct{}),
+		seenInodes:     make(map[inodeKey]struct{}),
 	}
+}
+
+type inodeKey struct {
+	dev uint64
+	ino uint64
+}
+
+func inodeKeyFromInfo(info fs.FileInfo) (inodeKey, uint64, bool) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return inodeKey{}, 0, false
+	}
+	return inodeKey{dev: uint64(stat.Dev), ino: uint64(stat.Ino)}, uint64(stat.Nlink), true
+}
+
+func (w *scanWalker) shouldSkipDuplicate(info fs.FileInfo) bool {
+	key, nlink, ok := inodeKeyFromInfo(info)
+	if !ok || nlink > 1 {
+		return false
+	}
+	if _, exists := w.seenInodes[key]; exists {
+		return true
+	}
+	w.seenInodes[key] = struct{}{}
+	return false
 }
 
 func (w *scanWalker) walk(path string, d fs.DirEntry, walkErr error) error {
@@ -139,6 +167,9 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 		return nil //nolint:nilerr // best-effort scan: ignore stat failures
 	}
 	if time.Since(info.ModTime()) < w.gracePeriod {
+		return nil
+	}
+	if w.shouldSkipDuplicate(info) {
 		return nil
 	}
 	if isDiscUnit {
