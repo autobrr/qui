@@ -420,14 +420,15 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   }
 
   const config = statusConfig[run.status]
+  const hasStats = run.filesFound > 0 || run.matchesFound > 0 || run.torrentsAdded > 0
 
   return (
     <div className={`flex items-center gap-1.5 text-xs ${config.color}`}>
       {config.icon}
       <span>{config.label}</span>
-      {isRunActive(run) && (
+      {hasStats && (
         <span className="text-muted-foreground">
-          ({run.filesFound} files, {run.matchesFound} matches)
+          ({run.filesFound} files, {run.matchesFound} matches, {run.torrentsAdded} added)
         </span>
       )}
     </div>
