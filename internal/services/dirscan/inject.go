@@ -229,8 +229,23 @@ func (i *Injector) calculateSavePath(req *InjectRequest) string {
 	// Start with the provided save path or derive from searchee
 	savePath := req.SavePath
 	if savePath == "" {
-		// Use the parent directory of the searchee path
+		// Default: use the parent directory of the searchee path.
+		// This avoids double-nesting when the incoming torrent already has a root folder.
 		savePath = filepath.Dir(req.Searchee.Path)
+
+		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
+		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
+		if req.Searchee != nil && req.ParsedTorrent != nil {
+			if fi, err := os.Stat(req.Searchee.Path); err == nil && fi.IsDir() {
+				candidateFiles := make([]hardlinktree.TorrentFile, 0, len(req.ParsedTorrent.Files))
+				for _, f := range req.ParsedTorrent.Files {
+					candidateFiles = append(candidateFiles, hardlinktree.TorrentFile{Path: f.Path, Size: f.Size})
+				}
+				if !hardlinktree.HasCommonRootFolder(candidateFiles) {
+					savePath = req.Searchee.Path
+				}
+			}
+		}
 	}
 
 	// Apply path prefix mapping for containers
