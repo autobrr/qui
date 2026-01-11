@@ -434,6 +434,8 @@ func (s *Service) runSearchAndInjectPhase(
 		l.Error().Err(err).Msg("dirscan: failed to update run status to searching")
 	}
 
+	injectedTVGroups := make(map[tvGroupKey]struct{})
+
 	for _, searchee := range scanResult.Searchees {
 		// Check for cancellation
 		if ctx.Err() != nil {
@@ -441,11 +443,30 @@ func (s *Service) runSearchAndInjectPhase(
 			return matchesFound, torrentsAdded
 		}
 
-		match := s.processSearchee(ctx, dir, searchee, settings, matcher, l)
-		if match != nil {
+		workItems := buildSearcheeWorkItems(searchee, s.parser)
+		for _, item := range workItems {
+			if ctx.Err() != nil {
+				l.Info().Msg("dirscan: search phase canceled")
+				return matchesFound, torrentsAdded
+			}
+
+			if item.tvGroup != nil {
+				if _, alreadyInjected := injectedTVGroups[*item.tvGroup]; alreadyInjected {
+					continue
+				}
+			}
+
+			match := s.processSearchee(ctx, dir, item.searchee, settings, matcher, l)
+			if match == nil {
+				continue
+			}
+
 			matchesFound++
 			if match.injected {
 				torrentsAdded++
+				if item.tvGroup != nil {
+					injectedTVGroups[*item.tvGroup] = struct{}{}
+				}
 			}
 		}
 	}

@@ -52,6 +52,12 @@ func shouldPreferFileMetadata(folderMeta, fileMeta *SearcheeMetadata) bool {
 		return false
 	}
 
+	// If the folder metadata indicates an explicit season search (Season set, Episode nil),
+	// keep it. This is used by TV season-pack heuristics.
+	if folderMeta.IsTV && folderMeta.Season != nil && folderMeta.Episode == nil {
+		return false
+	}
+
 	if folderMeta.IsMusic && fileMeta.Title != "" {
 		return true
 	}
