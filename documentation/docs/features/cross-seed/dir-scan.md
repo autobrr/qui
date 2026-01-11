@@ -27,6 +27,11 @@ For each configured scan directory, qui:
 5. Matches the incoming torrent’s file list against what’s on disk.
 6. If a match is found, adds the torrent to the configured target qBittorrent instance.
 
+### Recheck Behavior
+
+- For **full matches**, Dir Scan adds the torrent with “skip hash check” enabled, so it starts seeding immediately.
+- For **partial matches** (when enabled), Dir Scan does **not** skip the hash check, so qBittorrent can verify what you already have and download whatever is missing.
+
 qui skips work when it can:
 - It avoids re-searching content that is already present in qBittorrent.
 - It avoids downloading torrent files when search results expose an infohash that already exists in qBittorrent.
@@ -39,9 +44,9 @@ Open **Dir Scan → Settings**:
   - `Strict`: match by filename + size
   - `Flexible`: match by size only
 - **Size Tolerance (%)**: allows small size differences when matching.
-- **Minimum Piece Ratio (%)**: minimum matching ratio before a candidate is considered.
-- **Allow partial matches**: lets qui accept matches that don’t cover every file on disk.
-- **Skip piece boundary safety check**: disables the safety check for partial matches.
+- **Minimum Piece Ratio (%)**: when partial matches are enabled, the minimum percent of the torrent’s data that must already exist on disk.
+- **Allow partial matches**: allows Dir Scan to add torrents even if the torrent has extra/missing files compared to what’s on disk.
+- **Skip piece boundary safety check**: if disabled, qui will refuse partial matches where downloading the missing files could modify pieces that belong to the already-present content (rare, but possible on multi-file torrents).
 - **Start torrents paused**: adds injected torrents in paused state.
 - **Default Category / Tags**: applied to injected torrents.
 
@@ -70,3 +75,13 @@ See:
 
 When link-tree creation fails (for example: hardlinking across device boundaries), Dir Scan can fall back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate is skipped/failed.
 
+## Pointing Dir Scan at your *arr library
+
+Dir Scan can scan your Sonarr/Radarr library folders, but be careful with **partial matches**:
+
+- With **Allow partial matches** enabled, qBittorrent may download missing files (or small “extras” like `.nfo`/subtitles) into the folder it’s pointed at. If that folder is your *arr-managed library, you can end up with unexpected extra files alongside your media.
+- If you want Dir Scan to be “read-only” for your library, keep **Allow partial matches** disabled (full matches only), and consider disabling **Fallback to regular mode** on the target instance so a hardlink failure can’t cause a torrent to be added directly against your library path.
+
+The safest “set and forget” setup is usually:
+- Scan your completed downloads/staging folder, not the final library, and/or
+- Use hardlink/reflink mode so cross-seeds live under your configured link-tree base directory.

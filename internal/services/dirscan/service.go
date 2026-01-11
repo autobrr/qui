@@ -721,8 +721,15 @@ func (s *Service) tryMatchAndInject(
 	}
 
 	matchResult := matcher.Match(searchee, parsed.Files)
-	if !matchResult.IsMatch {
-		l.Debug().Str("title", result.Title).Float64("matchRatio", matchResult.MatchRatio).Msg("dirscan: no match")
+	accept, reason := shouldAcceptDirScanMatch(matchResult, parsed, settings)
+	if !accept {
+		l.Debug().
+			Str("title", result.Title).
+			Bool("perfect", matchResult.IsPerfectMatch).
+			Bool("partial", matchResult.IsPartialMatch).
+			Float64("matchRatio", matchResult.MatchRatio).
+			Str("reason", reason).
+			Msg("dirscan: no match")
 		return nil
 	}
 
@@ -759,6 +766,95 @@ func (s *Service) tryMatchAndInject(
 	}
 
 	return &searcheeMatch{searchee: searchee, torrentData: torrentData, parsedTorrent: parsed, matchResult: matchResult, injected: injected}
+}
+
+func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, settings *models.DirScanSettings) (accept bool, reason string) {
+	if match == nil || parsed == nil || settings == nil {
+		return false, "missing match context"
+	}
+
+	if match.IsPerfectMatch {
+		return true, "perfect match"
+	}
+
+	if !settings.AllowPartial {
+		return false, "partial matches disabled"
+	}
+
+	matchedBytes, totalBytes := matchedTorrentBytes(match, parsed)
+	if totalBytes <= 0 {
+		return false, "invalid torrent size"
+	}
+
+	ratio := (float64(matchedBytes) / float64(totalBytes)) * 100
+	if ratio < settings.MinPieceRatio {
+		return false, fmt.Sprintf("matched ratio %.2f%% below minimum %.2f%%", ratio, settings.MinPieceRatio)
+	}
+
+	// If the torrent has extra files (not on disk), qBittorrent may need to download them.
+	// Optionally validate piece-boundary safety to avoid corrupting existing files.
+	if len(match.UnmatchedTorrentFiles) > 0 && !settings.SkipPieceBoundarySafetyCheck {
+		unsafe, res := hasUnsafeUnmatchedTorrentFiles(parsed, match)
+		if unsafe {
+			return false, res.Reason
+		}
+	}
+
+	return true, "partial match accepted"
+}
+
+func matchedTorrentBytes(match *MatchResult, parsed *ParsedTorrent) (matchedBytes int64, totalBytes int64) {
+	if match == nil || parsed == nil {
+		return 0, 0
+	}
+
+	totalBytes = parsed.TotalSize
+	if totalBytes <= 0 {
+		for _, f := range parsed.Files {
+			totalBytes += f.Size
+		}
+	}
+
+	for _, p := range match.MatchedFiles {
+		if p.SearcheeFile == nil {
+			continue
+		}
+		matchedBytes += p.SearcheeFile.Size
+	}
+
+	return matchedBytes, totalBytes
+}
+
+func hasUnsafeUnmatchedTorrentFiles(parsed *ParsedTorrent, match *MatchResult) (unsafe bool, result crossseed.PieceBoundarySafetyResult) {
+	if parsed == nil || match == nil {
+		return false, crossseed.PieceBoundarySafetyResult{Safe: true, Reason: "missing context"}
+	}
+	if parsed.PieceLength <= 0 {
+		return true, crossseed.PieceBoundarySafetyResult{Safe: false, Reason: "invalid piece length"}
+	}
+
+	// If we have no unmatched torrent files, nothing can be downloaded, so it's safe.
+	if len(match.UnmatchedTorrentFiles) == 0 {
+		return false, crossseed.PieceBoundarySafetyResult{Safe: true, Reason: "no unmatched torrent files"}
+	}
+
+	contentPaths := make(map[string]struct{}, len(match.MatchedFiles))
+	for _, p := range match.MatchedFiles {
+		contentPaths[p.TorrentFile.Path] = struct{}{}
+	}
+
+	files := make([]crossseed.TorrentFileForBoundaryCheck, 0, len(parsed.Files))
+	for _, f := range parsed.Files {
+		_, isContent := contentPaths[f.Path]
+		files = append(files, crossseed.TorrentFileForBoundaryCheck{
+			Path:      f.Path,
+			Size:      f.Size,
+			IsContent: isContent,
+		})
+	}
+
+	res := crossseed.CheckPieceBoundarySafety(files, parsed.PieceLength)
+	return !res.Safe, res
 }
 
 // downloadAndParseTorrent downloads and parses a torrent file.

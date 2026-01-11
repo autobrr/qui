@@ -206,7 +206,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	options := i.buildAddOptions(req, savePath)
 	options["contentLayout"] = "Original"
-	options["skip_checking"] = "true"
+	if req.MatchResult != nil && len(req.MatchResult.UnmatchedTorrentFiles) == 0 {
+		options["skip_checking"] = "true"
+	}
 	if addMode != "regular" {
 		options["savepath"] = savePath
 	}

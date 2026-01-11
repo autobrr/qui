@@ -172,6 +172,9 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 		settings.Tags = []string{}
 	}
 
+	// Store in DB uses a 0-1 ratio; API/UI expects percent (0-100).
+	settings.MinPieceRatio = minPieceRatioToPercent(settings.MinPieceRatio)
+
 	return &settings, nil
 }
 
@@ -204,7 +207,7 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 		    tags = ?
 		WHERE id = 1
 	`, boolToInt(settings.Enabled), settings.MatchMode, settings.SizeTolerancePercent,
-		settings.MinPieceRatio, boolToInt(settings.AllowPartial),
+		minPieceRatioToDB(settings.MinPieceRatio), boolToInt(settings.AllowPartial),
 		boolToInt(settings.SkipPieceBoundarySafetyCheck), boolToInt(settings.StartPaused),
 		category, string(tagsJSON))
 	if err != nil {
@@ -212,6 +215,22 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 	}
 
 	return s.GetSettings(ctx)
+}
+
+func minPieceRatioToPercent(value float64) float64 {
+	// Backward-compatible: accept ratio values (0-1) and percent values (0-100).
+	if value > 0 && value <= 1 {
+		return value * 100
+	}
+	return value
+}
+
+func minPieceRatioToDB(value float64) float64 {
+	// Store ratio (0-1) in DB; accept percent values (0-100) from API.
+	if value > 1 {
+		return value / 100
+	}
+	return value
 }
 
 // --- Directory Operations ---
