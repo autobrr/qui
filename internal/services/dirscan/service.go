@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moistari/rls"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
@@ -86,7 +86,7 @@ func NewService(
 	// Initialize components
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
-	injector := NewInjector(jackettService, syncManager, syncManager)
+	injector := NewInjector(jackettService, syncManager, syncManager, instanceStore)
 
 	return &Service{
 		cfg:            cfg,
@@ -416,11 +416,6 @@ func (s *Service) runScanPhase(ctx context.Context, path string, runID int64, l 
 	return scanResult, true
 }
 
-// searcheeDelay is the minimum delay between processing each searchee.
-// This prevents overloading indexers when scanning large directories.
-// 60 seconds ensures we don't hit rate limits on Prowlarr/Jackett.
-const searcheeDelay = 60 * time.Second
-
 // runSearchAndInjectPhase searches indexers for each searchee and injects matches.
 func (s *Service) runSearchAndInjectPhase(
 	ctx context.Context,
@@ -436,21 +431,11 @@ func (s *Service) runSearchAndInjectPhase(
 		l.Error().Err(err).Msg("dirscan: failed to update run status to searching")
 	}
 
-	for i, searchee := range scanResult.Searchees {
+	for _, searchee := range scanResult.Searchees {
 		// Check for cancellation
 		if ctx.Err() != nil {
 			l.Info().Msg("dirscan: search phase canceled")
 			return matchesFound, torrentsAdded
-		}
-
-		// Add delay between searchees to avoid overloading indexers
-		if i > 0 {
-			select {
-			case <-ctx.Done():
-				l.Info().Msg("dirscan: search phase canceled during delay")
-				return matchesFound, torrentsAdded
-			case <-time.After(searcheeDelay):
-			}
 		}
 
 		match := s.processSearchee(ctx, dir, searchee, settings, matcher, l)
@@ -488,21 +473,21 @@ func (s *Service) processSearchee(
 
 	// Parse metadata and determine content type
 	meta := s.parser.Parse(searchee.Name)
-	contentInfo := determineContentType(meta)
+	contentInfo := crossseed.DetermineContentType(meta.Release)
 
 	l.Debug().
 		Str("name", searchee.Name).
 		Int64("size", searcheeSize).
 		Int("files", len(searchee.Files)).
-		Str("contentType", contentInfo.contentType).
+		Str("contentType", contentInfo.ContentType).
 		Msg("dirscan: searching for searchee")
 
 	// Filter indexers by capability (like cross-seed does)
 	var filteredIndexers []int
-	if len(contentInfo.requiredCaps) > 0 && s.jackettService != nil {
+	if len(contentInfo.RequiredCaps) > 0 && s.jackettService != nil {
 		var err error
 		filteredIndexers, err = s.jackettService.FilterIndexersForCapabilities(
-			ctx, nil, contentInfo.requiredCaps, contentInfo.categories,
+			ctx, nil, contentInfo.RequiredCaps, contentInfo.Categories,
 		)
 		if err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to filter indexers by capabilities, using all")
@@ -512,10 +497,10 @@ func (s *Service) processSearchee(
 	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
-	s.lookupExternalIDs(ctx, meta, contentInfo.contentType, searchee.Name, l)
+	s.lookupExternalIDs(ctx, meta, contentInfo.ContentType, searchee.Name, l)
 
 	// Search indexers
-	response := s.searchForSearchee(ctx, searchee, meta, filteredIndexers, l)
+	response := s.searchForSearchee(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, l)
 	if response == nil || len(response.Results) == 0 {
 		return nil
 	}
@@ -535,6 +520,7 @@ func (s *Service) searchForSearchee(
 	searchee *Searchee,
 	meta *SearcheeMetadata,
 	indexerIDs []int,
+	categories []int,
 	l *zerolog.Logger,
 ) *jackett.SearchResponse {
 	resultsCh := make(chan *jackett.SearchResponse, 1)
@@ -544,6 +530,7 @@ func (s *Service) searchForSearchee(
 		Searchee:   searchee,
 		Metadata:   meta,       // Pass parsed metadata with external IDs
 		IndexerIDs: indexerIDs, // Use capability-filtered indexers
+		Categories: categories,
 		Limit:      50,
 		OnAllComplete: func(response *jackett.SearchResponse, err error) {
 			if err != nil {
@@ -554,7 +541,8 @@ func (s *Service) searchForSearchee(
 		},
 	}
 
-	if err := s.searcher.Search(ctx, searchReq); err != nil {
+	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
+	if err := s.searcher.Search(searchCtx, searchReq); err != nil {
 		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search failed")
 		return nil
 	}
@@ -630,7 +618,10 @@ func (s *Service) tryMatchAndInject(
 
 	injectReq := &InjectRequest{
 		InstanceID:     dir.TargetInstanceID,
+		TorrentBytes:   torrentData,
+		ParsedTorrent:  parsed,
 		Searchee:       searchee,
+		MatchResult:    matchResult,
 		SearchResult:   result,
 		QbitPathPrefix: dir.QbitPathPrefix,
 		Category:       settings.Category,
@@ -770,75 +761,12 @@ func (s *Service) ListFiles(ctx context.Context, directoryID int, status *models
 	return files, nil
 }
 
-// Content type string constants.
-const (
-	contentTypeMovie   = "movie"
-	contentTypeTV      = "tv"
-	contentTypeMusic   = "music"
-	contentTypeUnknown = "unknown"
-)
-
-// contentTypeInfo holds content type detection results.
-type contentTypeInfo struct {
-	contentType  string   // "movie", "tv", "music", etc.
-	categories   []int    // Torznab category IDs
-	requiredCaps []string // Required indexer capabilities
-}
-
-// determineContentType analyzes parsed metadata to determine content type and requirements.
-// This mirrors the logic in crossseed.DetermineContentType but for dirscan metadata.
-func determineContentType(meta *SearcheeMetadata) contentTypeInfo {
-	info := contentTypeInfo{
-		contentType:  contentTypeUnknown,
-		categories:   []int{},
-		requiredCaps: []string{},
-	}
-
-	if meta == nil || meta.Release == nil {
-		return info
-	}
-
-	r := meta.Release
-	switch r.Type {
-	case rls.Movie:
-		info.contentType = contentTypeMovie
-		info.categories = []int{2000} // Movies
-		info.requiredCaps = []string{"movie-search"}
-	case rls.Episode, rls.Series:
-		info.contentType = contentTypeTV
-		info.categories = []int{5000} // TV
-		info.requiredCaps = []string{"tv-search"}
-	case rls.Music:
-		info.contentType = contentTypeMusic
-		info.categories = []int{3000} // Audio
-		info.requiredCaps = []string{"music-search", "audio-search"}
-	default:
-		// If rls didn't detect type, use hints from our metadata
-		switch {
-		case meta.IsTV:
-			info.contentType = contentTypeTV
-			info.categories = []int{5000}
-			info.requiredCaps = []string{"tv-search"}
-		case meta.IsMovie:
-			info.contentType = contentTypeMovie
-			info.categories = []int{2000}
-			info.requiredCaps = []string{"movie-search"}
-		case meta.IsMusic:
-			info.contentType = contentTypeMusic
-			info.categories = []int{3000}
-			info.requiredCaps = []string{"music-search", "audio-search"}
-		}
-	}
-
-	return info
-}
-
 // mapContentTypeToARR maps dirscan content type to ARR content type for ID lookup.
 func mapContentTypeToARR(contentType string) arr.ContentType {
 	switch contentType {
-	case contentTypeMovie:
+	case "movie":
 		return arr.ContentTypeMovie
-	case contentTypeTV:
+	case "tv":
 		return arr.ContentTypeTV
 	default:
 		// No ARR lookup for music, books, games, adult, unknown, etc.

@@ -7,9 +7,9 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // MatchMode defines how strictly files are compared.
@@ -312,9 +312,7 @@ func (m *Matcher) sizesMatch(size1, size2 int64) bool {
 func normalizeFileName(path string) string {
 	// Get just the filename, not the full path
 	name := filepath.Base(path)
-	// Lowercase for case-insensitive comparison
-	name = strings.ToLower(name)
-	return name
+	return stringutils.NormalizeForMatching(name)
 }
 
 // findTorrentFileIndex finds the index of a torrent file in the slice.

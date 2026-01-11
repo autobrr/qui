@@ -5,12 +5,20 @@ package dirscan
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/fsutil"
+	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
 // Injector handles downloading and injecting torrents into qBittorrent.
@@ -18,6 +26,7 @@ type Injector struct {
 	jackettService JackettDownloader
 	syncManager    TorrentAdder
 	torrentChecker TorrentChecker
+	instanceStore  InstanceProvider
 }
 
 // JackettDownloader is the interface for downloading torrent files.
@@ -35,12 +44,22 @@ type TorrentChecker interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 }
 
+type InstanceProvider interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
+}
+
 // NewInjector creates a new injector.
-func NewInjector(jackettService JackettDownloader, syncManager TorrentAdder, torrentChecker TorrentChecker) *Injector {
+func NewInjector(
+	jackettService JackettDownloader,
+	syncManager TorrentAdder,
+	torrentChecker TorrentChecker,
+	instanceStore InstanceProvider,
+) *Injector {
 	return &Injector{
 		jackettService: jackettService,
 		syncManager:    syncManager,
 		torrentChecker: torrentChecker,
+		instanceStore:  instanceStore,
 	}
 }
 
@@ -61,8 +80,17 @@ type InjectRequest struct {
 	// InstanceID is the target qBittorrent instance.
 	InstanceID int
 
+	// TorrentBytes contains the .torrent file contents.
+	TorrentBytes []byte
+
+	// ParsedTorrent is the parsed torrent metadata for TorrentBytes.
+	ParsedTorrent *ParsedTorrent
+
 	// Searchee that was matched.
 	Searchee *Searchee
+
+	// MatchResult is the file-level match for this searchee and ParsedTorrent.
+	MatchResult *MatchResult
 
 	// SearchResult that matched the searchee.
 	SearchResult *jackett.SearchResult
@@ -101,32 +129,60 @@ type InjectResult struct {
 func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResult, error) {
 	result := &InjectResult{}
 
-	// Download the torrent
-	downloadReq := jackett.TorrentDownloadRequest{
-		IndexerID:   req.SearchResult.IndexerID,
-		DownloadURL: req.SearchResult.DownloadURL,
-		GUID:        req.SearchResult.GUID,
+	if req == nil {
+		return result, errors.New("inject request is nil")
+	}
+	if req.ParsedTorrent == nil || len(req.TorrentBytes) == 0 {
+		return result, errors.New("inject request missing torrent bytes or parsed torrent")
+	}
+	if req.MatchResult == nil || !req.MatchResult.IsMatch {
+		return result, errors.New("inject request missing valid match result")
+	}
+	if i.instanceStore == nil {
+		return result, errors.New("instance store is nil")
 	}
 
-	torrentBytes, err := i.jackettService.DownloadTorrent(ctx, downloadReq)
+	instance, err := i.instanceStore.Get(ctx, req.InstanceID)
 	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("failed to download torrent: %v", err)
-		return result, fmt.Errorf("download torrent: %w", err)
+		result.ErrorMessage = fmt.Sprintf("failed to load instance: %v", err)
+		return result, fmt.Errorf("get instance: %w", err)
 	}
 
-	// Calculate the save path
-	savePath := i.calculateSavePath(req)
+	savePath := ""
+	var addMode string
+	if instance.UseReflinks || instance.UseHardlinks {
+		savePath, addMode, err = i.materializeLinkTree(ctx, instance, req)
+		if err != nil {
+			if instance.FallbackToRegularMode {
+				savePath = i.calculateSavePath(req)
+				addMode = "regular"
+			} else {
+				result.ErrorMessage = err.Error()
+				return result, err
+			}
+		}
+	} else {
+		savePath = i.calculateSavePath(req)
+		addMode = "regular"
+	}
 
-	// Build add options
 	options := i.buildAddOptions(req, savePath)
+	options["contentLayout"] = "Original"
+	options["skip_checking"] = "true"
+	if addMode != "regular" {
+		options["savepath"] = savePath
+	}
+
+	i.applyAddPolicy(options, req)
 
 	// Add the torrent to qBittorrent
-	if err := i.syncManager.AddTorrent(ctx, req.InstanceID, torrentBytes, options); err != nil {
+	if err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
 		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
 
 	result.Success = true
+	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
 }
 
@@ -173,9 +229,6 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 	// Set the save path
 	options["savepath"] = savePath
 
-	// Use Original layout to match existing file structure
-	options["contentLayout"] = "Original"
-
 	// Set category if provided
 	if req.Category != "" {
 		options["category"] = req.Category
@@ -193,11 +246,123 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 		options["stopped"] = "true"
 	}
 
-	// Skip hash checking since we expect files to already exist
-	// This significantly speeds up injection for large files
-	options["skip_checking"] = "true"
-
 	return options
+}
+
+func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (savePath string, mode string, err error) {
+	if instance == nil {
+		return "", "", errors.New("instance is nil")
+	}
+	if !instance.HasLocalFilesystemAccess {
+		return "", "", errors.New("instance does not have local filesystem access enabled")
+	}
+	if instance.HardlinkBaseDir == "" {
+		return "", "", errors.New("hardlink base directory is not configured")
+	}
+
+	candidateFiles := make([]hardlinktree.TorrentFile, 0, len(req.ParsedTorrent.Files))
+	for _, f := range req.ParsedTorrent.Files {
+		candidateFiles = append(candidateFiles, hardlinktree.TorrentFile{Path: f.Path, Size: f.Size})
+	}
+
+	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
+	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
+	destDir := buildLinkDestDir(instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, incomingTrackerDomain)
+
+	if err := os.MkdirAll(instance.HardlinkBaseDir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create hardlink base dir: %w", err)
+	}
+
+	existingFiles := make([]hardlinktree.ExistingFile, 0, len(req.MatchResult.MatchedFiles))
+	for _, pair := range req.MatchResult.MatchedFiles {
+		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
+			AbsPath: pair.SearcheeFile.Path,
+			RelPath: pair.TorrentFile.Path,
+			Size:    pair.SearcheeFile.Size,
+		})
+	}
+	if len(existingFiles) == 0 {
+		return "", "", errors.New("no matched files available for link-tree creation")
+	}
+
+	plan, err := hardlinktree.BuildPlan(candidateFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
+	if err != nil {
+		return "", "", fmt.Errorf("build link plan: %w", err)
+	}
+
+	if instance.UseReflinks {
+		if supported, reason := reflinktree.SupportsReflink(instance.HardlinkBaseDir); !supported {
+			return "", "", fmt.Errorf("%w: %s", reflinktree.ErrReflinkUnsupported, reason)
+		}
+		if err := reflinktree.Create(plan); err != nil {
+			return "", "", fmt.Errorf("create reflink tree: %w", err)
+		}
+		return plan.RootDir, "reflink", nil
+	}
+
+	if instance.UseHardlinks {
+		sameFS, err := fsutil.SameFilesystem(existingFiles[0].AbsPath, instance.HardlinkBaseDir)
+		if err != nil {
+			return "", "", fmt.Errorf("verify same filesystem: %w", err)
+		}
+		if !sameFS {
+			return "", "", errors.New("hardlink source and destination are on different filesystems")
+		}
+
+		if err := hardlinktree.Create(plan); err != nil {
+			return "", "", fmt.Errorf("create hardlink tree: %w", err)
+		}
+		return plan.RootDir, "hardlink", nil
+	}
+
+	return "", "", errors.New("no link mode enabled")
+}
+
+func buildLinkDestDir(instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, incomingTrackerDomain string) string {
+	baseDir := instance.HardlinkBaseDir
+
+	isolationFolder := ""
+	if needsIsolation {
+		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
+	}
+
+	switch instance.HardlinkDirPreset {
+	case "by-tracker":
+		display := incomingTrackerDomain
+		if display == "" {
+			display = "unknown-tracker"
+		}
+		if isolationFolder != "" {
+			return filepath.Join(baseDir, pathutil.SanitizePathSegment(display), isolationFolder)
+		}
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(display))
+
+	case "by-instance":
+		if isolationFolder != "" {
+			return filepath.Join(baseDir, pathutil.SanitizePathSegment(instance.Name), isolationFolder)
+		}
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(instance.Name))
+
+	default: // "flat" or unknown
+		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+	}
+}
+
+func (i *Injector) applyAddPolicy(options map[string]string, req *InjectRequest) {
+	if req == nil || req.ParsedTorrent == nil {
+		return
+	}
+
+	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
+	for _, f := range req.ParsedTorrent.Files {
+		files = append(files, qbt.TorrentFiles{{
+			Name: f.Path,
+			Size: f.Size,
+		}}...)
+	}
+
+	policy := crossseed.PolicyForSourceFiles(files)
+	policy.ApplyToAddOptions(options)
 }
 
 // InjectBatch injects multiple torrents.

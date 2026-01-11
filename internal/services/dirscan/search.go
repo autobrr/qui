@@ -49,6 +49,9 @@ type SearchRequest struct {
 	// IndexerIDs to search (empty = all enabled indexers)
 	IndexerIDs []int
 
+	// Categories to search (optional, but recommended for better results).
+	Categories []int
+
 	// Limit results per indexer
 	Limit int
 
@@ -83,6 +86,7 @@ func (s *Searcher) Search(ctx context.Context, req *SearchRequest) error {
 func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest) *jackett.TorznabSearchRequest {
 	searchReq := &jackett.TorznabSearchRequest{
 		ReleaseName:   meta.OriginalName,
+		Categories:    req.Categories,
 		IndexerIDs:    req.IndexerIDs,
 		Limit:         req.Limit,
 		OnAllComplete: req.OnAllComplete,
@@ -91,6 +95,7 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 	// Priority 1: Use embedded external IDs if available (most accurate)
 	if meta.HasExternalIDs() {
 		s.applyExternalIDs(searchReq, meta)
+		searchReq.OmitQueryForIDs = true
 	}
 
 	// Always set the query for fallback/combined search
