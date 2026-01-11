@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -16,6 +17,7 @@ import (
 type Injector struct {
 	jackettService JackettDownloader
 	syncManager    TorrentAdder
+	torrentChecker TorrentChecker
 }
 
 // JackettDownloader is the interface for downloading torrent files.
@@ -28,12 +30,30 @@ type TorrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
 }
 
+// TorrentChecker is the interface for checking if torrents exist in qBittorrent.
+type TorrentChecker interface {
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+}
+
 // NewInjector creates a new injector.
-func NewInjector(jackettService JackettDownloader, syncManager TorrentAdder) *Injector {
+func NewInjector(jackettService JackettDownloader, syncManager TorrentAdder, torrentChecker TorrentChecker) *Injector {
 	return &Injector{
 		jackettService: jackettService,
 		syncManager:    syncManager,
+		torrentChecker: torrentChecker,
 	}
+}
+
+// TorrentExists checks if a torrent with the given hash already exists in qBittorrent.
+func (i *Injector) TorrentExists(ctx context.Context, instanceID int, hash string) (bool, error) {
+	if i.torrentChecker == nil {
+		return false, nil
+	}
+	_, exists, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
+	if err != nil {
+		return false, fmt.Errorf("check torrent exists: %w", err)
+	}
+	return exists, nil
 }
 
 // InjectRequest contains parameters for injecting a torrent.

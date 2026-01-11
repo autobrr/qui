@@ -204,6 +204,20 @@ func (m *SearcheeMetadata) GetTMDbID() int {
 	return m.TRaSH.TMDbID
 }
 
+// SetExternalIDs updates the metadata with external IDs from arr lookup.
+// Only sets IDs that are not already present from TRaSH naming.
+func (m *SearcheeMetadata) SetExternalIDs(imdbID string, tmdbID, tvdbID int) {
+	if m.TRaSH.IMDbID == "" && imdbID != "" {
+		m.TRaSH.IMDbID = imdbID
+	}
+	if m.TRaSH.TMDbID == 0 && tmdbID > 0 {
+		m.TRaSH.TMDbID = tmdbID
+	}
+	if m.TRaSH.TVDbID == 0 && tvdbID > 0 {
+		m.TRaSH.TVDbID = tvdbID
+	}
+}
+
 // seasonFolderPattern matches season folder names like "Season 01", "Season 1", "Specials".
 var seasonFolderPattern = regexp.MustCompile(`(?i)^(?:season\s*(\d+)|specials?)$`)
 
