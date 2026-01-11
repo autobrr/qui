@@ -769,6 +769,25 @@ func (s *DirScanStore) UpdateRunCanceled(ctx context.Context, runID int64) error
 	return nil
 }
 
+// MarkActiveRunsFailed marks any in-progress runs as failed (typically after a restart).
+func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage string) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE status IN ('scanning', 'searching', 'injecting')
+	`, DirScanRunStatusFailed, errorMessage)
+	if err != nil {
+		return 0, fmt.Errorf("mark active runs failed: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+
+	return rows, nil
+}
+
 // --- File Operations ---
 
 // UpsertFile inserts or updates a scanned file.

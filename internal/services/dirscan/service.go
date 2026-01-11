@@ -64,6 +64,10 @@ type Service struct {
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
 
+	// In-memory progress snapshot keyed by runID (for live UI updates).
+	runProgress map[int64]*runProgress
+	progressMu  sync.Mutex
+
 	// Scheduler control
 	schedulerCtx    context.Context
 	schedulerCancel context.CancelFunc
@@ -104,11 +108,16 @@ func NewService(
 		injector:       injector,
 		directoryMu:    make(map[int]*sync.Mutex),
 		cancelFuncs:    make(map[int64]context.CancelFunc),
+		runProgress:    make(map[int64]*runProgress),
 	}
 }
 
 // Start starts the scheduler loop.
 func (s *Service) Start(ctx context.Context) error {
+	if err := s.recoverStuckRuns(ctx); err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to recover stuck runs")
+	}
+
 	s.schedulerCtx, s.schedulerCancel = context.WithCancel(ctx)
 	s.schedulerWg.Add(1)
 	go s.runScheduler()
@@ -253,6 +262,12 @@ func (s *Service) GetStatus(ctx context.Context, directoryID int) (*models.DirSc
 		return nil, fmt.Errorf("get active run: %w", err)
 	}
 	if run != nil {
+		if progress, ok := s.getRunProgress(run.ID); ok {
+			runCopy := *run
+			runCopy.MatchesFound = progress.matchesFound
+			runCopy.TorrentsAdded = progress.torrentsAdded
+			return &runCopy, nil
+		}
 		return run, nil
 	}
 
@@ -270,6 +285,8 @@ func (s *Service) GetStatus(ctx context.Context, directoryID int) (*models.DirSc
 
 // executeScan performs the actual directory scan.
 func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64) {
+	defer s.clearRunProgress(runID)
+
 	// Acquire per-directory mutex
 	dirMu := s.getDirectoryMutex(directoryID)
 	dirMu.Lock()
@@ -502,10 +519,81 @@ func (s *Service) runSearchAndInjectPhase(
 					injectedTVGroups[*item.tvGroup] = struct{}{}
 				}
 			}
+
+			s.setRunProgress(runID, matchesFound, torrentsAdded)
 		}
 	}
 
 	return matchesFound, torrentsAdded
+}
+
+type runProgress struct {
+	matchesFound  int
+	torrentsAdded int
+	updatedAt     time.Time
+}
+
+func (s *Service) setRunProgress(runID int64, matchesFound, torrentsAdded int) {
+	if s == nil || runID <= 0 {
+		return
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	entry, ok := s.runProgress[runID]
+	if !ok {
+		entry = &runProgress{}
+		s.runProgress[runID] = entry
+	}
+	entry.matchesFound = matchesFound
+	entry.torrentsAdded = torrentsAdded
+	entry.updatedAt = time.Now()
+}
+
+func (s *Service) getRunProgress(runID int64) (*runProgress, bool) {
+	if s == nil || runID <= 0 {
+		return nil, false
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	entry, ok := s.runProgress[runID]
+	if !ok || entry == nil {
+		return nil, false
+	}
+	cp := *entry
+	return &cp, true
+}
+
+func (s *Service) clearRunProgress(runID int64) {
+	if s == nil || runID <= 0 {
+		return
+	}
+
+	s.progressMu.Lock()
+	delete(s.runProgress, runID)
+	s.progressMu.Unlock()
+}
+
+func (s *Service) recoverStuckRuns(ctx context.Context) error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+
+	recoveryCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	affected, err := s.store.MarkActiveRunsFailed(recoveryCtx, "Scan interrupted by restart")
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		log.Info().Int64("runs", affected).Msg("dirscan: marked interrupted runs as failed")
+	}
+
+	return nil
 }
 
 func isAlreadySeedingByFileID(searchee *Searchee, index map[string]string) bool {
@@ -986,6 +1074,25 @@ func (s *Service) ListRuns(ctx context.Context, directoryID, limit int) ([]*mode
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}
+
+	// Overlay live progress for the currently active run (if any) without requiring DB writes.
+	for i, run := range runs {
+		if run == nil {
+			continue
+		}
+		if run.Status != models.DirScanRunStatusScanning &&
+			run.Status != models.DirScanRunStatusSearching &&
+			run.Status != models.DirScanRunStatusInjecting {
+			continue
+		}
+		if progress, ok := s.getRunProgress(run.ID); ok {
+			runCopy := *run
+			runCopy.MatchesFound = progress.matchesFound
+			runCopy.TorrentsAdded = progress.torrentsAdded
+			runs[i] = &runCopy
+		}
+	}
+
 	return runs, nil
 }
 
