@@ -1,0 +1,467 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/dirscan"
+)
+
+// DirScanHandler handles HTTP requests for directory scanning.
+type DirScanHandler struct {
+	service       *dirscan.Service
+	instanceStore *models.InstanceStore
+}
+
+// NewDirScanHandler creates a new DirScanHandler.
+func NewDirScanHandler(service *dirscan.Service, instanceStore *models.InstanceStore) *DirScanHandler {
+	return &DirScanHandler{
+		service:       service,
+		instanceStore: instanceStore,
+	}
+}
+
+// DirScanSettingsPayload is the request body for updating settings.
+type DirScanSettingsPayload struct {
+	Enabled                      *bool    `json:"enabled"`
+	MatchMode                    *string  `json:"matchMode"`
+	SizeTolerancePercent         *float64 `json:"sizeTolerancePercent"`
+	MinPieceRatio                *float64 `json:"minPieceRatio"`
+	AllowPartial                 *bool    `json:"allowPartial"`
+	SkipPieceBoundarySafetyCheck *bool    `json:"skipPieceBoundarySafetyCheck"`
+	StartPaused                  *bool    `json:"startPaused"`
+	Category                     *string  `json:"category"`
+	Tags                         []string `json:"tags"`
+}
+
+// GetSettings returns the global directory scanner settings.
+func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to get settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to get settings")
+		return
+	}
+
+	// Return default settings if none exist yet
+	if settings == nil {
+		settings = &models.DirScanSettings{
+			MatchMode:                    models.MatchModeStrict,
+			SizeTolerancePercent:         2.0,
+			MinPieceRatio:                50.0,
+			AllowPartial:                 false,
+			SkipPieceBoundarySafetyCheck: true,
+			StartPaused:                  false,
+			Tags:                         []string{},
+		}
+	}
+
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateSettings updates the global directory scanner settings.
+func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var payload DirScanSettingsPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Get current settings
+	settings, err := h.service.GetSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to get settings for update")
+		RespondError(w, http.StatusInternalServerError, "Failed to get settings")
+		return
+	}
+
+	if settings == nil {
+		settings = &models.DirScanSettings{}
+	}
+
+	// Apply updates
+	if payload.Enabled != nil {
+		settings.Enabled = *payload.Enabled
+	}
+	if payload.MatchMode != nil {
+		settings.MatchMode = models.MatchMode(*payload.MatchMode)
+	}
+	if payload.SizeTolerancePercent != nil {
+		settings.SizeTolerancePercent = *payload.SizeTolerancePercent
+	}
+	if payload.MinPieceRatio != nil {
+		settings.MinPieceRatio = *payload.MinPieceRatio
+	}
+	if payload.AllowPartial != nil {
+		settings.AllowPartial = *payload.AllowPartial
+	}
+	if payload.SkipPieceBoundarySafetyCheck != nil {
+		settings.SkipPieceBoundarySafetyCheck = *payload.SkipPieceBoundarySafetyCheck
+	}
+	if payload.StartPaused != nil {
+		settings.StartPaused = *payload.StartPaused
+	}
+	if payload.Category != nil {
+		settings.Category = *payload.Category
+	}
+	if payload.Tags != nil {
+		settings.Tags = payload.Tags
+	}
+
+	updated, err := h.service.UpdateSettings(r.Context(), settings)
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to update settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to update settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
+}
+
+// DirScanDirectoryPayload is the request body for creating/updating directories.
+type DirScanDirectoryPayload struct {
+	Path                *string `json:"path"`
+	QbitPathPrefix      *string `json:"qbitPathPrefix"`
+	Enabled             *bool   `json:"enabled"`
+	ArrInstanceID       *int    `json:"arrInstanceId"`
+	TargetInstanceID    *int    `json:"targetInstanceId"`
+	ScanIntervalMinutes *int    `json:"scanIntervalMinutes"`
+}
+
+// ListDirectories returns all configured scan directories.
+func (h *DirScanHandler) ListDirectories(w http.ResponseWriter, r *http.Request) {
+	dirs, err := h.service.ListDirectories(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to list directories")
+		RespondError(w, http.StatusInternalServerError, "Failed to list directories")
+		return
+	}
+
+	// Return empty array instead of null when no directories exist
+	if dirs == nil {
+		dirs = []*models.DirScanDirectory{}
+	}
+
+	RespondJSON(w, http.StatusOK, dirs)
+}
+
+// CreateDirectory creates a new scan directory.
+func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
+	var payload DirScanDirectoryPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate required fields
+	if payload.Path == nil || *payload.Path == "" {
+		RespondError(w, http.StatusBadRequest, "Path is required")
+		return
+	}
+	if payload.TargetInstanceID == nil || *payload.TargetInstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Target instance ID is required")
+		return
+	}
+
+	// Validate target instance has local filesystem access
+	instance, err := h.instanceStore.Get(r.Context(), *payload.TargetInstanceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusBadRequest, "Target instance not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", *payload.TargetInstanceID).Msg("dirscan: failed to get instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to validate target instance")
+		return
+	}
+
+	if !instance.HasLocalFilesystemAccess {
+		RespondError(w, http.StatusBadRequest, "Target instance must have local filesystem access enabled")
+		return
+	}
+
+	dir := &models.DirScanDirectory{
+		Path:             *payload.Path,
+		TargetInstanceID: *payload.TargetInstanceID,
+		Enabled:          true,
+	}
+
+	if payload.QbitPathPrefix != nil {
+		dir.QbitPathPrefix = *payload.QbitPathPrefix
+	}
+	if payload.Enabled != nil {
+		dir.Enabled = *payload.Enabled
+	}
+	if payload.ArrInstanceID != nil {
+		dir.ArrInstanceID = payload.ArrInstanceID
+	}
+	if payload.ScanIntervalMinutes != nil {
+		dir.ScanIntervalMinutes = *payload.ScanIntervalMinutes
+	} else {
+		dir.ScanIntervalMinutes = 1440 // Default to 24 hours
+	}
+
+	created, err := h.service.CreateDirectory(r.Context(), dir)
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to create directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to create directory")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, created)
+}
+
+// GetDirectory returns a specific scan directory.
+func (h *DirScanHandler) GetDirectory(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	dir, err := h.service.GetDirectory(r.Context(), dirID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Directory not found")
+			return
+		}
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to get directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to get directory")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, dir)
+}
+
+// UpdateDirectory updates a scan directory.
+func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	var payload DirScanDirectoryPayload
+	if decodeErr := json.NewDecoder(r.Body).Decode(&payload); decodeErr != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate target instance if being changed
+	if payload.TargetInstanceID != nil {
+		if validateErr := h.validateTargetInstance(w, r, *payload.TargetInstanceID); validateErr != nil {
+			return
+		}
+	}
+
+	params := &models.DirScanDirectoryUpdateParams{
+		Path:                payload.Path,
+		QbitPathPrefix:      payload.QbitPathPrefix,
+		Enabled:             payload.Enabled,
+		ArrInstanceID:       payload.ArrInstanceID,
+		TargetInstanceID:    payload.TargetInstanceID,
+		ScanIntervalMinutes: payload.ScanIntervalMinutes,
+	}
+
+	updated, err := h.service.UpdateDirectory(r.Context(), dirID, params)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Directory not found")
+			return
+		}
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to update directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to update directory")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
+}
+
+// DeleteDirectory deletes a scan directory.
+func (h *DirScanHandler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	if err := h.service.DeleteDirectory(r.Context(), dirID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Directory not found")
+			return
+		}
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to delete directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete directory")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// TriggerScan starts a manual scan for a directory.
+func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	runID, err := h.service.StartManualScan(r.Context(), dirID)
+	if err != nil {
+		if errors.Is(err, models.ErrDirScanRunAlreadyActive) {
+			RespondError(w, http.StatusConflict, "A scan is already in progress")
+			return
+		}
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to start scan")
+		RespondError(w, http.StatusInternalServerError, "Failed to start scan")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, map[string]int64{"runId": runID})
+}
+
+// CancelScan cancels a running scan for a directory.
+func (h *DirScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	if err := h.service.CancelScan(r.Context(), dirID); err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to cancel scan")
+		RespondError(w, http.StatusInternalServerError, "Failed to cancel scan")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetStatus returns the status of the current or most recent scan.
+func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	run, err := h.service.GetStatus(r.Context(), dirID)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to get status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get status")
+		return
+	}
+
+	if run == nil {
+		RespondJSON(w, http.StatusOK, map[string]string{"status": "idle"})
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, run)
+}
+
+// ListRuns returns recent scan runs for a directory.
+func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	limit := 20
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, parseErr := strconv.Atoi(limitStr); parseErr == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	runs, err := h.service.ListRuns(r.Context(), dirID, limit)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to list runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list runs")
+		return
+	}
+
+	if runs == nil {
+		runs = []*models.DirScanRun{}
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
+}
+
+// ListFiles returns scanned files for a directory.
+func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	limit := 100
+	offset := 0
+	var status *models.DirScanFileStatus
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, parseErr := strconv.Atoi(limitStr); parseErr == nil && l > 0 {
+			limit = l
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, parseErr := strconv.Atoi(offsetStr); parseErr == nil && o >= 0 {
+			offset = o
+		}
+	}
+	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
+		s := models.DirScanFileStatus(statusStr)
+		status = &s
+	}
+
+	files, err := h.service.ListFiles(r.Context(), dirID, status, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to list files")
+		RespondError(w, http.StatusInternalServerError, "Failed to list files")
+		return
+	}
+
+	if files == nil {
+		files = []*models.DirScanFile{}
+	}
+
+	RespondJSON(w, http.StatusOK, files)
+}
+
+// parseDirectoryID extracts and validates the directory ID from the URL.
+func parseDirectoryID(w http.ResponseWriter, r *http.Request) (int, error) {
+	idStr := chi.URLParam(r, "directoryID")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid directory ID")
+		return 0, errors.New("invalid directory ID")
+	}
+	return id, nil
+}
+
+// validateTargetInstance validates that the target instance exists and has local filesystem access.
+// Returns an error if validation fails (response is already written in that case).
+func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.Request, instanceID int) error {
+	instance, err := h.instanceStore.Get(r.Context(), instanceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusBadRequest, "Target instance not found")
+			return fmt.Errorf("instance not found: %w", err)
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("dirscan: failed to get instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to validate target instance")
+		return fmt.Errorf("get instance: %w", err)
+	}
+
+	if !instance.HasLocalFilesystemAccess {
+		RespondError(w, http.StatusBadRequest, "Target instance must have local filesystem access enabled")
+		return errors.New("instance lacks local filesystem access")
+	}
+
+	return nil
+}

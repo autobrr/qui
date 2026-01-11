@@ -1,0 +1,977 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package models
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+)
+
+// MatchMode defines how files are matched to torrent files.
+type MatchMode string
+
+const (
+	// MatchModeStrict requires files to match by name AND size.
+	MatchModeStrict MatchMode = "strict"
+	// MatchModeFlexible matches files by size only, ignoring filename differences.
+	MatchModeFlexible MatchMode = "flexible"
+)
+
+// DirScanFileStatus defines the status of a scanned file.
+type DirScanFileStatus string
+
+// Status constants are type-safe enums; duplicate string values across types are intentional.
+//
+//nolint:goconst // type-safe enum values intentionally share strings with other status types
+const (
+	DirScanFileStatusPending        DirScanFileStatus = "pending"
+	DirScanFileStatusMatched        DirScanFileStatus = "matched"
+	DirScanFileStatusNoMatch        DirScanFileStatus = "no_match"
+	DirScanFileStatusError          DirScanFileStatus = "error"
+	DirScanFileStatusAlreadySeeding DirScanFileStatus = "already_seeding"
+	DirScanFileStatusInQBittorrent  DirScanFileStatus = "in_qbittorrent"
+)
+
+// DirScanRunStatus defines the status of a scan run.
+type DirScanRunStatus string
+
+// Run status constants are type-safe enums; duplicate string values across types are intentional.
+//
+//nolint:goconst // type-safe enum values intentionally share strings with other status types
+const (
+	DirScanRunStatusScanning  DirScanRunStatus = "scanning"
+	DirScanRunStatusSearching DirScanRunStatus = "searching"
+	DirScanRunStatusInjecting DirScanRunStatus = "injecting"
+	DirScanRunStatusSuccess   DirScanRunStatus = "success"
+	DirScanRunStatusFailed    DirScanRunStatus = "failed"
+	DirScanRunStatusCanceled  DirScanRunStatus = "canceled"
+)
+
+// DirScanSettings represents global directory scanner settings.
+type DirScanSettings struct {
+	ID                           int       `json:"id"`
+	Enabled                      bool      `json:"enabled"`
+	MatchMode                    MatchMode `json:"matchMode"`
+	SizeTolerancePercent         float64   `json:"sizeTolerancePercent"`
+	MinPieceRatio                float64   `json:"minPieceRatio"`
+	AllowPartial                 bool      `json:"allowPartial"`
+	SkipPieceBoundarySafetyCheck bool      `json:"skipPieceBoundarySafetyCheck"`
+	StartPaused                  bool      `json:"startPaused"`
+	Category                     string    `json:"category"`
+	Tags                         []string  `json:"tags"`
+	CreatedAt                    time.Time `json:"createdAt"`
+	UpdatedAt                    time.Time `json:"updatedAt"`
+}
+
+// DirScanDirectory represents a configured scan directory.
+type DirScanDirectory struct {
+	ID                  int        `json:"id"`
+	Path                string     `json:"path"`
+	QbitPathPrefix      string     `json:"qbitPathPrefix,omitempty"`
+	Enabled             bool       `json:"enabled"`
+	ArrInstanceID       *int       `json:"arrInstanceId,omitempty"`
+	TargetInstanceID    int        `json:"targetInstanceId"`
+	ScanIntervalMinutes int        `json:"scanIntervalMinutes"`
+	LastScanAt          *time.Time `json:"lastScanAt,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	UpdatedAt           time.Time  `json:"updatedAt"`
+}
+
+// DirScanRun represents a scan run history entry.
+type DirScanRun struct {
+	ID            int64            `json:"id"`
+	DirectoryID   int              `json:"directoryId"`
+	Status        DirScanRunStatus `json:"status"`
+	TriggeredBy   string           `json:"triggeredBy"`
+	FilesFound    int              `json:"filesFound"`
+	FilesSkipped  int              `json:"filesSkipped"`
+	MatchesFound  int              `json:"matchesFound"`
+	TorrentsAdded int              `json:"torrentsAdded"`
+	ErrorMessage  string           `json:"errorMessage,omitempty"`
+	StartedAt     time.Time        `json:"startedAt"`
+	CompletedAt   *time.Time       `json:"completedAt,omitempty"`
+}
+
+// DirScanFile represents a scanned file tracking entry.
+type DirScanFile struct {
+	ID                 int64             `json:"id"`
+	DirectoryID        int               `json:"directoryId"`
+	FilePath           string            `json:"filePath"`
+	FileSize           int64             `json:"fileSize"`
+	FileModTime        time.Time         `json:"fileModTime"`
+	FileID             []byte            `json:"-"` // Platform-neutral FileID (dev+ino on Unix, vol+idx on Windows)
+	Status             DirScanFileStatus `json:"status"`
+	MatchedTorrentHash string            `json:"matchedTorrentHash,omitempty"`
+	MatchedIndexerID   *int              `json:"matchedIndexerId,omitempty"`
+	LastProcessedAt    *time.Time        `json:"lastProcessedAt,omitempty"`
+}
+
+// DirScanStore handles database operations for directory scanner.
+type DirScanStore struct {
+	db dbinterface.Querier
+}
+
+// NewDirScanStore creates a new DirScanStore.
+func NewDirScanStore(db dbinterface.Querier) *DirScanStore {
+	return &DirScanStore{db: db}
+}
+
+// --- Settings Operations ---
+
+// GetSettings retrieves the global directory scanner settings.
+func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, enabled, match_mode, size_tolerance_percent, min_piece_ratio,
+		       allow_partial, skip_piece_boundary_safety_check, start_paused,
+		       category, tags, created_at, updated_at
+		FROM dir_scan_settings
+		WHERE id = 1
+	`)
+
+	var settings DirScanSettings
+	var category sql.NullString
+	var tagsJSON sql.NullString
+
+	err := row.Scan(
+		&settings.ID,
+		&settings.Enabled,
+		&settings.MatchMode,
+		&settings.SizeTolerancePercent,
+		&settings.MinPieceRatio,
+		&settings.AllowPartial,
+		&settings.SkipPieceBoundarySafetyCheck,
+		&settings.StartPaused,
+		&category,
+		&tagsJSON,
+		&settings.CreatedAt,
+		&settings.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan settings: %w", err)
+	}
+
+	if category.Valid {
+		settings.Category = category.String
+	}
+	if tagsJSON.Valid && tagsJSON.String != "" {
+		if err := json.Unmarshal([]byte(tagsJSON.String), &settings.Tags); err != nil {
+			return nil, fmt.Errorf("unmarshal tags: %w", err)
+		}
+	}
+	if settings.Tags == nil {
+		settings.Tags = []string{}
+	}
+
+	return &settings, nil
+}
+
+// UpdateSettings updates the global directory scanner settings.
+func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSettings) (*DirScanSettings, error) {
+	if settings == nil {
+		return nil, errors.New("settings is nil")
+	}
+
+	tagsJSON, err := json.Marshal(settings.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tags: %w", err)
+	}
+
+	var category any
+	if settings.Category != "" {
+		category = settings.Category
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE dir_scan_settings
+		SET enabled = ?,
+		    match_mode = ?,
+		    size_tolerance_percent = ?,
+		    min_piece_ratio = ?,
+		    allow_partial = ?,
+		    skip_piece_boundary_safety_check = ?,
+		    start_paused = ?,
+		    category = ?,
+		    tags = ?
+		WHERE id = 1
+	`, boolToInt(settings.Enabled), settings.MatchMode, settings.SizeTolerancePercent,
+		settings.MinPieceRatio, boolToInt(settings.AllowPartial),
+		boolToInt(settings.SkipPieceBoundarySafetyCheck), boolToInt(settings.StartPaused),
+		category, string(tagsJSON))
+	if err != nil {
+		return nil, fmt.Errorf("update settings: %w", err)
+	}
+
+	return s.GetSettings(ctx)
+}
+
+// --- Directory Operations ---
+
+// ErrDirectoryNotFound is returned when a directory is not found.
+var ErrDirectoryNotFound = errors.New("directory not found")
+
+// CreateDirectory creates a new scan directory.
+func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirectory) (*DirScanDirectory, error) {
+	if dir == nil {
+		return nil, errors.New("directory is nil")
+	}
+
+	var qbitPathPrefix any
+	if dir.QbitPathPrefix != "" {
+		qbitPathPrefix = dir.QbitPathPrefix
+	}
+
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO dir_scan_directories
+			(path, qbit_path_prefix, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, dir.Path, qbitPathPrefix, boolToInt(dir.Enabled), dir.ArrInstanceID,
+		dir.TargetInstanceID, dir.ScanIntervalMinutes)
+	if err != nil {
+		return nil, fmt.Errorf("insert directory: %w", err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("get last insert id: %w", err)
+	}
+
+	return s.GetDirectory(ctx, int(id))
+}
+
+// GetDirectory retrieves a directory by ID.
+func (s *DirScanStore) GetDirectory(ctx context.Context, id int) (*DirScanDirectory, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, path, qbit_path_prefix, enabled, arr_instance_id, target_instance_id,
+		       scan_interval_minutes, last_scan_at, created_at, updated_at
+		FROM dir_scan_directories
+		WHERE id = ?
+	`, id)
+
+	return s.scanDirectory(row)
+}
+
+func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
+	var dir DirScanDirectory
+	var qbitPathPrefix sql.NullString
+	var arrInstanceID sql.NullInt64
+	var lastScanAt sql.NullTime
+
+	err := row.Scan(
+		&dir.ID,
+		&dir.Path,
+		&qbitPathPrefix,
+		&dir.Enabled,
+		&arrInstanceID,
+		&dir.TargetInstanceID,
+		&dir.ScanIntervalMinutes,
+		&lastScanAt,
+		&dir.CreatedAt,
+		&dir.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrDirectoryNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan directory: %w", err)
+	}
+
+	if qbitPathPrefix.Valid {
+		dir.QbitPathPrefix = qbitPathPrefix.String
+	}
+	if arrInstanceID.Valid {
+		id := int(arrInstanceID.Int64)
+		dir.ArrInstanceID = &id
+	}
+	if lastScanAt.Valid {
+		dir.LastScanAt = &lastScanAt.Time
+	}
+
+	return &dir, nil
+}
+
+// scanDirectoriesFromRows scans directory rows and returns a slice of directories.
+func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirectory, error) {
+	var directories []*DirScanDirectory
+	for rows.Next() {
+		var dir DirScanDirectory
+		var qbitPathPrefix sql.NullString
+		var arrInstanceID sql.NullInt64
+		var lastScanAt sql.NullTime
+
+		if err := rows.Scan(
+			&dir.ID,
+			&dir.Path,
+			&qbitPathPrefix,
+			&dir.Enabled,
+			&arrInstanceID,
+			&dir.TargetInstanceID,
+			&dir.ScanIntervalMinutes,
+			&lastScanAt,
+			&dir.CreatedAt,
+			&dir.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan directory row: %w", err)
+		}
+
+		if qbitPathPrefix.Valid {
+			dir.QbitPathPrefix = qbitPathPrefix.String
+		}
+		if arrInstanceID.Valid {
+			id := int(arrInstanceID.Int64)
+			dir.ArrInstanceID = &id
+		}
+		if lastScanAt.Valid {
+			dir.LastScanAt = &lastScanAt.Time
+		}
+
+		directories = append(directories, &dir)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate directories: %w", err)
+	}
+
+	return directories, nil
+}
+
+// ListDirectories retrieves all scan directories.
+func (s *DirScanStore) ListDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, path, qbit_path_prefix, enabled, arr_instance_id, target_instance_id,
+		       scan_interval_minutes, last_scan_at, created_at, updated_at
+		FROM dir_scan_directories
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query directories: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanDirectoriesFromRows(rows)
+}
+
+// DirScanDirectoryUpdateParams holds optional fields for updating a directory.
+type DirScanDirectoryUpdateParams struct {
+	Path                *string
+	QbitPathPrefix      *string
+	Enabled             *bool
+	ArrInstanceID       *int // Use -1 to clear
+	TargetInstanceID    *int
+	ScanIntervalMinutes *int
+}
+
+// UpdateDirectory updates a scan directory.
+func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirScanDirectoryUpdateParams) (*DirScanDirectory, error) {
+	if params == nil {
+		return s.GetDirectory(ctx, id)
+	}
+
+	existing, err := s.GetDirectory(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if params.Path != nil {
+		existing.Path = *params.Path
+	}
+	if params.QbitPathPrefix != nil {
+		existing.QbitPathPrefix = *params.QbitPathPrefix
+	}
+	if params.Enabled != nil {
+		existing.Enabled = *params.Enabled
+	}
+	if params.ArrInstanceID != nil {
+		if *params.ArrInstanceID == -1 {
+			existing.ArrInstanceID = nil
+		} else {
+			existing.ArrInstanceID = params.ArrInstanceID
+		}
+	}
+	if params.TargetInstanceID != nil {
+		existing.TargetInstanceID = *params.TargetInstanceID
+	}
+	if params.ScanIntervalMinutes != nil {
+		existing.ScanIntervalMinutes = *params.ScanIntervalMinutes
+	}
+
+	var qbitPathPrefix any
+	if existing.QbitPathPrefix != "" {
+		qbitPathPrefix = existing.QbitPathPrefix
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE dir_scan_directories
+		SET path = ?,
+		    qbit_path_prefix = ?,
+		    enabled = ?,
+		    arr_instance_id = ?,
+		    target_instance_id = ?,
+		    scan_interval_minutes = ?
+		WHERE id = ?
+	`, existing.Path, qbitPathPrefix, boolToInt(existing.Enabled),
+		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, id)
+	if err != nil {
+		return nil, fmt.Errorf("update directory: %w", err)
+	}
+
+	return s.GetDirectory(ctx, id)
+}
+
+// DeleteDirectory deletes a scan directory.
+func (s *DirScanStore) DeleteDirectory(ctx context.Context, id int) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM dir_scan_directories WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete directory: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrDirectoryNotFound
+	}
+
+	return nil
+}
+
+// UpdateDirectoryLastScan updates the last scan timestamp.
+func (s *DirScanStore) UpdateDirectoryLastScan(ctx context.Context, id int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_directories SET last_scan_at = CURRENT_TIMESTAMP WHERE id = ?
+	`, id)
+	if err != nil {
+		return fmt.Errorf("update directory last scan: %w", err)
+	}
+	return nil
+}
+
+// ListEnabledDirectories returns all enabled directories.
+func (s *DirScanStore) ListEnabledDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, path, qbit_path_prefix, enabled, arr_instance_id, target_instance_id,
+		       scan_interval_minutes, last_scan_at, created_at, updated_at
+		FROM dir_scan_directories
+		WHERE enabled = 1
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query enabled directories: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanDirectoriesFromRows(rows)
+}
+
+// --- Run Operations ---
+
+// ErrDirScanRunAlreadyActive is returned when attempting to create a run while one is active.
+var ErrDirScanRunAlreadyActive = errors.New("an active scan run already exists for this directory")
+
+// CreateRun creates a new scan run.
+func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
+		VALUES (?, ?, ?)
+	`, directoryID, DirScanRunStatusScanning, triggeredBy)
+	if err != nil {
+		return 0, fmt.Errorf("insert run: %w", err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("get last insert id: %w", err)
+	}
+
+	return id, nil
+}
+
+// CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
+func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
+		SELECT ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM dir_scan_runs
+			WHERE directory_id = ?
+			  AND status IN ('scanning', 'searching', 'injecting')
+		)
+	`, directoryID, DirScanRunStatusScanning, triggeredBy, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("insert run: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return 0, ErrDirScanRunAlreadyActive
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("get last insert id: %w", err)
+	}
+
+	return id, nil
+}
+
+// GetRun retrieves a run by ID.
+func (s *DirScanStore) GetRun(ctx context.Context, runID int64) (*DirScanRun, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, directory_id, status, triggered_by, files_found, files_skipped,
+		       matches_found, torrents_added, error_message, started_at, completed_at
+		FROM dir_scan_runs
+		WHERE id = ?
+	`, runID)
+
+	return s.scanRun(row)
+}
+
+func (s *DirScanStore) scanRun(row *sql.Row) (*DirScanRun, error) {
+	var run DirScanRun
+	var errorMessage sql.NullString
+	var completedAt sql.NullTime
+
+	err := row.Scan(
+		&run.ID,
+		&run.DirectoryID,
+		&run.Status,
+		&run.TriggeredBy,
+		&run.FilesFound,
+		&run.FilesSkipped,
+		&run.MatchesFound,
+		&run.TorrentsAdded,
+		&errorMessage,
+		&run.StartedAt,
+		&completedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan run: %w", err)
+	}
+
+	if errorMessage.Valid {
+		run.ErrorMessage = errorMessage.String
+	}
+	if completedAt.Valid {
+		run.CompletedAt = &completedAt.Time
+	}
+
+	return &run, nil
+}
+
+// ListRuns lists recent runs for a directory.
+func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]*DirScanRun, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, directory_id, status, triggered_by, files_found, files_skipped,
+		       matches_found, torrents_added, error_message, started_at, completed_at
+		FROM dir_scan_runs
+		WHERE directory_id = ?
+		ORDER BY started_at DESC
+		LIMIT ?
+	`, directoryID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query runs: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*DirScanRun
+	for rows.Next() {
+		var run DirScanRun
+		var errorMessage sql.NullString
+		var completedAt sql.NullTime
+
+		if err := rows.Scan(
+			&run.ID,
+			&run.DirectoryID,
+			&run.Status,
+			&run.TriggeredBy,
+			&run.FilesFound,
+			&run.FilesSkipped,
+			&run.MatchesFound,
+			&run.TorrentsAdded,
+			&errorMessage,
+			&run.StartedAt,
+			&completedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan run row: %w", err)
+		}
+
+		if errorMessage.Valid {
+			run.ErrorMessage = errorMessage.String
+		}
+		if completedAt.Valid {
+			run.CompletedAt = &completedAt.Time
+		}
+
+		runs = append(runs, &run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate runs: %w", err)
+	}
+
+	return runs, nil
+}
+
+// HasActiveRun checks if there's an active run for a directory.
+func (s *DirScanStore) HasActiveRun(ctx context.Context, directoryID int) (bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM dir_scan_runs
+		WHERE directory_id = ?
+		  AND status IN ('scanning', 'searching', 'injecting')
+	`, directoryID)
+
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return false, fmt.Errorf("scan active run count: %w", err)
+	}
+	return count > 0, nil
+}
+
+// GetActiveRun returns the active run for a directory, if any.
+func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirScanRun, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, directory_id, status, triggered_by, files_found, files_skipped,
+		       matches_found, torrents_added, error_message, started_at, completed_at
+		FROM dir_scan_runs
+		WHERE directory_id = ?
+		  AND status IN ('scanning', 'searching', 'injecting')
+		ORDER BY started_at DESC
+		LIMIT 1
+	`, directoryID)
+
+	return s.scanRun(row)
+}
+
+// UpdateRunStatus updates the status of a run.
+func (s *DirScanStore) UpdateRunStatus(ctx context.Context, runID int64, status DirScanRunStatus) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs SET status = ? WHERE id = ?
+	`, status, runID)
+	if err != nil {
+		return fmt.Errorf("update run status: %w", err)
+	}
+	return nil
+}
+
+// UpdateRunStats updates the stats of a run.
+func (s *DirScanStore) UpdateRunStats(ctx context.Context, runID int64, filesFound, filesSkipped, matchesFound, torrentsAdded int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET files_found = ?, files_skipped = ?, matches_found = ?, torrents_added = ?
+		WHERE id = ?
+	`, filesFound, filesSkipped, matchesFound, torrentsAdded, runID)
+	if err != nil {
+		return fmt.Errorf("update run stats: %w", err)
+	}
+	return nil
+}
+
+// UpdateRunCompleted marks a run as completed successfully.
+func (s *DirScanStore) UpdateRunCompleted(ctx context.Context, runID int64, matchesFound, torrentsAdded int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET status = ?, matches_found = ?, torrents_added = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, DirScanRunStatusSuccess, matchesFound, torrentsAdded, runID)
+	if err != nil {
+		return fmt.Errorf("update run completed: %w", err)
+	}
+	return nil
+}
+
+// UpdateRunFailed marks a run as failed.
+func (s *DirScanStore) UpdateRunFailed(ctx context.Context, runID int64, errorMessage string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, DirScanRunStatusFailed, errorMessage, runID)
+	if err != nil {
+		return fmt.Errorf("update run failed: %w", err)
+	}
+	return nil
+}
+
+// UpdateRunCanceled marks a run as canceled.
+func (s *DirScanStore) UpdateRunCanceled(ctx context.Context, runID int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET status = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, DirScanRunStatusCanceled, runID)
+	if err != nil {
+		return fmt.Errorf("update run canceled: %w", err)
+	}
+	return nil
+}
+
+// --- File Operations ---
+
+// UpsertFile inserts or updates a scanned file.
+func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error {
+	if file == nil {
+		return errors.New("file is nil")
+	}
+
+	var matchedIndexerID any
+	if file.MatchedIndexerID != nil {
+		matchedIndexerID = *file.MatchedIndexerID
+	}
+
+	var matchedTorrentHash any
+	if file.MatchedTorrentHash != "" {
+		matchedTorrentHash = file.MatchedTorrentHash
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO dir_scan_files
+			(directory_id, file_path, file_size, file_mod_time, file_id, status,
+			 matched_torrent_hash, matched_indexer_id, last_processed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(directory_id, file_path) DO UPDATE SET
+			file_size = excluded.file_size,
+			file_mod_time = excluded.file_mod_time,
+			file_id = excluded.file_id,
+			status = excluded.status,
+			matched_torrent_hash = excluded.matched_torrent_hash,
+			matched_indexer_id = excluded.matched_indexer_id,
+			last_processed_at = CURRENT_TIMESTAMP
+	`, file.DirectoryID, file.FilePath, file.FileSize, file.FileModTime, file.FileID,
+		file.Status, matchedTorrentHash, matchedIndexerID)
+	if err != nil {
+		return fmt.Errorf("upsert file: %w", err)
+	}
+
+	return nil
+}
+
+// GetFileByPath retrieves a file by its path within a directory.
+func (s *DirScanStore) GetFileByPath(ctx context.Context, directoryID int, filePath string) (*DirScanFile, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
+		       matched_torrent_hash, matched_indexer_id, last_processed_at
+		FROM dir_scan_files
+		WHERE directory_id = ? AND file_path = ?
+	`, directoryID, filePath)
+
+	return s.scanFile(row)
+}
+
+// GetFileByFileID retrieves a file by its FileID within a directory.
+func (s *DirScanStore) GetFileByFileID(ctx context.Context, directoryID int, fileID []byte) (*DirScanFile, error) {
+	if fileID == nil {
+		return nil, nil
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
+		       matched_torrent_hash, matched_indexer_id, last_processed_at
+		FROM dir_scan_files
+		WHERE directory_id = ? AND file_id = ?
+	`, directoryID, fileID)
+
+	return s.scanFile(row)
+}
+
+func (s *DirScanStore) scanFile(row *sql.Row) (*DirScanFile, error) {
+	var file DirScanFile
+	var fileID []byte
+	var matchedTorrentHash sql.NullString
+	var matchedIndexerID sql.NullInt64
+	var lastProcessedAt sql.NullTime
+
+	err := row.Scan(
+		&file.ID,
+		&file.DirectoryID,
+		&file.FilePath,
+		&file.FileSize,
+		&file.FileModTime,
+		&fileID,
+		&file.Status,
+		&matchedTorrentHash,
+		&matchedIndexerID,
+		&lastProcessedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan file: %w", err)
+	}
+
+	file.FileID = fileID
+	if matchedTorrentHash.Valid {
+		file.MatchedTorrentHash = matchedTorrentHash.String
+	}
+	if matchedIndexerID.Valid {
+		id := int(matchedIndexerID.Int64)
+		file.MatchedIndexerID = &id
+	}
+	if lastProcessedAt.Valid {
+		file.LastProcessedAt = &lastProcessedAt.Time
+	}
+
+	return &file, nil
+}
+
+// ListFiles lists files for a directory with optional status filter.
+func (s *DirScanStore) ListFiles(ctx context.Context, directoryID int, status *DirScanFileStatus, limit, offset int) ([]*DirScanFile, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	var query string
+	var args []any
+
+	if status != nil {
+		query = `
+			SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
+			       matched_torrent_hash, matched_indexer_id, last_processed_at
+			FROM dir_scan_files
+			WHERE directory_id = ? AND status = ?
+			ORDER BY file_path
+			LIMIT ? OFFSET ?
+		`
+		args = []any{directoryID, *status, limit, offset}
+	} else {
+		query = `
+			SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
+			       matched_torrent_hash, matched_indexer_id, last_processed_at
+			FROM dir_scan_files
+			WHERE directory_id = ?
+			ORDER BY file_path
+			LIMIT ? OFFSET ?
+		`
+		args = []any{directoryID, limit, offset}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []*DirScanFile
+	for rows.Next() {
+		var file DirScanFile
+		var fileID []byte
+		var matchedTorrentHash sql.NullString
+		var matchedIndexerID sql.NullInt64
+		var lastProcessedAt sql.NullTime
+
+		if err := rows.Scan(
+			&file.ID,
+			&file.DirectoryID,
+			&file.FilePath,
+			&file.FileSize,
+			&file.FileModTime,
+			&fileID,
+			&file.Status,
+			&matchedTorrentHash,
+			&matchedIndexerID,
+			&lastProcessedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan file row: %w", err)
+		}
+
+		file.FileID = fileID
+		if matchedTorrentHash.Valid {
+			file.MatchedTorrentHash = matchedTorrentHash.String
+		}
+		if matchedIndexerID.Valid {
+			id := int(matchedIndexerID.Int64)
+			file.MatchedIndexerID = &id
+		}
+		if lastProcessedAt.Valid {
+			file.LastProcessedAt = &lastProcessedAt.Time
+		}
+
+		files = append(files, &file)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate files: %w", err)
+	}
+
+	return files, nil
+}
+
+// UpdateFileStatus updates the status of a file.
+func (s *DirScanStore) UpdateFileStatus(ctx context.Context, fileID int64, status DirScanFileStatus) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_files SET status = ?, last_processed_at = CURRENT_TIMESTAMP WHERE id = ?
+	`, status, fileID)
+	if err != nil {
+		return fmt.Errorf("update file status: %w", err)
+	}
+	return nil
+}
+
+// UpdateFileMatch updates the match info for a file.
+func (s *DirScanStore) UpdateFileMatch(ctx context.Context, fileID int64, torrentHash string, indexerID int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_files
+		SET status = ?, matched_torrent_hash = ?, matched_indexer_id = ?, last_processed_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, DirScanFileStatusMatched, torrentHash, indexerID, fileID)
+	if err != nil {
+		return fmt.Errorf("update file match: %w", err)
+	}
+	return nil
+}
+
+// DeleteFilesForDirectory deletes all tracked files for a directory.
+func (s *DirScanStore) DeleteFilesForDirectory(ctx context.Context, directoryID int) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM dir_scan_files WHERE directory_id = ?`, directoryID)
+	if err != nil {
+		return fmt.Errorf("delete files for directory: %w", err)
+	}
+	return nil
+}
+
+// CountFilesByStatus returns counts of files by status for a directory.
+func (s *DirScanStore) CountFilesByStatus(ctx context.Context, directoryID int) (map[DirScanFileStatus]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT status, COUNT(*)
+		FROM dir_scan_files
+		WHERE directory_id = ?
+		GROUP BY status
+	`, directoryID)
+	if err != nil {
+		return nil, fmt.Errorf("query file counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[DirScanFileStatus]int)
+	for rows.Next() {
+		var status DirScanFileStatus
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("scan count row: %w", err)
+		}
+		counts[status] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate counts: %w", err)
+	}
+
+	return counts, nil
+}

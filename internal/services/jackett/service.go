@@ -108,6 +108,7 @@ const (
 
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
+	searchCacheScopeDirScan   = "dir-scan"
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -546,6 +547,12 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) error {
 // SearchGeneric performs a general Torznab search across specified or all enabled indexers
 func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) error {
 	return s.performSearch(ctx, req, searchCacheScopeGeneral)
+}
+
+// SearchWithScope performs a Torznab search with a custom cache scope.
+// This is used by dir-scan and other features that need cache separation.
+func (s *Service) SearchWithScope(ctx context.Context, req *TorznabSearchRequest, scope string) error {
+	return s.performSearch(ctx, req, scope)
 }
 
 // performSearch is the shared implementation for Search and SearchGeneric

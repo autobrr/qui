@@ -1938,3 +1938,106 @@ export interface LogSettingsUpdate {
   maxSize?: number
   maxBackups?: number
 }
+
+// Directory Scanner Types
+export type DirScanMatchMode = "strict" | "flexible"
+
+export type DirScanFileStatus =
+  | "pending"
+  | "matched"
+  | "no_match"
+  | "error"
+  | "already_seeding"
+  | "in_qbittorrent"
+
+export type DirScanRunStatus =
+  | "scanning"
+  | "searching"
+  | "injecting"
+  | "success"
+  | "failed"
+  | "canceled"
+
+export interface DirScanSettings {
+  id: number
+  enabled: boolean
+  matchMode: DirScanMatchMode
+  sizeTolerancePercent: number
+  minPieceRatio: number
+  allowPartial: boolean
+  skipPieceBoundarySafetyCheck: boolean
+  startPaused: boolean
+  category: string
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanSettingsUpdate {
+  enabled?: boolean
+  matchMode?: DirScanMatchMode
+  sizeTolerancePercent?: number
+  minPieceRatio?: number
+  allowPartial?: boolean
+  skipPieceBoundarySafetyCheck?: boolean
+  startPaused?: boolean
+  category?: string
+  tags?: string[]
+}
+
+export interface DirScanDirectory {
+  id: number
+  path: string
+  qbitPathPrefix?: string
+  enabled: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes: number
+  lastScanAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanDirectoryCreate {
+  path: string
+  qbitPathPrefix?: string
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanDirectoryUpdate {
+  path?: string
+  qbitPathPrefix?: string
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId?: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanRun {
+  id: number
+  directoryId: number
+  status: DirScanRunStatus
+  triggeredBy: string
+  filesFound: number
+  filesSkipped: number
+  matchesFound: number
+  torrentsAdded: number
+  errorMessage?: string
+  startedAt: string
+  completedAt?: string
+}
+
+export interface DirScanFile {
+  id: number
+  directoryId: number
+  filePath: string
+  fileSize: number
+  fileModTime: string
+  status: DirScanFileStatus
+  matchedTorrentHash?: string
+  matchedIndexerId?: number
+  lastProcessedAt?: string
+}
