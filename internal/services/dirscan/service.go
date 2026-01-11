@@ -416,13 +416,16 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	}
 
 	// Update run stats with scan results
-	if err := s.store.UpdateRunStats(ctx, runID, scanResult.TotalFiles, scanResult.SkippedFiles, 0, 0); err != nil {
+	filesFound := scanResult.TotalFiles + scanResult.SkippedFiles
+	if err := s.store.UpdateRunStats(ctx, runID, filesFound, scanResult.SkippedFiles, 0, 0); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to update run stats")
 	}
 
 	l.Info().
 		Int("searchees", len(scanResult.Searchees)).
-		Int("totalFiles", scanResult.TotalFiles).
+		Int("filesFound", filesFound).
+		Int("filesEligible", scanResult.TotalFiles).
+		Int("filesSkipped", scanResult.SkippedFiles).
 		Int64("totalSize", scanResult.TotalSize).
 		Msg("dirscan: scan phase complete")
 
