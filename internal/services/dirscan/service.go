@@ -298,7 +298,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	l.Info().Str("path", dir.Path).Msg("dirscan: starting scan")
 
 	// Phase 1: Scanning - Walk directory and collect files
-	scanResult, ok := s.runScanPhase(ctx, dir, runID, &l)
+	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, runID, &l)
 	if !ok {
 		return
 	}
@@ -330,7 +330,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	matcher := NewMatcher(matchMode, settings.SizeTolerancePercent)
 
 	// Phase 2 & 3: Search, match, and inject
-	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, scanResult, settings, matcher, runID, &l)
+	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, scanResult, fileIDIndex, settings, matcher, runID, &l)
 
 	// Mark run as completed
 	if err := s.store.UpdateRunCompleted(ctx, runID, matchesFound, torrentsAdded); err != nil {
@@ -387,15 +387,17 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 
 // runScanPhase executes the directory scanning phase.
 // Returns the scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, runID int64, l *zerolog.Logger) (*ScanResult, bool) {
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
 	scanner := NewScanner()
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips.
+	fileIDIndex := make(map[string]string)
 	if s.syncManager != nil {
 		if index, err := s.buildFileIDIndex(ctx, dir.TargetInstanceID, l); err != nil {
 			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
 		} else if len(index) > 0 {
+			fileIDIndex = index
 			scanner.SetFileIDIndex(index)
 		}
 	}
@@ -404,7 +406,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to scan directory")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), l)
-		return nil, false
+		return nil, nil, false
 	}
 
 	// Update status to searching
@@ -423,7 +425,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		Int64("totalSize", scanResult.TotalSize).
 		Msg("dirscan: scan phase complete")
 
-	return scanResult, true
+	return scanResult, fileIDIndex, true
 }
 
 // runSearchAndInjectPhase searches indexers for each searchee and injects matches.
@@ -431,6 +433,7 @@ func (s *Service) runSearchAndInjectPhase(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	scanResult *ScanResult,
+	fileIDIndex map[string]string,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
@@ -457,6 +460,11 @@ func (s *Service) runSearchAndInjectPhase(
 				return matchesFound, torrentsAdded
 			}
 
+			if isAlreadySeedingByFileID(item.searchee, fileIDIndex) {
+				l.Debug().Str("name", item.searchee.Name).Msg("dirscan: skipping searchee already seeding (FileID)")
+				continue
+			}
+
 			if item.tvGroup != nil {
 				if _, alreadyInjected := injectedTVGroups[*item.tvGroup]; alreadyInjected {
 					continue
@@ -479,6 +487,21 @@ func (s *Service) runSearchAndInjectPhase(
 	}
 
 	return matchesFound, torrentsAdded
+}
+
+func isAlreadySeedingByFileID(searchee *Searchee, index map[string]string) bool {
+	if searchee == nil || len(searchee.Files) == 0 || len(index) == 0 {
+		return false
+	}
+	for _, f := range searchee.Files {
+		if f == nil || f.FileID.IsZero() {
+			return false
+		}
+		if _, ok := index[string(f.FileID.Bytes())]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // searcheeMatch holds the result of processing a searchee.
