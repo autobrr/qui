@@ -54,8 +54,8 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 }
 
 // cloneFile creates a reflink (copy-on-write clone) of src at dst.
-// On Linux, this uses the FICLONE ioctl.
-func cloneFile(src, dst string) error {
+// On Linux, this uses the FICLONE ioctl with a FICLONERANGE fallback.
+func cloneFile(src, dst string) (retErr error) {
 	// Open source file
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -74,9 +74,9 @@ func cloneFile(src, dst string) error {
 		return fmt.Errorf("create destination: %w", err)
 	}
 	defer func() {
-		dstFile.Close()
-		if err != nil {
-			os.Remove(dst)
+		_ = dstFile.Close()
+		if retErr != nil {
+			_ = os.Remove(dst)
 		}
 	}()
 
@@ -84,8 +84,7 @@ func cloneFile(src, dst string) error {
 	srcFd := int(srcFile.Fd())
 	dstFd := int(dstFile.Fd())
 
-	err = unix.IoctlFileClone(dstFd, srcFd)
-	if err != nil {
+	if err := unix.IoctlFileClone(dstFd, srcFd); err != nil {
 		if shouldTryCloneRange(err) {
 			cloneRange := unix.FileCloneRange{
 				Src_fd:      int64(srcFd),
@@ -93,14 +92,11 @@ func cloneFile(src, dst string) error {
 				Src_length:  0,
 				Dest_offset: 0,
 			}
-			if rangeErr := unix.IoctlFileCloneRange(dstFd, &cloneRange); rangeErr == nil {
-				return nil
-			} else {
-				os.Remove(dst)
+			if rangeErr := unix.IoctlFileCloneRange(dstFd, &cloneRange); rangeErr != nil {
 				return fmt.Errorf("ioctl FICLONERANGE: %w", rangeErr)
 			}
+			return nil
 		}
-		os.Remove(dst)
 		return fmt.Errorf("ioctl FICLONE: %w", err)
 	}
 
