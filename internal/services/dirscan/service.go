@@ -852,6 +852,8 @@ func (s *Service) tryMatchAndInject(
 		category = dir.Category
 	}
 
+	tags := mergeStringLists(settings.Tags, dir.Tags)
+
 	injectReq := &InjectRequest{
 		InstanceID:     dir.TargetInstanceID,
 		TorrentBytes:   torrentData,
@@ -861,7 +863,7 @@ func (s *Service) tryMatchAndInject(
 		SearchResult:   result,
 		QbitPathPrefix: dir.QbitPathPrefix,
 		Category:       category,
-		Tags:           settings.Tags,
+		Tags:           tags,
 		StartPaused:    settings.StartPaused,
 	}
 
@@ -874,6 +876,25 @@ func (s *Service) tryMatchAndInject(
 	}
 
 	return &searcheeMatch{searchee: searchee, torrentData: torrentData, parsedTorrent: parsed, matchResult: matchResult, injected: injected}
+}
+
+func mergeStringLists(values ...[]string) []string {
+	out := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, list := range values {
+		for _, v := range list {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			if _, ok := seen[v]; ok {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, settings *models.DirScanSettings) (accept bool, reason string) {

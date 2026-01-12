@@ -76,6 +76,7 @@ type DirScanDirectory struct {
 	Path                string     `json:"path"`
 	QbitPathPrefix      string     `json:"qbitPathPrefix,omitempty"`
 	Category            string     `json:"category,omitempty"`
+	Tags                []string   `json:"tags"`
 	Enabled             bool       `json:"enabled"`
 	ArrInstanceID       *int       `json:"arrInstanceId,omitempty"`
 	TargetInstanceID    int        `json:"targetInstanceId"`
@@ -255,11 +256,19 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 		category = dir.Category
 	}
 
+	if dir.Tags == nil {
+		dir.Tags = []string{}
+	}
+	tagsJSON, err := json.Marshal(dir.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tags: %w", err)
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO dir_scan_directories
-			(path, qbit_path_prefix, category, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, dir.Path, qbitPathPrefix, category, boolToInt(dir.Enabled), dir.ArrInstanceID,
+			(path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, dir.Path, qbitPathPrefix, category, string(tagsJSON), boolToInt(dir.Enabled), dir.ArrInstanceID,
 		dir.TargetInstanceID, dir.ScanIntervalMinutes)
 	if err != nil {
 		return nil, fmt.Errorf("insert directory: %w", err)
@@ -276,7 +285,7 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 // GetDirectory retrieves a directory by ID.
 func (s *DirScanStore) GetDirectory(ctx context.Context, id int) (*DirScanDirectory, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, path, qbit_path_prefix, category, enabled, arr_instance_id, target_instance_id,
+		SELECT id, path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id,
 		       scan_interval_minutes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		WHERE id = ?
@@ -289,6 +298,7 @@ func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
 	var dir DirScanDirectory
 	var qbitPathPrefix sql.NullString
 	var category sql.NullString
+	var tagsJSON sql.NullString
 	var arrInstanceID sql.NullInt64
 	var lastScanAt sql.NullTime
 
@@ -297,6 +307,7 @@ func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
 		&dir.Path,
 		&qbitPathPrefix,
 		&category,
+		&tagsJSON,
 		&dir.Enabled,
 		&arrInstanceID,
 		&dir.TargetInstanceID,
@@ -318,6 +329,14 @@ func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
 	if category.Valid {
 		dir.Category = category.String
 	}
+	if tagsJSON.Valid && tagsJSON.String != "" {
+		if err := json.Unmarshal([]byte(tagsJSON.String), &dir.Tags); err != nil {
+			return nil, fmt.Errorf("unmarshal tags: %w", err)
+		}
+	}
+	if dir.Tags == nil {
+		dir.Tags = []string{}
+	}
 	if arrInstanceID.Valid {
 		id := int(arrInstanceID.Int64)
 		dir.ArrInstanceID = &id
@@ -336,6 +355,7 @@ func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirect
 		var dir DirScanDirectory
 		var qbitPathPrefix sql.NullString
 		var category sql.NullString
+		var tagsJSON sql.NullString
 		var arrInstanceID sql.NullInt64
 		var lastScanAt sql.NullTime
 
@@ -344,6 +364,7 @@ func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirect
 			&dir.Path,
 			&qbitPathPrefix,
 			&category,
+			&tagsJSON,
 			&dir.Enabled,
 			&arrInstanceID,
 			&dir.TargetInstanceID,
@@ -360,6 +381,14 @@ func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirect
 		}
 		if category.Valid {
 			dir.Category = category.String
+		}
+		if tagsJSON.Valid && tagsJSON.String != "" {
+			if err := json.Unmarshal([]byte(tagsJSON.String), &dir.Tags); err != nil {
+				return nil, fmt.Errorf("unmarshal tags: %w", err)
+			}
+		}
+		if dir.Tags == nil {
+			dir.Tags = []string{}
 		}
 		if arrInstanceID.Valid {
 			id := int(arrInstanceID.Int64)
@@ -381,7 +410,7 @@ func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirect
 // ListDirectories retrieves all scan directories.
 func (s *DirScanStore) ListDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, qbit_path_prefix, category, enabled, arr_instance_id, target_instance_id,
+		SELECT id, path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id,
 		       scan_interval_minutes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		ORDER BY id
@@ -399,6 +428,7 @@ type DirScanDirectoryUpdateParams struct {
 	Path                *string
 	QbitPathPrefix      *string
 	Category            *string
+	Tags                *[]string
 	Enabled             *bool
 	ArrInstanceID       *int // Use -1 to clear
 	TargetInstanceID    *int
@@ -424,6 +454,9 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 	}
 	if params.Category != nil {
 		existing.Category = *params.Category
+	}
+	if params.Tags != nil {
+		existing.Tags = *params.Tags
 	}
 	if params.Enabled != nil {
 		existing.Enabled = *params.Enabled
@@ -452,17 +485,23 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		category = existing.Category
 	}
 
+	tagsJSON, err := json.Marshal(existing.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tags: %w", err)
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE dir_scan_directories
 		SET path = ?,
 		    qbit_path_prefix = ?,
 		    category = ?,
+		    tags = ?,
 		    enabled = ?,
 		    arr_instance_id = ?,
 		    target_instance_id = ?,
 		    scan_interval_minutes = ?
 		WHERE id = ?
-	`, existing.Path, qbitPathPrefix, category, boolToInt(existing.Enabled),
+	`, existing.Path, qbitPathPrefix, category, string(tagsJSON), boolToInt(existing.Enabled),
 		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, id)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
@@ -503,7 +542,7 @@ func (s *DirScanStore) UpdateDirectoryLastScan(ctx context.Context, id int) erro
 // ListEnabledDirectories returns all enabled directories.
 func (s *DirScanStore) ListEnabledDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, qbit_path_prefix, category, enabled, arr_instance_id, target_instance_id,
+		SELECT id, path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id,
 		       scan_interval_minutes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		WHERE enabled = 1

@@ -48,7 +48,7 @@ Open **Dir Scan → Settings**:
 - **Allow partial matches**: allows Dir Scan to add torrents even if the torrent has extra/missing files compared to what’s on disk.
 - **Skip piece boundary safety check**: if disabled, qui will refuse partial matches where downloading the missing files could modify pieces that belong to the already-present content (rare, but possible on multi-file torrents).
 - **Start torrents paused**: adds injected torrents in paused state.
-- **Default Category / Tags**: applied to injected torrents.
+- **Default Category / Tags**: applied to injected torrents. Directory-level tags are added on top.
 
 ## Directories
 
@@ -58,6 +58,7 @@ Each scan directory has its own configuration:
 - **qBittorrent Path Prefix**: optional path mapping for container setups (when qui and qBittorrent see different root paths).
 - **Target qBittorrent Instance**: where matched torrents are added.
 - **Category override**: optional. If set, overrides the global **Default Category** for torrents injected from this scan directory.
+- **Additional tags**: optional. Added on top of the global Dir Scan tags.
 - **Scan Interval (minutes)**: how often to rescan the directory (minimum 60 minutes).
 - **Enabled**: enable/disable the directory without deleting it.
 

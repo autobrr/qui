@@ -827,6 +827,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     path: directory?.path ?? "",
     qbitPathPrefix: directory?.qbitPathPrefix ?? "",
     category: directory?.category ?? "",
+    tags: directory?.tags ?? [],
     enabled: directory?.enabled ?? true,
     targetInstanceId: directory?.targetInstanceId ?? defaultTargetInstanceId,
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
@@ -839,6 +840,11 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     return buildCategorySelectOptions(targetInstanceMetadata?.categories ?? {}, selected)
   }, [targetInstanceMetadata?.categories, form.category])
 
+  const directoryTagOptions = useMemo(
+    () => buildTagSelectOptions(targetInstanceMetadata?.tags ?? [], form.tags ?? []),
+    [targetInstanceMetadata?.tags, form.tags]
+  )
+
   // Reset form when directory or dialog state changes
   useEffect(() => {
     if (!open) return
@@ -847,6 +853,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         path: directory.path,
         qbitPathPrefix: directory.qbitPathPrefix ?? "",
         category: directory.category ?? "",
+        tags: directory.tags ?? [],
         enabled: directory.enabled,
         targetInstanceId: directory.targetInstanceId,
         scanIntervalMinutes: directory.scanIntervalMinutes,
@@ -856,6 +863,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         path: "",
         qbitPathPrefix: "",
         category: "",
+        tags: [],
         enabled: true,
         targetInstanceId: defaultTargetInstanceId,
         scanIntervalMinutes: 1440,
@@ -975,6 +983,28 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             )}
             <p className="text-xs text-muted-foreground">
               Optional. When set, overrides the global default category for this directory.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Additional Tags</Label>
+            <MultiSelect
+              options={directoryTagOptions}
+              selected={form.tags ?? []}
+              onChange={(values) => setForm((prev) => ({ ...prev, tags: values }))}
+              placeholder={
+                directoryTagOptions.length ? "Add tags (optional)" : "Type to add tags"
+              }
+              creatable
+              disabled={isPending}
+            />
+            {targetInstanceMetadataError && (
+              <p className="text-xs text-muted-foreground">
+                Could not load tags from qBittorrent. You can still type custom values.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Added on top of the global Dir Scan tags. Suggested: <span className="font-mono">dirscan</span>, <span className="font-mono">needs-review</span>.
             </p>
           </div>
 

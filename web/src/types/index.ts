@@ -1990,6 +1990,7 @@ export interface DirScanDirectory {
   path: string
   qbitPathPrefix?: string
   category?: string
+  tags: string[]
   enabled: boolean
   arrInstanceId?: number
   targetInstanceId: number
@@ -2003,6 +2004,7 @@ export interface DirScanDirectoryCreate {
   path: string
   qbitPathPrefix?: string
   category?: string
+  tags?: string[]
   enabled?: boolean
   arrInstanceId?: number
   targetInstanceId: number
@@ -2013,6 +2015,7 @@ export interface DirScanDirectoryUpdate {
   path?: string
   qbitPathPrefix?: string
   category?: string
+  tags?: string[]
   enabled?: boolean
   arrInstanceId?: number
   targetInstanceId?: number
