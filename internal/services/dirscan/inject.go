@@ -281,6 +281,10 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 	// Disable autoTMM to use our explicit save path
 	options["autoTMM"] = "false"
 
+	// Prevent qBittorrent from forcing an extra root folder when the instance default is "Create subfolder".
+	// This keeps the on-disk layout aligned with the existing files/hardlink tree.
+	options["root_folder"] = "false"
+
 	// Set the save path
 	options["savepath"] = savePath
 
