@@ -27,6 +27,9 @@ export default defineConfig(() => ({
       include: ["path", "buffer", "stream"],
     }),
     VitePWA({
+      // Workbox-build uses Rollup + terser when mode=production; that currently breaks builds
+      // on some newer Node.js versions. We don't need SW minification, so prefer compatibility.
+      mode: "development",
       registerType: "autoUpdate",
       injectRegister: null,
       minify: false,
@@ -35,7 +38,9 @@ export default defineConfig(() => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
-        //maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // Allow larger bundles to be precached
+        disableDevLogs: true,
+        // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         sourcemap: true,
         // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
         navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/],
