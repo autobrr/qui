@@ -6,84 +6,257 @@ description: Scan local directories and automatically cross-seed completed downl
 
 # Directory Scanner
 
-Directory Scanner (Dir Scan) lets qui scan one or more local folders (movies, TV, etc.) and automatically search for cross-seeds for content it finds on disk.
+Directory Scanner (Dir Scan) scans local folders to find cross-seed opportunities for content already on disk. Unlike Library Scan (which queries qBittorrent's torrent list), Dir Scan works directly with files on the filesystem.
 
-You configure it in **Cross-Seed → Dir Scan**.
+Configure it in **Cross-Seed > Dir Scan**.
 
 ## Requirements
 
-- At least one qBittorrent instance must have **Local filesystem access** enabled.
-- Prowlarr or Jackett must be configured (Torznab indexers).
-- Optional but recommended: Sonarr/Radarr configured in **Settings → Integrations** for external ID lookups (IMDb/TMDb/TVDb).
+- At least one qBittorrent instance must have **Local filesystem access** enabled in Instance Settings.
+- qui must be able to read the files directly (same host or shared mounts as the target qBittorrent instance).
+- Prowlarr or Jackett must be configured with at least one enabled indexer.
+- Optional: Sonarr/Radarr configured in **Settings > Integrations** for external ID lookups (IMDb/TMDb/TVDb).
+
+## How to Choose Your Scan Path
+
+Dir Scan treats each **immediate child** of your configured path as one "searchee." It does not treat the path itself as a single searchee, and it does not recurse into subfolders to create additional searchees.
+
+**Example:** If you configure `/data/media/movies`:
+
+```plaintext
+/data/media/movies/
+├── Movie.2024.1080p.BluRay/   <- searchee 1
+│   ├── movie.mkv
+│   └── movie.nfo
+├── Another.Movie.2023.2160p/  <- searchee 2
+│   └── movie.mkv
+└── standalone.mkv             <- searchee 3
+```
+
+Each immediate child (folder or file) becomes one searchee. Files within `Movie.2024.1080p.BluRay/` are grouped together as part of that searchee.
+
+### Correct path choices
+
+| Content type | Recommended path | Why |
+|-------------|------------------|-----|
+| Movies | `/data/media/movies` | Each movie folder is one searchee |
+| TV Shows | `/data/media/tv` | Each show folder is one searchee |
+| Music | `/data/media/music` | Each album folder is one searchee |
+
+### Incorrect path choices
+
+| Path | Problem |
+|------|---------|
+| `/data/media` containing `movies/` + `tv/` + `music/` | Only 3 searchees total (the category folders themselves) |
+| `/data/media/movies/Movie.2024.1080p.BluRay` | Only 1 searchee; scans that specific movie only |
+
+:::tip
+Create one Dir Scan entry per category folder. Don't point at a parent folder containing multiple category subfolders.
+:::
+
+## Docker and Path Mapping
+
+When qui and qBittorrent run in separate containers or see different mount points, you need path mapping.
+
+### "Local filesystem access" explained
+
+Enabling **Local filesystem access** on a qBittorrent instance tells qui:
+1. qui can read files directly from the filesystem (same paths or mapped paths).
+2. qui should use file-based matching (inode checks, size verification) rather than relying solely on qBittorrent's API.
+
+This requires qui to have read access to the actual files, either on the same host or via shared network/volume mounts.
+
+### Recommended: Use the same volume paths
+
+The simplest setup is to mount volumes at the same path in both containers:
+
+```yaml title="docker-compose.yml"
+services:
+  qui:
+    volumes:
+      - /mnt/storage:/mnt/storage
+
+  qbittorrent:
+    volumes:
+      - /mnt/storage:/mnt/storage
+```
+
+When both containers see `/data/media/movies`, no path mapping is needed. Leave **qBittorrent Path Prefix** empty.
+
+### Path mapping example (different mount points)
+
+Your setup:
+- qui container mounts: `-v /mnt/storage:/data`
+- qBittorrent container mounts: `-v /mnt/storage:/downloads`
+
+qui sees files at `/data/media/movies/Movie.2024/movie.mkv`
+qBittorrent sees the same file at `/downloads/media/movies/Movie.2024/movie.mkv`
+
+Configure Dir Scan:
+- **Directory Path**: `/data/media/movies`
+- **qBittorrent Path Prefix**: `/downloads/media/movies`
+
+When qui finds a match, it tells qBittorrent to add the torrent pointing at `/downloads/media/movies/Movie.2024/` instead of `/data/media/movies/Movie.2024/`.
 
 ## How It Works
 
 For each configured scan directory, qui:
 
-1. Enumerates files in the directory (recursively).
-2. Groups files into “searchees” (single-file releases, season folders, etc.).
-3. Uses *arr to resolve external IDs when possible.
-4. Searches your enabled indexers via Torznab.
-5. Matches the incoming torrent’s file list against what’s on disk.
-6. If a match is found, adds the torrent to the configured target qBittorrent instance.
+1. Enumerates immediate children of the directory path.
+2. For each child (folder or file), recursively collects all files within.
+3. Groups files into a "searchee" with parsed release info.
+4. Uses configured *arr instances to resolve external IDs when possible.
+5. Searches enabled indexers via Torznab.
+6. Downloads torrent files and matches their file lists against what's on disk.
+7. If a match is found, adds the torrent to the target qBittorrent instance.
+
+### Already-seeding detection
+
+Dir Scan maintains a FileID index (inode + device on Unix) to track files already present in qBittorrent. It skips:
+- Files that are already part of a seeding torrent
+- Torrents whose infohash already exists in qBittorrent
+
+This avoids redundant searches and duplicate additions.
 
 ### Recheck Behavior
 
-- For **full matches**, Dir Scan adds the torrent with “skip hash check” enabled, so it starts seeding immediately.
-- For **partial matches** (when enabled), Dir Scan does **not** skip the hash check, so qBittorrent can verify what you already have and download whatever is missing.
+- **Full matches**: Torrent is added with "skip hash check" enabled. Seeding starts immediately.
+- **Partial matches** (when enabled): Torrent is added without skipping hash check. qBittorrent verifies existing data and downloads missing files.
 
-qui skips work when it can:
-- It avoids re-searching content that is already present in qBittorrent.
-- It avoids downloading torrent files when search results expose an infohash that already exists in qBittorrent.
+## What Gets Scanned
+
+### Included file types
+
+**Video:** `.mkv`, `.mp4`, `.avi`, `.m4v`, `.wmv`, `.mov`, `.ts`, `.m2ts`, `.vob`, `.mpg`, `.mpeg`, `.webm`, `.flv`
+
+**Audio:** `.flac`, `.mp3`, `.wav`, `.aac`, `.ogg`, `.m4a`, `.wma`, `.ape`, `.alac`, `.dsd`, `.dsf`, `.dff`
+
+**Extras:** `.nfo`, `.sfv`, `.srt`, `.sub`, `.idx`, `.ass`, `.ssa`
+
+Extras are included in releases and can affect partial-match behavior (a torrent with an `.nfo` you don't have may trigger a partial match instead of full).
+
+### Disc layouts
+
+Folders containing `BDMV/`, `VIDEO_TS/`, or `AUDIO_TS/` structures are treated as disc-based media. All files within these structures are included regardless of extension.
+
+### Skipped items
+
+- **Hidden files and folders** (names starting with `.`)
+- **Symlinks** (explicitly skipped to avoid loops and permission issues)
+- **Files with permission errors** (scan continues, file is skipped)
+- **Non-media files** outside disc layouts
 
 ## Settings (Global)
 
-Open **Dir Scan → Settings**:
+Open **Dir Scan > Settings**:
 
-- **Match Mode**
-  - `Strict`: match by filename + size
-  - `Flexible`: match by size only
-- **Size Tolerance (%)**: allows small size differences when matching.
-- **Minimum Piece Ratio (%)**: when partial matches are enabled, the minimum percent of the torrent’s data that must already exist on disk.
-- **Allow partial matches**: allows Dir Scan to add torrents even if the torrent has extra/missing files compared to what’s on disk.
-- **Skip piece boundary safety check**: if disabled, qui will refuse partial matches where downloading the missing files could modify pieces that belong to the already-present content (rare, but possible on multi-file torrents).
-- **Start torrents paused**: adds injected torrents in paused state.
-- **Default Category / Tags**: applied to injected torrents. Directory-level tags are added on top.
+| Setting | Description |
+|---------|-------------|
+| Match Mode | `Strict` matches by filename + size. `Flexible` matches by size only. |
+| Size Tolerance (%) | Allows small size differences when matching. |
+| Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
+| Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
+| Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
+| Start torrents paused | Add injected torrents in paused state. |
+| Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
 
 ## Directories
 
 Each scan directory has its own configuration:
 
-- **Directory Path**: the path qui scans (recursively).
-- **qBittorrent Path Prefix**: optional path mapping for container setups (when qui and qBittorrent see different root paths).
-- **Target qBittorrent Instance**: where matched torrents are added.
-- **Category override**: optional. If set, overrides the global **Default Category** for torrents injected from this scan directory.
-- **Additional tags**: optional. Added on top of the global Dir Scan tags.
-- **Scan Interval (minutes)**: how often to rescan the directory (minimum 60 minutes).
-- **Enabled**: enable/disable the directory without deleting it.
+| Setting | Description |
+|---------|-------------|
+| Directory Path | The path qui scans (immediate children become searchees). |
+| qBittorrent Path Prefix | Path mapping for container setups. See [Docker and Path Mapping](#docker-and-path-mapping). |
+| Target qBittorrent Instance | Where matched torrents are added. Must have Local filesystem access enabled. |
+| Category override | Overrides the global Default Category for this directory. |
+| Additional tags | Added on top of the global Dir Scan tags. |
+| Scan Interval (minutes) | How often to rescan (minimum 60 minutes, default 1440 = 24 hours). |
+| Enabled | Enable/disable without deleting the configuration. |
+
+## Operational Behavior
+
+### Concurrent scans
+
+Only one scan runs per directory at a time. If a scheduled scan triggers while a manual scan is running, it waits.
+
+### Scheduled vs manual scans
+
+- **Scheduled scans** run based on the configured interval (minimum 60 minutes).
+- **Manual scans** can be triggered from the UI at any time via the "Scan Now" button.
+
+Both types can be canceled from the UI while running.
+
+### Scan phases
+
+Each scan progresses through phases:
+
+1. **Scanning** - Reading directory contents and building searchee list
+2. **Searching** - Querying indexers for each searchee
+3. **Injecting** - Adding matched torrents to qBittorrent
+4. **Final state** - Success, Failed, or Canceled
+
+The UI shows current phase and progress during active scans.
 
 ## Hardlink/Reflink Modes
 
-If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan will use the same behavior as cross-seed:
+If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods:
 
-- Builds a link tree that matches the incoming torrent’s layout.
+- Builds a link tree matching the incoming torrent's layout.
 - Adds the torrent pointing at that tree (`contentLayout=Original`, `skip_checking=true`).
 
 See:
 - [Hardlink Mode](hardlink-mode)
 - [Link Directories](link-directories)
 
-### Fallback to Regular Mode
+### Fallback to regular mode
 
-When link-tree creation fails (for example: hardlinking across device boundaries), Dir Scan can fall back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate is skipped/failed.
+When link-tree creation fails (hardlinking across filesystems, permission issues), Dir Scan falls back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate fails.
 
-## Pointing Dir Scan at your *arr library
+## Scanning Your *arr Library
 
-Dir Scan can scan your Sonarr/Radarr library folders, but be careful with **partial matches**:
+Dir Scan can scan Sonarr/Radarr library folders, but be careful with partial matches:
 
-- With **Allow partial matches** enabled, qBittorrent may download missing files (or small “extras” like `.nfo`/subtitles) into the folder it’s pointed at. If that folder is your *arr-managed library, you can end up with unexpected extra files alongside your media.
-- If you want Dir Scan to be “read-only” for your library, keep **Allow partial matches** disabled (full matches only), and consider disabling **Fallback to regular mode** on the target instance so a hardlink failure can’t cause a torrent to be added directly against your library path.
+:::warning
+With **Allow partial matches** enabled, qBittorrent may download missing files (extras like `.nfo`, subtitles) directly into your *arr-managed library folder. This can create unexpected files alongside your media.
+:::
 
-The safest “set and forget” setup is usually:
-- Scan your completed downloads/staging folder, not the final library, and/or
+For a "read-only" scan of your library:
+1. Disable **Allow partial matches** (full matches only).
+2. Disable **Fallback to regular mode** on the target instance so hardlink failures don't add torrents directly against your library path.
+
+The safer setup is usually:
+- Scan your completed downloads/staging folder instead of the final library, and/or
 - Use hardlink/reflink mode so cross-seeds live under your configured link-tree base directory.
+
+## Troubleshooting
+
+### Recent Scan Runs
+
+The **Recent Scan Runs** panel on the Dir Scan page shows:
+- Added count (successful injections)
+- Failed count (matches that couldn't be added)
+- Timestamps and duration
+
+Click a run to see details including failure reasons for individual items.
+
+### Common issues
+
+**No results found:**
+- Verify at least one indexer is enabled and not rate-limited.
+- Check that the scan path contains valid media files.
+- Ensure the target instance has Local filesystem access enabled.
+
+**Permissions errors:**
+- qui must have read access to the scan path.
+- Check container volume mounts if running in Docker.
+
+**Wrong path mapping:**
+- Verify qBittorrent Path Prefix matches how qBittorrent sees the same files.
+- Test by checking a torrent's save path in qBittorrent's UI.
+
+**Rate limiting:**
+- Indexers may throttle requests. Check **Scheduler Activity** on the Indexers page.
+- Consider reducing scan frequency or limiting to fewer indexers.
+
+For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](troubleshooting).
