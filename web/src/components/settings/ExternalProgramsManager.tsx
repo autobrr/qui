@@ -330,6 +330,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             <li><code className="bg-muted px-1 rounded">{"{state}"}</code> - Torrent state</li>
             <li><code className="bg-muted px-1 rounded">{"{size}"}</code> - Size in bytes</li>
             <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - Progress (0-1)</li>
+            <li><code className="bg-muted px-1 rounded">{"{comment}"}</code> - Torrent comment</li>
           </ul>
         </div>
       </div>

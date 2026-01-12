@@ -241,6 +241,14 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
 }
 
+// GetClient returns a client for an instance, creating one if needed
+func (sm *SyncManager) GetClient(ctx context.Context, instanceID int) (*Client, error) {
+	if sm == nil || sm.clientPool == nil {
+		return nil, fmt.Errorf("client pool unavailable")
+	}
+	return sm.clientPool.GetClient(ctx, instanceID)
+}
+
 // getFilesManager returns the current files manager in a thread-safe manner
 // Returns nil if no files manager is set
 func (sm *SyncManager) getFilesManager() FilesManager {
@@ -1389,7 +1397,36 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	// Validate that torrents exist before proceeding
 	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
 	if len(torrentMap) == 0 {
-		return fmt.Errorf("no sync data available")
+		// Force a fresh sync to pick up torrents that were just added (e.g., cross-seed recheck after add).
+		// This mirrors the pattern in validateTorrentsExist() for backup restore flows.
+		// Use context.Background() so caller cancellation doesn't abort this critical sync.
+		syncCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		// Retry loop: qBittorrent may need a moment to register the new torrent.
+		const maxAttempts = 3
+	retryLoop:
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			if syncErr := syncManager.Sync(syncCtx); syncErr != nil {
+				log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
+					Int("attempt", attempt).Msg("BulkAction: forced sync failed")
+			} else {
+				torrentMap = syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
+				if len(torrentMap) > 0 {
+					break
+				}
+			}
+			if attempt < maxAttempts {
+				select {
+				case <-syncCtx.Done():
+					break retryLoop
+				case <-time.After(150 * time.Millisecond):
+				}
+			}
+		}
+		if len(torrentMap) == 0 {
+			return errors.New("no sync data available")
+		}
 	}
 
 	existingTorrents := make([]*qbt.Torrent, 0, len(torrentMap))
@@ -2185,12 +2222,6 @@ type TorrentCounts struct {
 	Total            int                             `json:"total"`
 }
 
-// InstanceSpeeds represents download/upload speeds for an instance
-type InstanceSpeeds struct {
-	Download int64 `json:"download"`
-	Upload   int64 `json:"upload"`
-}
-
 // ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching.
 // Handles multiple formats:
 //   - Standard URLs with schemes (http, https, udp, ws, wss)
@@ -2757,33 +2788,6 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		Msg("Calculated torrent counts")
 
 	return counts, nil
-}
-
-// GetInstanceSpeeds gets total download/upload speeds efficiently using GetTransferInfo
-// This is MUCH faster than fetching all torrents for large instances
-func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*InstanceSpeeds, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Use GetTransferInfo - a lightweight API that returns just global speeds
-	// This doesn't fetch any torrents, making it perfect for dashboard stats
-	transferInfo, err := client.GetTransferInfoCtx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transfer info: %w", err)
-	}
-
-	// Extract speeds from TransferInfo
-	speeds := &InstanceSpeeds{
-		Download: transferInfo.DlInfoSpeed,
-		Upload:   transferInfo.UpInfoSpeed,
-	}
-
-	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: got from GetTransferInfo API")
-
-	return speeds, nil
 }
 
 // Helper methods
