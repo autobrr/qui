@@ -3,6 +3,13 @@
 
 package qbittorrent
 
+import "regexp"
+
+// urlPattern matches http:// and https:// URLs to strip them from tracker messages.
+// This prevents false positives when URLs contain words like "forbidden" or "down"
+// (e.g., "https://site.com/forbidden-world-1982" should not match "forbidden").
+var urlPattern = regexp.MustCompile(`(?i)https?://\S+`)
+
 // defaultUnregisteredStatuses lists tracker messages we map to the Unregistered health state.
 var defaultUnregisteredStatuses = []string{
 	"complete season uploaded",
@@ -86,6 +93,9 @@ func TrackerMessageMatchesUnregistered(message string) bool {
 }
 
 // TrackerMessageMatchesDown reports whether the tracker message indicates tracker outage.
+// URLs are stripped from the message before matching to avoid false positives from
+// torrent names containing words like "forbidden" or "down" in replacement URLs.
 func TrackerMessageMatchesDown(message string) bool {
-	return trackerMessageMatches(message, trackerDownStatuses)
+	messageWithoutURLs := urlPattern.ReplaceAllString(message, "")
+	return trackerMessageMatches(messageWithoutURLs, trackerDownStatuses)
 }
