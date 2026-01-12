@@ -6,6 +6,7 @@
 package reflinktree
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -85,9 +86,29 @@ func cloneFile(src, dst string) error {
 
 	err = unix.IoctlFileClone(dstFd, srcFd)
 	if err != nil {
+		if shouldTryCloneRange(err) {
+			cloneRange := unix.FileCloneRange{
+				Src_fd:      int64(srcFd),
+				Src_offset:  0,
+				Src_length:  0,
+				Dest_offset: 0,
+			}
+			if rangeErr := unix.IoctlFileCloneRange(dstFd, &cloneRange); rangeErr == nil {
+				return nil
+			} else {
+				os.Remove(dst)
+				return fmt.Errorf("ioctl FICLONERANGE: %w", rangeErr)
+			}
+		}
 		os.Remove(dst)
 		return fmt.Errorf("ioctl FICLONE: %w", err)
 	}
 
 	return nil
+}
+
+func shouldTryCloneRange(err error) bool {
+	return errors.Is(err, unix.EOPNOTSUPP) ||
+		errors.Is(err, unix.ENOTTY) ||
+		errors.Is(err, unix.ENOSYS)
 }
