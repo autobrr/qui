@@ -175,6 +175,10 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusBadRequest, "Target instance ID is required")
 		return
 	}
+	if payload.ScanIntervalMinutes != nil && *payload.ScanIntervalMinutes < 60 {
+		RespondError(w, http.StatusBadRequest, "Scan interval must be at least 60 minutes")
+		return
+	}
 
 	// Validate target instance has local filesystem access
 	instance, err := h.instanceStore.Get(r.Context(), *payload.TargetInstanceID)
@@ -261,6 +265,11 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	var payload DirScanDirectoryPayload
 	if decodeErr := json.NewDecoder(r.Body).Decode(&payload); decodeErr != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.ScanIntervalMinutes != nil && *payload.ScanIntervalMinutes < 60 {
+		RespondError(w, http.StatusBadRequest, "Scan interval must be at least 60 minutes")
 		return
 	}
 

@@ -69,7 +69,6 @@ import {
   TableRow
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
@@ -477,14 +476,14 @@ function RunRow({
   directoryId,
   run,
   expanded,
-  onOpenChange,
+  onToggle,
   formatDateTime,
   formatRelativeTime,
 }: {
   directoryId: number
   run: DirScanRun
   expanded: boolean
-  onOpenChange: (open: boolean) => void
+  onToggle: () => void
   formatDateTime: (date: string) => string
   formatRelativeTime: (date: string | Date) => string
 }) {
@@ -499,13 +498,9 @@ function RunRow({
       <TableRow>
         <TableCell>
           <div className="flex items-center gap-2">
-            <Collapsible open={expanded} onOpenChange={onOpenChange}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                </Button>
-              </CollapsibleTrigger>
-            </Collapsible>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggle}>
+              {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+            </Button>
             <Tooltip>
               <TooltipTrigger className="cursor-default">
                 {formatRelativeTime(run.startedAt)}
@@ -515,7 +510,19 @@ function RunRow({
           </div>
         </TableCell>
         <TableCell>
-          <DirectoryStatusBadge run={run} />
+          <div className="flex items-center gap-2">
+            <DirectoryStatusBadge run={run} />
+            {run.status === "failed" && run.errorMessage && (
+              <Tooltip>
+                <TooltipTrigger className="cursor-default">
+                  <Info className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-lg whitespace-pre-wrap">
+                  {run.errorMessage}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </TableCell>
         <TableCell>{run.filesFound}</TableCell>
         <TableCell>{run.matchesFound}</TableCell>
@@ -527,74 +534,70 @@ function RunRow({
 
       {expanded && (
         <TableRow>
-          <TableCell colSpan={6} className="bg-muted/20">
-            <Collapsible open={expanded}>
-              <CollapsibleContent className="py-3">
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : injections.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-2">
-                    No torrents were added or failed in this run.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Added / Failed</div>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Release</TableHead>
-                          <TableHead>Tracker</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Mode</TableHead>
-                          <TableHead>Time</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {injections.map((inj) => (
-                          <TableRow key={inj.id}>
-                            <TableCell>
-                              <InjectionStatusBadge injection={inj} />
-                            </TableCell>
-                            <TableCell className="max-w-[520px]">
-                              <div className="truncate" title={inj.torrentName}>
-                                {inj.torrentName}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                <span className="font-mono">{inj.infoHash.slice(0, 8)}</span>
-                              </div>
-                              {inj.status === "failed" && inj.errorMessage && (
-                                <details className="mt-1">
-                                  <summary className="text-xs text-muted-foreground cursor-pointer">
-                                    Show error
-                                  </summary>
-                                  <pre className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-                                    {inj.errorMessage}
-                                  </pre>
-                                </details>
-                              )}
-                            </TableCell>
-                            <TableCell>{formatTrackerName(inj)}</TableCell>
-                            <TableCell>{inj.contentType}</TableCell>
-                            <TableCell>{inj.linkMode ?? "-"}</TableCell>
-                            <TableCell>
-                              <Tooltip>
-                                <TooltipTrigger className="cursor-default">
-                                  {formatRelativeTime(inj.createdAt)}
-                                </TooltipTrigger>
-                                <TooltipContent>{formatDateTime(inj.createdAt)}</TooltipContent>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CollapsibleContent>
-            </Collapsible>
+          <TableCell colSpan={6} className="bg-muted/20 py-3">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : injections.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                No torrents were added or failed in this run.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Added / Failed</div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Release</TableHead>
+                      <TableHead>Tracker</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Mode</TableHead>
+                      <TableHead>Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {injections.map((inj) => (
+                      <TableRow key={inj.id}>
+                        <TableCell>
+                          <InjectionStatusBadge injection={inj} />
+                        </TableCell>
+                        <TableCell className="max-w-[520px]">
+                          <div className="truncate" title={inj.torrentName}>
+                            {inj.torrentName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-mono">{inj.infoHash.slice(0, 8)}</span>
+                          </div>
+                          {inj.status === "failed" && inj.errorMessage && (
+                            <details className="mt-1">
+                              <summary className="text-xs text-muted-foreground cursor-pointer">
+                                Show error
+                              </summary>
+                              <pre className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                                {inj.errorMessage}
+                              </pre>
+                            </details>
+                          )}
+                        </TableCell>
+                        <TableCell>{formatTrackerName(inj)}</TableCell>
+                        <TableCell>{inj.contentType}</TableCell>
+                        <TableCell>{inj.linkMode ?? "-"}</TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger className="cursor-default">
+                              {formatRelativeTime(inj.createdAt)}
+                            </TooltipTrigger>
+                            <TooltipContent>{formatDateTime(inj.createdAt)}</TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </TableCell>
         </TableRow>
       )}
@@ -646,7 +649,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
                   directoryId={directoryId}
                   run={run}
                   expanded={expandedRunId === run.id}
-                  onOpenChange={(open) => setExpandedRunId(open ? run.id : null)}
+                  onToggle={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
                   formatDateTime={formatDateTime}
                   formatRelativeTime={formatRelativeTime}
                 />
@@ -679,6 +682,20 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
     category: settings?.category ?? "",
     tags: settings?.tags ?? [],
   })
+
+  useEffect(() => {
+    if (!open) return
+    setForm({
+      matchMode: (settings?.matchMode ?? "strict") as DirScanMatchMode,
+      sizeTolerancePercent: settings?.sizeTolerancePercent ?? 2,
+      minPieceRatio: settings?.minPieceRatio ?? 50,
+      allowPartial: settings?.allowPartial ?? false,
+      skipPieceBoundarySafetyCheck: settings?.skipPieceBoundarySafetyCheck ?? true,
+      startPaused: settings?.startPaused ?? false,
+      category: settings?.category ?? "",
+      tags: settings?.tags ?? [],
+    })
+  }, [open, settings])
 
   const instanceIds = useMemo(
     () => Array.from(new Set(instances.map((i) => i.id).filter((id) => id > 0))),

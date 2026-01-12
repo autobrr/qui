@@ -204,19 +204,19 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 		return
 	}
 
-	s.executeScan(ctx, directoryID, runID)
+	s.startRun(ctx, directoryID, runID)
 }
 
-// StartManualScan starts a manual scan for a directory.
-func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
-	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "manual")
-	if err != nil {
-		return 0, fmt.Errorf("create run: %w", err)
+func (s *Service) startRun(parent context.Context, directoryID int, runID int64) {
+	if s == nil || directoryID <= 0 || runID <= 0 {
+		return
 	}
 
-	// Create cancellable context for this run.
-	// Use Background() as parent so the scan survives after the HTTP request completes.
-	runCtx, cancel := context.WithCancel(context.Background())
+	if parent == nil {
+		parent = context.Background()
+	}
+
+	runCtx, cancel := context.WithCancel(parent)
 	s.cancelMu.Lock()
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
@@ -229,6 +229,17 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 		}()
 		s.executeScan(runCtx, directoryID, runID)
 	}()
+}
+
+// StartManualScan starts a manual scan for a directory.
+func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
+	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "manual")
+	if err != nil {
+		return 0, fmt.Errorf("create run: %w", err)
+	}
+
+	// Use Background() as parent so the scan survives after the HTTP request completes.
+	s.startRun(context.Background(), directoryID, runID)
 
 	return runID, nil
 }
@@ -881,6 +892,12 @@ func (s *Service) tryMatchAndInject(
 	}
 
 	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+
+	// Once we are about to inject, reflect that in run status so the UI can distinguish
+	// pure searching from active injection attempts.
+	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusInjecting); err != nil {
+		l.Debug().Err(err).Msg("dirscan: failed to update run status to injecting")
+	}
 
 	injectResult, err := s.injector.Inject(ctx, injectReq)
 	injected := err == nil && injectResult.Success
