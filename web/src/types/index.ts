@@ -2036,6 +2036,28 @@ export interface DirScanRun {
   completedAt?: string
 }
 
+export type DirScanRunInjectionStatus = "added" | "failed"
+
+export interface DirScanRunInjection {
+  id: number
+  runId: number
+  directoryId: number
+  status: DirScanRunInjectionStatus
+  searcheeName: string
+  torrentName: string
+  infoHash: string
+  contentType: string
+  indexerName?: string
+  trackerDomain?: string
+  trackerDisplayName?: string
+  linkMode?: string
+  savePath?: string
+  category?: string
+  tags: string[]
+  errorMessage?: string
+  createdAt: string
+}
+
 export interface DirScanFile {
   id: number
   directoryId: number

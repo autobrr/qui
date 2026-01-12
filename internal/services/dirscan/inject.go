@@ -144,6 +144,12 @@ type InjectResult struct {
 	// TorrentHash is the hash of the added torrent.
 	TorrentHash string
 
+	// Mode describes how the torrent was added: hardlink, reflink, or regular.
+	Mode string
+
+	// SavePath is the save path used when adding the torrent.
+	SavePath string
+
 	// Error message if injection failed.
 	ErrorMessage string
 }
@@ -203,6 +209,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		savePath = i.calculateSavePath(req)
 		addMode = "regular"
 	}
+
+	result.Mode = addMode
+	result.SavePath = savePath
 
 	options := i.buildAddOptions(req, savePath)
 	options["contentLayout"] = "Original"

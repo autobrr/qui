@@ -50,6 +50,8 @@ type Service struct {
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
+	// Optional store for tracker display-name resolution (shared with cross-seed).
+	trackerCustomizationStore *models.TrackerCustomizationStore
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -97,18 +99,19 @@ func NewService(
 	injector := NewInjector(jackettService, syncManager, syncManager, instanceStore, trackerCustomizationStore)
 
 	return &Service{
-		cfg:            cfg,
-		store:          store,
-		instanceStore:  instanceStore,
-		syncManager:    syncManager,
-		jackettService: jackettService,
-		arrService:     arrService,
-		parser:         parser,
-		searcher:       searcher,
-		injector:       injector,
-		directoryMu:    make(map[int]*sync.Mutex),
-		cancelFuncs:    make(map[int64]context.CancelFunc),
-		runProgress:    make(map[int64]*runProgress),
+		cfg:                       cfg,
+		store:                     store,
+		instanceStore:             instanceStore,
+		syncManager:               syncManager,
+		jackettService:            jackettService,
+		arrService:                arrService,
+		trackerCustomizationStore: trackerCustomizationStore,
+		parser:                    parser,
+		searcher:                  searcher,
+		injector:                  injector,
+		directoryMu:               make(map[int]*sync.Mutex),
+		cancelFuncs:               make(map[int64]context.CancelFunc),
+		runProgress:               make(map[int64]*runProgress),
 	}
 }
 
@@ -507,7 +510,7 @@ func (s *Service) runSearchAndInjectPhase(
 				}
 			}
 
-			match := s.processSearchee(ctx, dir, item.searchee, settings, matcher, l)
+			match := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
 			if match == nil {
 				continue
 			}
@@ -627,6 +630,7 @@ func (s *Service) processSearchee(
 	searchee *Searchee,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
+	runID int64,
 	l *zerolog.Logger,
 ) *searcheeMatch {
 	searcheeSize := CalculateTotalSize(searchee)
@@ -670,6 +674,11 @@ func (s *Service) processSearchee(
 		Str("contentType", contentInfo.ContentType).
 		Msg("dirscan: searching for searchee")
 
+	contentType := contentInfo.ContentType
+	if contentType == "" {
+		contentType = "unknown"
+	}
+
 	// Filter indexers by capability (like cross-seed does)
 	var filteredIndexers []int
 	if len(contentInfo.RequiredCaps) > 0 && s.jackettService != nil {
@@ -699,7 +708,7 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	return s.tryMatchResults(ctx, dir, searchee, response, minSize, maxSize, settings, matcher, l)
+	return s.tryMatchResults(ctx, dir, searchee, response, minSize, maxSize, contentType, settings, matcher, runID, l)
 }
 
 // searchForSearchee searches indexers and waits for results.
@@ -753,8 +762,10 @@ func (s *Service) tryMatchResults(
 	searchee *Searchee,
 	response *jackett.SearchResponse,
 	minSize, maxSize int64,
+	contentType string,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
+	runID int64,
 	l *zerolog.Logger,
 ) *searcheeMatch {
 	for i := range response.Results {
@@ -768,7 +779,7 @@ func (s *Service) tryMatchResults(
 			continue
 		}
 
-		match := s.tryMatchAndInject(ctx, dir, searchee, result, settings, matcher, l)
+		match := s.tryMatchAndInject(ctx, dir, searchee, result, contentType, settings, matcher, runID, l)
 		if match != nil {
 			return match
 		}
@@ -814,8 +825,10 @@ func (s *Service) tryMatchAndInject(
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
 	result *jackett.SearchResult,
+	contentType string,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
+	runID int64,
 	l *zerolog.Logger,
 ) *searcheeMatch {
 	torrentData, parsed := s.downloadAndParseTorrent(ctx, result, l)
@@ -867,6 +880,8 @@ func (s *Service) tryMatchAndInject(
 		StartPaused:    settings.StartPaused,
 	}
 
+	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+
 	injectResult, err := s.injector.Inject(ctx, injectReq)
 	injected := err == nil && injectResult.Success
 	if err != nil {
@@ -875,7 +890,77 @@ func (s *Service) tryMatchAndInject(
 		l.Info().Str("name", searchee.Name).Bool("success", injectResult.Success).Msg("dirscan: injected torrent")
 	}
 
+	s.recordRunInjection(ctx, dir, runID, searchee, parsed, contentType, result, injectReq.Category, injectReq.Tags, trackerDomain, injectResult, err)
+
 	return &searcheeMatch{searchee: searchee, torrentData: torrentData, parsedTorrent: parsed, matchResult: matchResult, injected: injected}
+}
+
+func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain string, indexerName string) string {
+	var customizations []*models.TrackerCustomization
+	if s.trackerCustomizationStore != nil {
+		if customs, err := s.trackerCustomizationStore.List(ctx); err == nil {
+			customizations = customs
+		}
+	}
+	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
+}
+
+func (s *Service) recordRunInjection(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	runID int64,
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	contentType string,
+	result *jackett.SearchResult,
+	category string,
+	tags []string,
+	trackerDomain string,
+	injectResult *InjectResult,
+	injectErr error,
+) {
+	if s == nil || s.store == nil || runID <= 0 || dir == nil || parsed == nil || searchee == nil || result == nil || injectResult == nil {
+		return
+	}
+
+	status := models.DirScanRunInjectionStatusAdded
+	errorMessage := ""
+	if injectErr != nil || !injectResult.Success {
+		status = models.DirScanRunInjectionStatusFailed
+		if injectResult.ErrorMessage != "" {
+			errorMessage = injectResult.ErrorMessage
+		} else if injectErr != nil {
+			errorMessage = injectErr.Error()
+		} else {
+			errorMessage = "unknown injection failure"
+		}
+	}
+
+	// Fallback: use the matched search result indexer name for display-name resolution.
+	indexerName := result.Indexer
+	trackerDisplayName := s.resolveTrackerDisplayName(ctx, trackerDomain, indexerName)
+
+	inj := &models.DirScanRunInjection{
+		RunID:              runID,
+		DirectoryID:        dir.ID,
+		Status:             status,
+		SearcheeName:       searchee.Name,
+		TorrentName:        parsed.Name,
+		InfoHash:           parsed.InfoHash,
+		ContentType:        contentType,
+		IndexerName:        indexerName,
+		TrackerDomain:      trackerDomain,
+		TrackerDisplayName: trackerDisplayName,
+		LinkMode:           injectResult.Mode,
+		SavePath:           injectResult.SavePath,
+		Category:           category,
+		Tags:               tags,
+		ErrorMessage:       errorMessage,
+	}
+
+	if err := s.store.CreateRunInjection(ctx, inj); err != nil {
+		log.Debug().Err(err).Int("directoryID", dir.ID).Int64("runID", runID).Msg("dirscan: failed to record injection event")
+	}
 }
 
 func mergeStringLists(values ...[]string) []string {
@@ -1115,6 +1200,15 @@ func (s *Service) ListRuns(ctx context.Context, directoryID, limit int) ([]*mode
 	}
 
 	return runs, nil
+}
+
+// ListRunInjections returns injection attempts (added/failed) for a run.
+func (s *Service) ListRunInjections(ctx context.Context, directoryID int, runID int64, limit, offset int) ([]*models.DirScanRunInjection, error) {
+	injections, err := s.store.ListRunInjections(ctx, directoryID, runID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list run injections: %w", err)
+	}
+	return injections, nil
 }
 
 // ListFiles returns scanned files for a directory.

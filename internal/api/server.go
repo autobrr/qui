@@ -556,6 +556,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Delete("/scan", dirScanHandler.CancelScan)
 							r.Get("/status", dirScanHandler.GetStatus)
 							r.Get("/runs", dirScanHandler.ListRuns)
+							r.Get("/runs/{runID}/injections", dirScanHandler.ListRunInjections)
 							r.Get("/files", dirScanHandler.ListFiles)
 						})
 					})

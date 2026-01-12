@@ -39,6 +39,7 @@ import type {
   DirScanDirectoryUpdate,
   DirScanFile,
   DirScanRun,
+  DirScanRunInjection,
   DirScanSettings,
   DirScanSettingsUpdate,
   DiscoverJackettResponse,
@@ -2166,6 +2167,24 @@ class ApiClient {
     }
     const suffix = params.toString() ? `?${params.toString()}` : ""
     return this.request<DirScanRun[]>(`/dir-scan/directories/${directoryId}/runs${suffix}`)
+  }
+
+  async listDirScanRunInjections(
+    directoryId: number,
+    runId: number,
+    options?: { limit?: number; offset?: number }
+  ): Promise<DirScanRunInjection[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRunInjection[]>(
+      `/dir-scan/directories/${directoryId}/runs/${runId}/injections${suffix}`
+    )
   }
 
   async listDirScanFiles(

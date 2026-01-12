@@ -11,9 +11,10 @@ import type {
   DirScanDirectoryCreate,
   DirScanDirectoryUpdate,
   DirScanRun,
+  DirScanRunInjection,
   DirScanRunStatus,
   DirScanSettings,
-  DirScanSettingsUpdate,
+  DirScanSettingsUpdate
 } from "@/types"
 
 const ACTIVE_STATUSES: DirScanRunStatus[] = ["scanning", "searching", "injecting"]
@@ -182,5 +183,26 @@ export function useDirScanFiles(
       }),
     enabled: shouldEnable,
     staleTime: 30_000,
+  })
+}
+
+export function useDirScanRunInjections(
+  directoryId: number,
+  runId: number,
+  options?: { limit?: number; offset?: number; enabled?: boolean; active?: boolean }
+) {
+  const { limit, offset, enabled, active } = options ?? {}
+  const shouldEnable = (enabled ?? true) && directoryId > 0 && runId > 0
+
+  return useQuery({
+    queryKey: ["dir-scan", "directory", directoryId, "run", runId, "injections", { limit, offset }],
+    queryFn: () =>
+      api.listDirScanRunInjections(directoryId, runId, {
+        ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+      }),
+    enabled: shouldEnable,
+    refetchInterval: shouldEnable && active ? 2_000 : false,
+    placeholderData: (previousData: DirScanRunInjection[] | undefined) => previousData ?? [],
   })
 }

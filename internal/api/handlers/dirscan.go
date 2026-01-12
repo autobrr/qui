@@ -403,6 +403,45 @@ func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, runs)
 }
 
+// ListRunInjections returns injection attempts (added/failed) for a run.
+func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	runID, err := parseRunID(w, r)
+	if err != nil {
+		return
+	}
+
+	limit := 50
+	offset := 0
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, parseErr := strconv.Atoi(limitStr); parseErr == nil && l > 0 {
+			limit = l
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, parseErr := strconv.Atoi(offsetStr); parseErr == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	injections, err := h.service.ListRunInjections(r.Context(), dirID, runID, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Int64("runID", runID).Msg("dirscan: failed to list run injections")
+		RespondError(w, http.StatusInternalServerError, "Failed to list run injections")
+		return
+	}
+	if injections == nil {
+		injections = []*models.DirScanRunInjection{}
+	}
+
+	RespondJSON(w, http.StatusOK, injections)
+}
+
 // ListFiles returns scanned files for a directory.
 func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
@@ -450,6 +489,16 @@ func parseDirectoryID(w http.ResponseWriter, r *http.Request) (int, error) {
 	if err != nil || id <= 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid directory ID")
 		return 0, errors.New("invalid directory ID")
+	}
+	return id, nil
+}
+
+func parseRunID(w http.ResponseWriter, r *http.Request) (int64, error) {
+	idStr := chi.URLParam(r, "runID")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+		return 0, errors.New("invalid run ID")
 	}
 	return id, nil
 }

@@ -101,6 +101,38 @@ type DirScanRun struct {
 	CompletedAt   *time.Time       `json:"completedAt,omitempty"`
 }
 
+// DirScanRunInjectionStatus defines the status of an injection attempt.
+type DirScanRunInjectionStatus string
+
+// Injection status constants are type-safe enums; duplicate string values across types are intentional.
+//
+//nolint:goconst // type-safe enum values intentionally share strings with other status types
+const (
+	DirScanRunInjectionStatusAdded  DirScanRunInjectionStatus = "added"
+	DirScanRunInjectionStatusFailed DirScanRunInjectionStatus = "failed"
+)
+
+// DirScanRunInjection represents a successful or failed injection attempt for a scan run.
+type DirScanRunInjection struct {
+	ID                 int64                     `json:"id"`
+	RunID              int64                     `json:"runId"`
+	DirectoryID        int                       `json:"directoryId"`
+	Status             DirScanRunInjectionStatus `json:"status"`
+	SearcheeName       string                    `json:"searcheeName"`
+	TorrentName        string                    `json:"torrentName"`
+	InfoHash           string                    `json:"infoHash"`
+	ContentType        string                    `json:"contentType"`
+	IndexerName        string                    `json:"indexerName,omitempty"`
+	TrackerDomain      string                    `json:"trackerDomain,omitempty"`
+	TrackerDisplayName string                    `json:"trackerDisplayName,omitempty"`
+	LinkMode           string                    `json:"linkMode,omitempty"`
+	SavePath           string                    `json:"savePath,omitempty"`
+	Category           string                    `json:"category,omitempty"`
+	Tags               []string                  `json:"tags"`
+	ErrorMessage       string                    `json:"errorMessage,omitempty"`
+	CreatedAt          time.Time                 `json:"createdAt"`
+}
+
 // DirScanFile represents a scanned file tracking entry.
 type DirScanFile struct {
 	ID                 int64             `json:"id"`
@@ -825,6 +857,204 @@ func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage st
 	}
 
 	return rows, nil
+}
+
+// --- Run Injection Operations ---
+
+const dirScanRunInjectionMaxPerRun = 200
+
+// CreateRunInjection records a successful or failed injection attempt for a run.
+func (s *DirScanStore) CreateRunInjection(ctx context.Context, injection *DirScanRunInjection) error {
+	if injection == nil {
+		return errors.New("injection is nil")
+	}
+	if injection.RunID <= 0 {
+		return errors.New("runID must be > 0")
+	}
+	if injection.DirectoryID <= 0 {
+		return errors.New("directoryID must be > 0")
+	}
+	if injection.Status == "" {
+		return errors.New("status is required")
+	}
+	if injection.SearcheeName == "" {
+		return errors.New("searchee name is required")
+	}
+	if injection.TorrentName == "" {
+		return errors.New("torrent name is required")
+	}
+	if injection.InfoHash == "" {
+		return errors.New("info hash is required")
+	}
+	if injection.ContentType == "" {
+		return errors.New("content type is required")
+	}
+
+	if injection.Tags == nil {
+		injection.Tags = []string{}
+	}
+
+	tagsJSON, err := json.Marshal(injection.Tags)
+	if err != nil {
+		return fmt.Errorf("marshal tags: %w", err)
+	}
+
+	var indexerName any
+	if injection.IndexerName != "" {
+		indexerName = injection.IndexerName
+	}
+	var trackerDomain any
+	if injection.TrackerDomain != "" {
+		trackerDomain = injection.TrackerDomain
+	}
+	var trackerDisplayName any
+	if injection.TrackerDisplayName != "" {
+		trackerDisplayName = injection.TrackerDisplayName
+	}
+	var linkMode any
+	if injection.LinkMode != "" {
+		linkMode = injection.LinkMode
+	}
+	var savePath any
+	if injection.SavePath != "" {
+		savePath = injection.SavePath
+	}
+	var category any
+	if injection.Category != "" {
+		category = injection.Category
+	}
+	var errorMessage any
+	if injection.ErrorMessage != "" {
+		errorMessage = injection.ErrorMessage
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO dir_scan_run_injections
+			(run_id, directory_id, status, searchee_name, torrent_name, info_hash, content_type,
+			 indexer_name, tracker_domain, tracker_display_name, link_mode, save_path, category, tags, error_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, injection.RunID, injection.DirectoryID, injection.Status, injection.SearcheeName, injection.TorrentName,
+		injection.InfoHash, injection.ContentType, indexerName, trackerDomain, trackerDisplayName, linkMode,
+		savePath, category, string(tagsJSON), errorMessage)
+	if err != nil {
+		return fmt.Errorf("insert run injection: %w", err)
+	}
+
+	// Keep a bounded number of entries per run to avoid unbounded DB growth.
+	_, _ = s.db.ExecContext(ctx, `
+		DELETE FROM dir_scan_run_injections
+		WHERE run_id = ?
+		  AND id NOT IN (
+			  SELECT id FROM dir_scan_run_injections
+			  WHERE run_id = ?
+			  ORDER BY id DESC
+			  LIMIT ?
+		  )
+	`, injection.RunID, injection.RunID, dirScanRunInjectionMaxPerRun)
+
+	return nil
+}
+
+// ListRunInjections returns injection attempts for a run (newest first).
+func (s *DirScanStore) ListRunInjections(ctx context.Context, directoryID int, runID int64, limit, offset int) ([]*DirScanRunInjection, error) {
+	if runID <= 0 {
+		return nil, errors.New("runID must be > 0")
+	}
+	if directoryID <= 0 {
+		return nil, errors.New("directoryID must be > 0")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, run_id, directory_id, status, searchee_name, torrent_name, info_hash, content_type,
+		       indexer_name, tracker_domain, tracker_display_name, link_mode, save_path, category, tags,
+		       error_message, created_at
+		FROM dir_scan_run_injections
+		WHERE directory_id = ? AND run_id = ?
+		ORDER BY created_at DESC, id DESC
+		LIMIT ? OFFSET ?
+	`, directoryID, runID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("query run injections: %w", err)
+	}
+	defer rows.Close()
+
+	var injections []*DirScanRunInjection
+	for rows.Next() {
+		var inj DirScanRunInjection
+		var indexerName sql.NullString
+		var trackerDomain sql.NullString
+		var trackerDisplayName sql.NullString
+		var linkMode sql.NullString
+		var savePath sql.NullString
+		var category sql.NullString
+		var tagsJSON sql.NullString
+		var errorMessage sql.NullString
+
+		if err := rows.Scan(
+			&inj.ID,
+			&inj.RunID,
+			&inj.DirectoryID,
+			&inj.Status,
+			&inj.SearcheeName,
+			&inj.TorrentName,
+			&inj.InfoHash,
+			&inj.ContentType,
+			&indexerName,
+			&trackerDomain,
+			&trackerDisplayName,
+			&linkMode,
+			&savePath,
+			&category,
+			&tagsJSON,
+			&errorMessage,
+			&inj.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan run injection row: %w", err)
+		}
+
+		if indexerName.Valid {
+			inj.IndexerName = indexerName.String
+		}
+		if trackerDomain.Valid {
+			inj.TrackerDomain = trackerDomain.String
+		}
+		if trackerDisplayName.Valid {
+			inj.TrackerDisplayName = trackerDisplayName.String
+		}
+		if linkMode.Valid {
+			inj.LinkMode = linkMode.String
+		}
+		if savePath.Valid {
+			inj.SavePath = savePath.String
+		}
+		if category.Valid {
+			inj.Category = category.String
+		}
+		if errorMessage.Valid {
+			inj.ErrorMessage = errorMessage.String
+		}
+		if tagsJSON.Valid && tagsJSON.String != "" {
+			if err := json.Unmarshal([]byte(tagsJSON.String), &inj.Tags); err != nil {
+				return nil, fmt.Errorf("unmarshal tags: %w", err)
+			}
+		}
+		if inj.Tags == nil {
+			inj.Tags = []string{}
+		}
+
+		injections = append(injections, &inj)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate run injections: %w", err)
+	}
+
+	return injections, nil
 }
 
 // --- File Operations ---
