@@ -154,25 +154,34 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 }
 
 func (c *AppConfig) loadFromStandardLocations() error {
-	c.viper.SetConfigName("config")
-	c.viper.AddConfigPath(".")
-	c.viper.AddConfigPath(GetDefaultConfigDir())
-
-	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
-			return fmt.Errorf("failed to read config: %w", err)
-		}
-		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
-		if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
-			return writeErr
-		}
-		c.viper.SetConfigFile(defaultConfigPath)
-		if readErr := c.viper.ReadInConfig(); readErr != nil {
-			return fmt.Errorf("failed to read newly created config: %w", readErr)
-		}
-		c.dataDir = filepath.Dir(defaultConfigPath)
+	// Search for config.toml explicitly in standard locations.
+	// Using SetConfigFile avoids Viper's glob-based discovery which can match
+	// unrelated files like config.ini or config.cfg in the current directory.
+	searchPaths := []string{
+		filepath.Join(".", "config.toml"),
+		filepath.Join(GetDefaultConfigDir(), "config.toml"),
 	}
+
+	for _, path := range searchPaths {
+		if _, err := os.Stat(path); err == nil {
+			c.viper.SetConfigFile(path)
+			if err := c.viper.ReadInConfig(); err != nil {
+				return fmt.Errorf("failed to read config: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// No config file found, create default in standard config directory
+	defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
+	if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
+		return writeErr
+	}
+	c.viper.SetConfigFile(defaultConfigPath)
+	if readErr := c.viper.ReadInConfig(); readErr != nil {
+		return fmt.Errorf("failed to read newly created config: %w", readErr)
+	}
+	c.dataDir = filepath.Dir(defaultConfigPath)
 	return nil
 }
 
