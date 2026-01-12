@@ -376,10 +376,20 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
+		root := info.BestName()
 		for i := range info.Files {
 			f := &info.Files[i]
+			pathParts := f.BestPath()
+			// For multi-file torrents, qBittorrent's "Original" layout places files under the
+			// top-level folder named by the torrent's info.name.
+			//
+			// The torrent file list itself typically does NOT include that folder in each file path,
+			// so we include it here to reflect the on-disk paths qBittorrent will expect.
+			if root != "" && (len(pathParts) == 0 || pathParts[0] != root) {
+				pathParts = append([]string{root}, pathParts...)
+			}
 			tf := TorrentFile{
-				Path:   filepath.Join(f.BestPath()...),
+				Path:   filepath.Join(pathParts...),
 				Size:   f.Length,
 				Offset: offset,
 			}
