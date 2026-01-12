@@ -10,10 +10,11 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
-import { cn, formatBytes } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
-import { ChevronDown, ChevronRight, File, Folder, Loader2, Pencil, Search, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Copy, File, Folder, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 
 interface TorrentFileTableProps {
   files: TorrentFile[] | undefined
@@ -22,6 +23,7 @@ interface TorrentFileTableProps {
   pendingFileIndices: Set<number>
   incognitoMode: boolean
   torrentHash: string
+  savePath?: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onRenameFile?: (filePath: string) => void
@@ -168,6 +170,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   pendingFileIndices,
   incognitoMode,
   torrentHash,
+  savePath,
   onToggleFile,
   onToggleFolder,
   onRenameFile,
@@ -418,6 +421,20 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                         {rowContent}
                       </ContextMenuTrigger>
                       <ContextMenuContent>
+                        <ContextMenuItem
+                          onClick={async () => {
+                            const fullPath = savePath ? joinPath(savePath, node.id) : node.id
+                            try {
+                              await copyTextToClipboard(fullPath)
+                              toast.success(`${isFile ? "File" : "Folder"} path copied to clipboard`)
+                            } catch {
+                              toast.error("Failed to copy path to clipboard")
+                            }
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5 mr-2" />
+                          Copy Path
+                        </ContextMenuItem>
                         {isFile && onRenameFile && (
                           <ContextMenuItem onClick={() => onRenameFile(node.id)}>
                             <Pencil className="h-3.5 w-3.5 mr-2" />
