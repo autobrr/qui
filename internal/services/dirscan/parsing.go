@@ -37,6 +37,8 @@ var trashIDPatterns = struct {
 	edition: regexp.MustCompile(`\{edition-([^}]+)\}`),
 }
 
+var spaceRe = regexp.MustCompile(`\s+`)
+
 // SearcheeMetadata combines TRaSH IDs with rls parsed release metadata.
 type SearcheeMetadata struct {
 	// Original name before any processing
@@ -140,8 +142,7 @@ func extractTRaSHMetadata(name string) (cleaned string, meta TRaSHMetadata) {
 // cleanExtraSpaces removes duplicate spaces and trims.
 func cleanExtraSpaces(s string) string {
 	// Replace multiple spaces with single space
-	space := regexp.MustCompile(`\s+`)
-	s = space.ReplaceAllString(s, " ")
+	s = spaceRe.ReplaceAllString(s, " ")
 	return strings.TrimSpace(s)
 }
 

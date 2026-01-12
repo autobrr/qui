@@ -552,6 +552,10 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 // SearchWithScope performs a Torznab search with a custom cache scope.
 // This is used by dir-scan and other features that need cache separation.
 func (s *Service) SearchWithScope(ctx context.Context, req *TorznabSearchRequest, scope string) error {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return fmt.Errorf("invalid scope: empty")
+	}
 	return s.performSearch(ctx, req, scope)
 }
 
