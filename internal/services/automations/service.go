@@ -658,7 +658,7 @@ func (s *Service) buildCrossSeedPreviewResult(
 		_, isHardlinkCopy := state.hardlinkCopySet[torrent.Hash]
 
 		var score float64
-		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == "score" {
+		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
 			score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
 		}
 
@@ -962,7 +962,7 @@ func (s *Service) buildCategoryPreviewResult(
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
 
 		var score float64
-		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == "score" {
+		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
 			score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
 		}
 
