@@ -49,6 +49,57 @@ type FreeSpaceSource struct {
 	Path string              `json:"path,omitempty"` // Required when Type == "path"
 }
 
+// ScoreRuleType defines the type of score rule.
+type ScoreRuleType string
+
+const (
+	ScoreRuleTypeFieldMultiplier ScoreRuleType = "field_multiplier"
+	ScoreRuleTypeConditional     ScoreRuleType = "conditional"
+)
+
+type SortDirection string
+
+const (
+	SortDirectionASC  SortDirection = "ASC"
+	SortDirectionDESC SortDirection = "DESC"
+)
+
+type SortingType string
+
+const (
+	SortingTypeSimple SortingType = "simple"
+	SortingTypeScore  SortingType = "score"
+)
+
+// FieldMultiplierScoreRule applies a multiplier to a numeric field.
+type FieldMultiplierScoreRule struct {
+	Field      ConditionField `json:"field"`
+	Multiplier float64        `json:"multiplier"`
+}
+
+// ConditionalScoreRule adds a flat score if a condition is met.
+type ConditionalScoreRule struct {
+	Condition *RuleCondition `json:"condition"`
+	Score     float64        `json:"score"`
+}
+
+// ScoreRule defines a single weighted rule for scoring torrents.
+type ScoreRule struct {
+	Type            ScoreRuleType             `json:"type"`
+	FieldMultiplier *FieldMultiplierScoreRule `json:"fieldMultiplier,omitempty"`
+	Conditional     *ConditionalScoreRule     `json:"conditional,omitempty"`
+}
+
+// SortingConfig defines how torrents are sorted before processing.
+// This is the top-level structure stored in the `sorting_config` JSON column.
+type SortingConfig struct {
+	SchemaVersion string         `json:"schemaVersion"`
+	Type          SortingType    `json:"type"`                // "simple" or "score"
+	Direction     SortDirection  `json:"direction"`           // "ASC" or "DESC"
+	Field         ConditionField `json:"field,omitempty"`     // for "simple"
+	ScoreRules    []ScoreRule    `json:"scoreRules,omitempty"`
+}
+
 type Automation struct {
 	ID              int               `json:"id"`
 	InstanceID      int               `json:"instanceId"`
@@ -57,6 +108,7 @@ type Automation struct {
 	TrackerDomains  []string          `json:"trackerDomains,omitempty"`
 	Conditions      *ActionConditions `json:"conditions"`
 	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
+	SortingConfig   *SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default sorting (oldest first)
 	Enabled         bool              `json:"enabled"`
 	SortOrder       int               `json:"sortOrder"`
 	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
@@ -114,7 +166,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, sorting_config, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -130,6 +182,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		var conditionsJSON string
 		var intervalSeconds sql.NullInt64
 		var freeSpaceSourceJSON sql.NullString
+		var sortingConfigJSON sql.NullString
 
 		if err := rows.Scan(
 			&automation.ID,
@@ -141,6 +194,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&automation.SortOrder,
 			&intervalSeconds,
 			&freeSpaceSourceJSON,
+			&sortingConfigJSON,
 			&automation.CreatedAt,
 			&automation.UpdatedAt,
 		); err != nil {
@@ -168,6 +222,14 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			automation.FreeSpaceSource = &freeSpaceSource
 		}
 
+		if sortingConfigJSON.Valid && sortingConfigJSON.String != "" {
+			var sortingConfig SortingConfig
+			if err := json.Unmarshal([]byte(sortingConfigJSON.String), &sortingConfig); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal sorting_config for automation %d: %w", automation.ID, err)
+			}
+			automation.SortingConfig = &sortingConfig
+		}
+
 		automations = append(automations, &automation)
 	}
 
@@ -180,7 +242,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, sorting_config, created_at, updated_at
 		FROM automations
 		WHERE id = ? AND instance_id = ?
 	`, id, instanceID)
@@ -189,6 +251,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	var conditionsJSON string
 	var intervalSeconds sql.NullInt64
 	var freeSpaceSourceJSON sql.NullString
+	var sortingConfigJSON sql.NullString
 
 	if err := row.Scan(
 		&automation.ID,
@@ -200,6 +263,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 		&automation.SortOrder,
 		&intervalSeconds,
 		&freeSpaceSourceJSON,
+		&sortingConfigJSON,
 		&automation.CreatedAt,
 		&automation.UpdatedAt,
 	); err != nil {
@@ -225,6 +289,14 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 			return nil, fmt.Errorf("failed to unmarshal free_space_source for automation %d: %w", automation.ID, err)
 		}
 		automation.FreeSpaceSource = &freeSpaceSource
+	}
+
+	if sortingConfigJSON.Valid && sortingConfigJSON.String != "" {
+		var sortingConfig SortingConfig
+		if err := json.Unmarshal([]byte(sortingConfigJSON.String), &sortingConfig); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal sorting_config for automation %d: %w", automation.ID, err)
+		}
+		automation.SortingConfig = &sortingConfig
 	}
 
 	return &automation, nil
@@ -277,12 +349,21 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		freeSpaceSourceJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
+	var sortingConfigJSON sql.NullString
+	if automation.SortingConfig != nil {
+		data, marshalErr := json.Marshal(automation.SortingConfig)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal sorting_config: %w", marshalErr)
+		}
+		sortingConfigJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source)
+			(instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, sorting_config)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder, intervalSeconds, freeSpaceSourceJSON)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -324,11 +405,20 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		freeSpaceSourceJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
+	var sortingConfigJSON sql.NullString
+	if automation.SortingConfig != nil {
+		data, marshalErr := json.Marshal(automation.SortingConfig)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal sorting_config: %w", marshalErr)
+		}
+		sortingConfigJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
-		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?
+		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?, sorting_config = ?
 		WHERE id = ? AND instance_id = ?
-	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, automation.ID, automation.InstanceID)
+	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}

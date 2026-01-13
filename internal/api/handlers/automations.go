@@ -46,6 +46,7 @@ type AutomationPayload struct {
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
 	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
+	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default (oldest first)
 	PreviewLimit    *int                     `json:"previewLimit"`
 	PreviewOffset   *int                     `json:"previewOffset"`
 	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
@@ -69,6 +70,7 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		TrackerDomains:  normalizedDomains,
 		Conditions:      p.Conditions,
 		FreeSpaceSource: p.FreeSpaceSource,
+		SortingConfig:   p.SortingConfig,
 		Enabled:         true,
 		IntervalSeconds: p.IntervalSeconds,
 	}

@@ -48,7 +48,7 @@ func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected category action to be blocked when protected cross-seed exists")
 }
@@ -89,7 +89,7 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when no protected cross-seed exists")
 	require.NotNil(t, state.category)
@@ -132,7 +132,7 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	_, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when protected torrent is not in the same cross-seed group")
 }
@@ -507,7 +507,9 @@ func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	SortTorrents(torrents, nil, evalCtx)
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// Should only delete 2 torrents (oldest first: torrent1, torrent2)
 	// After torrent1: FreeSpace=10GB + SpaceToClear=20GB = 30GB < 50GB (still matches)
@@ -568,7 +570,7 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// torrent1 (30GB) -> SpaceToClear = 30GB, effective = 40GB < 60GB (still matches)
 	// torrent2 is cross-seed of torrent1, so only counted once: SpaceToClear stays 30GB, effective = 40GB < 60GB (still matches)
@@ -624,7 +626,9 @@ func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	SortTorrents(torrents, nil, evalCtx)
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// Should only delete 1 torrent (the oldest one)
 	require.Len(t, states, 1, "expected exactly 1 torrent to be marked for deletion")
@@ -668,7 +672,9 @@ func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	SortTorrents(torrents, nil, evalCtx)
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// Should delete the torrent with lowest hash first (aaa)
 	require.Len(t, states, 1, "expected exactly 1 torrent to be marked for deletion")
@@ -748,7 +754,7 @@ func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// ALL 5 torrents should be marked for deletion because keep-files doesn't free space
 	// so the condition FREE_SPACE < 50GB remains true for all
@@ -808,7 +814,7 @@ func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFil
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
 	// All 4 torrents should be marked for deletion
 	require.Len(t, states, 4, "expected 4 torrents to be marked for deletion")
@@ -856,5 +862,142 @@ func TestDeleteFreesSpace(t *testing.T) {
 		// Torrent c has no cross-seeds
 		result := deleteFreesSpace(DeleteModeWithFilesPreserveCrossSeeds, allTorrents[2], allTorrents)
 		require.True(t, result)
+	})
+}
+
+func TestCalculateScore(t *testing.T) {
+	tests := []struct {
+		name          string
+		torrent       qbt.Torrent
+		config        models.SortingConfig
+		expectedScore float64
+	}{
+		{
+			name: "single field multiplier",
+			torrent: qbt.Torrent{
+				Size: 1024 * 1024 * 10, // 10MB
+			},
+			config: models.SortingConfig{
+				Type: models.SortingTypeScore,
+				ScoreRules: []models.ScoreRule{
+					{
+						Type: models.ScoreRuleTypeFieldMultiplier,
+						FieldMultiplier: &models.FieldMultiplierScoreRule{
+							Field:      models.FieldSize,
+							Multiplier: 0.000001, // 1 point per MB
+						},
+					},
+				},
+			},
+			expectedScore: 10.0 * 1.048576, // 10MB in bytes * multiplier
+		},
+		{
+			name: "combined multiplier and conditional",
+			torrent: qbt.Torrent{
+				Size:     100,
+				Category: "linux-iso",
+			},
+			config: models.SortingConfig{
+				Type: models.SortingTypeScore,
+				ScoreRules: []models.ScoreRule{
+					{
+						Type: models.ScoreRuleTypeFieldMultiplier,
+						FieldMultiplier: &models.FieldMultiplierScoreRule{
+							Field:      models.FieldSize,
+							Multiplier: 2.0,
+						},
+					},
+					{
+						Type: models.ScoreRuleTypeConditional,
+						Conditional: &models.ConditionalScoreRule{
+							Score: 50.0,
+							Condition: &models.RuleCondition{
+								Field:    models.FieldCategory,
+								Operator: models.OperatorEqual,
+								Value:    "linux-iso",
+							},
+						},
+					},
+				},
+			},
+			expectedScore: 200.0 + 50.0,
+		},
+		{
+			name: "conditional not met",
+			torrent: qbt.Torrent{
+				Category: "other",
+			},
+			config: models.SortingConfig{
+				Type: models.SortingTypeScore,
+				ScoreRules: []models.ScoreRule{
+					{
+						Type: models.ScoreRuleTypeConditional,
+						Conditional: &models.ConditionalScoreRule{
+							Score: 100.0,
+							Condition: &models.RuleCondition{
+								Field:    models.FieldCategory,
+								Operator: models.OperatorEqual,
+								Value:    "linux-iso",
+							},
+						},
+					},
+				},
+			},
+			expectedScore: 0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			score := CalculateScore(tt.torrent, tt.config, nil)
+			require.InDelta(t, tt.expectedScore, score, 0.001)
+		})
+	}
+}
+
+func TestSortTorrents_Score(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", Size: 100}, // Score 100
+		{Hash: "b", Size: 300}, // Score 300
+		{Hash: "c", Size: 200}, // Score 200
+	}
+
+	config := models.SortingConfig{
+		Type: models.SortingTypeScore,
+		ScoreRules: []models.ScoreRule{
+			{
+				Type: models.ScoreRuleTypeFieldMultiplier,
+				FieldMultiplier: &models.FieldMultiplierScoreRule{
+					Field:      models.FieldSize,
+					Multiplier: 1.0,
+				},
+			},
+		},
+	}
+
+	// Test DESC (Default/Explicit)
+	t.Run("Score DESC", func(t *testing.T) {
+		config.Direction = models.SortDirectionDESC
+		sorted := make([]qbt.Torrent, len(torrents))
+		copy(sorted, torrents)
+
+		SortTorrents(sorted, &config, nil)
+
+		require.Equal(t, "b", sorted[0].Hash)
+		require.Equal(t, "c", sorted[1].Hash)
+		require.Equal(t, "a", sorted[2].Hash)
+	})
+
+	// Test ASC
+	t.Run("Score ASC", func(t *testing.T) {
+		config.Direction = models.SortDirectionASC
+		sorted := make([]qbt.Torrent, len(torrents))
+		copy(sorted, torrents)
+
+		SortTorrents(sorted, &config, nil)
+
+		require.Equal(t, "a", sorted[0].Hash)
+		require.Equal(t, "c", sorted[1].Hash)
+		require.Equal(t, "b", sorted[2].Hash)
 	})
 }

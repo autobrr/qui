@@ -242,10 +242,11 @@ type PreviewTorrent struct {
 	CompletionOn  int64   `json:"completionOn"`            // Completion timestamp
 	TotalSize     int64   `json:"totalSize"`               // Total torrent size
 	HardlinkScope string  `json:"hardlinkScope,omitempty"` // none, torrents_only, outside_qbittorrent
+	Score         float64 `json:"score,omitempty"`
 }
 
 // buildPreviewTorrent creates a PreviewTorrent from a qbt.Torrent with optional context flags.
-func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed, isHardlinkCopy bool) PreviewTorrent {
+func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed, isHardlinkCopy bool, score float64) PreviewTorrent {
 	pt := PreviewTorrent{
 		Name:           torrent.Name,
 		Hash:           torrent.Hash,
@@ -272,6 +273,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 		LastActivity:   torrent.LastActivity,
 		CompletionOn:   torrent.CompletionOn,
 		TotalSize:      torrent.TotalSize,
+		Score:          score,
 	}
 
 	if evalCtx != nil {
@@ -381,12 +383,13 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
 
-	sortTorrentsStable(torrents)
-
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+
+	SortTorrents(torrents, rule.SortingConfig, evalCtx)
+
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -479,8 +482,13 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 		if len(result.Examples) < cfg.limit {
+			var score float64
+			if rule.SortingConfig != nil && rule.SortingConfig.Type == "score" {
+				score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
+			}
+
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
-			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false))
+			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false, score))
 		}
 	}
 
@@ -591,7 +599,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		}
 	}
 
-	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset), nil
+	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset, rule), nil
 }
 
 // setupHardlinkSignatureContext sets up hardlink signature tracking for FREE_SPACE projection.
@@ -623,6 +631,7 @@ func (s *Service) buildCrossSeedPreviewResult(
 	state *crossSeedExpansionState,
 	evalCtx *EvalContext,
 	limit, offset int,
+	rule *models.Automation,
 ) *PreviewResult {
 	result := &PreviewResult{
 		TotalMatches:   len(state.expandedSet),
@@ -647,8 +656,14 @@ func (s *Service) buildCrossSeedPreviewResult(
 
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
 		_, isHardlinkCopy := state.hardlinkCopySet[torrent.Hash]
+
+		var score float64
+		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == "score" {
+			score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
+		}
+
 		tracker := getTrackerForTorrent(torrent, s.syncManager)
-		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy))
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy, score))
 	}
 
 	return result
@@ -793,7 +808,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeedIndex, catAction, state)
 	s.findCategoryCrossSeeds(torrents, catAction, state)
 
-	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg), nil
+	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg, rule), nil
 }
 
 // categoryActionConfig holds category action configuration.
@@ -913,6 +928,7 @@ func (s *Service) buildCategoryPreviewResult(
 	state *categoryPreviewState,
 	evalCtx *EvalContext,
 	cfg previewConfig,
+	rule *models.Automation,
 ) *PreviewResult {
 	allMatches := make(map[string]struct{}, len(state.directMatchSet)+len(state.crossSeedSet))
 	for h := range state.directMatchSet {
@@ -944,8 +960,14 @@ func (s *Service) buildCategoryPreviewResult(
 		}
 
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
+
+		var score float64
+		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == "score" {
+			score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
+		}
+
 		tracker := getTrackerForTorrent(torrent, s.syncManager)
-		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, false))
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, false, score))
 	}
 
 	return result
@@ -1162,9 +1184,31 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	// Process all torrents through all eligible rules
+	// Process all torrents through all eligible rules, batching by sort order
 	ruleStats := make(map[int]*ruleRunStats)
-	states := processTorrents(torrents, eligibleRules, evalCtx, s.syncManager, skipCheck, ruleStats)
+	states := make(map[string]*torrentDesiredState)
+
+	// Group rules into batches based on sorting config equality
+	if len(eligibleRules) > 0 {
+		currentBatch := []*models.Automation{eligibleRules[0]}
+		for i := 1; i < len(eligibleRules); i++ {
+			rule := eligibleRules[i]
+			prevRule := eligibleRules[i-1]
+
+			if sortingConfigEqual(prevRule.SortingConfig, rule.SortingConfig) {
+				currentBatch = append(currentBatch, rule)
+			} else {
+				// Execute current batch
+				executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+				// Start new batch
+				currentBatch = []*models.Automation{rule}
+			}
+		}
+		// Execute final batch
+		if len(currentBatch) > 0 {
+			executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+		}
+	}
 
 	if len(states) == 0 {
 		log.Debug().
@@ -2403,4 +2447,110 @@ func (s *Service) applySpeedLimits(
 		}
 	}
 	return successCounts
+}
+
+func executeBatch(
+	rules []*models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	sm *qbittorrent.SyncManager,
+	skipCheck func(hash string) bool,
+	stats map[int]*ruleRunStats,
+	states map[string]*torrentDesiredState,
+) {
+	if len(rules) == 0 {
+		return
+	}
+
+	// 1. Sort torrents based on this batch's configuration
+	// Use the config from the first rule (all rules in batch have equivalent config)
+	SortTorrents(torrents, rules[0].SortingConfig, evalCtx)
+
+	// 2. Process rules
+	processTorrents(torrents, rules, evalCtx, sm, skipCheck, stats, states)
+}
+
+func sortingConfigEqual(a, b *models.SortingConfig) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Type != b.Type {
+		return false
+	}
+	if a.Type == models.SortingTypeSimple {
+		return a.Field == b.Field && a.Direction == b.Direction
+	}
+	if a.Type == models.SortingTypeScore {
+		if len(a.ScoreRules) != len(b.ScoreRules) {
+			return false
+		}
+		for i := range a.ScoreRules {
+			rA := a.ScoreRules[i]
+			rB := b.ScoreRules[i]
+			if rA.Type != rB.Type {
+				return false
+			}
+			switch rA.Type {
+			case models.ScoreRuleTypeFieldMultiplier:
+				if rA.FieldMultiplier == nil || rB.FieldMultiplier == nil {
+					return rA.FieldMultiplier == rB.FieldMultiplier
+				}
+				if rA.FieldMultiplier.Field != rB.FieldMultiplier.Field || rA.FieldMultiplier.Multiplier != rB.FieldMultiplier.Multiplier {
+					return false
+				}
+			case models.ScoreRuleTypeConditional:
+				if rA.Conditional == nil || rB.Conditional == nil {
+					return rA.Conditional == rB.Conditional
+				}
+				if rA.Conditional.Score != rB.Conditional.Score {
+					return false
+				}
+				if !conditionEqual(rA.Conditional.Condition, rB.Conditional.Condition) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return true
+}
+
+func conditionEqual(a, b *models.RuleCondition) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	// Basic field comparison
+	if a.Field != b.Field || a.Operator != b.Operator || a.Value != b.Value ||
+		a.Regex != b.Regex || a.Negate != b.Negate {
+		return false
+	}
+	// Compare pointers
+	if (a.MinValue == nil) != (b.MinValue == nil) {
+		return false
+	}
+	if a.MinValue != nil && *a.MinValue != *b.MinValue {
+		return false
+	}
+	if (a.MaxValue == nil) != (b.MaxValue == nil) {
+		return false
+	}
+	if a.MaxValue != nil && *a.MaxValue != *b.MaxValue {
+		return false
+	}
+	// Recursive conditions
+	if len(a.Conditions) != len(b.Conditions) {
+		return false
+	}
+	for i := range a.Conditions {
+		if !conditionEqual(a.Conditions[i], b.Conditions[i]) {
+			return false
+		}
+	}
+	return true
 }

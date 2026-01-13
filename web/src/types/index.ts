@@ -284,6 +284,32 @@ export type FreeSpaceSource =
 
 export type FreeSpaceSourceType = FreeSpaceSource["type"]
 
+export type ScoreRuleType = "field_multiplier" | "conditional"
+
+export interface FieldMultiplierScoreRule {
+  field: ConditionField
+  multiplier: number
+}
+
+export interface ConditionalScoreRule {
+  condition: RuleCondition
+  score: number
+}
+
+export interface ScoreRule {
+  type: ScoreRuleType
+  fieldMultiplier?: FieldMultiplierScoreRule
+  conditional?: ConditionalScoreRule
+}
+
+export interface SortingConfig {
+  schemaVersion: string
+  type: "simple" | "score"
+  field?: ConditionField
+  direction?: "ASC" | "DESC"
+  scoreRules?: ScoreRule[]
+}
+
 export interface Automation {
   id: number
   instanceId: number
@@ -292,6 +318,7 @@ export interface Automation {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
@@ -305,6 +332,7 @@ export interface AutomationInput {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
@@ -379,6 +407,8 @@ export interface AutomationPreviewTorrent {
   lastActivity: number
   completionOn: number
   totalSize: number
+  trackersCount: number
+  score?: number
 }
 
 export interface AutomationPreviewResult {
