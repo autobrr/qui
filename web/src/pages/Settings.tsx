@@ -31,6 +31,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger
@@ -330,7 +331,7 @@ function ApiKeysManager() {
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         data-1p-ignore
-                        autoComplete='off'
+                        autoComplete="off"
                       />
                       {field.state.meta.isTouched && field.state.meta.errors[0] && (
                         <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -432,8 +433,10 @@ interface InstancesManagerProps {
   onSearchChange: (search: SettingsSearch) => void
 }
 
+const INSTANCE_FORM_ID = "instance-form"
+
 function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
-  const { instances, isLoading, reorderInstances, isReordering } = useInstances()
+  const { instances, isLoading, reorderInstances, isReordering, isCreating, isUpdating } = useInstances()
   const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
   const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
 
@@ -525,7 +528,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
               {editingInstance ? "Edit Instance" : "Add Instance"}
             </DialogTitle>
             <DialogDescription>
-              {editingInstance? "Update your qBittorrent instance configuration": "Add a new qBittorrent instance to manage"}
+              {editingInstance ? "Update your qBittorrent instance configuration" : "Add a new qBittorrent instance to manage"}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -533,8 +536,17 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
               instance={editingInstance}
               onSuccess={handleCloseDialog}
               onCancel={handleCloseDialog}
+              formId={INSTANCE_FORM_ID}
             />
           </div>
+          <DialogFooter className="flex-shrink-0">
+            <Button type="button" variant="outline" onClick={handleCloseDialog}>
+              Cancel
+            </Button>
+            <Button type="submit" form={INSTANCE_FORM_ID} disabled={isCreating || isUpdating}>
+              {(isCreating || isUpdating) ? "Saving..." : editingInstance ? "Update Instance" : "Add Instance"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -689,7 +701,6 @@ function TorznabSearchCachePanel() {
           </form>
         </CardContent>
       </Card>
-
     </div>
   )
 }
@@ -802,7 +813,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("instances")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "instances"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "instances" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Server className="w-4 h-4 mr-2" />
@@ -811,7 +822,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("indexers")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "indexers"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "indexers" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Database className="w-4 h-4 mr-2" />
@@ -820,7 +831,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("search-cache")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "search-cache"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "search-cache" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Layers className="w-4 h-4 mr-2" />
@@ -829,7 +840,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("integrations")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "integrations"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "integrations" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Link2 className="w-4 h-4 mr-2" />
@@ -838,7 +849,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("client-api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "client-api" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Share2 className="w-4 h-4 mr-2" />
@@ -847,7 +858,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "api" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Key className="w-4 h-4 mr-2" />
@@ -856,7 +867,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("external-programs")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "external-programs"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "external-programs" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Terminal className="w-4 h-4 mr-2" />
@@ -865,7 +876,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("datetime")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "datetime"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "datetime" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Clock className="w-4 h-4 mr-2" />
@@ -874,7 +885,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("themes")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "themes"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "themes" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Palette className="w-4 h-4 mr-2" />
@@ -883,7 +894,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("security")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "security"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "security" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Shield className="w-4 h-4 mr-2" />
@@ -892,7 +903,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("logs")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "logs"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "logs" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <FileText className="w-4 h-4 mr-2" />
