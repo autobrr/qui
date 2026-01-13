@@ -12,7 +12,6 @@ type BeforeInstallPromptEvent = Event & {
 
 const SUPPRESS_UNTIL_KEY = "pwa-install-suppress-until"
 const SUPPRESS_WINDOW_MS = 1000 * 60 * 60 * 24 // 24 hours
-const TEMP_DISMISS_WINDOW_MS = 1000 * 60 * 10 // 10 minutes
 
 const isStandalone = () => typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches
 const isLikelyMobile = () => {
@@ -35,8 +34,6 @@ const isLikelyMobile = () => {
 export function usePWAInstallPrompt() {
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [memorySuppressUntil, setMemorySuppressUntil] = useState(0)
-  const [tempSuppressUntil, setTempSuppressUntil] = useState(0)
-  const tempResetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const readSuppressUntil = useCallback(() => {
     let suppressUntil = memorySuppressUntil
@@ -84,20 +81,6 @@ export function usePWAInstallPrompt() {
     setPromptEvent(null)
   }, [writeSuppressUntil])
 
-  const dismissTemporarily = useCallback((durationMs = TEMP_DISMISS_WINDOW_MS) => {
-    const until = Date.now() + durationMs
-    setTempSuppressUntil(until)
-
-    if (tempResetTimeout.current) {
-      clearTimeout(tempResetTimeout.current)
-    }
-
-    tempResetTimeout.current = setTimeout(() => {
-      setTempSuppressUntil(0)
-      tempResetTimeout.current = null
-    }, durationMs)
-  }, [])
-
   const promptInstall = useCallback(async () => {
     if (!promptEvent) return false
 
@@ -117,20 +100,10 @@ export function usePWAInstallPrompt() {
     return () => window.removeEventListener("appinstalled", handleInstalled)
   }, [suppressFor])
 
-  useEffect(() => {
-    return () => {
-      if (tempResetTimeout.current) {
-        clearTimeout(tempResetTimeout.current)
-        tempResetTimeout.current = null
-      }
-    }
-  }, [])
-
   return {
     promptAvailable: !!promptEvent,
-    shouldShowPrompt: !!promptEvent && tempSuppressUntil <= Date.now(),
+    shouldShowPrompt: !!promptEvent,
     promptInstall,
     suppressFor,
-    dismissTemporarily,
   }
 }

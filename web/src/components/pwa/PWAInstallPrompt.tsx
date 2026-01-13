@@ -9,7 +9,7 @@ import { usePWAInstallPrompt } from "@/hooks/usePWAInstallPrompt"
 import { toast } from "sonner"
 
 export function PWAInstallPrompt() {
-  const { shouldShowPrompt, promptInstall, suppressFor, dismissTemporarily } = usePWAInstallPrompt()
+  const { shouldShowPrompt, promptInstall, suppressFor } = usePWAInstallPrompt()
   const toastIdRef = useRef<string | number | null>(null)
   const isMountedRef = useRef(true)
 
@@ -58,12 +58,12 @@ export function PWAInstallPrompt() {
       duration: Number.POSITIVE_INFINITY,
       closeButton: true,
       onDismiss: () => {
+        if (isMountedRef.current) suppressFor()
         if (isMountedRef.current) clearToastRef()
-        if (isMountedRef.current) dismissTemporarily()
       },
       onAutoClose: () => {
+        if (isMountedRef.current) suppressFor()
         if (isMountedRef.current) clearToastRef()
-        if (isMountedRef.current) dismissTemporarily()
       },
       classNames: {
         toast: "max-w-md",
@@ -79,7 +79,7 @@ export function PWAInstallPrompt() {
         toastIdRef.current = null
       }
     }
-  }, [shouldShowPrompt, promptInstall, suppressFor, dismissTemporarily])
+  }, [shouldShowPrompt, promptInstall, suppressFor])
 
   return null
 }
