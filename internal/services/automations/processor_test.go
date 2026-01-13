@@ -884,12 +884,12 @@ func TestCalculateScore(t *testing.T) {
 						Type: models.ScoreRuleTypeFieldMultiplier,
 						FieldMultiplier: &models.FieldMultiplierScoreRule{
 							Field:      models.FieldSize,
-							Multiplier: 0.000001, // 1 point per MB
+							Multiplier: 1.0 / (1024 * 1024), // 1 point per MB (MiB)
 						},
 					},
 				},
 			},
-			expectedScore: 10.0 * 1.048576, // 10MB in bytes * multiplier
+			expectedScore: 10.0, // 10MB * (1/MB) = 10
 		},
 		{
 			name: "combined multiplier and conditional",
