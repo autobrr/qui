@@ -81,8 +81,8 @@ export function usePWAInstallPrompt() {
 
   useEffect(() => {
     const handleBeforeInstall = (event: Event) => {
-        const suppressUntil = readSuppressUntil()
-        if (suppressForever || suppressUntil > Date.now()) return
+      const suppressUntil = readSuppressUntil()
+      if (suppressForever || suppressUntil > Date.now()) return
       if (isStandalone()) return
       if (!isLikelyMobile()) return
 
@@ -95,7 +95,7 @@ export function usePWAInstallPrompt() {
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstall)
     }
-  }, [readSuppressUntil])
+  }, [readSuppressUntil, suppressForever])
 
   const suppressFor = useCallback((durationMs = SUPPRESS_WINDOW_MS) => {
     const until = Date.now() + durationMs
