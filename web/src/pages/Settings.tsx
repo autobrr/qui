@@ -517,8 +517,8 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[425px] max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>
               {editingInstance ? "Edit Instance" : "Add Instance"}
             </DialogTitle>
@@ -526,11 +526,13 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
               {editingInstance? "Update your qBittorrent instance configuration": "Add a new qBittorrent instance to manage"}
             </DialogDescription>
           </DialogHeader>
-          <InstanceForm
-            instance={editingInstance}
-            onSuccess={handleCloseDialog}
-            onCancel={handleCloseDialog}
-          />
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <InstanceForm
+              instance={editingInstance}
+              onSuccess={handleCloseDialog}
+              onCancel={handleCloseDialog}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </div>
