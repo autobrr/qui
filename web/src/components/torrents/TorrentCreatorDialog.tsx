@@ -21,6 +21,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
@@ -86,6 +87,8 @@ function PathSuggestions({ suggestions, highlightedIndex, onSelect }: PathSugges
     </div>
   )
 }
+
+const FORM_ID = "torrent-creator-form"
 
 interface TorrentCreatorDialogProps {
   instanceId: number
@@ -220,14 +223,15 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            form.handleSubmit()
-          }}
-          className="space-y-4"
-        >
+          <form
+            id={FORM_ID}
+            onSubmit={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              form.handleSubmit()
+            }}
+            className="space-y-4"
+          >
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -551,24 +555,23 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               </form.Field>
             </CollapsibleContent>
           </Collapsible>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={mutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Torrent
-            </Button>
-          </div>
-        </form>
+          </form>
         </div>
+
+        <DialogFooter className="flex-shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={mutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" form={FORM_ID} disabled={mutation.isPending}>
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create Torrent
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
