@@ -2477,13 +2477,17 @@ func sortingConfigEqual(a, b *models.SortingConfig) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	if a.Type != b.Type {
+	if a.Type != b.Type || a.SchemaVersion != b.SchemaVersion {
 		return false
 	}
-	if a.Type == models.SortingTypeSimple {
+
+	switch a.Type {
+	case models.SortingTypeSimple:
 		return a.Field == b.Field && a.Direction == b.Direction
-	}
-	if a.Type == models.SortingTypeScore {
+	case models.SortingTypeScore:
+		if a.Direction != b.Direction {
+			return false
+		}
 		if len(a.ScoreRules) != len(b.ScoreRules) {
 			return false
 		}
@@ -2517,8 +2521,9 @@ func sortingConfigEqual(a, b *models.SortingConfig) bool {
 			}
 		}
 		return true
+	default:
+		return false
 	}
-	return true
 }
 
 func conditionEqual(a, b *models.RuleCondition) bool {
