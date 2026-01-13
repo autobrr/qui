@@ -134,6 +134,9 @@ func (c *SortingConfig) Validate() error {
 				if r.FieldMultiplier == nil {
 					return fmt.Errorf("score rule %d: content missing for field multiplier", i)
 				}
+				if r.FieldMultiplier.Field == "" {
+					return fmt.Errorf("score rule %d: field required for field multiplier", i)
+				}
 			case ScoreRuleTypeConditional:
 				if r.Conditional == nil {
 					return fmt.Errorf("score rule %d: content missing for conditional", i)
