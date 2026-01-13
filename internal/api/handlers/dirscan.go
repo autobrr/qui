@@ -59,7 +59,7 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		settings = &models.DirScanSettings{
 			MatchMode:                    models.MatchModeStrict,
 			SizeTolerancePercent:         2.0,
-			MinPieceRatio:                50.0,
+			MinPieceRatio:                98.0,
 			AllowPartial:                 false,
 			SkipPieceBoundarySafetyCheck: true,
 			StartPaused:                  false,

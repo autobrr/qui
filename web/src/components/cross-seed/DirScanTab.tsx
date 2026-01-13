@@ -667,31 +667,26 @@ interface SettingsDialogProps {
   instances: Instance[]
 }
 
-function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDialogProps) {
-  const updateSettings = useUpdateDirScanSettings()
-  const [form, setForm] = useState({
-    matchMode: settings?.matchMode ?? "strict" as DirScanMatchMode,
+function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
+  return {
+    matchMode: (settings?.matchMode ?? "strict") as DirScanMatchMode,
     sizeTolerancePercent: settings?.sizeTolerancePercent ?? 2,
-    minPieceRatio: settings?.minPieceRatio ?? 50,
+    minPieceRatio: settings?.minPieceRatio ?? 98,
     allowPartial: settings?.allowPartial ?? false,
     skipPieceBoundarySafetyCheck: settings?.skipPieceBoundarySafetyCheck ?? true,
     startPaused: settings?.startPaused ?? false,
     category: settings?.category ?? "",
     tags: settings?.tags ?? [],
-  })
+  }
+}
+
+function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDialogProps) {
+  const updateSettings = useUpdateDirScanSettings()
+  const [form, setForm] = useState(() => buildSettingsFormState(settings))
 
   useEffect(() => {
     if (!open) return
-    setForm({
-      matchMode: (settings?.matchMode ?? "strict") as DirScanMatchMode,
-      sizeTolerancePercent: settings?.sizeTolerancePercent ?? 2,
-      minPieceRatio: settings?.minPieceRatio ?? 50,
-      allowPartial: settings?.allowPartial ?? false,
-      skipPieceBoundarySafetyCheck: settings?.skipPieceBoundarySafetyCheck ?? true,
-      startPaused: settings?.startPaused ?? false,
-      category: settings?.category ?? "",
-      tags: settings?.tags ?? [],
-    })
+    setForm(buildSettingsFormState(settings))
   }, [open, settings])
 
   const instanceIds = useMemo(
