@@ -9,7 +9,7 @@ import { usePWAInstallPrompt } from "@/hooks/usePWAInstallPrompt"
 import { toast } from "sonner"
 
 export function PWAInstallPrompt() {
-  const { shouldShowPrompt, promptInstall, suppressFor } = usePWAInstallPrompt()
+  const { shouldShowPrompt, promptInstall, suppressFor, suppressForever } = usePWAInstallPrompt()
   const toastIdRef = useRef<string | number | null>(null)
   const isMountedRef = useRef(true)
 
@@ -52,6 +52,18 @@ export function PWAInstallPrompt() {
           >
             Not now
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (!isMountedRef.current) return
+              suppressForever()
+              toast.dismiss(id)
+              clearToastRef()
+            }}
+          >
+            Don&apos;t ask again
+          </Button>
         </div>
       </div>
     ), {
@@ -79,7 +91,7 @@ export function PWAInstallPrompt() {
         toastIdRef.current = null
       }
     }
-  }, [shouldShowPrompt, promptInstall, suppressFor])
+  }, [shouldShowPrompt, promptInstall, suppressFor, suppressForever])
 
   return null
 }

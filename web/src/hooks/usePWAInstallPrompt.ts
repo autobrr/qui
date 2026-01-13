@@ -11,6 +11,7 @@ type BeforeInstallPromptEvent = Event & {
 }
 
 const SUPPRESS_UNTIL_KEY = "pwa-install-suppress-until"
+const SUPPRESS_FOREVER_KEY = "pwa-install-suppress-forever"
 const SUPPRESS_WINDOW_MS = 1000 * 60 * 60 * 24 // 24 hours
 
 const isStandalone = () => typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches
@@ -34,8 +35,19 @@ const isLikelyMobile = () => {
 export function usePWAInstallPrompt() {
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [memorySuppressUntil, setMemorySuppressUntil] = useState(0)
+  const [suppressForever, setSuppressForever] = useState(false)
 
   const readSuppressUntil = useCallback(() => {
+    try {
+      const forever = localStorage.getItem(SUPPRESS_FOREVER_KEY)
+      if (forever === "1") {
+        setSuppressForever(true)
+        return Number.POSITIVE_INFINITY
+      }
+    } catch {
+      // Ignore storage failures
+    }
+
     let suppressUntil = memorySuppressUntil
     try {
       const stored = Number(localStorage.getItem(SUPPRESS_UNTIL_KEY) || 0)
@@ -57,10 +69,20 @@ export function usePWAInstallPrompt() {
     }
   }, [])
 
+  const setSuppressForeverFlag = useCallback(() => {
+    setSuppressForever(true)
+    try {
+      localStorage.setItem(SUPPRESS_FOREVER_KEY, "1")
+    } catch {
+      // Ignore persistence failures
+    }
+    setPromptEvent(null)
+  }, [])
+
   useEffect(() => {
     const handleBeforeInstall = (event: Event) => {
-      const suppressUntil = readSuppressUntil()
-      if (suppressUntil > Date.now()) return
+        const suppressUntil = readSuppressUntil()
+        if (suppressForever || suppressUntil > Date.now()) return
       if (isStandalone()) return
       if (!isLikelyMobile()) return
 
@@ -93,17 +115,18 @@ export function usePWAInstallPrompt() {
 
   useEffect(() => {
     const handleInstalled = () => {
-      suppressFor(1000 * 60 * 60 * 24 * 30) // 30 days
+      setSuppressForeverFlag()
     }
 
     window.addEventListener("appinstalled", handleInstalled)
     return () => window.removeEventListener("appinstalled", handleInstalled)
-  }, [suppressFor])
+  }, [setSuppressForeverFlag])
 
   return {
-    promptAvailable: !!promptEvent,
-    shouldShowPrompt: !!promptEvent,
+    promptAvailable: !!promptEvent && !suppressForever,
+    shouldShowPrompt: !!promptEvent && !suppressForever,
     promptInstall,
     suppressFor,
+    suppressForever: setSuppressForeverFlag,
   }
 }
