@@ -134,15 +134,15 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		SyncManager:               &qbittorrent.SyncManager{},
 		WebHandler:                &web.Handler{},
 		LicenseService:            &license.Service{},
-			UpdateService:             &update.Service{},
-			TrackerIconService:        trackerIconService,
-			BackupService:             &backups.Service{},
-			AutomationStore:           models.NewAutomationStore(db),
-			TrackerCustomizationStore: trackerCustomizationStore,
-			DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
-			DirScanService:            dirScanService,
-		}
+		UpdateService:             &update.Service{},
+		TrackerIconService:        trackerIconService,
+		BackupService:             &backups.Service{},
+		AutomationStore:           models.NewAutomationStore(db),
+		TrackerCustomizationStore: trackerCustomizationStore,
+		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		DirScanService:            dirScanService,
 	}
+}
 
 func collectRouterRoutes(t *testing.T, r chi.Routes) map[routeKey]struct{} {
 	t.Helper()
