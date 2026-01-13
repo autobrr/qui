@@ -483,7 +483,7 @@ func (s *Service) previewDeleteStandard(
 		}
 		if len(result.Examples) < cfg.limit {
 			var score float64
-			if rule.SortingConfig != nil && rule.SortingConfig.Type == "score" {
+			if rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
 				score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
 			}
 
