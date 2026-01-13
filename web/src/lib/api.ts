@@ -820,6 +820,8 @@ class ApiClient {
       search_type?: string
       search_categories?: number[]
       required_caps?: string[]
+      disc_layout?: boolean
+      disc_marker?: string
       available_indexers?: number[]
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
@@ -847,6 +849,8 @@ class ApiClient {
       searchType: raw.search_type,
       searchCategories: raw.search_categories,
       requiredCaps: raw.required_caps,
+      discLayout: raw.disc_layout,
+      discMarker: raw.disc_marker,
       availableIndexers: raw.available_indexers,
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
@@ -983,6 +987,8 @@ class ApiClient {
       search_type?: string
       search_categories?: number[]
       required_caps?: string[]
+      disc_layout?: boolean
+      disc_marker?: string
       available_indexers?: number[]
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
@@ -1036,6 +1042,8 @@ class ApiClient {
       searchType: torrent?.search_type ?? undefined,
       searchCategories: torrent?.search_categories ?? undefined,
       requiredCaps: torrent?.required_caps ?? undefined,
+      discLayout: torrent?.disc_layout ?? undefined,
+      discMarker: torrent?.disc_marker ?? undefined,
       availableIndexers: torrent?.available_indexers ?? undefined,
       filteredIndexers: torrent?.filtered_indexers ?? undefined,
       excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
