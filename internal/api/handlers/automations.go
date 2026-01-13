@@ -306,6 +306,13 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "intervalSeconds must be at least 60", errors.New("interval too short")
 	}
 
+	// Validate sorting config
+	if payload.SortingConfig != nil {
+		if err := payload.SortingConfig.Validate(); err != nil {
+			return http.StatusBadRequest, fmt.Sprintf("Invalid sorting config: %v", err), err
+		}
+	}
+
 	// Validate regex patterns are valid RE2 (only when enabling the workflow)
 	isEnabled := payload.Enabled == nil || *payload.Enabled
 	if isEnabled {

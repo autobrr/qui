@@ -94,10 +94,54 @@ type ScoreRule struct {
 // This is the top-level structure stored in the `sorting_config` JSON column.
 type SortingConfig struct {
 	SchemaVersion string         `json:"schemaVersion"`
-	Type          SortingType    `json:"type"`                // "simple" or "score"
-	Direction     SortDirection  `json:"direction"`           // "ASC" or "DESC"
-	Field         ConditionField `json:"field,omitempty"`     // for "simple"
+	Type          SortingType    `json:"type"`            // "simple" or "score"
+	Direction     SortDirection  `json:"direction"`       // "ASC" or "DESC"
+	Field         ConditionField `json:"field,omitempty"` // for "simple"
 	ScoreRules    []ScoreRule    `json:"scoreRules,omitempty"`
+}
+
+func (c *SortingConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+
+	if c.SchemaVersion != "1" {
+		return fmt.Errorf("invalid schema version: %s", c.SchemaVersion)
+	}
+
+	if c.Direction != "" && c.Direction != SortDirectionASC && c.Direction != SortDirectionDESC {
+		return fmt.Errorf("invalid direction: %s", c.Direction)
+	}
+
+	switch c.Type {
+	case SortingTypeSimple:
+		if c.Field == "" {
+			return errors.New("simple sort requires field")
+		}
+	case SortingTypeScore:
+		for i, r := range c.ScoreRules {
+			if r.Type == ScoreRuleTypeFieldMultiplier {
+				if r.FieldMultiplier == nil {
+					return fmt.Errorf("score rule %d: content missing for field multiplier", i)
+				}
+			} else if r.Type == ScoreRuleTypeConditional {
+				if r.Conditional == nil {
+					return fmt.Errorf("score rule %d: content missing for conditional", i)
+				}
+				if r.Conditional.Condition == nil {
+					return fmt.Errorf("score rule %d: condition missing", i)
+				}
+			} else {
+				return fmt.Errorf("score rule %d: unknown type %s", i, r.Type)
+			}
+		}
+	case "":
+		return errors.New("sorting config type is required")
+	default:
+		return fmt.Errorf("unknown sorting type: %s", c.Type)
+	}
+
+	return nil
 }
 
 type Automation struct {
