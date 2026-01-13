@@ -1104,6 +1104,35 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
 
+    // Validate score sorting configuration
+    if (submitState.sortingType === "score") {
+      if (submitState.scoreRules.length === 0) {
+        toast.error("Add at least one score rule for Score sorting")
+        return
+      }
+
+      // Validate individual rules for valid numeric inputs
+      for (const rule of submitState.scoreRules) {
+        if (rule.type === "field_multiplier") {
+          if (!rule.fieldMultiplier) continue
+          const val = rule.fieldMultiplier.multiplier
+          const multiplier = typeof val === "string" ? parseFloat(val) : val
+          if (!Number.isFinite(multiplier)) {
+            toast.error("Field multiplier must be a valid number")
+            return
+          }
+        } else if (rule.type === "conditional") {
+          if (!rule.conditional) continue
+          const val = rule.conditional.score
+          const score = typeof val === "string" ? parseFloat(val) : val
+          if (!Number.isFinite(score)) {
+            toast.error("Conditional score must be a valid number")
+            return
+          }
+        }
+      }
+    }
+
     // Action-specific validation for enabled actions
     if (submitState.speedLimitsEnabled) {
       // At least one field must be set to something other than "no_change"
