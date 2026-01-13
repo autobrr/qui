@@ -498,14 +498,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           } else if (rule.sortingConfig.type === "score") {
             sortingType = "score"
             if (rule.sortingConfig.direction) sortDirection = rule.sortingConfig.direction
-            scoreRules = (rule.sortingConfig.scoreRules || []).map<FormScoreRule>(r => {
+            scoreRules = (rule.sortingConfig.scoreRules || []).flatMap<FormScoreRule>(r => {
               if (r.type === "field_multiplier") {
-                return { type: r.type, fieldMultiplier: { ...r.fieldMultiplier } }
+                return [{ type: r.type, fieldMultiplier: { ...r.fieldMultiplier } }]
               }
               if (r.type === "conditional") {
-                return { type: r.type, conditional: { ...r.conditional } }
+                return [{ type: r.type, conditional: { ...r.conditional } }]
               }
-              return { type: (r as any).type }
+              return []
             })
           }
         }
