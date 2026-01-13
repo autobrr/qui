@@ -407,7 +407,6 @@ export interface AutomationPreviewTorrent {
   lastActivity: number
   completionOn: number
   totalSize: number
-  trackersCount: number
   score?: number
 }
 
