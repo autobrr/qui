@@ -109,7 +109,11 @@ func (c *SortingConfig) Validate() error {
 		return fmt.Errorf("invalid schema version: %s", c.SchemaVersion)
 	}
 
-	if c.Direction != "" && c.Direction != SortDirectionASC && c.Direction != SortDirectionDESC {
+	if c.Direction == "" {
+		return errors.New("direction is required")
+	}
+
+	if c.Direction != SortDirectionASC && c.Direction != SortDirectionDESC {
 		return fmt.Errorf("invalid direction: %s", c.Direction)
 	}
 
