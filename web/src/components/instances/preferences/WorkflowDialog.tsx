@@ -33,13 +33,13 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
-import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
+import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
-import { cn, formatBytes, parseTrackerDomains } from "@/lib/utils"
+import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
@@ -285,36 +285,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return buildCategorySelectOptions(metadata.categories, selected)
   }, [metadata?.categories, formState.exprCategory, formState.exprBlockIfCrossSeedInCategories])
 
-  // Build lookup maps from tracker customizations for merging and nicknames
-  const trackerCustomizationMaps = useMemo(() => {
-    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
-    const secondaryDomains = new Set<string>()
-
-    for (const custom of trackerCustomizations ?? []) {
-      const domains = custom.domains
-      if (domains.length === 0) continue
-
-      for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].toLowerCase()
-        domainToCustomization.set(domain, {
-          displayName: custom.displayName,
-          domains: custom.domains,
-          id: custom.id,
-        })
-        if (i > 0) {
-          secondaryDomains.add(domain)
-        }
-      }
-    }
-
-    return { domainToCustomization, secondaryDomains }
-  }, [trackerCustomizations])
+  const trackerCustomizationMaps = useMemo(
+    () => buildTrackerCustomizationMaps(trackerCustomizations),
+    [trackerCustomizations]
+  )
 
   // Process trackers to apply customizations (nicknames and merged domains)
   // Also includes trackers from the current workflow being edited, so they remain
   // visible even if no torrents currently use them
   const trackerOptions: Option[] = useMemo(() => {
-    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const { domainToCustomization } = trackerCustomizationMaps
     const trackers = trackersQuery.data ? Object.keys(trackersQuery.data) : []
     const processed: Option[] = []
     const seenDisplayNames = new Set<string>()
@@ -323,10 +303,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // Helper to add a tracker option
     const addTracker = (tracker: string) => {
       const lowerTracker = tracker.toLowerCase()
-
-      if (secondaryDomains.has(lowerTracker)) {
-        return
-      }
 
       const customization = domainToCustomization.get(lowerTracker)
 
@@ -770,10 +746,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
     }
 
+    const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
+
     return {
       name: input.name,
-      trackerDomains: input.applyToAllTrackers ? [] : input.trackerDomains.filter(Boolean),
-      trackerPattern: input.applyToAllTrackers ? "*" : input.trackerDomains.filter(Boolean).join(","),
+      trackerDomains,
+      trackerPattern: input.applyToAllTrackers ? "*" : trackerDomains.join(","),
       enabled: input.enabled,
       sortOrder: input.sortOrder,
       intervalSeconds: input.intervalSeconds,

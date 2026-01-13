@@ -87,6 +87,47 @@ func TestSanitizeStringSlice(t *testing.T) {
 	}
 }
 
+func TestSanitizeCommaSeparatedStringSlice(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "nil slice returns empty slice",
+			input:    nil,
+			expected: []string{},
+		},
+		{
+			name:     "empty slice returns empty slice",
+			input:    []string{},
+			expected: []string{},
+		},
+		{
+			name:     "splits and trims",
+			input:    []string{"  foo  , bar", "baz"},
+			expected: []string{"foo", "bar", "baz"},
+		},
+		{
+			name:     "drops empties and lowercases",
+			input:    []string{"Foo,,  ,BAR", "bAz"},
+			expected: []string{"foo", "bar", "baz"},
+		},
+		{
+			name:     "deduplicates across inputs",
+			input:    []string{"a,b", "B", "c", "A"},
+			expected: []string{"a", "b", "c"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeCommaSeparatedStringSlice(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestEncodeStringSliceJSON(t *testing.T) {
 	tests := []struct {
 		name        string
