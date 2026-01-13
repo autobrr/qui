@@ -21,7 +21,7 @@ function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-[100dvh] bg-background">
       {/* Desktop Sidebar - Collapsible */}
       <div className={cn(
         "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
