@@ -215,7 +215,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 		StartPaused: &startPausedFalse, // Explicitly set to false
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
@@ -314,7 +314,7 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		SkipAutoResume: false, // Would normally allow auto-resume
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
@@ -408,7 +408,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 		SkipAutoResume: false,
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)

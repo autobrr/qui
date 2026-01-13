@@ -563,8 +563,12 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 	var totalSize int64
 	var fileCount int
 	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
-		if name, hash, files, info, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
-			torrentName, torrentHash = name, hash
+		if name, hashV1, hashV2, files, info, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
+			torrentName = name
+			torrentHash = hashV1
+			if info != nil && !info.HasV1() && hashV2 != "" {
+				torrentHash = hashV2
+			}
 			totalSize = info.TotalLength()
 			fileCount = len(files)
 		}

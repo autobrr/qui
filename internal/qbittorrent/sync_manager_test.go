@@ -116,6 +116,93 @@ func TestHasTorrentByAnyHash(t *testing.T) {
 	require.Equal(t, "second", torrent.Name)
 }
 
+func TestResolveTorrentByVariantHash(t *testing.T) {
+	t.Parallel()
+
+	// Create a map simulating hybrid v1+v2 torrents where qBittorrent indexes by v2 hash
+	// but the input might be a v1 hash (or vice versa)
+	torrentMap := map[string]qbt.Torrent{
+		// Exact match case - indexed by primary hash
+		"abc123": {Hash: "abc123", Name: "exact-match", InfohashV1: "", InfohashV2: ""},
+		// Hybrid torrent indexed by v2 hash, but has v1 hash available
+		"v2hash456": {Hash: "v2hash456", Name: "hybrid-v2-indexed", InfohashV1: "v1hash456", InfohashV2: "v2hash456"},
+		// Another hybrid case - indexed by v1 but has v2
+		"v1hash789": {Hash: "v1hash789", Name: "hybrid-v1-indexed", InfohashV1: "v1hash789", InfohashV2: "v2hash789"},
+	}
+
+	tests := []struct {
+		name        string
+		inputHash   string
+		expectFound bool
+		expectHash  string
+		expectName  string
+	}{
+		{
+			name:        "exact match - primary hash",
+			inputHash:   "abc123",
+			expectFound: true,
+			expectHash:  "abc123",
+			expectName:  "exact-match",
+		},
+		{
+			name:        "exact match - case insensitive",
+			inputHash:   "ABC123",
+			expectFound: true,
+			expectHash:  "abc123",
+			expectName:  "exact-match",
+		},
+		{
+			name:        "variant match - v1 hash provided, indexed by v2",
+			inputHash:   "v1hash456",
+			expectFound: true,
+			expectHash:  "v2hash456",
+			expectName:  "hybrid-v2-indexed",
+		},
+		{
+			name:        "variant match - v2 hash provided, indexed by v1",
+			inputHash:   "v2hash789",
+			expectFound: true,
+			expectHash:  "v1hash789",
+			expectName:  "hybrid-v1-indexed",
+		},
+		{
+			name:        "variant match - case insensitive v1 lookup",
+			inputHash:   "V1HASH456",
+			expectFound: true,
+			expectHash:  "v2hash456",
+			expectName:  "hybrid-v2-indexed",
+		},
+		{
+			name:        "not found - unknown hash",
+			inputHash:   "unknown",
+			expectFound: false,
+		},
+		{
+			name:        "empty hash - returns not found",
+			inputHash:   "",
+			expectFound: false,
+		},
+		{
+			name:        "whitespace only - returns not found",
+			inputHash:   "   ",
+			expectFound: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			torrent, found := resolveTorrentByVariantHash(torrentMap, tc.inputHash)
+
+			require.Equal(t, tc.expectFound, found, "found mismatch")
+
+			if tc.expectFound {
+				require.Equal(t, tc.expectHash, torrent.Hash, "hash mismatch")
+				require.Equal(t, tc.expectName, torrent.Name, "name mismatch")
+			}
+		})
+	}
+}
+
 func TestGetTorrentFilesBatch_IsolatesClientSliceReuse(t *testing.T) {
 	t.Parallel()
 
