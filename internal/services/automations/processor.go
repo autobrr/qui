@@ -133,7 +133,6 @@ func processTorrents(
 			continue
 		}
 
-		// Initialize state for this torrent
 		// Initialize or retrieve existing state for this torrent
 		var state *torrentDesiredState
 		if existing, ok := states[torrent.Hash]; ok {
@@ -631,16 +630,34 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 		}
 		return 0
 	case models.FieldAddedOn:
+		if t.AddedOn <= 0 {
+			return 0
+		}
 		return float64(t.AddedOn)
 	case models.FieldCompletionOn:
+		if t.CompletionOn <= 0 {
+			return 0
+		}
 		return float64(t.CompletionOn)
 	case models.FieldLastActivity:
+		if t.LastActivity <= 0 {
+			return 0
+		}
 		return float64(t.LastActivity)
 	case models.FieldSeedingTime:
+		if t.SeedingTime <= 0 {
+			return 0
+		}
 		return float64(t.SeedingTime)
 	case models.FieldTimeActive:
+		if t.TimeActive <= 0 {
+			return 0
+		}
 		return float64(t.TimeActive)
 	case models.FieldAddedOnAge:
+		if t.AddedOn <= 0 {
+			return 0
+		}
 		return float64(getNowUnix(evalCtx) - t.AddedOn)
 	case models.FieldCompletionOnAge:
 		if t.CompletionOn <= 0 {
