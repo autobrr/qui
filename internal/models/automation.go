@@ -376,6 +376,12 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		return nil, errors.New("automation must have conditions")
 	}
 
+	if automation.SortingConfig != nil {
+		if err := automation.SortingConfig.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid sorting config: %w", err)
+		}
+	}
+
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
 	sortOrder := automation.SortOrder
@@ -439,6 +445,12 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	}
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
+	}
+
+	if automation.SortingConfig != nil {
+		if err := automation.SortingConfig.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid sorting config: %w", err)
+		}
 	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
