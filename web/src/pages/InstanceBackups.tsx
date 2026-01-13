@@ -1615,15 +1615,15 @@ export function InstanceBackups() {
             setImportFile(null)
           }
         }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Import backup</DialogTitle>
               <DialogDescription>
                 Upload a backup archive (with torrent files) or manifest.json (metadata only).
                 Archive formats: zip, tar.gz, tar.zst, tar.br, tar.xz, tar.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="manifest-file">Backup file</Label>
                 <Input
