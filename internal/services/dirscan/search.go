@@ -66,6 +66,8 @@ func (s *Searcher) Search(ctx context.Context, req *SearchRequest) error {
 		return errors.New("searchee is required")
 	}
 
+	ctx = jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
+
 	// Parse metadata if not provided
 	meta := req.Metadata
 	if meta == nil {

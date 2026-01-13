@@ -110,6 +110,10 @@ For each configured scan directory, qui:
 6. Downloads torrent files and matches their file lists against what's on disk.
 7. If a match is found, adds the torrent to the target qBittorrent instance.
 
+:::info
+Torznab searches run through the shared scheduler at background priority, so they queue behind interactive, RSS, and completion cross-seed work.
+:::
+
 ### Already-seeding detection
 
 Dir Scan maintains a FileID index (inode + device on Unix) to track files already present in qBittorrent. It skips:

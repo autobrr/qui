@@ -45,7 +45,7 @@ func DefaultConfig() Config {
 	return Config{
 		SchedulerInterval: 1 * time.Minute,
 		MaxJitter:         30 * time.Second,
-		MaxConcurrentRuns: 2,
+		MaxConcurrentRuns: 1,
 	}
 }
 
