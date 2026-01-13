@@ -63,6 +63,8 @@ import { createPortal } from "react-dom"
 import { toast } from "sonner"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
+let ruleIdCounter = 0
+
 interface WorkflowDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -130,6 +132,7 @@ interface FormConditionalScoreRule {
 type ScoreRuleType = "field_multiplier" | "conditional"
 
 interface FormScoreRule {
+  id: number
   type: ScoreRuleType
   fieldMultiplier?: FormFieldMultiplierScoreRule
   conditional?: FormConditionalScoreRule
@@ -499,10 +502,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             if (rule.sortingConfig.direction) sortDirection = rule.sortingConfig.direction
             scoreRules = (rule.sortingConfig.scoreRules || []).flatMap<FormScoreRule>(r => {
               if (r.type === "field_multiplier") {
-                return [{ type: r.type, fieldMultiplier: { ...r.fieldMultiplier } }]
+                return [{ id: ++ruleIdCounter, type: r.type, fieldMultiplier: { ...r.fieldMultiplier } }]
               }
               if (r.type === "conditional") {
-                return [{ type: r.type, conditional: { ...r.conditional } }]
+                return [{ id: ++ruleIdCounter, type: r.type, conditional: { ...r.conditional } }]
               }
               return []
             })
@@ -1372,7 +1375,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </div>
                     </div>
                     {formState.scoreRules.map((rule, idx) => (
-                      <div key={idx} className="p-3 border rounded-md relative group">
+                      <div key={rule.id} className="p-3 border rounded-md relative group">
                         <Button
                           type="button"
                           variant="ghost"
@@ -1476,6 +1479,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         onClick={() => setFormState(prev => ({
                           ...prev,
                           scoreRules: [...prev.scoreRules, {
+                            id: ++ruleIdCounter,
                             type: "field_multiplier",
                             fieldMultiplier: { field: "SIZE", multiplier: 1 }
                           }]
@@ -1491,6 +1495,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         onClick={() => setFormState(prev => ({
                           ...prev,
                           scoreRules: [...prev.scoreRules, {
+                            id: ++ruleIdCounter,
                             type: "conditional",
                             conditional: {
                               condition: { field: "NAME", operator: "CONTAINS", value: "" },
