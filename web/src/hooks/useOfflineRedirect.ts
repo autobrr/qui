@@ -29,9 +29,20 @@ const rememberCurrentPath = () => {
 
 const readLastOnlinePath = () => {
   try {
-    return sessionStorage.getItem(LAST_ONLINE_PATH_KEY) || "/"
+    const stored = sessionStorage.getItem(LAST_ONLINE_PATH_KEY) || "/"
+    return stored === "/offline" ? "/" : stored
   } catch {
     return "/"
+  }
+}
+
+const ensureFallbackPath = () => {
+  try {
+    if (!sessionStorage.getItem(LAST_ONLINE_PATH_KEY)) {
+      sessionStorage.setItem(LAST_ONLINE_PATH_KEY, "/")
+    }
+  } catch {
+    // Ignore storage failures
   }
 }
 
@@ -53,7 +64,7 @@ export function useOfflineRedirect() {
           router.navigate({ to: "/offline" })
         } else {
           // If we booted on /offline, ensure we have some fallback path stored
-          rememberCurrentPath()
+          ensureFallbackPath()
         }
       }
     }
