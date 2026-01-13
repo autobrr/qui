@@ -3,6 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCallback, useEffect, useState } from "react"
+
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -36,12 +43,49 @@ import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
-import { toast } from "sonner"
+
 import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
+
+/** Parse newline-separated input into array of non-empty trimmed strings */
+function parseLines(input: string): string[] {
+  return input.split("\n").map((line) => line.trim()).filter(Boolean)
+}
+
+interface PathSuggestionsProps {
+  suggestions: string[]
+  highlightedIndex: number
+  onSelect: (entry: string) => void
+}
+
+function PathSuggestions({ suggestions, highlightedIndex, onSelect }: PathSuggestionsProps): React.ReactNode {
+  if (suggestions.length === 0) return null
+
+  return (
+    <div className="relative">
+      <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div className="max-h-55 overflow-y-auto py-1">
+          {suggestions.map((entry, idx) => (
+            <button
+              key={entry}
+              type="button"
+              title={entry}
+              className={cn(
+                "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                highlightedIndex === idx
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-accent/70"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onSelect(entry)}
+            >
+              <span className="block truncate text-left">{entry}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 interface TorrentCreatorDialogProps {
   instanceId: number
@@ -56,9 +100,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
 
   const { versionInfo } = useQBittorrentAppInfo(instanceId)
   const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
-  const formatSelectionUnavailable = versionInfo.isLibtorrent2 === false
-  const libtorrentVersionLabel =
-    formatSelectionUnavailable && versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
+  const libtorrentVersionLabel = versionInfo.libtorrentMajorVersion
+    ? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`
+    : "libtorrent 1.x"
 
   // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useInstanceTrackers(instanceId, { enabled: open })
@@ -102,32 +146,20 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     onSubmit: async ({ value }) => {
       setError(null)
 
-      // Parse trackers (one per line)
-      const trackers = value.trackers
-        ?.split("\n")
-        .map((t) => t.trim())
-        .filter(Boolean)
-
-      // Parse URL seeds (one per line)
-      const urlSeeds = value.urlSeeds
-        ?.split("\n")
-        .map((u) => u.trim())
-        .filter(Boolean)
-
-      const selectedFormat: TorrentFormat = supportsFormatSelection ? value.format : "v1"
+      const trackers = parseLines(value.trackers)
+      const urlSeeds = parseLines(value.urlSeeds)
 
       const params: TorrentCreationParams = {
         sourcePath: value.sourcePath,
         private: value.private,
-        trackers: trackers && trackers.length > 0 ? trackers : undefined,
+        trackers: trackers.length > 0 ? trackers : undefined,
         comment: value.comment || undefined,
         source: value.source || undefined,
-        startSeeding: value.startSeeding, // Always send boolean value
-        // Advanced options
-        format: selectedFormat,
+        startSeeding: value.startSeeding,
+        format: supportsFormatSelection ? value.format : "v1",
         pieceSize: value.pieceSize ? parseInt(value.pieceSize) : undefined,
         torrentFilePath: value.torrentFilePath || undefined,
-        urlSeeds: urlSeeds && urlSeeds.length > 0 ? urlSeeds : undefined,
+        urlSeeds: urlSeeds.length > 0 ? urlSeeds : undefined,
       }
 
       mutation.mutate(params)
@@ -163,10 +195,10 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   } = usePathAutocomplete(setTorrentFilePath, instanceId)
 
   useEffect(() => {
-    if (formatSelectionUnavailable) {
+    if (!supportsFormatSelection) {
       form.setFieldValue("format", "v1")
     }
-  }, [formatSelectionUnavailable, form])
+  }, [supportsFormatSelection, form])
 
   // Reset form and error state when dialog closes
   useEffect(() => {
@@ -179,14 +211,15 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Create Torrent</DialogTitle>
           <DialogDescription>
             Create a new .torrent file from a file or folder on the server
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto min-h-0">
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -227,30 +260,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   required
                 />
 
-                {supportsPathAutocomplete && showSourcePathSuggestions && sourcePathSuggestions.length > 0 && (
-                  <div className="relative">
-                    <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
-                      <div className="max-h-55 overflow-y-auto py-1">
-                        {sourcePathSuggestions.map((entry, idx) => (
-                          <button
-                            key={entry}
-                            type="button"
-                            title={entry}
-                            className={cn(
-                              "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                              sourcePathHighlightedIndex === idx
-                                ? "bg-accent text-accent-foreground"
-                                : "hover:bg-accent/70"
-                            )}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => handleSourcePathSelect(entry)}
-                          >
-                            <span className="block truncate text-left">{entry}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                {supportsPathAutocomplete && showSourcePathSuggestions && (
+                  <PathSuggestions
+                    suggestions={sourcePathSuggestions}
+                    highlightedIndex={sourcePathHighlightedIndex}
+                    onSelect={handleSourcePathSelect}
+                  />
                 )}
 
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -493,30 +508,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       }}
                     />
 
-                    {supportsPathAutocomplete && showTorrentFilePathSuggestions && torrentFilePathSuggestions.length > 0 && (
-                      <div className="relative">
-                        <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
-                          <div className="max-h-55 overflow-y-auto py-1">
-                            {torrentFilePathSuggestions.map((entry, idx) => (
-                              <button
-                                key={entry}
-                                type="button"
-                                title={entry}
-                                className={cn(
-                                  "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                                  torrentFilePathHighlightedIndex === idx
-                                    ? "bg-accent text-accent-foreground"
-                                    : "hover:bg-accent/70"
-                                )}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => handleTorrentFilePathSelect(entry)}
-                              >
-                                <span className="block truncate text-left">{entry}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
+                    {supportsPathAutocomplete && showTorrentFilePathSuggestions && (
+                      <PathSuggestions
+                        suggestions={torrentFilePathSuggestions}
+                        highlightedIndex={torrentFilePathHighlightedIndex}
+                        onSelect={handleTorrentFilePathSelect}
+                      />
                     )}
 
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -571,6 +568,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             </Button>
           </div>
         </form>
+        </div>
       </DialogContent>
     </Dialog>
   )
