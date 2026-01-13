@@ -133,7 +133,9 @@ func (m *Matcher) Match(searchee *Searchee, torrentFiles []TorrentFile) *MatchRe
 	allTorrentFilesMatched := matchedCount == totalTorrentFiles
 	result.IsPerfectMatch = allSearcheeFilesMatched && allTorrentFilesMatched
 	result.IsPartialMatch = matchedCount > 0 && !result.IsPerfectMatch
-	result.IsMatch = result.IsPerfectMatch
+	// IsMatch indicates we have at least one file-level match and can consider this
+	// candidate for injection. Acceptance (perfect vs partial) is decided elsewhere.
+	result.IsMatch = matchedCount > 0
 
 	return result
 }

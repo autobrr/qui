@@ -214,8 +214,13 @@ func FilterResults(results []*SearchResult, minSize, maxSize int64) []*SearchRes
 
 // CalculateSizeRange calculates min/max size based on searchee size and tolerance.
 func CalculateSizeRange(searcheeSize int64, tolerancePercent float64) (minSize, maxSize int64) {
-	if searcheeSize <= 0 || tolerancePercent <= 0 {
+	if searcheeSize <= 0 {
 		return 0, 0
+	}
+
+	// 0% tolerance means an exact match (min==max==searcheeSize).
+	if tolerancePercent <= 0 {
+		return searcheeSize, searcheeSize
 	}
 
 	tolerance := float64(searcheeSize) * (tolerancePercent / 100.0)

@@ -326,7 +326,19 @@ func (s *DirScanStore) GetDirectory(ctx context.Context, id int) (*DirScanDirect
 	return s.scanDirectory(row)
 }
 
+type sqlScanner interface {
+	Scan(dest ...any) error
+}
+
 func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
+	dir, err := s.scanDirectoryFromScanner(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrDirectoryNotFound
+	}
+	return dir, err
+}
+
+func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDirectory, error) {
 	var dir DirScanDirectory
 	var qbitPathPrefix sql.NullString
 	var category sql.NullString
@@ -334,7 +346,7 @@ func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
 	var arrInstanceID sql.NullInt64
 	var lastScanAt sql.NullTime
 
-	err := row.Scan(
+	if err := scanner.Scan(
 		&dir.ID,
 		&dir.Path,
 		&qbitPathPrefix,
@@ -347,12 +359,8 @@ func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
 		&lastScanAt,
 		&dir.CreatedAt,
 		&dir.UpdatedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrDirectoryNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan directory: %w", err)
+	); err != nil {
+		return nil, fmt.Errorf("scan directory columns: %w", err)
 	}
 
 	if qbitPathPrefix.Valid {
@@ -384,53 +392,11 @@ func (s *DirScanStore) scanDirectory(row *sql.Row) (*DirScanDirectory, error) {
 func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirectory, error) {
 	var directories []*DirScanDirectory
 	for rows.Next() {
-		var dir DirScanDirectory
-		var qbitPathPrefix sql.NullString
-		var category sql.NullString
-		var tagsJSON sql.NullString
-		var arrInstanceID sql.NullInt64
-		var lastScanAt sql.NullTime
-
-		if err := rows.Scan(
-			&dir.ID,
-			&dir.Path,
-			&qbitPathPrefix,
-			&category,
-			&tagsJSON,
-			&dir.Enabled,
-			&arrInstanceID,
-			&dir.TargetInstanceID,
-			&dir.ScanIntervalMinutes,
-			&lastScanAt,
-			&dir.CreatedAt,
-			&dir.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan directory row: %w", err)
+		dir, err := s.scanDirectoryFromScanner(rows)
+		if err != nil {
+			return nil, err
 		}
-
-		if qbitPathPrefix.Valid {
-			dir.QbitPathPrefix = qbitPathPrefix.String
-		}
-		if category.Valid {
-			dir.Category = category.String
-		}
-		if tagsJSON.Valid && tagsJSON.String != "" {
-			if err := json.Unmarshal([]byte(tagsJSON.String), &dir.Tags); err != nil {
-				return nil, fmt.Errorf("unmarshal tags: %w", err)
-			}
-		}
-		if dir.Tags == nil {
-			dir.Tags = []string{}
-		}
-		if arrInstanceID.Valid {
-			id := int(arrInstanceID.Int64)
-			dir.ArrInstanceID = &id
-		}
-		if lastScanAt.Valid {
-			dir.LastScanAt = &lastScanAt.Time
-		}
-
-		directories = append(directories, &dir)
+		directories = append(directories, dir)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate directories: %w", err)
@@ -478,34 +444,7 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		return nil, err
 	}
 
-	if params.Path != nil {
-		existing.Path = *params.Path
-	}
-	if params.QbitPathPrefix != nil {
-		existing.QbitPathPrefix = *params.QbitPathPrefix
-	}
-	if params.Category != nil {
-		existing.Category = *params.Category
-	}
-	if params.Tags != nil {
-		existing.Tags = *params.Tags
-	}
-	if params.Enabled != nil {
-		existing.Enabled = *params.Enabled
-	}
-	if params.ArrInstanceID != nil {
-		if *params.ArrInstanceID == -1 {
-			existing.ArrInstanceID = nil
-		} else {
-			existing.ArrInstanceID = params.ArrInstanceID
-		}
-	}
-	if params.TargetInstanceID != nil {
-		existing.TargetInstanceID = *params.TargetInstanceID
-	}
-	if params.ScanIntervalMinutes != nil {
-		existing.ScanIntervalMinutes = *params.ScanIntervalMinutes
-	}
+	applyDirectoryUpdateParams(existing, params)
 
 	var qbitPathPrefix any
 	if existing.QbitPathPrefix != "" {
@@ -540,6 +479,41 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 	}
 
 	return s.GetDirectory(ctx, id)
+}
+
+func applyDirectoryUpdateParams(existing *DirScanDirectory, params *DirScanDirectoryUpdateParams) {
+	if existing == nil || params == nil {
+		return
+	}
+
+	if params.Path != nil {
+		existing.Path = *params.Path
+	}
+	if params.QbitPathPrefix != nil {
+		existing.QbitPathPrefix = *params.QbitPathPrefix
+	}
+	if params.Category != nil {
+		existing.Category = *params.Category
+	}
+	if params.Tags != nil {
+		existing.Tags = *params.Tags
+	}
+	if params.Enabled != nil {
+		existing.Enabled = *params.Enabled
+	}
+	if params.ArrInstanceID != nil {
+		if *params.ArrInstanceID == -1 {
+			existing.ArrInstanceID = nil
+		} else {
+			existing.ArrInstanceID = params.ArrInstanceID
+		}
+	}
+	if params.TargetInstanceID != nil {
+		existing.TargetInstanceID = *params.TargetInstanceID
+	}
+	if params.ScanIntervalMinutes != nil {
+		existing.ScanIntervalMinutes = *params.ScanIntervalMinutes
+	}
 }
 
 // DeleteDirectory deletes a scan directory.
@@ -655,11 +629,19 @@ func (s *DirScanStore) GetRun(ctx context.Context, runID int64) (*DirScanRun, er
 }
 
 func (s *DirScanStore) scanRun(row *sql.Row) (*DirScanRun, error) {
+	run, err := scanRunFromScanner(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return run, err
+}
+
+func scanRunFromScanner(scanner sqlScanner) (*DirScanRun, error) {
 	var run DirScanRun
 	var errorMessage sql.NullString
 	var completedAt sql.NullTime
 
-	err := row.Scan(
+	if err := scanner.Scan(
 		&run.ID,
 		&run.DirectoryID,
 		&run.Status,
@@ -671,12 +653,8 @@ func (s *DirScanStore) scanRun(row *sql.Row) (*DirScanRun, error) {
 		&errorMessage,
 		&run.StartedAt,
 		&completedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan run: %w", err)
+	); err != nil {
+		return nil, fmt.Errorf("scan run columns: %w", err)
 	}
 
 	if errorMessage.Valid {
@@ -708,41 +686,21 @@ func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]
 	}
 	defer rows.Close()
 
+	return scanRunsFromRows(rows)
+}
+
+func scanRunsFromRows(rows *sql.Rows) ([]*DirScanRun, error) {
 	var runs []*DirScanRun
 	for rows.Next() {
-		var run DirScanRun
-		var errorMessage sql.NullString
-		var completedAt sql.NullTime
-
-		if err := rows.Scan(
-			&run.ID,
-			&run.DirectoryID,
-			&run.Status,
-			&run.TriggeredBy,
-			&run.FilesFound,
-			&run.FilesSkipped,
-			&run.MatchesFound,
-			&run.TorrentsAdded,
-			&errorMessage,
-			&run.StartedAt,
-			&completedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan run row: %w", err)
+		run, err := scanRunFromScanner(rows)
+		if err != nil {
+			return nil, err
 		}
-
-		if errorMessage.Valid {
-			run.ErrorMessage = errorMessage.String
-		}
-		if completedAt.Valid {
-			run.CompletedAt = &completedAt.Time
-		}
-
-		runs = append(runs, &run)
+		runs = append(runs, run)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate runs: %w", err)
 	}
-
 	return runs, nil
 }
 
@@ -861,10 +819,29 @@ func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage st
 
 // --- Run Injection Operations ---
 
-const dirScanRunInjectionMaxPerRun = 200
+const dirScanRunInjectionMaxPerRun = 256
 
 // CreateRunInjection records a successful or failed injection attempt for a run.
 func (s *DirScanStore) CreateRunInjection(ctx context.Context, injection *DirScanRunInjection) error {
+	if err := validateRunInjection(injection); err != nil {
+		return err
+	}
+
+	tagsJSON, err := marshalDirScanTagsJSON(injection.Tags)
+	if err != nil {
+		return err
+	}
+
+	if err := s.insertRunInjection(ctx, injection, tagsJSON); err != nil {
+		return err
+	}
+
+	s.trimRunInjectionsBestEffort(ctx, injection.RunID)
+
+	return nil
+}
+
+func validateRunInjection(injection *DirScanRunInjection) error {
 	if injection == nil {
 		return errors.New("injection is nil")
 	}
@@ -890,58 +867,53 @@ func (s *DirScanStore) CreateRunInjection(ctx context.Context, injection *DirSca
 		return errors.New("content type is required")
 	}
 
-	if injection.Tags == nil {
-		injection.Tags = []string{}
-	}
+	return nil
+}
 
-	tagsJSON, err := json.Marshal(injection.Tags)
+func marshalDirScanTagsJSON(tags []string) (string, error) {
+	if tags == nil {
+		tags = []string{}
+	}
+	data, err := json.Marshal(tags)
 	if err != nil {
-		return fmt.Errorf("marshal tags: %w", err)
+		return "", fmt.Errorf("marshal tags: %w", err)
 	}
+	return string(data), nil
+}
 
-	var indexerName any
-	if injection.IndexerName != "" {
-		indexerName = injection.IndexerName
+func optionalString(value string) any {
+	if value == "" {
+		return nil
 	}
-	var trackerDomain any
-	if injection.TrackerDomain != "" {
-		trackerDomain = injection.TrackerDomain
-	}
-	var trackerDisplayName any
-	if injection.TrackerDisplayName != "" {
-		trackerDisplayName = injection.TrackerDisplayName
-	}
-	var linkMode any
-	if injection.LinkMode != "" {
-		linkMode = injection.LinkMode
-	}
-	var savePath any
-	if injection.SavePath != "" {
-		savePath = injection.SavePath
-	}
-	var category any
-	if injection.Category != "" {
-		category = injection.Category
-	}
-	var errorMessage any
-	if injection.ErrorMessage != "" {
-		errorMessage = injection.ErrorMessage
-	}
+	return value
+}
 
-	_, err = s.db.ExecContext(ctx, `
+func (s *DirScanStore) insertRunInjection(ctx context.Context, injection *DirScanRunInjection, tagsJSON string) error {
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO dir_scan_run_injections
 			(run_id, directory_id, status, searchee_name, torrent_name, info_hash, content_type,
 			 indexer_name, tracker_domain, tracker_display_name, link_mode, save_path, category, tags, error_message)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, injection.RunID, injection.DirectoryID, injection.Status, injection.SearcheeName, injection.TorrentName,
-		injection.InfoHash, injection.ContentType, indexerName, trackerDomain, trackerDisplayName, linkMode,
-		savePath, category, string(tagsJSON), errorMessage)
+		injection.InfoHash, injection.ContentType,
+		optionalString(injection.IndexerName),
+		optionalString(injection.TrackerDomain),
+		optionalString(injection.TrackerDisplayName),
+		optionalString(injection.LinkMode),
+		optionalString(injection.SavePath),
+		optionalString(injection.Category),
+		tagsJSON,
+		optionalString(injection.ErrorMessage),
+	)
 	if err != nil {
 		return fmt.Errorf("insert run injection: %w", err)
 	}
+	return nil
+}
 
+func (s *DirScanStore) trimRunInjectionsBestEffort(ctx context.Context, runID int64) {
 	// Keep a bounded number of entries per run to avoid unbounded DB growth.
-	_, _ = s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		DELETE FROM dir_scan_run_injections
 		WHERE run_id = ?
 		  AND id NOT IN (
@@ -950,24 +922,16 @@ func (s *DirScanStore) CreateRunInjection(ctx context.Context, injection *DirSca
 			  ORDER BY id DESC
 			  LIMIT ?
 		  )
-	`, injection.RunID, injection.RunID, dirScanRunInjectionMaxPerRun)
-
-	return nil
+	`, runID, runID, dirScanRunInjectionMaxPerRun); err != nil {
+		_ = err
+	}
 }
 
 // ListRunInjections returns injection attempts for a run (newest first).
 func (s *DirScanStore) ListRunInjections(ctx context.Context, directoryID int, runID int64, limit, offset int) ([]*DirScanRunInjection, error) {
-	if runID <= 0 {
-		return nil, errors.New("runID must be > 0")
-	}
-	if directoryID <= 0 {
-		return nil, errors.New("directoryID must be > 0")
-	}
-	if limit <= 0 {
-		limit = 50
-	}
-	if offset < 0 {
-		offset = 0
+	limit, offset, err := normalizePaginationArgs(directoryID, runID, limit, offset)
+	if err != nil {
+		return nil, err
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -978,83 +942,111 @@ func (s *DirScanStore) ListRunInjections(ctx context.Context, directoryID int, r
 		WHERE directory_id = ? AND run_id = ?
 		ORDER BY created_at DESC, id DESC
 		LIMIT ? OFFSET ?
-	`, directoryID, runID, limit, offset)
+		`, directoryID, runID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("query run injections: %w", err)
 	}
 	defer rows.Close()
 
-	var injections []*DirScanRunInjection
+	return s.scanRunInjectionsFromRows(rows)
+}
+
+func normalizePaginationArgs(directoryID int, runID int64, limit, offset int) (normalizedLimit, normalizedOffset int, err error) {
+	if runID <= 0 {
+		return 0, 0, errors.New("runID must be > 0")
+	}
+	if directoryID <= 0 {
+		return 0, 0, errors.New("directoryID must be > 0")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset, nil
+}
+
+func (s *DirScanStore) scanRunInjectionsFromRows(rows *sql.Rows) ([]*DirScanRunInjection, error) {
+	injections := make([]*DirScanRunInjection, 0)
 	for rows.Next() {
-		var inj DirScanRunInjection
-		var indexerName sql.NullString
-		var trackerDomain sql.NullString
-		var trackerDisplayName sql.NullString
-		var linkMode sql.NullString
-		var savePath sql.NullString
-		var category sql.NullString
-		var tagsJSON sql.NullString
-		var errorMessage sql.NullString
-
-		if err := rows.Scan(
-			&inj.ID,
-			&inj.RunID,
-			&inj.DirectoryID,
-			&inj.Status,
-			&inj.SearcheeName,
-			&inj.TorrentName,
-			&inj.InfoHash,
-			&inj.ContentType,
-			&indexerName,
-			&trackerDomain,
-			&trackerDisplayName,
-			&linkMode,
-			&savePath,
-			&category,
-			&tagsJSON,
-			&errorMessage,
-			&inj.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan run injection row: %w", err)
+		inj, err := scanRunInjectionFromScanner(rows)
+		if err != nil {
+			return nil, err
 		}
-
-		if indexerName.Valid {
-			inj.IndexerName = indexerName.String
-		}
-		if trackerDomain.Valid {
-			inj.TrackerDomain = trackerDomain.String
-		}
-		if trackerDisplayName.Valid {
-			inj.TrackerDisplayName = trackerDisplayName.String
-		}
-		if linkMode.Valid {
-			inj.LinkMode = linkMode.String
-		}
-		if savePath.Valid {
-			inj.SavePath = savePath.String
-		}
-		if category.Valid {
-			inj.Category = category.String
-		}
-		if errorMessage.Valid {
-			inj.ErrorMessage = errorMessage.String
-		}
-		if tagsJSON.Valid && tagsJSON.String != "" {
-			if err := json.Unmarshal([]byte(tagsJSON.String), &inj.Tags); err != nil {
-				return nil, fmt.Errorf("unmarshal tags: %w", err)
-			}
-		}
-		if inj.Tags == nil {
-			inj.Tags = []string{}
-		}
-
-		injections = append(injections, &inj)
+		injections = append(injections, inj)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate run injections: %w", err)
 	}
-
 	return injections, nil
+}
+
+func scanRunInjectionFromScanner(scanner sqlScanner) (*DirScanRunInjection, error) {
+	var inj DirScanRunInjection
+	var indexerName sql.NullString
+	var trackerDomain sql.NullString
+	var trackerDisplayName sql.NullString
+	var linkMode sql.NullString
+	var savePath sql.NullString
+	var category sql.NullString
+	var tagsJSON sql.NullString
+	var errorMessage sql.NullString
+
+	if err := scanner.Scan(
+		&inj.ID,
+		&inj.RunID,
+		&inj.DirectoryID,
+		&inj.Status,
+		&inj.SearcheeName,
+		&inj.TorrentName,
+		&inj.InfoHash,
+		&inj.ContentType,
+		&indexerName,
+		&trackerDomain,
+		&trackerDisplayName,
+		&linkMode,
+		&savePath,
+		&category,
+		&tagsJSON,
+		&errorMessage,
+		&inj.CreatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("scan run injection columns: %w", err)
+	}
+
+	if indexerName.Valid {
+		inj.IndexerName = indexerName.String
+	}
+	if trackerDomain.Valid {
+		inj.TrackerDomain = trackerDomain.String
+	}
+	if trackerDisplayName.Valid {
+		inj.TrackerDisplayName = trackerDisplayName.String
+	}
+	if linkMode.Valid {
+		inj.LinkMode = linkMode.String
+	}
+	if savePath.Valid {
+		inj.SavePath = savePath.String
+	}
+	if category.Valid {
+		inj.Category = category.String
+	}
+	if errorMessage.Valid {
+		inj.ErrorMessage = errorMessage.String
+	}
+
+	tags, err := unmarshalTags(tagsJSON)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal tags: %w", err)
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	inj.Tags = tags
+
+	return &inj, nil
 }
 
 // --- File Operations ---
@@ -1126,13 +1118,21 @@ func (s *DirScanStore) GetFileByFileID(ctx context.Context, directoryID int, fil
 }
 
 func (s *DirScanStore) scanFile(row *sql.Row) (*DirScanFile, error) {
+	file, err := scanFileFromScanner(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return file, err
+}
+
+func scanFileFromScanner(scanner sqlScanner) (*DirScanFile, error) {
 	var file DirScanFile
 	var fileID []byte
 	var matchedTorrentHash sql.NullString
 	var matchedIndexerID sql.NullInt64
 	var lastProcessedAt sql.NullTime
 
-	err := row.Scan(
+	if err := scanner.Scan(
 		&file.ID,
 		&file.DirectoryID,
 		&file.FilePath,
@@ -1143,12 +1143,8 @@ func (s *DirScanStore) scanFile(row *sql.Row) (*DirScanFile, error) {
 		&matchedTorrentHash,
 		&matchedIndexerID,
 		&lastProcessedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan file: %w", err)
+	); err != nil {
+		return nil, fmt.Errorf("scan file columns: %w", err)
 	}
 
 	file.FileID = fileID
@@ -1203,47 +1199,21 @@ func (s *DirScanStore) ListFiles(ctx context.Context, directoryID int, status *D
 	}
 	defer rows.Close()
 
+	return scanFilesFromRows(rows)
+}
+
+func scanFilesFromRows(rows *sql.Rows) ([]*DirScanFile, error) {
 	var files []*DirScanFile
 	for rows.Next() {
-		var file DirScanFile
-		var fileID []byte
-		var matchedTorrentHash sql.NullString
-		var matchedIndexerID sql.NullInt64
-		var lastProcessedAt sql.NullTime
-
-		if err := rows.Scan(
-			&file.ID,
-			&file.DirectoryID,
-			&file.FilePath,
-			&file.FileSize,
-			&file.FileModTime,
-			&fileID,
-			&file.Status,
-			&matchedTorrentHash,
-			&matchedIndexerID,
-			&lastProcessedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan file row: %w", err)
+		file, err := scanFileFromScanner(rows)
+		if err != nil {
+			return nil, err
 		}
-
-		file.FileID = fileID
-		if matchedTorrentHash.Valid {
-			file.MatchedTorrentHash = matchedTorrentHash.String
-		}
-		if matchedIndexerID.Valid {
-			id := int(matchedIndexerID.Int64)
-			file.MatchedIndexerID = &id
-		}
-		if lastProcessedAt.Valid {
-			file.LastProcessedAt = &lastProcessedAt.Time
-		}
-
-		files = append(files, &file)
+		files = append(files, file)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate files: %w", err)
 	}
-
 	return files, nil
 }
 

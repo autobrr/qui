@@ -58,11 +58,13 @@ func shouldPreferFileMetadata(folderMeta, fileMeta *SearcheeMetadata) bool {
 		return false
 	}
 
-	if folderMeta.IsMusic && fileMeta.Title != "" {
-		return true
-	}
-	if folderMeta.IsMusic && !fileMeta.IsMusic {
-		return true
+	if folderMeta.IsMusic {
+		if fileMeta.Title != "" {
+			return true
+		}
+		if !fileMeta.IsMusic {
+			return true
+		}
 	}
 	if folderMeta.Title == "" && fileMeta.Title != "" {
 		return true

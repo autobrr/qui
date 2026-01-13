@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func buildTorrentBytes(t *testing.T, info metainfo.Info) []byte {
+func buildTorrentBytes(t *testing.T, info *metainfo.Info) []byte {
 	t.Helper()
 
 	infoBytes, err := bencode.Marshal(info)
@@ -26,7 +26,7 @@ func buildTorrentBytes(t *testing.T, info metainfo.Info) []byte {
 }
 
 func TestParseTorrentBytes_MultiFilePrefixesRootFolder(t *testing.T) {
-	torrentBytes := buildTorrentBytes(t, metainfo.Info{
+	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Example.Show.S01.1080p.WEB-DL.DDP5.1.x264-GROUP",
 		PieceLength: 262144,
 		Files: []metainfo.FileInfo{
@@ -44,7 +44,7 @@ func TestParseTorrentBytes_MultiFilePrefixesRootFolder(t *testing.T) {
 }
 
 func TestParseTorrentBytes_MultiFileDoesNotDoublePrefixRootFolder(t *testing.T) {
-	torrentBytes := buildTorrentBytes(t, metainfo.Info{
+	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Example.Show.S02.1080p.WEB-DL.x264-GROUP",
 		PieceLength: 262144,
 		Files: []metainfo.FileInfo{

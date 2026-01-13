@@ -166,35 +166,37 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate required fields
+	dir, ok := h.directoryFromCreatePayload(w, r, &payload)
+	if !ok {
+		return
+	}
+
+	created, err := h.service.CreateDirectory(r.Context(), dir)
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to create directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to create directory")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, created)
+}
+
+func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *http.Request, payload *DirScanDirectoryPayload) (*models.DirScanDirectory, bool) {
 	if payload.Path == nil || *payload.Path == "" {
 		RespondError(w, http.StatusBadRequest, "Path is required")
-		return
+		return nil, false
 	}
 	if payload.TargetInstanceID == nil || *payload.TargetInstanceID <= 0 {
 		RespondError(w, http.StatusBadRequest, "Target instance ID is required")
-		return
+		return nil, false
 	}
 	if payload.ScanIntervalMinutes != nil && *payload.ScanIntervalMinutes < 60 {
 		RespondError(w, http.StatusBadRequest, "Scan interval must be at least 60 minutes")
-		return
+		return nil, false
 	}
 
-	// Validate target instance has local filesystem access
-	instance, err := h.instanceStore.Get(r.Context(), *payload.TargetInstanceID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusBadRequest, "Target instance not found")
-			return
-		}
-		log.Error().Err(err).Int("instanceID", *payload.TargetInstanceID).Msg("dirscan: failed to get instance")
-		RespondError(w, http.StatusInternalServerError, "Failed to validate target instance")
-		return
-	}
-
-	if !instance.HasLocalFilesystemAccess {
-		RespondError(w, http.StatusBadRequest, "Target instance must have local filesystem access enabled")
-		return
+	if validateErr := h.validateTargetInstance(w, r, *payload.TargetInstanceID); validateErr != nil {
+		return nil, false
 	}
 
 	dir := &models.DirScanDirectory{
@@ -202,7 +204,6 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 		TargetInstanceID: *payload.TargetInstanceID,
 		Enabled:          true,
 	}
-
 	if payload.QbitPathPrefix != nil {
 		dir.QbitPathPrefix = *payload.QbitPathPrefix
 	}
@@ -221,17 +222,10 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 	if payload.ScanIntervalMinutes != nil {
 		dir.ScanIntervalMinutes = *payload.ScanIntervalMinutes
 	} else {
-		dir.ScanIntervalMinutes = 1440 // Default to 24 hours
+		dir.ScanIntervalMinutes = 1440
 	}
 
-	created, err := h.service.CreateDirectory(r.Context(), dir)
-	if err != nil {
-		log.Error().Err(err).Msg("dirscan: failed to create directory")
-		RespondError(w, http.StatusInternalServerError, "Failed to create directory")
-		return
-	}
-
-	RespondJSON(w, http.StatusCreated, created)
+	return dir, true
 }
 
 // GetDirectory returns a specific scan directory.
@@ -243,7 +237,7 @@ func (h *DirScanHandler) GetDirectory(w http.ResponseWriter, r *http.Request) {
 
 	dir, err := h.service.GetDirectory(r.Context(), dirID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrDirectoryNotFound) {
 			RespondError(w, http.StatusNotFound, "Directory not found")
 			return
 		}
@@ -293,7 +287,7 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 
 	updated, err := h.service.UpdateDirectory(r.Context(), dirID, params)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrDirectoryNotFound) {
 			RespondError(w, http.StatusNotFound, "Directory not found")
 			return
 		}
@@ -313,7 +307,7 @@ func (h *DirScanHandler) DeleteDirectory(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.service.DeleteDirectory(r.Context(), dirID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrDirectoryNotFound) {
 			RespondError(w, http.StatusNotFound, "Directory not found")
 			return
 		}
@@ -329,6 +323,10 @@ func (h *DirScanHandler) DeleteDirectory(w http.ResponseWriter, r *http.Request)
 func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
 		return
 	}
 
@@ -353,6 +351,10 @@ func (h *DirScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireDirectory(w, r, dirID) {
+		return
+	}
+
 	if err := h.service.CancelScan(r.Context(), dirID); err != nil {
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to cancel scan")
 		RespondError(w, http.StatusInternalServerError, "Failed to cancel scan")
@@ -366,6 +368,10 @@ func (h *DirScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
 		return
 	}
 
@@ -388,6 +394,10 @@ func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
 		return
 	}
 
@@ -416,6 +426,10 @@ func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
 		return
 	}
 
@@ -455,6 +469,10 @@ func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Reques
 func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
 		return
 	}
 
@@ -532,4 +550,18 @@ func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.R
 	}
 
 	return nil
+}
+
+func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request, directoryID int) bool {
+	_, err := h.service.GetDirectory(r.Context(), directoryID)
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, models.ErrDirectoryNotFound):
+		RespondError(w, http.StatusNotFound, "Directory not found")
+	default:
+		log.Error().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to validate directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to validate directory")
+	}
+	return false
 }

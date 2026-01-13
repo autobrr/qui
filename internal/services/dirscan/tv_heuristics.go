@@ -149,49 +149,82 @@ func groupTVEpisodes(searchee *Searchee, parser *Parser) map[tvGroupKey]*tvGroup
 
 	groups := make(map[tvGroupKey]*tvGroup)
 	for _, f := range searchee.Files {
-		if f == nil || !isVideoPath(f.Path) {
-			continue
-		}
-		base := filepath.Base(f.Path)
-		name := strings.TrimSuffix(base, filepath.Ext(base))
-		if name == "" {
-			continue
-		}
-
-		meta := parser.Parse(name)
-		if meta == nil || meta.Release == nil || !meta.IsTV || meta.Season == nil || meta.Episode == nil {
-			continue
-		}
-
-		season := *meta.Season
-		displayTitle := meta.Title
-		if displayTitle == "" {
-			displayTitle = name
-		}
-		normalizedTitle := stringutils.NormalizeForMatching(displayTitle)
-
-		key := tvGroupKey{normalizedTitle: normalizedTitle, season: season}
-		group, ok := groups[key]
+		key, group, parentDir, ok := buildTVGroupEntry(f, parser, groups)
 		if !ok {
-			group = &tvGroup{displayTitle: displayTitle, normalizedTitle: normalizedTitle, season: season}
-			groups[key] = group
+			continue
 		}
 
 		group.episodeFiles = append(group.episodeFiles, f)
-
-		parentDir := filepath.Dir(f.Path)
-		if _, exists := seasonsByDir[parentDir]; !exists {
-			seasonsByDir[parentDir] = make(map[int]struct{})
-		}
-		seasonsByDir[parentDir][season] = struct{}{}
-
 		group.parentDirs = append(group.parentDirs, parentDir)
+		recordSeasonInDir(seasonsByDir, parentDir, key.season)
 	}
 
+	finalizeTVGroups(groups, seasonsByDir)
+
+	return groups
+}
+
+func buildTVGroupEntry(file *ScannedFile, parser *Parser, groups map[tvGroupKey]*tvGroup) (key tvGroupKey, group *tvGroup, parentDir string, ok bool) {
+	key, displayTitle, parentDir, ok := parseTVEpisodeKey(file, parser)
+	if !ok {
+		return tvGroupKey{}, nil, "", false
+	}
+
+	group, ok = groups[key]
+	if !ok {
+		group = &tvGroup{displayTitle: displayTitle, normalizedTitle: key.normalizedTitle, season: key.season}
+		groups[key] = group
+	}
+
+	return key, group, parentDir, true
+}
+
+func parseTVEpisodeKey(file *ScannedFile, parser *Parser) (key tvGroupKey, displayTitle, parentDir string, ok bool) {
+	if file == nil || parser == nil || !isVideoPath(file.Path) {
+		return tvGroupKey{}, "", "", false
+	}
+
+	base := filepath.Base(file.Path)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	if name == "" {
+		return tvGroupKey{}, "", "", false
+	}
+
+	meta := parser.Parse(name)
+	if meta == nil || meta.Release == nil || !meta.IsTV || meta.Season == nil || meta.Episode == nil {
+		return tvGroupKey{}, "", "", false
+	}
+
+	displayTitle = meta.Title
+	if displayTitle == "" {
+		displayTitle = name
+	}
+
+	season := *meta.Season
+	key = tvGroupKey{normalizedTitle: stringutils.NormalizeForMatching(displayTitle), season: season}
+	parentDir = filepath.Dir(file.Path)
+	return key, displayTitle, parentDir, true
+}
+
+func recordSeasonInDir(seasonsByDir map[string]map[int]struct{}, parentDir string, season int) {
+	if seasonsByDir == nil || parentDir == "" || season <= 0 {
+		return
+	}
+
+	seasons, ok := seasonsByDir[parentDir]
+	if !ok {
+		seasons = make(map[int]struct{})
+		seasonsByDir[parentDir] = seasons
+	}
+	seasons[season] = struct{}{}
+}
+
+func finalizeTVGroups(groups map[tvGroupKey]*tvGroup, seasonsByDir map[string]map[int]struct{}) {
 	for _, group := range groups {
 		if group == nil {
 			continue
 		}
+
 		uniqueDirs := make(map[string]struct{})
 		for _, dir := range group.parentDirs {
 			uniqueDirs[dir] = struct{}{}
@@ -205,6 +238,4 @@ func groupTVEpisodes(searchee *Searchee, parser *Parser) map[tvGroupKey]*tvGroup
 			group.parentDirs = append(group.parentDirs, dir)
 		}
 	}
-
-	return groups
 }

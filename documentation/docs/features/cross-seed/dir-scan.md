@@ -178,7 +178,7 @@ Each scan directory has its own configuration:
 
 ### Concurrent scans
 
-Only one scan runs per directory at a time. If a scheduled scan triggers while a manual scan is running, it waits.
+Only one scan runs per directory at a time. If a scheduled scan triggers while another scan is running, it will not start a second run for that directory.
 
 ### Scheduled vs manual scans
 
@@ -203,7 +203,7 @@ The UI shows current phase and progress during active scans.
 If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods:
 
 - Builds a link tree matching the incoming torrent's layout.
-- Adds the torrent pointing at that tree (`contentLayout=Original`, `skip_checking=true`).
+- Adds the torrent pointing at that tree (`contentLayout=Original`). Full matches use `skip_checking=true`; partial matches allow qBittorrent to verify existing data and download missing files safely into the link tree.
 
 See:
 - [Hardlink Mode](hardlink-mode)
