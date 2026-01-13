@@ -2154,14 +2154,14 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Import Tracker Customizations</DialogTitle>
             <DialogDescription>
               Paste JSON to import tracker customizations (renames and merges).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="import-json">JSON Data</Label>
               <Textarea
@@ -2247,7 +2247,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={() => setShowImportDialog(false)}>
               Cancel
             </Button>

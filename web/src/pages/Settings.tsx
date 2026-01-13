@@ -260,14 +260,15 @@ function ApiKeysManager() {
               Create API Key
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Create API Key</DialogTitle>
               <DialogDescription>
                 Give your API key a descriptive name to remember its purpose.
               </DialogDescription>
             </DialogHeader>
 
+            <div className="flex-1 overflow-y-auto min-h-0">
             {newKey ? (
               <div className="space-y-4">
                 <div>
@@ -353,6 +354,7 @@ function ApiKeysManager() {
                 </form.Subscribe>
               </form>
             )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>

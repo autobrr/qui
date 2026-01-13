@@ -126,8 +126,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[525px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[525px] max-h-[90dvh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>
             {mode === 'create' ? 'Add Indexer' : 'Edit Indexer'}
           </DialogTitle>
@@ -137,7 +137,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
               : 'Update indexer settings'}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} autoComplete="off" data-1p-ignore>
+        <form onSubmit={handleSubmit} autoComplete="off" data-1p-ignore className="flex-1 overflow-y-auto min-h-0">
           <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <Label htmlFor="name">Name</Label>
@@ -272,7 +272,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
