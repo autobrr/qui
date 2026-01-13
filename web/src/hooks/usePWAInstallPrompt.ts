@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -35,17 +35,18 @@ const isLikelyMobile = () => {
 export function usePWAInstallPrompt() {
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [memorySuppressUntil, setMemorySuppressUntil] = useState(0)
-  const [suppressForever, setSuppressForever] = useState(false)
+  const [suppressForever, setSuppressForever] = useState(() => {
+    try {
+      if (typeof localStorage === "undefined") return false
+      return localStorage.getItem(SUPPRESS_FOREVER_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
 
   const readSuppressUntil = useCallback(() => {
-    try {
-      const forever = localStorage.getItem(SUPPRESS_FOREVER_KEY)
-      if (forever === "1") {
-        setSuppressForever(true)
-        return Number.POSITIVE_INFINITY
-      }
-    } catch {
-      // Ignore storage failures
+    if (suppressForever) {
+      return Number.POSITIVE_INFINITY
     }
 
     let suppressUntil = memorySuppressUntil
@@ -58,7 +59,7 @@ export function usePWAInstallPrompt() {
       // localStorage may be unavailable (e.g. private browsing); fall back to in-memory value
     }
     return suppressUntil
-  }, [memorySuppressUntil])
+  }, [memorySuppressUntil, suppressForever])
 
   const writeSuppressUntil = useCallback((until: number) => {
     setMemorySuppressUntil(until)
@@ -124,9 +125,8 @@ export function usePWAInstallPrompt() {
 
   return {
     promptAvailable: !!promptEvent && !suppressForever,
-    shouldShowPrompt: !!promptEvent && !suppressForever,
     promptInstall,
     suppressFor,
-    suppressForever: setSuppressForeverFlag,
+    dismissForever: setSuppressForeverFlag,
   }
 }

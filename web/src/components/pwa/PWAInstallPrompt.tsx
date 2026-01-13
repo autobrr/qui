@@ -9,7 +9,7 @@ import { usePWAInstallPrompt } from "@/hooks/usePWAInstallPrompt"
 import { toast } from "sonner"
 
 export function PWAInstallPrompt() {
-  const { shouldShowPrompt, promptInstall, suppressFor, suppressForever } = usePWAInstallPrompt()
+  const { promptAvailable, promptInstall, suppressFor, dismissForever } = usePWAInstallPrompt()
   const toastIdRef = useRef<string | number | null>(null)
   const isMountedRef = useRef(true)
 
@@ -19,7 +19,7 @@ export function PWAInstallPrompt() {
 
   useEffect(() => {
     isMountedRef.current = true
-    if (!shouldShowPrompt || toastIdRef.current !== null) return
+    if (!promptAvailable || toastIdRef.current !== null) return
 
     const toastId = toast.custom((id) => (
       <div className="grid gap-3 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg">
@@ -57,7 +57,7 @@ export function PWAInstallPrompt() {
             variant="ghost"
             onClick={() => {
               if (!isMountedRef.current) return
-              suppressForever()
+              dismissForever()
               toast.dismiss(id)
               clearToastRef()
             }}
@@ -91,7 +91,7 @@ export function PWAInstallPrompt() {
         toastIdRef.current = null
       }
     }
-  }, [shouldShowPrompt, promptInstall, suppressFor, suppressForever])
+  }, [promptAvailable, promptInstall, suppressFor, dismissForever])
 
   return null
 }
