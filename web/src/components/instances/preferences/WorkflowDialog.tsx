@@ -850,18 +850,27 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         schemaVersion: "1",
         type: "score",
         direction: input.sortDirection!,
-        scoreRules: input.scoreRules.map(r => ({
-          ...r,
-          type: r.type, // Ensure type is passed
-          fieldMultiplier: r.fieldMultiplier ? {
-            ...r.fieldMultiplier,
-            multiplier: typeof r.fieldMultiplier.multiplier === "string" ? (parseFloat(r.fieldMultiplier.multiplier) || 0) : r.fieldMultiplier.multiplier
-          } : undefined,
-          conditional: r.conditional ? {
-            ...r.conditional,
-            score: typeof r.conditional.score === "string" ? (parseFloat(r.conditional.score) || 0) : r.conditional.score
-          } : undefined,
-        } as ScoreRule)),
+        scoreRules: input.scoreRules.map(r => {
+          const rule: ScoreRule = { type: r.type as ScoreRuleType }
+          if (r.type === "field_multiplier" && r.fieldMultiplier) {
+            const multiplier = typeof r.fieldMultiplier.multiplier === "string" ? parseFloat(r.fieldMultiplier.multiplier) : r.fieldMultiplier.multiplier
+            if (Number.isFinite(multiplier)) {
+              rule.fieldMultiplier = { ...r.fieldMultiplier, multiplier }
+            }
+          }
+          if (r.type === "conditional" && r.conditional) {
+            const score = typeof r.conditional.score === "string" ? parseFloat(r.conditional.score) : r.conditional.score
+            if (Number.isFinite(score)) {
+              // Start with the existing conditional object
+              const cond = { ...r.conditional, score }
+              // Only assign if condition is present (satisfies ConditionalScoreRule)
+              if (cond.condition) {
+                rule.conditional = cond as ConditionalScoreRule
+              }
+            }
+          }
+          return rule
+        }),
       }
     }
 
