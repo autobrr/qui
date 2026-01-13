@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -107,6 +108,17 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
+	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	dirScanService := dirscan.NewService(
+		dirscan.DefaultConfig(),
+		models.NewDirScanStore(db),
+		&models.InstanceStore{},
+		&qbittorrent.SyncManager{},
+		nil,
+		nil,
+		trackerCustomizationStore,
+	)
+
 	return &Dependencies{
 		Config: &config.AppConfig{
 			Config: &domain.Config{
@@ -122,14 +134,15 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		SyncManager:               &qbittorrent.SyncManager{},
 		WebHandler:                &web.Handler{},
 		LicenseService:            &license.Service{},
-		UpdateService:             &update.Service{},
-		TrackerIconService:        trackerIconService,
-		BackupService:             &backups.Service{},
-		AutomationStore:           models.NewAutomationStore(db),
-		TrackerCustomizationStore: models.NewTrackerCustomizationStore(db),
-		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+			UpdateService:             &update.Service{},
+			TrackerIconService:        trackerIconService,
+			BackupService:             &backups.Service{},
+			AutomationStore:           models.NewAutomationStore(db),
+			TrackerCustomizationStore: trackerCustomizationStore,
+			DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+			DirScanService:            dirScanService,
+		}
 	}
-}
 
 func collectRouterRoutes(t *testing.T, r chi.Routes) map[routeKey]struct{} {
 	t.Helper()
