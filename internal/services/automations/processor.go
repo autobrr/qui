@@ -121,7 +121,7 @@ func processTorrents(
 	}
 
 	crossSeedIndex := buildCrossSeedIndex(torrents)
-	
+
 	for _, torrent := range torrents {
 		// Skip if recently processed
 		if skipCheck != nil && skipCheck(torrent.Hash) {
@@ -597,6 +597,14 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 	})
 }
 
+// getNowUnix returns the current time from context or system time.
+func getNowUnix(evalCtx *EvalContext) int64 {
+	if evalCtx != nil && evalCtx.NowUnix != 0 {
+		return evalCtx.NowUnix
+	}
+	return time.Now().Unix()
+}
+
 // getNumericFieldValue returns the float64 representation of a field for scoring.
 // Returns 0 if field is not numeric or not found.
 func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *EvalContext) float64 {
@@ -627,17 +635,17 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 	case models.FieldTimeActive:
 		return float64(t.TimeActive)
 	case models.FieldAddedOnAge:
-		return float64(time.Now().Unix() - t.AddedOn)
+		return float64(getNowUnix(evalCtx) - t.AddedOn)
 	case models.FieldCompletionOnAge:
 		if t.CompletionOn <= 0 {
 			return 0
 		}
-		return float64(time.Now().Unix() - t.CompletionOn)
+		return float64(getNowUnix(evalCtx) - t.CompletionOn)
 	case models.FieldLastActivityAge:
 		if t.LastActivity <= 0 {
 			return 0
 		}
-		return float64(time.Now().Unix() - t.LastActivity)
+		return float64(getNowUnix(evalCtx) - t.LastActivity)
 	case models.FieldRatio:
 		return t.Ratio
 	case models.FieldProgress:
