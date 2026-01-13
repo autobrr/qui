@@ -120,18 +120,19 @@ func (c *SortingConfig) Validate() error {
 		}
 	case SortingTypeScore:
 		for i, r := range c.ScoreRules {
-			if r.Type == ScoreRuleTypeFieldMultiplier {
+			switch r.Type {
+			case ScoreRuleTypeFieldMultiplier:
 				if r.FieldMultiplier == nil {
 					return fmt.Errorf("score rule %d: content missing for field multiplier", i)
 				}
-			} else if r.Type == ScoreRuleTypeConditional {
+			case ScoreRuleTypeConditional:
 				if r.Conditional == nil {
 					return fmt.Errorf("score rule %d: content missing for conditional", i)
 				}
 				if r.Conditional.Condition == nil {
 					return fmt.Errorf("score rule %d: condition missing", i)
 				}
-			} else {
+			default:
 				return fmt.Errorf("score rule %d: unknown type %s", i, r.Type)
 			}
 		}
