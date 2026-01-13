@@ -388,13 +388,13 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 
-	SortTorrents(torrents, rule.SortingConfig, evalCtx)
-
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
+
+	SortTorrents(torrents, rule.SortingConfig, evalCtx)
 
 	deleteMode := getDeleteMode(rule)
 	eligibleMode := previewView == "eligible"
@@ -789,7 +789,6 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
 
-	sortTorrentsStable(torrents)
 	crossSeedIndex := buildCrossSeedIndex(torrents)
 
 	cfg := previewConfig{limit: limit, offset: offset}
@@ -801,6 +800,8 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
+
+	SortTorrents(torrents, rule.SortingConfig, evalCtx)
 
 	catAction := getCategoryAction(rule)
 	state := newCategoryPreviewState(catAction.targetCategory)
