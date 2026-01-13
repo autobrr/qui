@@ -2511,6 +2511,9 @@ func sortingConfigEqual(a, b *models.SortingConfig) bool {
 				if !conditionEqual(rA.Conditional.Condition, rB.Conditional.Condition) {
 					return false
 				}
+			default:
+				// Unknown type - treat as unequal to avoid incorrect batching
+				return false
 			}
 		}
 		return true
