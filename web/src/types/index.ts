@@ -1951,6 +1951,7 @@ export type DirScanFileStatus =
   | "in_qbittorrent"
 
 export type DirScanRunStatus =
+  | "queued"
   | "scanning"
   | "searching"
   | "injecting"

@@ -46,6 +46,7 @@ type DirScanRunStatus string
 //
 //nolint:goconst // type-safe enum values intentionally share strings with other status types
 const (
+	DirScanRunStatusQueued    DirScanRunStatus = "queued"
 	DirScanRunStatusScanning  DirScanRunStatus = "scanning"
 	DirScanRunStatusSearching DirScanRunStatus = "searching"
 	DirScanRunStatusInjecting DirScanRunStatus = "injecting"
@@ -572,7 +573,7 @@ func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggered
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
 		VALUES (?, ?, ?)
-	`, directoryID, DirScanRunStatusScanning, triggeredBy)
+	`, directoryID, DirScanRunStatusQueued, triggeredBy)
 	if err != nil {
 		return 0, fmt.Errorf("insert run: %w", err)
 	}
@@ -593,9 +594,9 @@ func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int,
 		WHERE NOT EXISTS (
 			SELECT 1 FROM dir_scan_runs
 			WHERE directory_id = ?
-			  AND status IN ('scanning', 'searching', 'injecting')
+			  AND status IN ('queued', 'scanning', 'searching', 'injecting')
 		)
-	`, directoryID, DirScanRunStatusScanning, triggeredBy, directoryID)
+	`, directoryID, DirScanRunStatusQueued, triggeredBy, directoryID)
 	if err != nil {
 		return 0, fmt.Errorf("insert run: %w", err)
 	}
@@ -710,7 +711,7 @@ func (s *DirScanStore) HasActiveRun(ctx context.Context, directoryID int) (bool,
 		SELECT COUNT(*)
 		FROM dir_scan_runs
 		WHERE directory_id = ?
-		  AND status IN ('scanning', 'searching', 'injecting')
+		  AND status IN ('queued', 'scanning', 'searching', 'injecting')
 	`, directoryID)
 
 	var count int
@@ -727,7 +728,7 @@ func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirS
 		       matches_found, torrents_added, error_message, started_at, completed_at
 		FROM dir_scan_runs
 		WHERE directory_id = ?
-		  AND status IN ('scanning', 'searching', 'injecting')
+		  AND status IN ('queued', 'scanning', 'searching', 'injecting')
 		ORDER BY started_at DESC
 		LIMIT 1
 	`, directoryID)
@@ -803,7 +804,7 @@ func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage st
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE dir_scan_runs
 		SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
-		WHERE status IN ('scanning', 'searching', 'injecting')
+		WHERE status IN ('queued', 'scanning', 'searching', 'injecting')
 	`, DirScanRunStatusFailed, errorMessage)
 	if err != nil {
 		return 0, fmt.Errorf("mark active runs failed: %w", err)

@@ -112,6 +112,8 @@ For each configured scan directory, qui:
 
 :::info
 Torznab searches run through the shared scheduler at background priority, so they queue behind interactive, RSS, and completion cross-seed work.
+
+If the global scan concurrency limit is reached, new scans show as `queued` until a scan slot is available.
 :::
 
 ### Already-seeding detection

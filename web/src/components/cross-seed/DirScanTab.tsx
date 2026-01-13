@@ -75,6 +75,7 @@ import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import {
+  isRunActive,
   useCancelDirScan,
   useCreateDirScanDirectory,
   useDeleteDirScanDirectory,
@@ -105,11 +106,6 @@ interface DirScanTabProps {
 // Helper to format relative time from a string or Date
 function formatRelativeTimeStr(date: string | Date): string {
   return formatRelativeTime(typeof date === "string" ? new Date(date) : date)
-}
-
-// Helper to check if a scan run is currently active
-function isRunActive(run: DirScanRun): boolean {
-  return run.status === "scanning" || run.status === "searching" || run.status === "injecting"
 }
 
 export function DirScanTab({ instances }: DirScanTabProps) {
@@ -422,6 +418,7 @@ function DirectoryCard({
 // Status Badge Component
 function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   const statusConfig: Record<DirScanRunStatus, { icon: React.ReactNode; color: string; label: string }> = {
+    queued: { icon: <Clock className="size-3" />, color: "text-blue-500", label: "Queued" },
     scanning: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: "Scanning" },
     searching: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: "Searching" },
     injecting: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: "Injecting" },

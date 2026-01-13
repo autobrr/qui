@@ -5893,6 +5893,7 @@ components:
     DirScanRunStatus:
       type: string
       enum:
+        - queued
         - scanning
         - searching
         - injecting

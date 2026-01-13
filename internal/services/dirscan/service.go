@@ -358,6 +358,11 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	dirMu.Lock()
 	defer dirMu.Unlock()
 
+	// Transition from queued to scanning once we have a run slot and hold the directory lock.
+	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusScanning); err != nil {
+		l.Debug().Err(err).Msg("dirscan: failed to update run status to scanning")
+	}
+
 	s.updateDirectoryLastScan(ctx, directoryID, &l)
 
 	if s.handleCancellation(ctx, runID, &l, "before start") {
@@ -591,10 +596,6 @@ func (s *Service) runSearchAndInjectPhase(
 	runID int64,
 	l *zerolog.Logger,
 ) (matchesFound, torrentsAdded int) {
-	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusSearching); err != nil {
-		l.Error().Err(err).Msg("dirscan: failed to update run status to searching")
-	}
-
 	injectedTVGroups := make(map[tvGroupKey]struct{})
 
 	for _, searchee := range scanResult.Searchees {
@@ -1404,7 +1405,8 @@ func (s *Service) ListRuns(ctx context.Context, directoryID, limit int) ([]*mode
 		if run == nil {
 			continue
 		}
-		if run.Status != models.DirScanRunStatusScanning &&
+		if run.Status != models.DirScanRunStatusQueued &&
+			run.Status != models.DirScanRunStatusScanning &&
 			run.Status != models.DirScanRunStatusSearching &&
 			run.Status != models.DirScanRunStatusInjecting {
 			continue

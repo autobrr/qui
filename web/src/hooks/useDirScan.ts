@@ -17,9 +17,9 @@ import type {
   DirScanSettingsUpdate
 } from "@/types"
 
-const ACTIVE_STATUSES: DirScanRunStatus[] = ["scanning", "searching", "injecting"]
+const ACTIVE_STATUSES: DirScanRunStatus[] = ["queued", "scanning", "searching", "injecting"]
 
-function isRunActive(run: DirScanRun): boolean {
+export function isRunActive(run: DirScanRun): boolean {
   return ACTIVE_STATUSES.includes(run.status)
 }
 
