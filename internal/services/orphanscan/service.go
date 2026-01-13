@@ -243,11 +243,15 @@ func (s *Service) loop(ctx context.Context) {
 }
 
 func (s *Service) recoverStuckRuns(ctx context.Context) error {
-	// Mark old pending/scanning runs as failed (they won't resume)
-	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely
-	// Note: deleting is included here because a process restart means deletion is no longer in progress,
-	// and leaving it active would block future scans indefinitely.
-	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning", "deleting"}); err != nil {
+	// Immediately terminate interrupted deletions after restart.
+	// We do NOT attempt to resume; user can run a new scan if desired.
+	if err := s.store.MarkDeletingRunsFailed(ctx, "Deletion interrupted by restart"); err != nil {
+		return fmt.Errorf("mark deleting runs failed: %w", err)
+	}
+
+	// Mark old pending/scanning runs as failed (they won't resume).
+	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely.
+	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"}); err != nil {
 		return fmt.Errorf("mark stuck runs failed: %w", err)
 	}
 	return nil
