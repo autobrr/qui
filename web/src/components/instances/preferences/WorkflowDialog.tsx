@@ -993,7 +993,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     { header: "State", accessor: t => t.state },
     { header: "Added On", accessor: t => t.addedOn },
     { header: "Path", accessor: t => t.contentPath ?? "" },
-    { header: "Score", accessor: t => t.score ? t.score.toFixed(2) : "" },
+    { header: "Score", accessor: t => (t.score !== null && t.score !== undefined) ? t.score.toFixed(2) : "" },
   ]
 
   const handleExport = async () => {
