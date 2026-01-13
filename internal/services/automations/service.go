@@ -304,16 +304,6 @@ func (c *previewConfig) normalize() {
 	}
 }
 
-// sortTorrentsStable sorts torrents by AddedOn (oldest first), then by hash for deterministic pagination.
-func sortTorrentsStable(torrents []qbt.Torrent) {
-	sort.Slice(torrents, func(i, j int) bool {
-		if torrents[i].AddedOn != torrents[j].AddedOn {
-			return torrents[i].AddedOn < torrents[j].AddedOn
-		}
-		return torrents[i].Hash < torrents[j].Hash
-	})
-}
-
 // initPreviewEvalContext initializes an EvalContext for preview with common setup.
 func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, torrents []qbt.Torrent) (*EvalContext, *models.Instance) {
 	evalCtx := &EvalContext{}
