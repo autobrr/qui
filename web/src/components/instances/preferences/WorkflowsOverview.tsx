@@ -1403,14 +1403,14 @@ export function WorkflowsOverview({
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Workflow</DialogTitle>
             <DialogDescription>
               Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <Textarea
               placeholder='{"name": "My Workflow", "conditions": {...}}'
               value={importJSON}
@@ -1418,7 +1418,7 @@ export function WorkflowsOverview({
                 setImportJSON(e.target.value)
                 setImportError(null)
               }}
-              className="min-h-[200px] font-mono text-sm"
+              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>
