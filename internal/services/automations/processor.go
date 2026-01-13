@@ -134,11 +134,17 @@ func processTorrents(
 		}
 
 		// Initialize state for this torrent
-		state := &torrentDesiredState{
-			hash:        torrent.Hash,
-			name:        torrent.Name,
-			currentTags: parseTorrentTags(torrent.Tags),
-			tagActions:  make(map[string]string),
+		// Initialize or retrieve existing state for this torrent
+		var state *torrentDesiredState
+		if existing, ok := states[torrent.Hash]; ok {
+			state = existing
+		} else {
+			state = &torrentDesiredState{
+				hash:        torrent.Hash,
+				name:        torrent.Name,
+				currentTags: parseTorrentTags(torrent.Tags),
+				tagActions:  make(map[string]string),
+			}
 		}
 
 		// Get all tracker domains for this torrent

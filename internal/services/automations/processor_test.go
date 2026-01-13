@@ -1001,3 +1001,52 @@ func TestSortTorrents_Score(t *testing.T) {
 		require.Equal(t, "b", sorted[2].Hash)
 	})
 }
+
+func TestProcessTorrents_MultiBatchMerging(t *testing.T) {
+	ratio := 2.0
+
+	// Rule 1: Set Ratio Limit
+	rule1 := &models.Automation{
+		Name:           "Rule 1",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			ShareLimits: &models.ShareLimitsAction{
+				Enabled:    true,
+				RatioLimit: &ratio,
+			},
+		},
+	}
+	// Rule 2: Set Tag
+	rule2 := &models.Automation{
+		Name:           "Rule 2",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Tag: &models.TagAction{
+				Enabled: true,
+				Tags:    []string{"my-tag"},
+				Mode:    models.TagModeAdd,
+			},
+		},
+	}
+
+	torrent := qbt.Torrent{Hash: "abc", Name: "Test"}
+
+	// First batch
+	states := processTorrents([]qbt.Torrent{torrent}, []*models.Automation{rule1}, nil, nil, nil, nil, nil)
+
+	// Second batch (pass existing states)
+	states = processTorrents([]qbt.Torrent{torrent}, []*models.Automation{rule2}, nil, nil, nil, nil, states)
+
+	state := states["abc"]
+	require.NotNil(t, state)
+
+	// Verify Rule 1 applied
+	require.NotNil(t, state.ratioLimit)
+	require.InDelta(t, 2.0, *state.ratioLimit, 0.001)
+
+	// Verify Rule 2 applied
+	require.Contains(t, state.tagActions, "my-tag")
+	require.Equal(t, "add", state.tagActions["my-tag"])
+}
