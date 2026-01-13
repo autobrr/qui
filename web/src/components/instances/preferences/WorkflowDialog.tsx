@@ -1383,7 +1383,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={() => setFormState(prev => ({
                             ...prev,
-                            scoreRules: prev.scoreRules.filter((_, i) => i !== idx)
+                            scoreRules: prev.scoreRules.filter((_, i) => i !== idx),
                           }))}
                         >
                           <X className="h-4 w-4" />
@@ -1404,7 +1404,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 if (newRules[idx].type === "field_multiplier" && newRules[idx].fieldMultiplier) {
                                   newRules[idx] = {
                                     ...newRules[idx],
-                                    fieldMultiplier: { ...newRules[idx].fieldMultiplier!, field: val as ConditionField }
+                                    fieldMultiplier: { ...newRules[idx].fieldMultiplier!, field: val as ConditionField },
                                   }
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
@@ -1423,7 +1423,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 if (newRules[idx].type === "field_multiplier" && newRules[idx].fieldMultiplier) {
                                   newRules[idx] = {
                                     ...newRules[idx],
-                                    fieldMultiplier: { ...newRules[idx].fieldMultiplier!, multiplier: e.target.value }
+                                    fieldMultiplier: { ...newRules[idx].fieldMultiplier!, multiplier: e.target.value },
                                   }
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
@@ -1439,7 +1439,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 if (newRules[idx].type === "conditional" && newRules[idx].conditional) {
                                   newRules[idx] = {
                                     ...newRules[idx],
-                                    conditional: { ...newRules[idx].conditional!, condition: cond ?? undefined }
+                                    conditional: { ...newRules[idx].conditional!, condition: cond ?? undefined },
                                   }
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
@@ -1459,7 +1459,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   if (newRules[idx].type === "conditional" && newRules[idx].conditional) {
                                     newRules[idx] = {
                                       ...newRules[idx],
-                                      conditional: { ...newRules[idx].conditional!, score: e.target.value }
+                                      conditional: { ...newRules[idx].conditional!, score: e.target.value },
                                     }
                                     setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                   }
@@ -1481,8 +1481,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           scoreRules: [...prev.scoreRules, {
                             id: ++ruleIdCounter,
                             type: "field_multiplier",
-                            fieldMultiplier: { field: "SIZE", multiplier: 1 }
-                          }]
+                            fieldMultiplier: { field: "SIZE", multiplier: 1 },
+                          }],
                         }))}
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" />
@@ -1499,9 +1499,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             type: "conditional",
                             conditional: {
                               condition: { field: "NAME", operator: "CONTAINS", value: "" },
-                              score: 100
-                            }
-                          }]
+                              score: 100,
+                            },
+                          }],
                         }))}
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" />
@@ -2374,10 +2374,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {/* Show custom option if current value is non-preset */}
                       {formState.intervalSeconds !== null &&
                         ![60, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400].includes(formState.intervalSeconds) && (
-                          <SelectItem value={String(formState.intervalSeconds)}>
-                            Custom ({formState.intervalSeconds}s)
-                          </SelectItem>
-                        )}
+                        <SelectItem value={String(formState.intervalSeconds)}>
+                          Custom ({formState.intervalSeconds}s)
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   {deleteUsesFreeSpace && (
