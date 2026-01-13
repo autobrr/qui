@@ -54,8 +54,7 @@ import type {
   RuleCondition,
   ScoreRule,
   ConditionField,
-  SortingConfig,
-  ConditionalScoreRule
+  SortingConfig
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
@@ -1298,7 +1297,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   </div>
                   <Select
                     value={formState.sortingType}
-                    onValueChange={(val: any) => setFormState(prev => ({ ...prev, sortingType: val }))}
+                    onValueChange={(val: "default" | "simple" | "score") => setFormState(prev => ({ ...prev, sortingType: val }))}
                   >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue />
@@ -1437,7 +1436,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 if (newRules[idx].type === "conditional" && newRules[idx].conditional) {
                                   newRules[idx] = {
                                     ...newRules[idx],
-                                    conditional: { ...newRules[idx].conditional!, condition: cond ?? undefined } as ConditionalScoreRule
+                                    conditional: { ...newRules[idx].conditional!, condition: cond ?? undefined }
                                   }
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
