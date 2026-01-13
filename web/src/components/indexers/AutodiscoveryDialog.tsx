@@ -227,8 +227,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={(open) => { if (!open) handleClose(); }}>
-      <DialogContent className="sm:max-w-[525px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[525px] max-h-[90dvh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Discover Indexers</DialogTitle>
           <DialogDescription>
             {step === 'input'
@@ -238,8 +238,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         </DialogHeader>
 
         {step === 'input' ? (
-          <form onSubmit={handleDiscover} autoComplete="off" data-1p-ignore>
-            <div className="grid gap-4 py-4">
+          <form onSubmit={handleDiscover} autoComplete="off" data-1p-ignore className="flex-1 flex flex-col min-h-0">
+            <div className="grid gap-4 py-4 flex-1 overflow-y-auto">
               <div className="grid gap-2">
                 <Label htmlFor="torznabUrl">Indexer URL</Label>
                 <Input
@@ -282,7 +282,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                 />
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0">
               <Button type="button" variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
@@ -292,7 +292,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             </DialogFooter>
           </form>
         ) : (
-          <>
+          <div className="flex-1 flex flex-col min-h-0">
             {discoveredIndexers.length > 0 && (
               <div className="flex gap-2 pb-2">
                 <Button
@@ -363,7 +363,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                 )}
               </div>
             </ScrollArea>
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0">
               <Button
                 type="button"
                 variant="outline"
@@ -380,7 +380,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   : `Import ${selectedIndexers.size} indexer${selectedIndexers.size !== 1 ? 's' : ''}`}
               </Button>
             </DialogFooter>
-          </>
+          </div>
         )}
       </DialogContent>
     </Dialog>

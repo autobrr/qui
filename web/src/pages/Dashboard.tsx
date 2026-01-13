@@ -224,14 +224,18 @@ function InstanceCard({
   const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
-
 
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
-  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+  const connectionStatusIconClass = (() => {
+    if (!hasConnectionStatus) return ""
+    if (isConnectable) return "text-green-500"
+    if (isFirewalled) return "text-amber-500"
+    return "text-destructive"
+  })()
 
   const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay
@@ -333,8 +337,9 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
-                  }
+                  {altSpeedEnabled
+                    ? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`
+                    : `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -2053,8 +2058,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
-        <DialogContent className="max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>
               {editingCustomization
                 ? "Edit Tracker Name"
@@ -2132,7 +2137,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 </ScrollArea>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={closeCustomizeDialog}>
               Cancel
             </Button>
@@ -2154,14 +2159,14 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Import Tracker Customizations</DialogTitle>
             <DialogDescription>
               Paste JSON to import tracker customizations (renames and merges).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="import-json">JSON Data</Label>
               <Textarea
@@ -2247,7 +2252,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={() => setShowImportDialog(false)}>
               Cancel
             </Button>

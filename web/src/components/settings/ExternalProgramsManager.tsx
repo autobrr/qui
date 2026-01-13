@@ -102,18 +102,20 @@ export function ExternalProgramsManager() {
               Create External Program
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-w-full">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Create External Program</DialogTitle>
               <DialogDescription>
                 Configure an external program or script that can be executed from the torrent context menu.
               </DialogDescription>
             </DialogHeader>
+            <div className="flex-1 overflow-y-auto min-h-0">
             <ProgramForm
               onSubmit={(data) => createMutation.mutate(data)}
               onCancel={() => setShowCreateDialog(false)}
               isPending={createMutation.isPending}
             />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -200,16 +202,18 @@ export function ExternalProgramsManager() {
       {/* Edit Dialog */}
       {editProgram && (
         <Dialog open={true} onOpenChange={() => setEditProgram(null)}>
-          <DialogContent className="sm:max-w-2xl max-w-full">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Edit External Program</DialogTitle>
             </DialogHeader>
+            <div className="flex-1 overflow-y-auto min-h-0">
             <ProgramForm
               program={editProgram}
               onSubmit={(data) => updateMutation.mutate({ id: editProgram.id, data })}
               onCancel={() => setEditProgram(null)}
               isPending={updateMutation.isPending}
             />
+            </div>
           </DialogContent>
         </Dialog>
       )}

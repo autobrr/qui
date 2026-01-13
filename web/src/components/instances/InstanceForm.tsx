@@ -72,9 +72,11 @@ interface InstanceFormProps {
   instance?: Instance
   onSuccess: () => void
   onCancel: () => void
+  /** When provided, renders without internal buttons (for external DialogFooter) */
+  formId?: string
 }
 
-export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProps) {
+export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   const [authBypass, setAuthBypass] = useState(false)
@@ -153,6 +155,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   return (
     <>
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault()
           form.handleSubmit()
@@ -176,7 +179,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="e.g., Main Server or Home qBittorrent"
                 data-1p-ignore
-                autoComplete='off'
+                autoComplete="off"
               />
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
                 <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -276,7 +279,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="qBittorrent username (usually admin)"
                     data-1p-ignore
-                    autoComplete='off'
+                    autoComplete="off"
                   />
                 </div>
               )}
@@ -296,7 +299,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={instance ? "Leave empty to keep current password" : "qBittorrent password"}
                     data-1p-ignore
-                    autoComplete='off'
+                    autoComplete="off"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -335,7 +338,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder="Basic auth username"
                       data-1p-ignore
-                      autoComplete='off'
+                      autoComplete="off"
                     />
                   </div>
                 )}
@@ -345,7 +348,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 name="basicPassword"
                 validators={{
                   onChange: ({ value }) =>
-                    showBasicAuth && value === ""? "Basic auth password is required when basic auth is enabled": undefined,
+                    showBasicAuth && value === "" ? "Basic auth password is required when basic auth is enabled" : undefined,
                 }}
               >
                 {(field) => (
@@ -365,7 +368,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder="Enter basic auth password (required)"
                       data-1p-ignore
-                      autoComplete='off'
+                      autoComplete="off"
                     />
                     {field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -377,29 +380,30 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
           )}
         </div>
 
+        {!formId && (
+          <div className="flex gap-2">
+            <form.Subscribe
+              selector={(state) => [state.canSubmit, state.isSubmitting]}
+            >
+              {([canSubmit, isSubmitting]) => (
+                <Button
+                  type="submit"
+                  disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
+                >
+                  {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
+                </Button>
+              )}
+            </form.Subscribe>
 
-        <div className="flex gap-2">
-          <form.Subscribe
-            selector={(state) => [state.canSubmit, state.isSubmitting]}
-          >
-            {([canSubmit, isSubmitting]) => (
-              <Button
-                type="submit"
-                disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
-              >
-                {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
-              </Button>
-            )}
-          </form.Subscribe>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </form>
 
     </>
