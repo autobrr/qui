@@ -498,11 +498,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           } else if (rule.sortingConfig.type === "score") {
             sortingType = "score"
             if (rule.sortingConfig.direction) sortDirection = rule.sortingConfig.direction
-            scoreRules = (rule.sortingConfig.scoreRules || []).map(r => ({
-              type: r.type,
-              fieldMultiplier: r.fieldMultiplier ? { ...r.fieldMultiplier } : undefined,
-              conditional: r.conditional ? { ...r.conditional } : undefined
-            }))
+            scoreRules = (rule.sortingConfig.scoreRules || []).map<FormScoreRule>(r => {
+              if (r.type === "field_multiplier") {
+                return { type: r.type, fieldMultiplier: { ...r.fieldMultiplier } }
+              }
+              if (r.type === "conditional") {
+                return { type: r.type, conditional: { ...r.conditional } }
+              }
+              return { type: (r as any).type }
+            })
           }
         }
 
@@ -850,26 +854,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         schemaVersion: "1",
         type: "score",
         direction: input.sortDirection!,
-        scoreRules: input.scoreRules.map(r => {
-          const rule: ScoreRule = { type: r.type as ScoreRuleType }
+        scoreRules: input.scoreRules.flatMap((r): ScoreRule[] => {
           if (r.type === "field_multiplier" && r.fieldMultiplier) {
-            const multiplier = typeof r.fieldMultiplier.multiplier === "string" ? parseFloat(r.fieldMultiplier.multiplier) : r.fieldMultiplier.multiplier
+            const val = r.fieldMultiplier.multiplier
+            const multiplier = typeof val === "string" ? parseFloat(val) : val
             if (Number.isFinite(multiplier)) {
-              rule.fieldMultiplier = { ...r.fieldMultiplier, multiplier }
+              return [{ type: "field_multiplier", fieldMultiplier: { ...r.fieldMultiplier, multiplier } }]
             }
           }
-          if (r.type === "conditional" && r.conditional) {
-            const score = typeof r.conditional.score === "string" ? parseFloat(r.conditional.score) : r.conditional.score
+          if (r.type === "conditional" && r.conditional && r.conditional.condition) {
+            const val = r.conditional.score
+            const score = typeof val === "string" ? parseFloat(val) : val
             if (Number.isFinite(score)) {
-              // Start with the existing conditional object
-              const cond = { ...r.conditional, score }
-              // Only assign if condition is present (satisfies ConditionalScoreRule)
-              if (cond.condition) {
-                rule.conditional = cond as ConditionalScoreRule
-              }
+              return [{ type: "conditional", conditional: { ...r.conditional, score, condition: r.conditional.condition } }]
             }
           }
-          return rule
+          return []
         }),
       }
     }

@@ -296,19 +296,23 @@ export interface ConditionalScoreRule {
   score: number
 }
 
-export interface ScoreRule {
-  type: ScoreRuleType
-  fieldMultiplier?: FieldMultiplierScoreRule
-  conditional?: ConditionalScoreRule
-}
+export type ScoreRule =
+  | { type: "field_multiplier"; fieldMultiplier: FieldMultiplierScoreRule }
+  | { type: "conditional"; conditional: ConditionalScoreRule }
 
-export interface SortingConfig {
-  schemaVersion: string
-  type: "simple" | "score"
-  field?: ConditionField
-  direction?: "ASC" | "DESC"
-  scoreRules?: ScoreRule[]
-}
+export type SortingConfig =
+  | {
+    schemaVersion: string
+    type: "simple"
+    field: ConditionField
+    direction?: "ASC" | "DESC"
+  }
+  | {
+    schemaVersion: string
+    type: "score"
+    direction?: "ASC" | "DESC"
+    scoreRules: ScoreRule[]
+  }
 
 export interface Automation {
   id: number
