@@ -1,0 +1,136 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react"
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>
+}
+
+const SUPPRESS_UNTIL_KEY = "pwa-install-suppress-until"
+const SUPPRESS_WINDOW_MS = 1000 * 60 * 60 * 24 // 24 hours
+const TEMP_DISMISS_WINDOW_MS = 1000 * 60 * 10 // 10 minutes
+
+const isStandalone = () => typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches
+const isLikelyMobile = () => {
+  const uaData =
+    typeof navigator !== "undefined"
+      ? (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData
+      : undefined
+
+  if (uaData?.mobile !== undefined) {
+    return uaData.mobile
+  }
+
+  if (typeof window !== "undefined") {
+    return window.matchMedia("(pointer: coarse)").matches
+  }
+
+  return false
+}
+
+export function usePWAInstallPrompt() {
+  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
+  const [memorySuppressUntil, setMemorySuppressUntil] = useState(0)
+  const [tempSuppressUntil, setTempSuppressUntil] = useState(0)
+  const tempResetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const readSuppressUntil = useCallback(() => {
+    let suppressUntil = memorySuppressUntil
+    try {
+      const stored = Number(localStorage.getItem(SUPPRESS_UNTIL_KEY) || 0)
+      if (!Number.isNaN(stored)) {
+        suppressUntil = Math.max(suppressUntil, stored)
+      }
+    } catch {
+      // localStorage may be unavailable (e.g. private browsing); fall back to in-memory value
+    }
+    return suppressUntil
+  }, [memorySuppressUntil])
+
+  const writeSuppressUntil = useCallback((until: number) => {
+    setMemorySuppressUntil(until)
+    try {
+      localStorage.setItem(SUPPRESS_UNTIL_KEY, String(until))
+    } catch {
+      // Ignore persistence failures; session-level suppression still applies
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleBeforeInstall = (event: Event) => {
+      const suppressUntil = readSuppressUntil()
+      if (suppressUntil > Date.now()) return
+      if (isStandalone()) return
+      if (!isLikelyMobile()) return
+
+      event.preventDefault()
+      setPromptEvent(event as BeforeInstallPromptEvent)
+    }
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstall)
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstall)
+    }
+  }, [readSuppressUntil])
+
+  const suppressFor = useCallback((durationMs = SUPPRESS_WINDOW_MS) => {
+    const until = Date.now() + durationMs
+    writeSuppressUntil(until)
+    setPromptEvent(null)
+  }, [writeSuppressUntil])
+
+  const dismissTemporarily = useCallback((durationMs = TEMP_DISMISS_WINDOW_MS) => {
+    const until = Date.now() + durationMs
+    setTempSuppressUntil(until)
+
+    if (tempResetTimeout.current) {
+      clearTimeout(tempResetTimeout.current)
+    }
+
+    tempResetTimeout.current = setTimeout(() => {
+      setTempSuppressUntil(0)
+      tempResetTimeout.current = null
+    }, durationMs)
+  }, [])
+
+  const promptInstall = useCallback(async () => {
+    if (!promptEvent) return false
+
+    await promptEvent.prompt()
+    const result = await promptEvent.userChoice
+    setPromptEvent(null)
+
+    return result.outcome === "accepted"
+  }, [promptEvent])
+
+  useEffect(() => {
+    const handleInstalled = () => {
+      suppressFor(1000 * 60 * 60 * 24 * 30) // 30 days
+    }
+
+    window.addEventListener("appinstalled", handleInstalled)
+    return () => window.removeEventListener("appinstalled", handleInstalled)
+  }, [suppressFor])
+
+  useEffect(() => {
+    return () => {
+      if (tempResetTimeout.current) {
+        clearTimeout(tempResetTimeout.current)
+        tempResetTimeout.current = null
+      }
+    }
+  }, [])
+
+  return {
+    promptAvailable: !!promptEvent,
+    shouldShowPrompt: !!promptEvent && tempSuppressUntil <= Date.now(),
+    promptInstall,
+    suppressFor,
+    dismissTemporarily,
+  }
+}
