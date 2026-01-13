@@ -58,7 +58,7 @@ function AppLayoutContent() {
         </Header>
         <main className={cn(
           "flex-1 overflow-y-auto",
-          "pb-16 lg:pb-0"
+          "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0"
         )}>
           <Outlet />
         </main>
