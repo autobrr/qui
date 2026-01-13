@@ -119,6 +119,11 @@ func (c *SortingConfig) Validate() error {
 			return errors.New("simple sort requires field")
 		}
 	case SortingTypeScore:
+
+		if len(c.ScoreRules) == 0 {
+			return errors.New("score sort requires at least one rule")
+		}
+
 		for i, r := range c.ScoreRules {
 			switch r.Type {
 			case ScoreRuleTypeFieldMultiplier:
