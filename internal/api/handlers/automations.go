@@ -247,20 +247,7 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 }
 
 func normalizeTrackerDomains(domains []string) []string {
-	seen := make(map[string]struct{})
-	var out []string
-	for _, d := range domains {
-		trimmed := strings.TrimSpace(d)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	return out
+	return models.SanitizeCommaSeparatedStringSlice(domains)
 }
 
 // validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.
