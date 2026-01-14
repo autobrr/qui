@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -86,6 +87,20 @@ type Service struct {
 	runSem chan struct{}
 }
 
+// syncManagerTorrentChecker adapts SyncManager to the TorrentChecker interface.
+type syncManagerTorrentChecker struct{ sm *qbittorrent.SyncManager }
+
+func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	if c == nil || c.sm == nil {
+		return nil, false, nil
+	}
+	torrent, exists, err := c.sm.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, false, fmt.Errorf("check torrent by hash: %w", err)
+	}
+	return torrent, exists, nil
+}
+
 // NewService creates a new directory scanner service.
 func NewService(
 	cfg Config,
@@ -109,7 +124,8 @@ func NewService(
 	// Initialize components
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
-	injector := NewInjector(jackettService, syncManager, syncManager, instanceStore, trackerCustomizationStore)
+	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
+	injector := NewInjector(jackettService, syncManager, torrentChecker, instanceStore, trackerCustomizationStore)
 
 	return &Service{
 		cfg:                       cfg,
@@ -218,10 +234,12 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 		return
 	}
 
+	l := log.With().Int("directoryID", directoryID).Int64("runID", runID).Logger()
+
 	if s.cfg.MaxJitter > 0 {
-		jitter, err := randomDuration(s.cfg.MaxJitter)
-		if err != nil {
-			log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to generate jitter")
+		jitter, jitterErr := randomDuration(s.cfg.MaxJitter)
+		if jitterErr != nil {
+			l.Debug().Err(jitterErr).Msg("dirscan: failed to generate jitter")
 		} else if jitter > 0 {
 			timer := time.NewTimer(jitter)
 			select {
@@ -231,6 +249,16 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 			case <-timer.C:
 			}
 		}
+	}
+
+	// Check if run was canceled in DB while waiting for jitter
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get run before start")
+		return
+	}
+	if run == nil || run.Status != models.DirScanRunStatusQueued {
+		return
 	}
 
 	s.startRun(ctx, directoryID, runID)
@@ -346,6 +374,16 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		Int("directoryID", directoryID).
 		Int64("runID", runID).
 		Logger()
+
+	// Check if run was canceled in DB before execution
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get run")
+		return
+	}
+	if run == nil || run.Status != models.DirScanRunStatusQueued {
+		return
+	}
 
 	if !s.acquireRunSlot(ctx, runID, &l) {
 		s.markRunCanceled(context.Background(), runID, &l, "while waiting for run slot")

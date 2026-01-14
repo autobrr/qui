@@ -133,7 +133,7 @@ func buildEpisodeSearchee(file *ScannedFile) *Searchee {
 
 	return &Searchee{
 		Name:   name,
-		Path:   file.Path,
+		Path:   filepath.Dir(file.Path),
 		Files:  []*ScannedFile{&sf},
 		IsDisc: false,
 	}

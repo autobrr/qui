@@ -230,21 +230,32 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE dir_scan_settings
-		SET enabled = ?,
-		    match_mode = ?,
-		    size_tolerance_percent = ?,
-		    min_piece_ratio = ?,
-		    allow_partial = ?,
-		    skip_piece_boundary_safety_check = ?,
-		    start_paused = ?,
-		    category = ?,
-		    tags = ?
-		WHERE id = 1
-	`, boolToInt(settings.Enabled), settings.MatchMode, settings.SizeTolerancePercent,
-		minPieceRatioToDB(settings.MinPieceRatio), boolToInt(settings.AllowPartial),
-		boolToInt(settings.SkipPieceBoundarySafetyCheck), boolToInt(settings.StartPaused),
-		category, string(tagsJSON))
+		INSERT INTO dir_scan_settings (
+			id, enabled, match_mode, size_tolerance_percent, min_piece_ratio,
+			allow_partial, skip_piece_boundary_safety_check, start_paused,
+			category, tags
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			enabled = excluded.enabled,
+			match_mode = excluded.match_mode,
+			size_tolerance_percent = excluded.size_tolerance_percent,
+			min_piece_ratio = excluded.min_piece_ratio,
+			allow_partial = excluded.allow_partial,
+			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			start_paused = excluded.start_paused,
+			category = excluded.category,
+			tags = excluded.tags
+	`,
+		boolToInt(settings.Enabled),
+		settings.MatchMode,
+		settings.SizeTolerancePercent,
+		minPieceRatioToDB(settings.MinPieceRatio),
+		boolToInt(settings.AllowPartial),
+		boolToInt(settings.SkipPieceBoundarySafetyCheck),
+		boolToInt(settings.StartPaused),
+		category,
+		string(tagsJSON),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("update settings: %w", err)
 	}

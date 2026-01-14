@@ -176,6 +176,9 @@ func (p *Parser) populateFromRelease(meta *SearcheeMetadata) {
 	}
 
 	// Content type hints from rls
+	if r.Type == rls.Series || r.Type == rls.Episode {
+		meta.IsTV = true
+	}
 	if r.Type == rls.Movie {
 		meta.IsMovie = true
 	}

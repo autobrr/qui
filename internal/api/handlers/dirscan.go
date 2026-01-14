@@ -58,11 +58,11 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	if settings == nil {
 		settings = &models.DirScanSettings{
 			MatchMode:                    models.MatchModeStrict,
-			SizeTolerancePercent:         2.0,
+			SizeTolerancePercent:         5.0,
 			MinPieceRatio:                98.0,
 			AllowPartial:                 false,
 			SkipPieceBoundarySafetyCheck: true,
-			StartPaused:                  false,
+			StartPaused:                  true,
 			Tags:                         []string{},
 		}
 	}
@@ -95,7 +95,14 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		settings.Enabled = *payload.Enabled
 	}
 	if payload.MatchMode != nil {
-		settings.MatchMode = models.MatchMode(*payload.MatchMode)
+		mm := models.MatchMode(*payload.MatchMode)
+		switch mm {
+		case models.MatchModeStrict, models.MatchModeFlexible:
+			settings.MatchMode = mm
+		default:
+			RespondError(w, http.StatusBadRequest, "Invalid matchMode")
+			return
+		}
 	}
 	if payload.SizeTolerancePercent != nil {
 		settings.SizeTolerancePercent = *payload.SizeTolerancePercent
@@ -492,7 +499,18 @@ func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
 		s := models.DirScanFileStatus(statusStr)
-		status = &s
+		switch s {
+		case models.DirScanFileStatusPending,
+			models.DirScanFileStatusMatched,
+			models.DirScanFileStatusNoMatch,
+			models.DirScanFileStatusError,
+			models.DirScanFileStatusAlreadySeeding,
+			models.DirScanFileStatusInQBittorrent:
+			status = &s
+		default:
+			RespondError(w, http.StatusBadRequest, "Invalid status")
+			return
+		}
 	}
 
 	files, err := h.service.ListFiles(r.Context(), dirID, status, limit, offset)

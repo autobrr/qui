@@ -525,7 +525,15 @@ function RunRow({
         <TableCell>{run.matchesFound}</TableCell>
         <TableCell>{run.torrentsAdded}</TableCell>
         <TableCell>
-          {run.completedAt ? formatDuration(new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) : "-"}
+          {(() => {
+            if (!run.completedAt) return "-"
+            const start = new Date(run.startedAt).getTime()
+            const end = new Date(run.completedAt).getTime()
+            if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+              return formatDuration(end - start)
+            }
+            return "-"
+          })()}
         </TableCell>
       </TableRow>
 
@@ -1025,8 +1033,14 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
   }, [open, directory, defaultTargetInstanceId])
 
   const handleSave = useCallback(() => {
+    // Ensure scanIntervalMinutes is clamped to minimum 60
+    const clampedForm = {
+      ...form,
+      scanIntervalMinutes: Math.max(form.scanIntervalMinutes ?? 1440, 60),
+    }
+
     if (isEditing) {
-      updateDirectory.mutate(form, {
+      updateDirectory.mutate(clampedForm, {
         onSuccess: () => {
           toast.success("Directory updated")
           onOpenChange(false)
@@ -1036,7 +1050,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         },
       })
     } else {
-      createDirectory.mutate(form, {
+      createDirectory.mutate(clampedForm, {
         onSuccess: () => {
           toast.success("Directory created")
           onOpenChange(false)
@@ -1168,12 +1182,13 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               type="number"
               min={60}
               value={form.scanIntervalMinutes}
-              onChange={(e) =>
+              onChange={(e) => {
+                const parsed = parseInt(e.target.value, 10)
                 setForm((prev) => ({
                   ...prev,
-                  scanIntervalMinutes: parseInt(e.target.value, 10) || 1440,
+                  scanIntervalMinutes: Number.isNaN(parsed) ? 1440 : Math.max(parsed, 60),
                 }))
-              }
+              }}
             />
             <p className="text-xs text-muted-foreground">
               Minimum: 60 minutes (1 hour). Default: 1440 minutes (24 hours).

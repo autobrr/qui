@@ -556,6 +556,9 @@ func (s *Service) SearchWithScope(ctx context.Context, req *TorznabSearchRequest
 	if scope == "" {
 		return errors.New("invalid scope: empty")
 	}
+	if s == nil {
+		return errors.New("nil service")
+	}
 	return s.performSearch(ctx, req, scope)
 }
 
