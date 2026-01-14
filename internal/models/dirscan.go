@@ -28,10 +28,8 @@ const (
 type DirScanFileStatus string
 
 // Status constants are type-safe enums; duplicate string values across types are intentional.
-//
-//nolint:goconst // type-safe enum values intentionally share strings with other status types
 const (
-	DirScanFileStatusPending        DirScanFileStatus = "pending"
+	DirScanFileStatusPending        DirScanFileStatus = "pending" //nolint:goconst // type-safe enum values intentionally share strings with other status types
 	DirScanFileStatusMatched        DirScanFileStatus = "matched"
 	DirScanFileStatusNoMatch        DirScanFileStatus = "no_match"
 	DirScanFileStatusError          DirScanFileStatus = "error"
@@ -43,16 +41,14 @@ const (
 type DirScanRunStatus string
 
 // Run status constants are type-safe enums; duplicate string values across types are intentional.
-//
-//nolint:goconst // type-safe enum values intentionally share strings with other status types
 const (
 	DirScanRunStatusQueued    DirScanRunStatus = "queued"
 	DirScanRunStatusScanning  DirScanRunStatus = "scanning"
 	DirScanRunStatusSearching DirScanRunStatus = "searching"
 	DirScanRunStatusInjecting DirScanRunStatus = "injecting"
-	DirScanRunStatusSuccess   DirScanRunStatus = "success"
-	DirScanRunStatusFailed    DirScanRunStatus = "failed"
-	DirScanRunStatusCanceled  DirScanRunStatus = "canceled"
+	DirScanRunStatusSuccess   DirScanRunStatus = "success"  //nolint:goconst // type-safe enum values intentionally share strings with other status types
+	DirScanRunStatusFailed    DirScanRunStatus = "failed"   //nolint:goconst // type-safe enum values intentionally share strings with other status types
+	DirScanRunStatusCanceled  DirScanRunStatus = "canceled" //nolint:goconst // type-safe enum values intentionally share strings with other status types
 )
 
 // DirScanSettings represents global directory scanner settings.
@@ -105,12 +101,9 @@ type DirScanRun struct {
 // DirScanRunInjectionStatus defines the status of an injection attempt.
 type DirScanRunInjectionStatus string
 
-// Injection status constants are type-safe enums; duplicate string values across types are intentional.
-//
-//nolint:goconst // type-safe enum values intentionally share strings with other status types
 const (
 	DirScanRunInjectionStatusAdded  DirScanRunInjectionStatus = "added"
-	DirScanRunInjectionStatusFailed DirScanRunInjectionStatus = "failed"
+	DirScanRunInjectionStatusFailed DirScanRunInjectionStatus = "failed" //nolint:goconst // type-safe enum values intentionally share strings with other status types
 )
 
 // DirScanRunInjection represents a successful or failed injection attempt for a scan run.

@@ -12,9 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/models"
+	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -52,6 +54,8 @@ type JackettDownloader interface {
 // TorrentAdder is the interface for adding torrents to qBittorrent.
 type TorrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
+	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -209,9 +213,37 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
 
+	i.triggerRecheckForPausedPartial(ctx, req)
+
 	result.Success = true
 	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
+}
+
+func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *InjectRequest) {
+	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
+		return
+	}
+	if !req.StartPaused {
+		return
+	}
+	if len(req.MatchResult.UnmatchedTorrentFiles) == 0 {
+		return
+	}
+
+	hash := req.ParsedTorrent.InfoHash
+	if err := i.syncManager.BulkAction(ctx, req.InstanceID, []string{hash}, "recheck"); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", req.InstanceID).
+			Str("hash", hash).
+			Msg("dirscan: failed to trigger recheck after add")
+		return
+	}
+
+	i.syncManager.ResumeWhenComplete(req.InstanceID, []string{hash}, qbsync.ResumeWhenCompleteOptions{
+		Timeout: 60 * time.Minute,
+	})
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {
