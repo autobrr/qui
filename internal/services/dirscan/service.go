@@ -462,7 +462,7 @@ func (s *Service) loadSettingsAndMatcher(ctx context.Context, runID int64, l *ze
 	if settings == nil {
 		settings = &models.DirScanSettings{
 			MatchMode:            models.MatchModeStrict,
-			SizeTolerancePercent: 2.0,
+			SizeTolerancePercent: 5.0,
 		}
 	}
 
