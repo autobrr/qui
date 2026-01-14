@@ -2414,8 +2414,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               </div>
             </div>
           </form>
-        </DialogContent >
-      </Dialog >
+        </DialogContent>
+      </Dialog>
 
       <WorkflowPreviewDialog
         open={showConfirmDialog}
