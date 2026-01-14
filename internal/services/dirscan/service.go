@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -846,6 +847,12 @@ func (s *Service) processSearchee(
 		Str("name", searchee.Name).
 		Int64("size", searcheeSize).
 		Int("files", len(searchee.Files)).
+		Int64("minResultSize", minSize).
+		Int64("maxResultSize", maxSize).
+		Str("matchMode", string(settings.MatchMode)).
+		Bool("allowPartial", settings.AllowPartial).
+		Float64("minPieceRatio", settings.MinPieceRatio).
+		Bool("skipPieceBoundarySafetyCheck", settings.SkipPieceBoundarySafetyCheck).
 		Str("contentType", contentInfo.ContentType).
 		Msg("dirscan: searching for searchee")
 
@@ -971,6 +978,21 @@ func (s *Service) searchForSearchee(
 		},
 	}
 
+	if l != nil {
+		ev := l.Debug().
+			Str("name", searchee.Name).
+			Str("query", buildSearchQuery(meta)).
+			Ints("indexers", indexerIDs).
+			Ints("categories", categories)
+		if meta != nil && meta.HasExternalIDs() {
+			ev = ev.
+				Str("imdb", meta.GetIMDbID()).
+				Int("tmdb", meta.GetTMDbID()).
+				Int("tvdb", meta.GetTVDbID())
+		}
+		ev.Msg("dirscan: search request")
+	}
+
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
 	if err := s.searcher.Search(searchCtx, searchReq); err != nil {
 		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search failed")
@@ -1001,24 +1023,46 @@ func (s *Service) tryMatchResults(
 	runID int64,
 	l *zerolog.Logger,
 ) *searcheeMatch {
+	skippedTooSmall := 0
+	skippedTooLarge := 0
+	skippedExists := 0
+	attemptedMatches := 0
+
 	for i := range response.Results {
 		result := &response.Results[i]
 
 		if minSize > 0 && result.Size < minSize {
+			skippedTooSmall++
 			continue
 		}
 		if maxSize > 0 && result.Size > maxSize {
+			skippedTooLarge++
 			continue
 		}
 
 		if exists, ok := s.searchResultAlreadyExists(ctx, dir.TargetInstanceID, result, l); ok && exists {
+			skippedExists++
 			continue
 		}
 
+		attemptedMatches++
 		match := s.tryMatchAndInject(ctx, dir, searchee, result, contentType, settings, matcher, runID, l)
 		if match != nil {
 			return match
 		}
+	}
+
+	if l != nil {
+		l.Debug().
+			Str("name", searchee.Name).
+			Int("results", len(response.Results)).
+			Int("attemptedMatches", attemptedMatches).
+			Int("skippedTooSmall", skippedTooSmall).
+			Int("skippedTooLarge", skippedTooLarge).
+			Int("skippedExists", skippedExists).
+			Int64("minResultSize", minSize).
+			Int64("maxResultSize", maxSize).
+			Msg("dirscan: no matching search results")
 	}
 	return nil
 }
@@ -1073,15 +1117,9 @@ func (s *Service) tryMatchAndInject(
 	}
 
 	matchResult := matcher.Match(searchee, parsed.Files)
-	accept, reason := shouldAcceptDirScanMatch(matchResult, parsed, settings)
-	if !accept {
-		l.Debug().
-			Str("title", result.Title).
-			Bool("perfect", matchResult.IsPerfectMatch).
-			Bool("partial", matchResult.IsPartialMatch).
-			Float64("matchRatio", matchResult.MatchRatio).
-			Str("reason", reason).
-			Msg("dirscan: no match")
+	decision := shouldAcceptDirScanMatch(matchResult, parsed, settings)
+	if !decision.Accept {
+		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
 		return nil
 	}
 
@@ -1094,7 +1132,15 @@ func (s *Service) tryMatchAndInject(
 		return nil
 	}
 
-	l.Info().Str("name", searchee.Name).Str("torrent", parsed.Name).Str("hash", parsed.InfoHash).Msg("dirscan: found match")
+	l.Info().
+		Str("name", searchee.Name).
+		Str("torrent", parsed.Name).
+		Str("hash", parsed.InfoHash).
+		Bool("perfect", matchResult.IsPerfectMatch).
+		Bool("partial", matchResult.IsPartialMatch).
+		Float64("matchRatio", matchResult.MatchRatio).
+		Float64("pieceMatchPercent", decision.PieceMatchPercent).
+		Msg("dirscan: found match")
 
 	category := settings.Category
 	if dir.Category != "" {
@@ -1135,6 +1181,53 @@ func (s *Service) tryMatchAndInject(
 	s.recordRunInjection(ctx, dir, runID, searchee, parsed, contentType, result, injectReq.Category, injectReq.Tags, trackerDomain, injectResult, err)
 
 	return &searcheeMatch{searchee: searchee, torrentData: torrentData, parsedTorrent: parsed, matchResult: matchResult, injected: injected}
+}
+
+func logDirScanMatchRejection(
+	l *zerolog.Logger,
+	searchee *Searchee,
+	result *jackett.SearchResult,
+	parsed *ParsedTorrent,
+	contentType string,
+	settings *models.DirScanSettings,
+	matchResult *MatchResult,
+	decision dirScanMatchDecision,
+	matcher *Matcher,
+) {
+	if l == nil || searchee == nil || result == nil || parsed == nil || settings == nil || matchResult == nil || matcher == nil {
+		return
+	}
+
+	hint, hints := describeDirScanMatchHints(searchee, parsed, matchResult, matcher, settings, decision)
+	l.Debug().
+		Str("name", searchee.Name).
+		Str("title", result.Title).
+		Str("torrentName", parsed.Name).
+		Int64("torrentSize", parsed.TotalSize).
+		Str("contentType", contentType).
+		Str("matchMode", string(settings.MatchMode)).
+		Float64("sizeTolerancePercent", settings.SizeTolerancePercent).
+		Bool("allowPartial", settings.AllowPartial).
+		Float64("minPieceRatio", settings.MinPieceRatio).
+		Bool("skipPieceBoundarySafetyCheck", settings.SkipPieceBoundarySafetyCheck).
+		Bool("perfect", matchResult.IsPerfectMatch).
+		Bool("partial", matchResult.IsPartialMatch).
+		Float64("matchRatio", matchResult.MatchRatio).
+		Float64("sizeMatchRatio", matchResult.SizeMatchRatio).
+		Int("searcheeFiles", len(searchee.Files)).
+		Int("torrentFiles", len(parsed.Files)).
+		Int("matchedFiles", len(matchResult.MatchedFiles)).
+		Int("unmatchedSearcheeFiles", len(matchResult.UnmatchedSearcheeFiles)).
+		Int("unmatchedTorrentFiles", len(matchResult.UnmatchedTorrentFiles)).
+		Strs("unmatchedSearcheeSample", sampleDirScanSearcheeFiles(matchResult.UnmatchedSearcheeFiles, 3)).
+		Strs("unmatchedTorrentSample", sampleDirScanTorrentFiles(matchResult.UnmatchedTorrentFiles, 3)).
+		Strs("unmatchedSearcheeExts", summarizeDirScanExtensions(matchResult.UnmatchedSearcheeFiles, 5)).
+		Float64("pieceMatchPercent", decision.PieceMatchPercent).
+		Bool("pieceBoundaryUnsafe", decision.PieceBoundaryUnsafe).
+		Str("reason", decision.Reason).
+		Str("hint", hint).
+		Strs("hints", hints).
+		Msg("dirscan: match rejected")
 }
 
 func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain, indexerName string) string {
@@ -1225,26 +1318,42 @@ func mergeStringLists(values ...[]string) []string {
 	return out
 }
 
-func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, settings *models.DirScanSettings) (accept bool, reason string) {
+type dirScanMatchDecision struct {
+	Accept              bool
+	Reason              string
+	PieceMatchPercent   float64
+	PieceBoundaryUnsafe bool
+}
+
+func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, settings *models.DirScanSettings) dirScanMatchDecision {
 	if match == nil || parsed == nil || settings == nil {
-		return false, "missing match context"
+		return dirScanMatchDecision{Accept: false, Reason: "missing match context"}
+	}
+
+	if !match.IsMatch {
+		return dirScanMatchDecision{Accept: false, Reason: "no files matched"}
 	}
 
 	if match.IsPerfectMatch {
-		return true, "perfect match"
+		return dirScanMatchDecision{Accept: true, Reason: "perfect match", PieceMatchPercent: 100}
 	}
 
 	if !settings.AllowPartial {
-		return false, "partial matches disabled"
+		return dirScanMatchDecision{Accept: false, Reason: "partial matches disabled"}
 	}
+
+	decision := dirScanMatchDecision{}
 
 	piecePercent, ok := matchedTorrentPiecePercent(match, parsed)
 	if !ok {
-		return false, "invalid torrent piece sizing"
+		decision.Reason = "invalid torrent piece sizing"
+		return decision
 	}
+	decision.PieceMatchPercent = piecePercent
 
 	if piecePercent < settings.MinPieceRatio {
-		return false, fmt.Sprintf("matched ratio %.2f%% below minimum %.2f%%", piecePercent, settings.MinPieceRatio)
+		decision.Reason = fmt.Sprintf("matched ratio %.2f%% below minimum %.2f%%", piecePercent, settings.MinPieceRatio)
+		return decision
 	}
 
 	// If the torrent has extra files (not on disk), qBittorrent may need to download them.
@@ -1252,11 +1361,220 @@ func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, setting
 	if len(match.UnmatchedTorrentFiles) > 0 && !settings.SkipPieceBoundarySafetyCheck {
 		unsafe, res := hasUnsafeUnmatchedTorrentFiles(parsed, match)
 		if unsafe {
-			return false, res.Reason
+			decision.PieceBoundaryUnsafe = true
+			decision.Reason = res.Reason
+			return decision
 		}
 	}
 
-	return true, "partial match accepted"
+	decision.Accept = true
+	decision.Reason = "partial match accepted"
+	return decision
+}
+
+func sampleDirScanSearcheeFiles(files []*ScannedFile, limit int) []string {
+	if limit <= 0 || len(files) == 0 {
+		return nil
+	}
+	if len(files) < limit {
+		limit = len(files)
+	}
+	out := make([]string, 0, limit)
+	for i := range limit {
+		f := files[i]
+		if f == nil {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s (%d bytes)", f.RelPath, f.Size))
+	}
+	return out
+}
+
+func sampleDirScanTorrentFiles(files []TorrentFile, limit int) []string {
+	if limit <= 0 || len(files) == 0 {
+		return nil
+	}
+	if len(files) < limit {
+		limit = len(files)
+	}
+	out := make([]string, 0, limit)
+	for i := range limit {
+		f := files[i]
+		out = append(out, fmt.Sprintf("%s (%d bytes)", f.Path, f.Size))
+	}
+	return out
+}
+
+func summarizeDirScanExtensions(files []*ScannedFile, limit int) []string {
+	if limit <= 0 || len(files) == 0 {
+		return nil
+	}
+	extCounts := make(map[string]int)
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(f.RelPath))
+		if ext == "" {
+			ext = "<none>"
+		}
+		extCounts[ext]++
+	}
+
+	type pair struct {
+		ext   string
+		count int
+	}
+	pairs := make([]pair, 0, len(extCounts))
+	for ext, count := range extCounts {
+		pairs = append(pairs, pair{ext: ext, count: count})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].count == pairs[j].count {
+			return pairs[i].ext < pairs[j].ext
+		}
+		return pairs[i].count > pairs[j].count
+	})
+
+	if len(pairs) < limit {
+		limit = len(pairs)
+	}
+	out := make([]string, 0, limit)
+	for i := range limit {
+		out = append(out, fmt.Sprintf("%s:%d", pairs[i].ext, pairs[i].count))
+	}
+	return out
+}
+
+func describeDirScanMatchHints(
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	match *MatchResult,
+	matcher *Matcher,
+	settings *models.DirScanSettings,
+	decision dirScanMatchDecision,
+) (hint string, hints []string) {
+	if searchee == nil || parsed == nil || match == nil || matcher == nil || settings == nil {
+		return "", nil
+	}
+
+	if match.IsPartialMatch && !settings.AllowPartial {
+		return describeDirScanPartialDisabledHints(match)
+	}
+
+	if !match.IsMatch {
+		return describeDirScanNoMatchHints(searchee, parsed, matcher, settings)
+	}
+
+	return describeDirScanDecisionHints(decision)
+}
+
+func describeDirScanPartialDisabledHints(match *MatchResult) (hint string, hints []string) {
+	if match == nil {
+		return "", nil
+	}
+	hints = append(hints, "partial matches disabled; allow partial or ensure torrent and disk contain the same set of files")
+	if len(match.UnmatchedSearcheeFiles) > 0 && len(match.UnmatchedTorrentFiles) == 0 {
+		hints = append(hints, "disk has extra files not present in torrent")
+	}
+	if len(match.UnmatchedTorrentFiles) > 0 {
+		hints = append(hints, "torrent has extra files not present on disk")
+	}
+	return "partial match rejected", hints
+}
+
+type dirScanMatchSignals struct {
+	HasAnySizeMatch        bool
+	HasAnyNameMatch        bool
+	HasAnyNameAndSizeMatch bool
+}
+
+func computeDirScanMatchSignals(searchee *Searchee, parsed *ParsedTorrent, matcher *Matcher) dirScanMatchSignals {
+	signals := dirScanMatchSignals{}
+	if searchee == nil || parsed == nil || matcher == nil {
+		return signals
+	}
+
+	for _, sf := range searchee.Files {
+		if sf == nil {
+			continue
+		}
+		sfKey := normalizeFileName(sf.RelPath)
+		for _, tf := range parsed.Files {
+			updateDirScanMatchSignals(&signals, sfKey, sf.Size, tf, matcher)
+			if signals.HasAnyNameAndSizeMatch {
+				return signals
+			}
+		}
+	}
+
+	return signals
+}
+
+func updateDirScanMatchSignals(
+	signals *dirScanMatchSignals,
+	searcheeKey string,
+	searcheeSize int64,
+	torrentFile TorrentFile,
+	matcher *Matcher,
+) {
+	if signals == nil || matcher == nil {
+		return
+	}
+
+	sizeMatch := matcher.sizesMatch(searcheeSize, torrentFile.Size)
+	if sizeMatch {
+		signals.HasAnySizeMatch = true
+	}
+
+	if searcheeKey != normalizeFileName(torrentFile.Path) {
+		return
+	}
+
+	signals.HasAnyNameMatch = true
+	if sizeMatch {
+		signals.HasAnyNameAndSizeMatch = true
+	}
+}
+
+func describeDirScanNoMatchHints(
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	matcher *Matcher,
+	settings *models.DirScanSettings,
+) (hint string, hints []string) {
+	signals := computeDirScanMatchSignals(searchee, parsed, matcher)
+	if signals.HasAnyNameAndSizeMatch {
+		hints = append(hints, "a filename+size match exists, but overall match still failed; check file counts and size filtering")
+		return "unexpected match rejection", hints
+	}
+
+	if settings != nil && settings.MatchMode == models.MatchModeStrict && signals.HasAnySizeMatch && !signals.HasAnyNameMatch {
+		hints = append(hints, "sizes match but filenames differ; strict mode requires filename+size match (try flexible mode or avoid post-download renames)")
+		return "possible rename/filename mismatch", hints
+	}
+
+	if signals.HasAnyNameMatch && !signals.HasAnySizeMatch {
+		hints = append(hints, "filenames match but sizes differ; likely different encode/edition")
+		return "name match but size mismatch", hints
+	}
+
+	hints = append(hints, "no file-level matches found")
+	return "no file-level matches", hints
+}
+
+func describeDirScanDecisionHints(decision dirScanMatchDecision) (hint string, hints []string) {
+	if strings.Contains(decision.Reason, "below minimum") {
+		hints = append(hints, "matched pieces below threshold; lower minPieceRatio or disable partial matching")
+		return "piece ratio too low", hints
+	}
+
+	if decision.PieceBoundaryUnsafe {
+		hints = append(hints, "piece-boundary safety check rejected; enable skipPieceBoundarySafetyCheck to allow downloading extra files (risk: overwriting existing data)")
+		return "unsafe piece boundary", hints
+	}
+
+	return "", nil
 }
 
 func matchedTorrentPiecePercent(match *MatchResult, parsed *ParsedTorrent) (percent float64, ok bool) {

@@ -57,3 +57,50 @@ func TestParseTorrentBytes_MultiFileDoesNotDoublePrefixRootFolder(t *testing.T) 
 	require.Len(t, parsed.Files, 1)
 	require.Equal(t, "Example.Show.S02.1080p.WEB-DL.x264-GROUP/Example.Show.S02E01.mkv", parsed.Files[0].Path)
 }
+
+func TestMatcher_Strict_NormalizesFilenames(t *testing.T) {
+	matcher := NewMatcher(MatchModeStrict, 0)
+
+	tests := []struct {
+		name        string
+		searcheeRel string
+		torrentPath string
+	}{
+		{
+			name:        "dots vs spaces",
+			searcheeRel: "Movie.2023.2160p.REMUX.mkv",
+			torrentPath: "Movie 2023 2160p REMUX.mkv",
+		},
+		{
+			name:        "underscores and brackets",
+			searcheeRel: "Movie_2023_[2160p]_(REMUX).mkv",
+			torrentPath: "Movie 2023 2160p REMUX.mkv",
+		},
+		{
+			name:        "TRaSH tags removed",
+			searcheeRel: "Movie.2023.{tmdb-12345}.REMUX.mkv",
+			torrentPath: "Movie 2023 REMUX.mkv",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			searchee := &Searchee{
+				Name: tt.searcheeRel,
+				Files: []*ScannedFile{{
+					RelPath: tt.searcheeRel,
+					Size:    123,
+				}},
+			}
+			torrentFiles := []TorrentFile{{
+				Path: tt.torrentPath,
+				Size: 123,
+			}}
+
+			res := matcher.Match(searchee, torrentFiles)
+			require.True(t, res.IsPerfectMatch)
+			require.True(t, res.IsMatch)
+			require.Len(t, res.MatchedFiles, 1)
+		})
+	}
+}

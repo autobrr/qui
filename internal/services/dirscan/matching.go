@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -312,9 +313,36 @@ func (m *Matcher) sizesMatch(size1, size2 int64) bool {
 
 // normalizeFileName normalizes a file path for comparison.
 func normalizeFileName(path string) string {
-	// Get just the filename, not the full path
 	name := filepath.Base(path)
-	return stringutils.NormalizeForMatching(name)
+	ext := strings.ToLower(filepath.Ext(name))
+	base := strings.TrimSuffix(name, ext)
+
+	// Strip TRaSH naming tags if present (e.g. "{tmdb-12345}", "{imdb-tt...}", "[tvdb-123]").
+	if cleaned, _ := extractTRaSHMetadata(base); cleaned != "" {
+		base = cleaned
+	}
+
+	base = strings.NewReplacer(
+		".", " ",
+		"_", " ",
+		"-", " ",
+		"[", " ",
+		"]", " ",
+		"(", " ",
+		")", " ",
+		"{", " ",
+		"}", " ",
+	).Replace(base)
+	base = cleanExtraSpaces(base)
+
+	normalized := stringutils.NormalizeForMatching(base)
+	ext = strings.TrimPrefix(ext, ".")
+	if ext == "" {
+		return normalized
+	}
+
+	// Keep extension as part of strict matching so that e.g. ".mkv" and ".mp4" don't collide.
+	return normalized + " " + ext
 }
 
 // findTorrentFileIndex finds the index of a torrent file in the slice.
