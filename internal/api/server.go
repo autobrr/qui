@@ -300,7 +300,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
 	}
-	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
+	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)

@@ -131,7 +131,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		InstanceStore:             &models.InstanceStore{},
 		ClientAPIKeyStore:         &models.ClientAPIKeyStore{},
 		ClientPool:                &qbittorrent.ClientPool{},
-		SyncManager:               &qbittorrent.SyncManager{},
+		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
 		WebHandler:                &web.Handler{},
 		LicenseService:            &license.Service{},
 		UpdateService:             &update.Service{},

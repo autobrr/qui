@@ -516,7 +516,7 @@ func (app *Application) runServer() {
 	defer clientPool.Close()
 
 	// Initialize managers
-	syncManager := qbittorrent.NewSyncManager(clientPool)
+	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
