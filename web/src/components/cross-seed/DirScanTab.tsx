@@ -60,6 +60,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -994,7 +995,17 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
   }))
 
+  // Track acknowledgment of regular mode warning
+  const [regularModeAcknowledged, setRegularModeAcknowledged] = useState(false)
+
   const { data: targetInstanceMetadata, isError: targetInstanceMetadataError } = useInstanceMetadata(form.targetInstanceId)
+
+  // Check if target instance is in regular mode (not using hardlinks or reflinks)
+  const targetInstance = useMemo(
+    () => instances.find((i) => i.id === form.targetInstanceId),
+    [instances, form.targetInstanceId]
+  )
+  const isRegularMode = targetInstance && !targetInstance.useHardlinks && !targetInstance.useReflinks
 
   const directoryCategoryOptions = useMemo(() => {
     const selected = form.category ? [form.category] : []
@@ -1009,6 +1020,8 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
   // Reset form when directory or dialog state changes
   useEffect(() => {
     if (!open) return
+    // Reset acknowledgment when dialog opens
+    setRegularModeAcknowledged(false)
     if (directory) {
       setForm({
         path: directory.path,
@@ -1031,6 +1044,13 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
       })
     }
   }, [open, directory, defaultTargetInstanceId])
+
+  // Reset acknowledgment when instance changes to regular mode
+  useEffect(() => {
+    if (isRegularMode) {
+      setRegularModeAcknowledged(false)
+    }
+  }, [form.targetInstanceId, isRegularMode])
 
   const handleSave = useCallback(() => {
     // Ensure scanIntervalMinutes is clamped to minimum 60
@@ -1066,15 +1086,15 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{isEditing ? "Edit Directory" : "Add Directory"}</DialogTitle>
           <DialogDescription>
             {isEditing ? "Update the directory configuration." : "Add a new directory to scan for cross-seedable content."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
           <div className="space-y-2">
             <Label htmlFor="dir-path">Directory Path</Label>
             <Input
@@ -1205,13 +1225,49 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             />
             <Label htmlFor="dir-enabled">Enabled</Label>
           </div>
+
+          {/* Regular mode warning */}
+          {isRegularMode && (
+            <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/5 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="size-5 text-yellow-500 shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">
+                    Regular mode is enabled for this instance
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    In regular mode, torrents point to your original files. This causes the orphan scanner to treat this directory as a scan root. <span className="font-medium">Any files not matched by a torrent will be flagged as orphans</span> and could be deleted if auto-cleanup is enabled.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Use <span className="font-medium">hardlink</span> or <span className="font-medium">reflink</span> mode in instance settings to avoid this risk.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 pl-8">
+                <Checkbox
+                  id="regular-mode-acknowledged"
+                  checked={regularModeAcknowledged}
+                  onCheckedChange={(checked) => setRegularModeAcknowledged(checked === true)}
+                />
+                <Label
+                  htmlFor="regular-mode-acknowledged"
+                  className="text-sm text-muted-foreground cursor-pointer leading-tight"
+                >
+                  I understand the risks of using regular mode with media directories
+                </Label>
+              </div>
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={isPending || !form.path || !form.targetInstanceId}>
+          <Button
+            onClick={handleSave}
+            disabled={isPending || !form.path || !form.targetInstanceId || (isRegularMode && !regularModeAcknowledged)}
+          >
             {isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
             {isEditing ? "Save" : "Create"}
           </Button>
