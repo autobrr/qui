@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
+import { useIncognitoMode } from "@/lib/incognito"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
 import React from "react"
@@ -111,6 +112,7 @@ function NumberInput({
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
+  const [incognitoMode] = useIncognitoMode()
 
   const form = useForm({
     defaultValues: {
@@ -397,7 +399,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     id="network_interface"
                     value={field.state.value || "Auto-detect"}
                     readOnly
-                    className="bg-muted"
+                    className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                     disabled
                   />
                   <p className="text-xs text-muted-foreground">
@@ -416,7 +418,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     value={field.state.value || "Auto-detect"}
                     readOnly
                     disabled
-                    className="bg-muted"
+                    className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                   />
                   <p className="text-xs text-muted-foreground">
                     IP address of the current interface. Configuration requires missing API endpoints.
@@ -657,6 +659,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="/path/to/filter.dat"
                   disabled={!form.state.values.ip_filter_enabled}
+                  className={incognitoMode ? "blur-sm select-none" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
                   Path to IP filter file (.dat, .p2p, .p2b formats)
@@ -687,7 +690,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 192.168.1.100
 10.0.0.50
 2001:db8::1`}
-                  className="min-h-[100px] font-mono text-sm"
+                  className={incognitoMode ? "min-h-[100px] font-mono text-sm blur-sm select-none" : "min-h-[100px] font-mono text-sm"}
                 />
                 <p className="text-xs text-muted-foreground">
                   Add IP addresses to permanently ban from connecting (one per line)
