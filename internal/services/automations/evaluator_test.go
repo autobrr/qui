@@ -238,6 +238,38 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "progress less than 100% (legacy percent value)",
+			cond: &RuleCondition{
+				Field:    FieldProgress,
+				Operator: OperatorLessThan,
+				Value:    "100",
+			},
+			torrent:  qbt.Torrent{Progress: 1.0},
+			expected: false,
+		},
+		{
+			name: "progress between 50-100% (legacy percent values)",
+			cond: &RuleCondition{
+				Field:    FieldProgress,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(50),
+				MaxValue: float64Ptr(100),
+			},
+			torrent:  qbt.Torrent{Progress: 0.6},
+			expected: true,
+		},
+		{
+			name: "progress between 50-100% excludes lower progress",
+			cond: &RuleCondition{
+				Field:    FieldProgress,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(50),
+				MaxValue: float64Ptr(100),
+			},
+			torrent:  qbt.Torrent{Progress: 0.2},
+			expected: false,
+		},
+		{
 			name: "seeding time greater than 1 hour",
 			cond: &RuleCondition{
 				Field:    FieldSeedingTime,

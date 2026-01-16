@@ -61,7 +61,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Field | Description |
 |-------|-------------|
 | Ratio | Upload/download ratio |
-| Progress | Download progress (0-1) |
+| Progress | Download progress (0-100%) |
 | Availability | Distributed copies available |
 
 #### Speed Fields (bytes/s)

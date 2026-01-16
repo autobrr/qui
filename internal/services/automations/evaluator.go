@@ -376,7 +376,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldRatio:
 		return compareFloat64(torrent.Ratio, cond)
 	case FieldProgress:
-		return compareFloat64(torrent.Progress, cond)
+		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
 		return compareFloat64(torrent.Availability, cond)
 
@@ -691,6 +691,48 @@ func compareFloat64(value float64, cond *RuleCondition) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeProgressCondition(cond *RuleCondition) *RuleCondition {
+	if cond == nil {
+		return nil
+	}
+
+	normalized := *cond
+
+	if normalized.Value != "" {
+		if v, err := strconv.ParseFloat(normalized.Value, 64); err == nil {
+			v = normalizeProgressValue(v)
+			normalized.Value = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+	}
+
+	if normalized.MinValue != nil {
+		v := normalizeProgressValue(*normalized.MinValue)
+		normalized.MinValue = &v
+	}
+
+	if normalized.MaxValue != nil {
+		v := normalizeProgressValue(*normalized.MaxValue)
+		normalized.MaxValue = &v
+	}
+
+	return &normalized
+}
+
+func normalizeProgressValue(v float64) float64 {
+	// Older workflows stored progress conditions as 0-100 percentages; normalize to 0-1.
+	if v > 1 {
+		v /= 100
+	}
+
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 // compareBool compares a boolean value against the condition.
