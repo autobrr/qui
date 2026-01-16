@@ -74,6 +74,10 @@ function formatNumericInput(value: number, decimals: number): string {
   return String(Number(value.toFixed(decimals)));
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 // Detect best bytes unit from value
 function detectBytesUnit(bytes: number): number {
   const tib = 1024 * 1024 * 1024 * 1024;
@@ -331,15 +335,23 @@ export function LeafCondition({
     if (condition.value == null || condition.value === "") {
       return "";
     }
-    const stored = parseFloat(condition.value) || 0;
-    return formatNumericInput(stored * 100, 2);
+    const stored = parseFloat(condition.value);
+    if (Number.isNaN(stored)) {
+      return "";
+    }
+
+    // Backwards compatibility: older workflows may have stored percentages directly (e.g. 100),
+    // instead of a 0-1 float. Treat those as already-percent values for display.
+    const percent = stored > 1 ? stored : stored * 100;
+    return formatNumericInput(clampNumber(percent, 0, 100), 2);
   };
 
   const handlePercentageChange = (displayValue: string) => {
     if (displayValue === "") {
       onChange({ ...condition, value: "" });
     } else {
-      const percent = parseFloat(displayValue) || 0;
+      const percentRaw = parseFloat(displayValue);
+      const percent = Number.isNaN(percentRaw) ? 0 : clampNumber(percentRaw, 0, 100);
       const stored = percent / 100;
       onChange({ ...condition, value: String(stored) });
     }
@@ -348,14 +360,16 @@ export function LeafCondition({
   // BETWEEN percentage display - convert 0-1 to 0-100 for display
   const getBetweenPercentageDisplay = (): { minValue: string; maxValue: string } => {
     return {
-      minValue: condition.minValue === undefined ? "" : formatNumericInput(condition.minValue * 100, 2),
-      maxValue: condition.maxValue === undefined ? "" : formatNumericInput(condition.maxValue * 100, 2),
+      minValue: condition.minValue === undefined ? "" : formatNumericInput(clampNumber((condition.minValue > 1 ? condition.minValue : condition.minValue * 100), 0, 100), 2),
+      maxValue: condition.maxValue === undefined ? "" : formatNumericInput(clampNumber((condition.maxValue > 1 ? condition.maxValue : condition.maxValue * 100), 0, 100), 2),
     };
   };
 
   const handleBetweenPercentageChange = (minVal: string, maxVal: string) => {
-    const minNum = minVal === "" ? undefined : (parseFloat(minVal) || 0) / 100;
-    const maxNum = maxVal === "" ? undefined : (parseFloat(maxVal) || 0) / 100;
+    const minRaw = minVal === "" ? undefined : parseFloat(minVal);
+    const maxRaw = maxVal === "" ? undefined : parseFloat(maxVal);
+    const minNum = minRaw === undefined || Number.isNaN(minRaw) ? undefined : clampNumber(minRaw, 0, 100) / 100;
+    const maxNum = maxRaw === undefined || Number.isNaN(maxRaw) ? undefined : clampNumber(maxRaw, 0, 100) / 100;
     onChange({ ...condition, minValue: minNum, maxValue: maxNum });
   };
 
@@ -497,6 +511,9 @@ export function LeafCondition({
             className="h-8 w-20"
             value={betweenPercentageDisplay.minValue}
             onChange={(e) => handleBetweenPercentageChange(e.target.value, betweenPercentageDisplay.maxValue)}
+            min={0}
+            max={100}
+            step="0.01"
             placeholder="Min"
           />
           <span className="text-muted-foreground">-</span>
@@ -505,6 +522,9 @@ export function LeafCondition({
             className="h-8 w-20"
             value={betweenPercentageDisplay.maxValue}
             onChange={(e) => handleBetweenPercentageChange(betweenPercentageDisplay.minValue, e.target.value)}
+            min={0}
+            max={100}
+            step="0.01"
             placeholder="Max"
           />
           <span className="text-sm text-muted-foreground">%</span>
@@ -645,6 +665,9 @@ export function LeafCondition({
             className="h-8 w-20"
             value={getPercentageDisplay()}
             onChange={(e) => handlePercentageChange(e.target.value)}
+            min={0}
+            max={100}
+            step="0.01"
             placeholder="0-100"
           />
           <span className="text-sm text-muted-foreground">%</span>
