@@ -41,6 +41,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -582,6 +583,10 @@ func (app *Application) runServer() {
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
 
+	// Initialize transfer service for moving torrents between instances
+	transferStore := models.NewTransferStore(db)
+	transferService := transfer.New(transferStore, instanceStore, syncManager)
+
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -601,6 +606,12 @@ func (app *Application) runServer() {
 	orphanScanCtx, orphanScanCancel := context.WithCancel(context.Background())
 	defer orphanScanCancel()
 	orphanScanService.Start(orphanScanCtx)
+
+	// Start transfer service
+	transferCtx, transferCancel := context.WithCancel(context.Background())
+	defer transferCancel()
+	transferService.Start(transferCtx)
+	defer transferService.Stop()
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -696,6 +707,7 @@ func (app *Application) runServer() {
 		OrphanScanService:                orphanScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		TransferService:                  transferService,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
