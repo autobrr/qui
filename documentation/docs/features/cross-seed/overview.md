@@ -22,6 +22,8 @@ qui supports three modes for handling files:
 - **Hardlink mode** (optional): Creates a hardlinked copy of the matched files laid out exactly as the incoming torrent expects, then adds the torrent pointing at that tree. Avoids rename-alignment entirely.
 - **Reflink mode** (optional): Creates copy-on-write clones (reflinks) of the matched files. Allows safe cross-seeding of torrents with extra/missing files because qBittorrent can write/repair the clones without affecting originals.
 
+Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshooting](troubleshooting#blu-ray-or-dvd-cross-seed-left-paused).
+
 ## Prerequisites
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.

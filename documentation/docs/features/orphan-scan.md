@@ -36,7 +36,7 @@ Directories are only scanned if at least one torrent points to them. If you dele
 | Grace period | Skip files modified within this window | 10 minutes |
 | Ignore paths | Directories to exclude from scanning | - |
 | Scan interval | How often scheduled scans run | 24 hours |
-| Max files per run | Limit results to prevent overwhelming large scans | 10,000 |
+| Max files per run | Limit results to prevent overwhelming large scans | 1,000 |
 | Auto-cleanup | Automatically delete orphans from scheduled scans | Disabled |
 | Auto-cleanup max files | Only auto-delete if orphan count is at or below this threshold | 100 |
 
@@ -46,3 +46,8 @@ Directories are only scanned if at least one torrent points to them. If you dele
 2. Review the preview list of orphan files
 3. Confirm deletion
 4. Files are deleted and empty directories cleaned up
+
+## Preview Features
+
+- **Path column** - Shows the full file path with copy-to-clipboard support
+- **Export CSV** - Download the full preview list (all pages) as a CSV file

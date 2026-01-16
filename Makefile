@@ -28,10 +28,10 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
-	docker buildx build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:
@@ -107,16 +107,19 @@ test-openapi:
 	@echo "Validating OpenAPI specification..."
 	go test -v ./internal/web/swagger
 
-# Format code
+# Format changed code only (fast, for iteration)
 fmt:
-	@echo "Formatting code..."
-	go fmt ./...
-	cd $(WEB_DIR) && pnpm format
+	@echo "Formatting changed Go code..."
+	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -n "$$gofiles" ]; then echo "$$gofiles" | xargs gofmt -w; fi
+	@echo "Formatting changed frontend code..."
+	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
+		if [ -n "$$webfiles" ]; then cd $(WEB_DIR) && echo "$$webfiles" | xargs pnpm eslint --fix; fi
 
 # Lint code (changed files only - fast feedback for AI iteration)
 lint:
 	@echo "Linting changed Go code..."
-	golangci-lint run --new-from-merge-base=main --timeout=5m
+	golangci-lint run --new-from-merge-base=develop --timeout=5m
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
 
@@ -187,7 +190,7 @@ help:
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""
 	@echo "Formatting:"
-	@echo "  make fmt            - Format Go and frontend code"
+	@echo "  make fmt            - Format changed files only (fast, for iteration)"
 	@echo "  make modern         - Modernize Go code (interface{} -> any)"
 	@echo ""
 	@echo "Documentation:"

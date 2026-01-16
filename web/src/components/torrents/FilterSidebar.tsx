@@ -40,7 +40,7 @@ import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
@@ -289,20 +289,24 @@ const FilterSidebarComponent = ({
   const [trackerToEdit, setTrackerToEdit] = useState("")
   const [trackerFullURLs, setTrackerFullURLs] = useState<string[]>([])
   const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
+  const [isConvertingScheme, setIsConvertingScheme] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
     let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
-    
+
     // Only show cross-seeds when there's an active cross-seed filter
     if (!selectedFilters.expr) {
       states = states.filter(state => state.value !== "cross-seeds")
     }
-    
+
     return states
   }, [supportsTrackerHealth, selectedFilters.expr])
 
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
+
+  // Base URL used purely for parsing scheme-less URLs, never used as network target
+  const URL_PARSE_BASE = "http://parse-base"
 
   // Function to fetch tracker URLs for a specific tracker domain
   // Scans multiple torrents to find ALL unique tracker URLs (handles cases where
@@ -340,24 +344,42 @@ const FilterSidebarComponent = ({
         // Collect unique URLs from multiple torrents
         const allUrls = new Set<string>()
 
-        // Fetch trackers from up to 20 torrents in parallel to find all unique URLs
-        // This handles cases where one torrent has wrong passkey while others are correct
-        const torrentsToCheck = torrentsList.torrents.slice(0, 20)
-        const trackerPromises = torrentsToCheck.map(t =>
-          api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
-        )
-
-        const allTrackerResults = await Promise.all(trackerPromises)
-
-        for (const trackers of allTrackerResults) {
-          for (const t of trackers) {
+        // Helper to extract hostname from URL with fallback for scheme-less URLs
+        const extractHostname = (urlStr: string): string | null => {
+          const trimmed = urlStr.trim()
+          if (!trimmed) return null
+          try {
+            return new URL(trimmed).hostname.toLowerCase()
+          } catch {
+            // Try parsing as scheme-less URL (e.g., "tracker.example.com:6969/announce")
             try {
-              const url = new URL(t.url)
-              if (url.hostname === trackerDomain) {
-                allUrls.add(t.url)
-              }
+              return new URL("//" + trimmed, URL_PARSE_BASE).hostname.toLowerCase()
             } catch {
-              // Not a valid URL, skip
+              return null
+            }
+          }
+        }
+
+        // Fetch trackers from up to 50 torrents with concurrency limit of 10
+        // This handles cases where one torrent has wrong passkey while others are correct
+        // Also helps discover different URL variants (http vs https, different ports)
+        const torrentsToCheck = torrentsList.torrents.slice(0, 50)
+        const concurrencyLimit = 10
+        const normalizedDomain = trackerDomain.toLowerCase()
+
+        for (let i = 0; i < torrentsToCheck.length; i += concurrencyLimit) {
+          const batch = torrentsToCheck.slice(i, i + concurrencyLimit)
+          const batchPromises = batch.map(t =>
+            api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
+          )
+          const batchResults = await Promise.all(batchPromises)
+
+          for (const trackers of batchResults) {
+            for (const t of trackers) {
+              const hostname = extractHostname(t.url)
+              if (hostname === normalizedDomain) {
+                allUrls.add(t.url.trim())
+              }
             }
           }
         }
@@ -406,6 +428,102 @@ const FilterSidebarComponent = ({
       })
     },
   })
+
+  // Handler for converting all HTTP URLs to HTTPS for the current tracker domain
+  const handleConvertHttpToHttps = useCallback(async () => {
+    const httpUrls = trackerFullURLs.filter((url) => url.startsWith("http://"))
+    if (httpUrls.length === 0) return
+
+    if (!trackerToEdit) {
+      toast.error("No tracker selected for conversion")
+      return
+    }
+
+    // Collect HTTPS samples to infer the correct port for each hostname/path
+    const httpsSamples = trackerFullURLs
+      .filter((url) => url.startsWith("https://"))
+      .map((url) => {
+        try {
+          return new URL(url)
+        } catch {
+          return null
+        }
+      })
+      .filter((u): u is URL => u !== null)
+
+    setIsConvertingScheme(true)
+    let successCount = 0
+    let failCount = 0
+    let firstError: string | null = null
+
+    for (const oldURL of httpUrls) {
+      // Use URL parsing to properly handle scheme and port conversion
+      let newURL: string
+      try {
+        const parsed = new URL(oldURL)
+        parsed.protocol = "https:"
+
+        // Find a matching HTTPS sample to infer the correct port
+        const matchingSample = httpsSamples.find(
+          (sample) =>
+            sample.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+            sample.pathname === parsed.pathname
+        )
+
+        if (matchingSample) {
+          // Use the port from the matching HTTPS sample
+          parsed.port = matchingSample.port
+        } else {
+          // No sample found - clear port to default to 443
+          parsed.port = ""
+        }
+
+        newURL = parsed.toString()
+      } catch {
+        // Fall back to simple replacement if URL parsing fails
+        newURL = oldURL.replace(/^http:\/\//, "https://")
+      }
+      try {
+        await api.bulkAction(instanceId, {
+          hashes: [],
+          action: "editTrackers",
+          trackerOldURL: oldURL,
+          trackerNewURL: newURL,
+          selectAll: true,
+          filters: {
+            status: [],
+            excludeStatus: [],
+            categories: [],
+            excludeCategories: [],
+            tags: [],
+            excludeTags: [],
+            trackers: [trackerToEdit],
+            excludeTrackers: [],
+            expr: "",
+          },
+        })
+        successCount++
+      } catch (err) {
+        failCount++
+        if (!firstError) {
+          firstError = typeof err === "string"? err: (err as { message?: string })?.message ?? null
+        }
+      }
+    }
+
+    setIsConvertingScheme(false)
+
+    if (successCount > 0) {
+      toast.success(`Converted ${successCount} tracker URL${successCount > 1 ? "s" : ""} to HTTPS`)
+      // Refresh the tracker URLs to show updated state
+      await fetchTrackerURLs(trackerToEdit)
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to convert ${failCount} URL${failCount > 1 ? "s" : ""}`, {
+        description: firstError ?? undefined,
+      })
+    }
+  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs])
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -645,36 +763,15 @@ const FilterSidebarComponent = ({
     return realTrackers
   }, [incognitoMode, torrentCounts, isLoading, isStaleData])
 
-  // Build lookup maps from tracker customizations for merging and nicknames
-  const trackerCustomizationMaps = useMemo(() => {
-    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
-    const secondaryDomains = new Set<string>()
-
-    for (const custom of trackerCustomizations ?? []) {
-      const domains = custom.domains
-      if (domains.length === 0) continue
-
-      for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].toLowerCase()
-        domainToCustomization.set(domain, {
-          displayName: custom.displayName,
-          domains: custom.domains,
-          id: custom.id,
-        })
-        // Secondary domains (not the first one) should be hidden/merged
-        if (i > 0) {
-          secondaryDomains.add(domain)
-        }
-      }
-    }
-
-    return { domainToCustomization, secondaryDomains }
-  }, [trackerCustomizations])
+  const trackerCustomizationMaps = useMemo(
+    () => buildTrackerCustomizationMaps(trackerCustomizations),
+    [trackerCustomizations]
+  )
 
   // Process trackers to apply customizations (nicknames and merged domains)
   // Returns a list of tracker groups with display names and all associated domains
   const processedTrackers = useMemo(() => {
-    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const { domainToCustomization } = trackerCustomizationMaps
 
     const processed: Array<{
       /** Unique key for React - uses primary domain */
@@ -693,11 +790,6 @@ const FilterSidebarComponent = ({
 
     for (const tracker of trackers) {
       const lowerTracker = tracker.toLowerCase()
-
-      // Skip secondary domains - they're merged into their primary
-      if (secondaryDomains.has(lowerTracker)) {
-        continue
-      }
 
       const customization = domainToCustomization.get(lowerTracker)
 
@@ -730,14 +822,14 @@ const FilterSidebarComponent = ({
     }
 
     // Sort by display name (case-insensitive) for consistent alphabetical ordering
-    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
+    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
 
     return processed
   }, [trackers, trackerCustomizationMaps])
 
-  // Helper to get count for a tracker group (uses primary domain's count)
-  // Merged trackers share the same torrents across multiple URLs, so we use the
-  // primary domain's count rather than summing (which would double-count)
+  // Helper to get count for a tracker group.
+  // Merged trackers can have activity on a non-primary domain, so we use the max count across
+  // all domains (and avoid summing, which can double-count).
   const getTrackerGroupCount = useCallback((domains: string[]): string => {
     if (incognitoMode) {
       return getLinuxCount(domains[0], 100).toString()
@@ -751,8 +843,8 @@ const FilterSidebarComponent = ({
       return "..."
     }
 
-    // Use the primary domain's count (first in the list)
-    return (torrentCounts[`tracker:${domains[0]}`] || 0).toString()
+    const maxCount = Math.max(0, ...domains.map(d => torrentCounts[`tracker:${d}`] || 0))
+    return maxCount.toString()
   }, [incognitoMode, isLoading, torrentCounts])
 
   // Use virtual scrolling for large lists to handle performance efficiently
@@ -834,7 +926,7 @@ const FilterSidebarComponent = ({
     if (status === "cross-seeds") {
       return selectedFilters.expr ? "include" : "neutral"
     }
-    
+
     if (includeStatusSet.has(status)) return "include"
     if (excludeStatusSet.has(status)) return "exclude"
     return "neutral"
@@ -854,7 +946,7 @@ const FilterSidebarComponent = ({
       // But do allow unchecking by returning after handling the neutral state
       return
     }
-    
+
     let nextIncluded = selectedFilters.status
     let nextExcluded = selectedFilters.excludeStatus
 
@@ -1146,7 +1238,7 @@ const FilterSidebarComponent = ({
     const activelyFilteredEntries = categoryEntries.filter(([name]) => getCategoryState(name) !== "neutral")
     const combined = new Map([
       ...categoryPartition.nonEmpty.map(entry => [entry[0], entry] as const),
-      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const)
+      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const),
     ])
     return Array.from(combined.values())
   }, [showHiddenCategories, categoryEntries, categoryPartition.nonEmpty, getCategoryState])
@@ -1158,7 +1250,7 @@ const FilterSidebarComponent = ({
     const activelyFilteredStates = visibleTorrentStates.filter(state => getStatusState(state.value) !== "neutral")
     const combined = new Map([
       ...statusPartition.nonEmpty.map(state => [state.value, state] as const),
-      ...activelyFilteredStates.map(state => [state.value, state] as const)
+      ...activelyFilteredStates.map(state => [state.value, state] as const),
     ])
     return Array.from(combined.values())
   }, [showHiddenStatuses, visibleTorrentStates, statusPartition.nonEmpty, getStatusState])
@@ -1413,7 +1505,7 @@ const FilterSidebarComponent = ({
 
   // Group-based tracker handlers for merged tracker customizations
   // These work with arrays of domains instead of single trackers
-  const handleTrackerGroupIncludeToggle = useCallback((domains: string[], _key: string) => {
+  const handleTrackerGroupIncludeToggle = useCallback((domains: string[]) => {
     const currentState = getTrackerGroupState(domains)
 
     if (currentState === "include" || currentState === "exclude") {
@@ -1438,7 +1530,7 @@ const FilterSidebarComponent = ({
     }
 
     skipNextToggleRef.current = null
-    handleTrackerGroupIncludeToggle(domains, key)
+    handleTrackerGroupIncludeToggle(domains)
   }, [handleTrackerGroupIncludeToggle, makeToggleKey])
 
   const handleTrackerGroupPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, domains: string[], key: string) => {
@@ -1651,7 +1743,7 @@ const FilterSidebarComponent = ({
       }
       return next
     })
-  }, [])
+  }, [setCollapsedCategories])
 
   const handleEditCategoryByName = useCallback((categoryName: string) => {
     const category = categories[categoryName]
@@ -1866,17 +1958,15 @@ const FilterSidebarComponent = ({
                     const statusItem = (
                       <label
                         key={state.value}
-                      className={cn(
-                        "flex items-center gap-2 rounded",
-                        filterItemClass,
-                        isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
-                        statusState === "exclude"
-                          ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                          : isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
-                      )}
-                      onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
-                      onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
-                    >
+                        className={cn(
+                          "flex items-center gap-2 rounded",
+                          filterItemClass,
+                          isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
+                          statusState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
+                        )}
+                        onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
+                        onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
+                      >
                         <Checkbox
                           checked={getCheckboxVisualState(statusState)}
                           onCheckedChange={isCrossSeed && statusState === "neutral" ? undefined : () => handleStatusCheckboxChange(state.value)}
@@ -1902,7 +1992,7 @@ const FilterSidebarComponent = ({
                         </span>
                       </label>
                     )
-                    
+
                     if (isCrossSeed) {
                       return (
                         <Tooltip key={state.value}>
@@ -1915,7 +2005,7 @@ const FilterSidebarComponent = ({
                         </Tooltip>
                       )
                     }
-                    
+
                     return statusItem
                   })}
                 </div>
@@ -2038,9 +2128,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenCategories && hiddenCategorySearchMatches > 0
-                        ? 'All matching categories are empty. Click above to show them.'
-                        : `No categories found matching "${debouncedCategorySearch}"`}
+                      {!showHiddenCategories && hiddenCategorySearchMatches > 0? "All matching categories are empty. Click above to show them.": `No categories found matching "${debouncedCategorySearch}"`}
                     </div>
                   )}
 
@@ -2115,9 +2203,7 @@ const FilterSidebarComponent = ({
                                     className={cn(
                                       "flex items-center gap-2 rounded cursor-pointer",
                                       filterItemClass,
-                                      categoryState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleCategoryPointerDown(event, name)}
                                     onPointerLeave={handlePointerLeave}
@@ -2222,16 +2308,14 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={name}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              categoryState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleCategoryPointerDown(event, name)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                "flex items-center gap-2 rounded cursor-pointer",
+                                filterItemClass,
+                                categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(categoryState)}
                                 onCheckedChange={() => handleCategoryCheckboxChange(name)}
@@ -2437,9 +2521,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenTags && hiddenTagSearchMatches > 0
-                        ? 'All matching tags are empty. Click above to show them.'
-                        : `No tags found matching "${debouncedTagSearch}"`}
+                      {!showHiddenTags && hiddenTagSearchMatches > 0? "All matching tags are empty. Click above to show them.": `No tags found matching "${debouncedTagSearch}"`}
                     </div>
                   )}
 
@@ -2488,9 +2570,7 @@ const FilterSidebarComponent = ({
                                     className={cn(
                                       "flex items-center gap-2 rounded cursor-pointer",
                                       filterItemClass,
-                                      tagState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                     onPointerLeave={handlePointerLeave}
@@ -2559,16 +2639,14 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tag}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              tagState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleTagPointerDown(event, tag)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                "flex items-center gap-2 rounded cursor-pointer",
+                                filterItemClass,
+                                tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagCheckboxChange(tag)}
@@ -2659,9 +2737,7 @@ const FilterSidebarComponent = ({
                     className={cn(
                       "flex items-center gap-2 rounded cursor-pointer",
                       filterItemClass,
-                      noTrackerState === "exclude"
-                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                        : "hover:bg-muted"
+                      noTrackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTrackerPointerDown(event, "")}
                     onPointerLeave={handlePointerLeave}
@@ -2734,9 +2810,7 @@ const FilterSidebarComponent = ({
                                     className={cn(
                                       "flex items-center gap-2 rounded cursor-pointer",
                                       filterItemClass,
-                                      trackerState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
                                     onPointerLeave={handlePointerLeave}
@@ -2820,16 +2894,14 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={trackerGroup.key}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              trackerState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                "flex items-center gap-2 rounded cursor-pointer",
+                                filterItemClass,
+                                trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(trackerState)}
                                 onCheckedChange={() => handleTrackerGroupCheckboxChange(trackerGroup.domains, trackerGroup.key)}
@@ -2980,6 +3052,8 @@ const FilterSidebarComponent = ({
         selectedHashes={[]} // Not using selected hashes, will update all torrents with this tracker
         onConfirm={(oldURL, newURL) => editTrackersMutation.mutate({ oldURL, newURL, tracker: trackerToEdit })}
         isPending={editTrackersMutation.isPending}
+        onConvertHttpToHttps={handleConvertHttpToHttps}
+        isConverting={isConvertingScheme}
       />
     </div>
   )
