@@ -198,14 +198,15 @@ export function ClientApiKeysManager() {
                 Create Client API Key
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-xl max-w-full">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-xl max-w-full max-h-[90dvh] flex flex-col">
+              <DialogHeader className="flex-shrink-0">
                 <DialogTitle>Create Client API Key</DialogTitle>
                 <DialogDescription>
                   Create an API key for a specific client to connect to a qBittorrent instance.
                 </DialogDescription>
               </DialogHeader>
 
+              <div className="flex-1 overflow-y-auto min-h-0">
               {newKey ? (
                 <div className="space-y-4">
                   <Card className="w-full">
@@ -347,6 +348,7 @@ export function ClientApiKeysManager() {
                   </form.Subscribe>
                 </form>
               )}
+              </div>
             </DialogContent>
           </Dialog>
         </div>
