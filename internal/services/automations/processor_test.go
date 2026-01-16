@@ -345,7 +345,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 
 		torrent2 := qbt.Torrent{
 			Hash:        "def456",
-			Size:        50000000000, // Same size (hardlink copy)
+			Size:        50000000000,    // Same size (hardlink copy)
 			ContentPath: "/data/movie2", // Different path, but same files via hardlinks
 			SavePath:    "/data",
 		}
