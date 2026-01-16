@@ -97,7 +97,12 @@ func (s *Service) doPrepare(ctx context.Context, t *models.Transfer) {
 	t.TargetSavePath = s.computeTargetPath(t.SourceSavePath, targetInstance, t.PathMappings)
 
 	// 9. Determine link mode
-	t.LinkMode = s.determineLinkMode(targetInstance, t.SourceSavePath, t.TargetSavePath)
+	linkMode, err := s.determineLinkMode(targetInstance, t.SourceSavePath, t.TargetSavePath)
+	if err != nil {
+		s.fail(ctx, t, fmt.Sprintf("failed to determine link mode: %v", err))
+		return
+	}
+	t.LinkMode = linkMode
 
 	log.Info().
 		Int64("id", t.ID).
@@ -185,11 +190,13 @@ func (s *Service) doCreateLinks(ctx context.Context, t *models.Transfer) {
 	switch t.LinkMode {
 	case "hardlink":
 		if err := hardlinktree.Create(plan); err != nil {
+			_ = hardlinktree.Rollback(plan)
 			s.fail(ctx, t, fmt.Sprintf("failed to create hardlinks: %v", err))
 			return
 		}
 	case "reflink":
 		if err := reflinktree.Create(plan); err != nil {
+			_ = reflinktree.Rollback(plan)
 			// Check if we should fall back
 			if targetInstance.FallbackToRegularMode {
 				log.Warn().
@@ -203,11 +210,16 @@ func (s *Service) doCreateLinks(ctx context.Context, t *models.Transfer) {
 			s.fail(ctx, t, fmt.Sprintf("failed to create reflinks: %v", err))
 			return
 		}
+	default:
+		s.fail(ctx, t, fmt.Sprintf("unsupported or empty link mode: %s", t.LinkMode))
+		return
 	}
 
 	t.FilesLinked = len(plan.Files)
 	if err := s.store.Update(ctx, t); err != nil {
-		log.Warn().Err(err).Int64("id", t.ID).Msg("[TRANSFER] Failed to update progress")
+		s.rollbackLinks(ctx, t)
+		s.fail(ctx, t, fmt.Sprintf("failed to persist link plan: %v", err))
+		return
 	}
 
 	log.Info().
@@ -380,7 +392,7 @@ func (s *Service) rollbackLinks(ctx context.Context, t *models.Transfer) {
 		return
 	}
 
-	log.Debug().Int64("id", t.ID).Str("path", t.TargetSavePath).Msg("[TRANSFER] Rolling back links")
+	log.Debug().Int64("id", t.ID).Str("path", t.TargetSavePath).Str("mode", t.LinkMode).Msg("[TRANSFER] Rolling back links")
 
 	// Get source files to build rollback plan
 	files, err := s.syncManager.GetTorrentFiles(ctx, t.SourceInstanceID, t.TorrentHash)
@@ -408,8 +420,11 @@ func (s *Service) rollbackLinks(ctx context.Context, t *models.Transfer) {
 		})
 	}
 
+	// Rollback works the same way for both hardlinks and reflinks since both
+	// create separate files/links that can be removed. The Rollback function
+	// removes the created files and cleans up empty directories.
 	if err := hardlinktree.Rollback(plan); err != nil {
-		log.Warn().Err(err).Int64("id", t.ID).Msg("[TRANSFER] Rollback failed")
+		log.Warn().Err(err).Int64("id", t.ID).Str("mode", t.LinkMode).Msg("[TRANSFER] Rollback failed")
 	}
 }
 

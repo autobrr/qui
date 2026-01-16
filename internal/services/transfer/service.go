@@ -5,7 +5,10 @@ package transfer
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"sync"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -50,8 +53,13 @@ type Service struct {
 	categoryCreationGroup singleflight.Group
 
 	// Configuration
-	workerCount int
+	workerCount      int
+	recoveryInterval time.Duration
 }
+
+var (
+	ErrTransferNotFound = errors.New("transfer not found")
+)
 
 // New creates a new transfer service
 func New(
@@ -60,11 +68,12 @@ func New(
 	syncManager SyncManager,
 ) *Service {
 	return &Service{
-		store:         store,
-		instanceStore: instanceStore,
-		syncManager:   syncManager,
-		queue:         make(chan int64, 100),
-		workerCount:   2,
+		store:            store,
+		instanceStore:    instanceStore,
+		syncManager:      syncManager,
+		queue:            make(chan int64, 100),
+		workerCount:      2,
+		recoveryInterval: 30 * time.Second,
 	}
 }
 
@@ -72,14 +81,20 @@ func New(
 func (s *Service) Start(ctx context.Context) {
 	s.workerCtx, s.workerCancel = context.WithCancel(ctx)
 
-	// Recover interrupted transfers
+	// Recover interrupted transfers from previous run
 	s.recoverInterrupted()
 
 	// Start worker goroutines
 	for i := 0; i < s.workerCount; i++ {
-		s.workerWg.Add(1)
-		go s.worker(i)
+		s.workerWg.Go(func() {
+			s.worker(i)
+		})
 	}
+
+	// Start periodic recovery goroutine
+	s.workerWg.Go(func() {
+		s.periodicRecovery()
+	})
 
 	log.Info().Int("workers", s.workerCount).Msg("[TRANSFER] Service started")
 }
@@ -102,7 +117,10 @@ func (s *Service) QueueTransfer(ctx context.Context, req *TransferRequest) (*mod
 
 	// Check for existing non-terminal transfer for this hash
 	existing, err := s.store.GetByHash(ctx, req.TorrentHash)
-	if err == nil && existing != nil {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if existing != nil {
 		return nil, ErrTransferAlreadyExists
 	}
 
@@ -124,19 +142,8 @@ func (s *Service) QueueTransfer(ctx context.Context, req *TransferRequest) (*mod
 		return nil, err
 	}
 
-	// Queue for processing
-	select {
-	case s.queue <- created.ID:
-		log.Debug().
-			Int64("id", created.ID).
-			Str("hash", created.TorrentHash).
-			Msg("[TRANSFER] Queued transfer")
-	default:
-		// Queue full - worker will pick up from DB on next cycle
-		log.Warn().
-			Int64("id", created.ID).
-			Msg("[TRANSFER] Queue full, transfer will be picked up later")
-	}
+	// Queue for processing; if full, periodic recovery will pick it up
+	s.tryEnqueue(created.ID)
 
 	return created, nil
 }
@@ -156,10 +163,16 @@ func (s *Service) MoveTorrent(ctx context.Context, req *MoveRequest) (*models.Tr
 
 // GetTransfer retrieves a transfer by ID
 func (s *Service) GetTransfer(ctx context.Context, id int64) (*models.Transfer, error) {
-	return s.store.Get(ctx, id)
+	t, err := s.store.Get(ctx, id)
+	if err == sql.ErrNoRows {
+		return nil, ErrTransferNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
-// CancelTransfer attempts to cancel a pending or in-progress transfer
+// CancelTransfer attempts to cancel a pending transfer
 func (s *Service) CancelTransfer(ctx context.Context, id int64) error {
 	t, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -181,7 +194,7 @@ func (s *Service) ListTransfers(ctx context.Context, opts ListOptions) ([]*model
 	}
 
 	if len(opts.States) > 0 {
-		return s.store.ListByStates(ctx, opts.States)
+		return s.store.ListByStates(ctx, opts.States, opts.Limit, opts.Offset)
 	}
 
 	if opts.InstanceID != nil {

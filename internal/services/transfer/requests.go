@@ -13,6 +13,10 @@ import (
 var (
 	ErrTransferAlreadyExists = errors.New("transfer already exists for this torrent")
 	ErrCannotCancel          = errors.New("cannot cancel transfer in current state")
+	ErrMissingSourceID       = errors.New("source instance ID is required")
+	ErrMissingTargetID       = errors.New("target instance ID is required")
+	ErrSourceTargetSame      = errors.New("source and target instance must be different")
+	ErrMissingTorrentHash    = errors.New("torrent hash is required")
 	ErrSourceNotAccessible   = errors.New("source instance not accessible or lacks local filesystem access")
 	ErrTargetNotAccessible   = errors.New("target instance not accessible or lacks local filesystem access")
 	ErrTorrentNotFound       = errors.New("torrent not found on source instance")
@@ -33,16 +37,16 @@ type TransferRequest struct {
 // Validate validates the transfer request
 func (r *TransferRequest) Validate() error {
 	if r.SourceInstanceID == 0 {
-		return errors.New("source instance ID is required")
+		return ErrMissingSourceID
 	}
 	if r.TargetInstanceID == 0 {
-		return errors.New("target instance ID is required")
+		return ErrMissingTargetID
 	}
 	if r.SourceInstanceID == r.TargetInstanceID {
-		return errors.New("source and target instance must be different")
+		return ErrSourceTargetSame
 	}
 	if r.TorrentHash == "" {
-		return errors.New("torrent hash is required")
+		return ErrMissingTorrentHash
 	}
 	return nil
 }
@@ -53,15 +57,31 @@ type MoveRequest struct {
 	TargetInstanceID int               `json:"targetInstanceId"`
 	Hash             string            `json:"hash"`
 	PathMappings     map[string]string `json:"pathMappings,omitempty"`
-	DeleteFromSource bool              `json:"deleteFromSource"` // Default: true
-	PreserveCategory bool              `json:"preserveCategory"` // Default: true
-	PreserveTags     bool              `json:"preserveTags"`     // Default: true
+	DeleteFromSource bool              `json:"deleteFromSource"`
+	PreserveCategory bool              `json:"preserveCategory"`
+	PreserveTags     bool              `json:"preserveTags"`
+}
+
+func (r *MoveRequest) Validate() error {
+	if r.SourceInstanceID == 0 {
+		return ErrMissingSourceID
+	}
+	if r.TargetInstanceID == 0 {
+		return ErrMissingTargetID
+	}
+	if r.SourceInstanceID == r.TargetInstanceID {
+		return ErrSourceTargetSame
+	}
+	if r.Hash == "" {
+		return ErrMissingTorrentHash
+	}
+	return nil
 }
 
 // ListOptions for filtering transfer list
 type ListOptions struct {
-	InstanceID *int                    // Filter by source or target instance
-	States     []models.TransferState  // Filter by states
+	InstanceID *int                   // Filter by source or target instance
+	States     []models.TransferState // Filter by states
 	Limit      int
 	Offset     int
 }

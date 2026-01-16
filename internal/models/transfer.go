@@ -31,14 +31,39 @@ const (
 	TransferStateCancelled      TransferState = "cancelled"
 )
 
+// terminalStates is the single source of truth for terminal transfer states.
+var terminalStates = map[TransferState]struct{}{
+	TransferStateCompleted:  {},
+	TransferStateFailed:     {},
+	TransferStateRolledBack: {},
+	TransferStateCancelled:  {},
+}
+
+// validStates contains all valid transfer states for validation.
+var validStates = map[TransferState]struct{}{
+	TransferStatePending:        {},
+	TransferStatePreparing:      {},
+	TransferStateLinksCreating:  {},
+	TransferStateLinksCreated:   {},
+	TransferStateAddingTorrent:  {},
+	TransferStateTorrentAdded:   {},
+	TransferStateDeletingSource: {},
+	TransferStateCompleted:      {},
+	TransferStateFailed:         {},
+	TransferStateRolledBack:     {},
+	TransferStateCancelled:      {},
+}
+
 // IsTerminal returns true if the state is a terminal state (no further transitions)
 func (s TransferState) IsTerminal() bool {
-	switch s {
-	case TransferStateCompleted, TransferStateFailed, TransferStateRolledBack, TransferStateCancelled:
-		return true
-	default:
-		return false
-	}
+	_, ok := terminalStates[s]
+	return ok
+}
+
+// IsValid returns true if the state is a recognized transfer state.
+func (s TransferState) IsValid() bool {
+	_, ok := validStates[s]
+	return ok
 }
 
 // Transfer represents a torrent transfer between instances
@@ -90,6 +115,9 @@ func NewTransferStore(db dbinterface.Querier) *TransferStore {
 func (s *TransferStore) Create(ctx context.Context, t *Transfer) (*Transfer, error) {
 	if t == nil {
 		return nil, errors.New("transfer is nil")
+	}
+	if t.State == "" {
+		t.State = TransferStatePending
 	}
 	if t.SourceInstanceID == 0 {
 		return nil, errors.New("source instance ID is required")
@@ -164,7 +192,7 @@ func (s *TransferStore) Get(ctx context.Context, id int64) (*Transfer, error) {
 
 // GetByHash retrieves a non-terminal transfer by torrent hash
 func (s *TransferStore) GetByHash(ctx context.Context, hash string) (*Transfer, error) {
-	row := s.db.QueryRowContext(ctx, `
+	query := `
 		SELECT id, source_instance_id, target_instance_id, torrent_hash, torrent_name,
 			state, source_save_path, target_save_path, link_mode,
 			delete_from_source, preserve_category, preserve_tags,
@@ -172,11 +200,21 @@ func (s *TransferStore) GetByHash(ctx context.Context, hash string) (*Transfer, 
 			files_total, files_linked, error,
 			created_at, updated_at, completed_at
 		FROM transfers
-		WHERE torrent_hash = ? AND state NOT IN ('completed', 'failed', 'rolled_back', 'cancelled')
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, hash)
+		WHERE torrent_hash = ? AND state NOT IN (`
 
+	args := []any{hash}
+	first := true
+	for state := range terminalStates {
+		if !first {
+			query += ", "
+		}
+		query += "?"
+		args = append(args, state)
+		first = false
+	}
+	query += `) ORDER BY created_at DESC LIMIT 1`
+
+	row := s.db.QueryRowContext(ctx, query, args...)
 	return s.scanTransfer(row)
 }
 
@@ -247,9 +285,9 @@ func (s *TransferStore) UpdateProgress(ctx context.Context, id int64, filesLinke
 }
 
 // ListByStates returns transfers in any of the given states
-func (s *TransferStore) ListByStates(ctx context.Context, states []TransferState) ([]*Transfer, error) {
+func (s *TransferStore) ListByStates(ctx context.Context, states []TransferState, limit, offset int) ([]*Transfer, error) {
 	if len(states) == 0 {
-		return nil, nil
+		return []*Transfer{}, nil
 	}
 
 	query := `
@@ -270,8 +308,9 @@ func (s *TransferStore) ListByStates(ctx context.Context, states []TransferState
 		query += "?"
 		args[i] = state
 	}
-	query += `) ORDER BY created_at ASC`
+	query += `) ORDER BY created_at ASC LIMIT ? OFFSET ?`
 
+	args = append(args, limit, offset)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -326,8 +365,18 @@ func (s *TransferStore) ListRecent(ctx context.Context, limit, offset int) ([]*T
 
 // Delete removes a transfer record
 func (s *TransferStore) Delete(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM transfers WHERE id = ?`, id)
-	return err
+	res, err := s.db.ExecContext(ctx, `DELETE FROM transfers WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // MarkInterrupted marks in-progress transfers as failed (for recovery)
@@ -357,8 +406,12 @@ func (s *TransferStore) MarkInterrupted(ctx context.Context, states []TransferSt
 	return res.RowsAffected()
 }
 
+type scannable interface {
+	Scan(rows ...any) error
+}
+
 // scanTransfer scans a single transfer row
-func (s *TransferStore) scanTransfer(row *sql.Row) (*Transfer, error) {
+func (s *TransferStore) scanTransfer(row scannable) (*Transfer, error) {
 	var t Transfer
 	var sourceSavePath, targetSavePath, linkMode sql.NullString
 	var targetCategory sql.NullString
@@ -408,48 +461,12 @@ func (s *TransferStore) scanTransfers(rows *sql.Rows) ([]*Transfer, error) {
 	var transfers []*Transfer
 
 	for rows.Next() {
-		var t Transfer
-		var sourceSavePath, targetSavePath, linkMode sql.NullString
-		var targetCategory sql.NullString
-		var targetTagsJSON, pathMappingsJSON sql.NullString
-		var errorStr sql.NullString
-		var completedAt sql.NullTime
-
-		err := rows.Scan(
-			&t.ID, &t.SourceInstanceID, &t.TargetInstanceID, &t.TorrentHash, &t.TorrentName,
-			&t.State, &sourceSavePath, &targetSavePath, &linkMode,
-			&t.DeleteFromSource, &t.PreserveCategory, &t.PreserveTags,
-			&targetCategory, &targetTagsJSON, &pathMappingsJSON,
-			&t.FilesTotal, &t.FilesLinked, &errorStr,
-			&t.CreatedAt, &t.UpdatedAt, &completedAt,
-		)
+		t, err := s.scanTransfer(rows)
 		if err != nil {
 			return nil, err
 		}
 
-		t.SourceSavePath = sourceSavePath.String
-		t.TargetSavePath = targetSavePath.String
-		t.LinkMode = linkMode.String
-		t.TargetCategory = targetCategory.String
-		t.Error = errorStr.String
-
-		if completedAt.Valid {
-			t.CompletedAt = &completedAt.Time
-		}
-
-		if targetTagsJSON.Valid && targetTagsJSON.String != "" {
-			if err := json.Unmarshal([]byte(targetTagsJSON.String), &t.TargetTags); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal target_tags for transfer %d: %w", t.ID, err)
-			}
-		}
-
-		if pathMappingsJSON.Valid && pathMappingsJSON.String != "" {
-			if err := json.Unmarshal([]byte(pathMappingsJSON.String), &t.PathMappings); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal path_mappings for transfer %d: %w", t.ID, err)
-			}
-		}
-
-		transfers = append(transfers, &t)
+		transfers = append(transfers, t)
 	}
 
 	if err := rows.Err(); err != nil {

@@ -42,6 +42,7 @@ export type TorrentActionComplete =
   | "renameTorrent"
   | "renameTorrentFile"
   | "renameTorrentFolder"
+  | "moveToInstance"
 
 interface UseTorrentActionsProps {
   instanceId: number
@@ -103,6 +104,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showTmmDialog, setShowTmmDialog] = useState(false)
   const [pendingTmmEnable, setPendingTmmEnable] = useState(false)
   const [showLocationWarningDialog, setShowLocationWarningDialog] = useState(false)
+  const [showMoveToInstanceDialog, setShowMoveToInstanceDialog] = useState(false)
 
   // Context state for dialogs
   const [contextHashes, setContextHashes] = useState<string[]>([])
@@ -861,7 +863,97 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRenameFolderDialog(true)
   }, [])
 
-  const isPending = mutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
+  const prepareMoveToInstanceAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    if (hashes.length === 0) return
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowMoveToInstanceDialog(true)
+  }, [])
+
+  const moveTorrentMutation = useMutation({
+    mutationFn: async ({
+      hash,
+      targetInstanceId,
+      deleteFromSource,
+      preserveCategory,
+      preserveTags,
+    }: {
+      hash: string
+      targetInstanceId: number
+      deleteFromSource: boolean
+      preserveCategory: boolean
+      preserveTags: boolean
+    }) => {
+      return api.moveTorrent(instanceId, hash, {
+        targetInstanceId,
+        deleteFromSource,
+        preserveCategory,
+        preserveTags,
+      })
+    },
+  })
+
+  const handleMoveToInstance = useCallback(async (
+    targetInstanceId: number,
+    options: {
+      deleteFromSource: boolean
+      preserveCategory: boolean
+      preserveTags: boolean
+    }
+  ) => {
+    if (contextHashes.length === 0) return
+
+    // Move torrents sequentially (can be changed to parallel if needed)
+    const results: { hash: string; success: boolean; error?: string }[] = []
+
+    for (const hash of contextHashes) {
+      try {
+        await moveTorrentMutation.mutateAsync({
+          hash,
+          targetInstanceId,
+          ...options,
+        })
+        results.push({ hash, success: true })
+      } catch (error) {
+        results.push({ hash, success: false, error: (error as Error).message })
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length
+    const failCount = results.filter((r) => !r.success).length
+
+    if (successCount > 0) {
+      setTimeout(() => {
+        queryClient.refetchQueries({
+          queryKey: ["torrents-list", instanceId],
+          exact: false,
+          type: "active",
+        })
+        queryClient.refetchQueries({
+          queryKey: ["torrent-counts", instanceId],
+          exact: false,
+          type: "active",
+        })
+      }, 1000)
+    }
+
+    if (successCount > 0 && failCount === 0) {
+      toast.success(`Started moving ${successCount} torrent(s) to target instance`)
+    } else if (successCount > 0 && failCount > 0) {
+      toast.warning(`Started moving ${successCount} torrent(s), ${failCount} failed`)
+    } else if (failCount > 0) {
+      toast.error(`Failed to move ${failCount} torrent(s)`)
+    }
+
+    setShowMoveToInstanceDialog(false)
+    setContextHashes([])
+    setContextTorrents([])
+    if (successCount > 0) {
+      onActionComplete?.("moveToInstance")
+    }
+  }, [contextHashes, moveTorrentMutation, onActionComplete, queryClient, instanceId])
+
+  const isPending = mutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending || moveTorrentMutation.isPending
 
 
   return {
@@ -906,6 +998,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
+    showMoveToInstanceDialog,
+    setShowMoveToInstanceDialog,
     contextHashes,
     contextTorrents,
 
@@ -914,6 +1008,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
     // Direct action handlers
     handleAction,
+    handleMoveToInstance,
     handleDelete,
     handleAddTags,
     handleSetTags,
@@ -944,6 +1039,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareTmmAction,
     handleTmmConfirm,
     proceedToLocationDialog,
+    prepareMoveToInstanceAction,
   }
 }
 

@@ -3934,8 +3934,24 @@ paths:
           description: Filter by source or target instance ID
         - name: states
           in: query
+          style: form
+          explode: false
           schema:
-            type: string
+            type: array
+            items:
+              type: string
+              enum:
+                - pending
+                - preparing
+                - links_creating
+                - links_created
+                - adding_torrent
+                - torrent_added
+                - deleting_source
+                - completed
+                - failed
+                - rolled_back
+                - cancelled
           description: Comma-separated list of states to filter by
       responses:
         '200':
@@ -3996,6 +4012,8 @@ paths:
                     example: cancelled
         '400':
           description: Invalid transfer ID
+        '404':
+          description: Transfer not found
         '409':
           description: Cannot cancel transfer in current state
 
@@ -5763,6 +5781,7 @@ components:
         linkMode:
           type: string
           enum: ["hardlink", "reflink", "direct"]
+          description: Link mode used for the transfer. "hardlink" creates hard links, "reflink" uses copy-on-write (CoW), "direct" uses the files directly without linking.
         deleteFromSource:
           type: boolean
         preserveCategory:
@@ -5779,12 +5798,14 @@ components:
           type: object
           additionalProperties:
             type: string
+          default: { }
         filesTotal:
           type: integer
         filesLinked:
           type: integer
         error:
           type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -5816,6 +5837,7 @@ components:
           type: object
           additionalProperties:
             type: string
+          default: { }
           description: Optional path prefix mappings from source to target
         deleteFromSource:
           type: boolean
@@ -5842,6 +5864,7 @@ components:
           type: object
           additionalProperties:
             type: string
+          default: { }
           description: Optional path prefix mappings from source to target
         deleteFromSource:
           type: boolean
