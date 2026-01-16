@@ -113,6 +113,7 @@ import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
   LocationWarningDialog,
+  MoveToInstanceDialog,
   RemoveTagsDialog,
   RenameTorrentDialog,
   RenameTorrentFileDialog,
@@ -611,6 +612,51 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
+  // Check if move to instance is available and why not
+  const canMoveToInstance = useMemo(() => {
+    // Cannot move when Select All is active - requires loading all hashes
+    if (isAllSelected) return false
+    if (!instance?.hasLocalFilesystemAccess) return false
+    // Check if there are other connected instances with local filesystem access
+    const otherInstances = instances?.filter(
+      (i) => i.id !== instanceId && i.connected && i.hasLocalFilesystemAccess
+    )
+    return (otherInstances?.length ?? 0) > 0
+  }, [instances, instance, instanceId, isAllSelected])
+
+  // Eligible target instances for move operation
+  const eligibleTargetInstances = useMemo(() => {
+    return instances?.filter(
+      (i) => i.id !== instanceId && i.connected && i.hasLocalFilesystemAccess
+    ) ?? []
+  }, [instances, instanceId])
+
+  const moveToInstanceDisabledReason = useMemo(() => {
+    // Cannot move when Select All is active - requires loading all hashes
+    if (isAllSelected) {
+      return "Cannot move when Select All is active - deselect and select individual torrents"
+    }
+    if (!instance?.hasLocalFilesystemAccess) {
+      return "This instance does not have local filesystem access enabled"
+    }
+    if (eligibleTargetInstances.length === 0) {
+      return "No other connected instances with local filesystem access available"
+    }
+    return undefined
+  }, [instance, isAllSelected, eligibleTargetInstances])
+
+  // Available target instances for move dialog
+  const availableTargetInstances = useMemo(() => {
+    return (instances ?? [])
+      .filter((i) => i.id !== instanceId)
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        connected: i.connected,
+        hasLocalFilesystemAccess: i.hasLocalFilesystemAccess,
+      }))
+  }, [instances, instanceId])
+
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
@@ -800,6 +846,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareRecheckAction,
     prepareReannounceAction,
     prepareTmmAction,
+    showMoveToInstanceDialog,
+    setShowMoveToInstanceDialog,
+    handleMoveToInstance,
+    prepareMoveToInstanceAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -2487,6 +2537,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         onPrepareRecheck={prepareRecheckAction}
                         onPrepareReannounce={prepareReannounceAction}
                         onPrepareTmm={prepareTmmAction}
+                        onPrepareMoveToInstance={prepareMoveToInstanceAction}
+                        canMoveToInstance={canMoveToInstance}
+                        moveToInstanceDisabledReason={moveToInstanceDisabledReason}
                         availableCategories={availableCategories}
                         onSetCategory={handleSetCategoryDirect}
                         isPending={isPending}
@@ -2600,6 +2653,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onPrepareTmm={prepareTmmAction}
+                      onPrepareMoveToInstance={prepareMoveToInstanceAction}
+                      canMoveToInstance={canMoveToInstance}
+                      moveToInstanceDisabledReason={moveToInstanceDisabledReason}
                       availableCategories={availableCategories}
                       onSetCategory={handleSetCategoryDirect}
                       isPending={isPending}
@@ -2902,6 +2958,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onOpenChange={setShowLocationWarningDialog}
           count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
           onConfirm={proceedToLocationDialog}
+          isPending={isPending}
+        />
+
+        {/* Move to Instance Dialog */}
+        <MoveToInstanceDialog
+          open={showMoveToInstanceDialog}
+          onOpenChange={setShowMoveToInstanceDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          currentInstanceId={instanceId}
+          instances={availableTargetInstances}
+          onConfirm={handleMoveToInstance}
           isPending={isPending}
         />
 

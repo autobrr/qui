@@ -13,8 +13,6 @@ import (
 
 // worker processes transfers from the queue
 func (s *Service) worker(id int) {
-	defer s.workerWg.Done()
-
 	log.Debug().Int("workerID", id).Msg("[TRANSFER] Worker started")
 
 	for {

@@ -72,10 +72,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "moveInstance"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "moveInstance"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -84,6 +84,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   delete: "Delete",
   tag: "Tag",
   category: "Category",
+  moveInstance: "Move to instance",
 }
 
 /**
@@ -119,6 +120,7 @@ type FormState = {
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
+  moveInstanceEnabled: boolean
   // Speed limits settings (mode-based)
   exprUploadMode: SpeedLimitMode
   exprUploadValue?: number // KiB/s, only used when mode is "custom"
@@ -144,6 +146,9 @@ type FormState = {
   exprCategory: string
   exprIncludeCrossSeeds: boolean
   exprBlockIfCrossSeedInCategories: string[]
+  // Move instance action settings
+  exprMoveTargetInstanceId: number | null
+  exprMoveDeleteFromSource: boolean
 }
 
 const emptyFormState: FormState = {
@@ -160,6 +165,7 @@ const emptyFormState: FormState = {
   deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
+  moveInstanceEnabled: false,
   exprUploadMode: "no_change",
   exprUploadValue: undefined,
   exprDownloadMode: "no_change",
@@ -179,6 +185,8 @@ const emptyFormState: FormState = {
   exprCategory: "",
   exprIncludeCrossSeeds: false,
   exprBlockIfCrossSeedInCategories: [],
+  exprMoveTargetInstanceId: null,
+  exprMoveDeleteFromSource: true,
 }
 
 // Helper to get enabled actions from form state
@@ -190,6 +198,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
+  if (state.moveInstanceEnabled) actions.push("moveInstance")
   return actions
 }
 
@@ -242,6 +251,29 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
     [instances, instanceId]
   )
+
+  const eligibleTargetInstances = useMemo(
+    () => instances?.filter(
+      (i) => i.id !== instanceId && i.connected && i.hasLocalFilesystemAccess
+    ) ?? [],
+    [instances, instanceId]
+  )
+
+  // Check if move to instance is available
+  const canMoveToInstance = useMemo(() => {
+    if (!hasLocalFilesystemAccess) return false
+    return eligibleTargetInstances.length > 0
+  }, [hasLocalFilesystemAccess, eligibleTargetInstances])
+
+  const moveToInstanceDisabledReason = useMemo(() => {
+    if (!hasLocalFilesystemAccess) {
+      return "This instance does not have local filesystem access enabled"
+    }
+    if (eligibleTargetInstances.length === 0) {
+      return "No other instances with local filesystem access available"
+    }
+    return undefined
+  }, [hasLocalFilesystemAccess, eligibleTargetInstances])
 
   // Callback for path autocomplete suggestion selection
   const handleFreeSpacePathSelect = useCallback((path: string) => {
@@ -399,6 +431,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
+        let moveInstanceEnabled = false
         let exprUploadMode: SpeedLimitMode = "no_change"
         let exprUploadValue: number | undefined
         let exprDownloadMode: SpeedLimitMode = "no_change"
@@ -418,6 +451,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
+        let exprMoveTargetInstanceId: number | null = null
+        let exprMoveDeleteFromSource = true
 
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
@@ -435,6 +470,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.delete?.condition
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
+            ?? conditions.moveInstance?.condition
             ?? null
 
           if (conditions.speedLimits?.enabled) {
@@ -511,6 +547,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprIncludeCrossSeeds = conditions.category.includeCrossSeeds ?? false
             exprBlockIfCrossSeedInCategories = conditions.category.blockIfCrossSeedInCategories ?? []
           }
+          if (conditions.moveInstance?.enabled) {
+            moveInstanceEnabled = true
+            exprMoveTargetInstanceId = conditions.moveInstance.targetInstanceId ?? null
+            exprMoveDeleteFromSource = conditions.moveInstance.deleteFromSource ?? true
+          }
         }
 
         const newState: FormState = {
@@ -528,6 +569,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
+          moveInstanceEnabled,
           exprUploadMode,
           exprUploadValue,
           exprDownloadMode,
@@ -547,6 +589,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprCategory,
           exprIncludeCrossSeeds,
           exprBlockIfCrossSeedInCategories,
+          exprMoveTargetInstanceId,
+          exprMoveDeleteFromSource,
         }
         setFormState(newState)
       } else {
@@ -734,6 +778,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.moveInstanceEnabled && input.exprMoveTargetInstanceId !== null) {
+      conditions.moveInstance = {
+        enabled: true,
+        targetInstanceId: input.exprMoveTargetInstanceId,
+        deleteFromSource: input.exprMoveDeleteFromSource,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
 
     const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
@@ -780,6 +832,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
+    formState.moveInstanceEnabled,
   ].filter(Boolean).length
 
   const previewMutation = useMutation({
@@ -1024,6 +1077,30 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Delete requires at least one condition")
       return
     }
+    if (submitState.moveInstanceEnabled) {
+      if (!hasLocalFilesystemAccess) {
+        toast.error("Enable Local Filesystem Access on the source instance to use move action")
+        return
+      }
+      if (submitState.exprMoveTargetInstanceId === null) {
+        toast.error("Select a target instance for move action")
+        return
+      }
+      // Validate the target instance is eligible (connected and has local filesystem access)
+      const targetInstance = instances?.find(i => i.id === submitState.exprMoveTargetInstanceId)
+      if (!targetInstance) {
+        toast.error("Target instance not found")
+        return
+      }
+      if (!targetInstance.connected) {
+        toast.error("Target instance is disconnected")
+        return
+      }
+      if (!targetInstance.hasLocalFilesystemAccess) {
+        toast.error("Target instance does not have local filesystem access")
+        return
+      }
+    }
 
     // Validate regex patterns before saving (only if enabling the workflow)
     const payload = buildPayload(submitState)
@@ -1172,6 +1249,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <Select
                           value=""
                           onValueChange={(action: ActionType) => {
+                            // Don't allow selecting moveInstance if it's not available
+                            if (action === "moveInstance" && !canMoveToInstance) return
                             setFormState(prev => ({ ...prev, ...setActionEnabled(action, true) }))
                           }}
                         >
@@ -1180,9 +1259,35 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             Add action
                           </SelectTrigger>
                           <SelectContent>
-                            {availableActions.map(action => (
-                              <SelectItem key={action} value={action}>{ACTION_LABELS[action]}</SelectItem>
-                            ))}
+                            {availableActions.map(action => {
+                              if (action === "moveInstance") {
+                                return (
+                                  <TooltipProvider key={action} delayDuration={300}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div>
+                                          <SelectItem
+                                            value={action}
+                                            disabled={!canMoveToInstance}
+                                            className={!canMoveToInstance ? "opacity-50" : ""}
+                                          >
+                                            {ACTION_LABELS[action]}
+                                          </SelectItem>
+                                        </div>
+                                      </TooltipTrigger>
+                                      {!canMoveToInstance && moveToInstanceDisabledReason && (
+                                        <TooltipContent side="left">
+                                          <p>{moveToInstanceDisabledReason}</p>
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )
+                              }
+                              return (
+                                <SelectItem key={action} value={action}>{ACTION_LABELS[action]}</SelectItem>
+                              )
+                            })}
                           </SelectContent>
                         </Select>
                       )
@@ -1204,6 +1309,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
+                            moveInstanceEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -1221,6 +1327,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="pause">Pause</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
+                        <TooltipProvider delayDuration={300}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div>
+                                <SelectItem
+                                  value="moveInstance"
+                                  disabled={!canMoveToInstance}
+                                  className={!canMoveToInstance ? "opacity-50" : ""}
+                                >
+                                  Move to instance
+                                </SelectItem>
+                              </div>
+                            </TooltipTrigger>
+                            {!canMoveToInstance && moveToInstanceDisabledReason && (
+                              <TooltipContent side="left">
+                                <p>{moveToInstanceDisabledReason}</p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1662,6 +1788,62 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </Label>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Move to Instance */}
+                    {formState.moveInstanceEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Move to Instance</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, moveInstanceEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Target Instance</Label>
+                            <Select
+                              value={formState.exprMoveTargetInstanceId?.toString() ?? ""}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprMoveTargetInstanceId: value ? Number(value) || null : null
+                              }))}
+                            >
+                              <SelectTrigger className="w-fit min-w-[160px]">
+                                <SelectValue placeholder="Select instance" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {eligibleTargetInstances.map((inst) => (
+                                  <SelectItem key={inst.id} value={inst.id.toString()}>
+                                    {inst.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {!canMoveToInstance && moveToInstanceDisabledReason && (
+                              <p className="text-xs text-muted-foreground">
+                                {moveToInstanceDisabledReason}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id="move-delete-from-source"
+                              checked={formState.exprMoveDeleteFromSource}
+                              onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprMoveDeleteFromSource: checked }))}
+                            />
+                            <Label htmlFor="move-delete-from-source" className="text-sm cursor-pointer whitespace-nowrap">
+                              Delete from source after transfer
+                            </Label>
+                          </div>
                         </div>
                       </div>
                     )}

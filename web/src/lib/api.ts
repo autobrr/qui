@@ -81,6 +81,8 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  Transfer,
+  TransferState,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
@@ -2208,6 +2210,135 @@ class ApiClient {
     }
     const suffix = params.toString() ? `?${params.toString()}` : ""
     return this.request<DirScanFile[]>(`/dir-scan/directories/${directoryId}/files${suffix}`)
+  }
+
+  // Transfer endpoints (moving torrents between instances)
+
+  // Raw transfer type from API (supports both snake_case and camelCase)
+  private static readonly RawTransferShape = {} as {
+    id: number
+    source_instance_id?: number
+    sourceInstanceId?: number
+    target_instance_id?: number
+    targetInstanceId?: number
+    torrent_hash?: string
+    torrentHash?: string
+    torrent_name?: string
+    torrentName?: string
+    state: string
+    source_save_path?: string
+    sourceSavePath?: string
+    target_save_path?: string
+    targetSavePath?: string
+    link_mode?: string
+    linkMode?: string
+    delete_from_source?: boolean
+    deleteFromSource?: boolean
+    preserve_category?: boolean
+    preserveCategory?: boolean
+    preserve_tags?: boolean
+    preserveTags?: boolean
+    target_category?: string
+    targetCategory?: string
+    target_tags?: string[]
+    targetTags?: string[]
+    path_mappings?: Record<string, string>
+    pathMappings?: Record<string, string>
+    files_total?: number
+    filesTotal?: number
+    files_linked?: number
+    filesLinked?: number
+    error?: string
+    created_at?: string
+    createdAt?: string
+    updated_at?: string
+    updatedAt?: string
+    completed_at?: string
+    completedAt?: string
+  }
+
+  async moveTorrent(
+    instanceId: number,
+    hash: string,
+    payload: {
+      targetInstanceId: number
+      pathMappings?: Record<string, string>
+      deleteFromSource?: boolean
+      preserveCategory?: boolean
+      preserveTags?: boolean
+    }
+  ): Promise<Transfer> {
+    const raw = await this.request<typeof ApiClient.RawTransferShape>(
+      `/instances/${instanceId}/torrents/${hash}/move`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          targetInstanceId: payload.targetInstanceId,
+          pathMappings: payload.pathMappings,
+          deleteFromSource: payload.deleteFromSource,
+          preserveCategory: payload.preserveCategory,
+          preserveTags: payload.preserveTags,
+        }),
+      }
+    )
+
+    return this.normalizeTransfer(raw)
+  }
+
+  async listTransfers(options?: {
+    limit?: number
+    offset?: number
+    instanceId?: number
+    states?: TransferState[]
+  }): Promise<Transfer[]> {
+    const params = new URLSearchParams()
+    if (options?.limit !== undefined) params.set("limit", options.limit.toString())
+    if (options?.offset !== undefined) params.set("offset", options.offset.toString())
+    if (options?.instanceId !== undefined) params.set("instanceId", options.instanceId.toString())
+    if (options?.states && options.states.length > 0) params.set("states", options.states.join(","))
+
+    const query = params.toString()
+    const suffix = query ? `?${query}` : ""
+
+    const rawList = await this.request<(typeof ApiClient.RawTransferShape)[]>(`/transfers${suffix}`)
+    return rawList.map((raw) => this.normalizeTransfer(raw))
+  }
+
+  async getTransfer(id: number): Promise<Transfer> {
+    const raw = await this.request<typeof ApiClient.RawTransferShape>(`/transfers/${id}`)
+    return this.normalizeTransfer(raw)
+  }
+
+  async cancelTransfer(id: number): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/transfers/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  private normalizeTransfer(raw: typeof ApiClient.RawTransferShape): Transfer {
+    return {
+      id: raw.id,
+      sourceInstanceId: raw.sourceInstanceId ?? raw.source_instance_id ?? 0,
+      targetInstanceId: raw.targetInstanceId ?? raw.target_instance_id ?? 0,
+      torrentHash: raw.torrentHash ?? raw.torrent_hash ?? "",
+      torrentName: raw.torrentName ?? raw.torrent_name ?? "",
+      state: raw.state as Transfer["state"],
+      sourceSavePath: raw.sourceSavePath ?? raw.source_save_path,
+      targetSavePath: raw.targetSavePath ?? raw.target_save_path,
+      linkMode: raw.linkMode ?? raw.link_mode,
+      deleteFromSource: raw.deleteFromSource ?? raw.delete_from_source ?? false,
+      preserveCategory: raw.preserveCategory ?? raw.preserve_category ?? false,
+      preserveTags: raw.preserveTags ?? raw.preserve_tags ?? false,
+      targetCategory: raw.targetCategory ?? raw.target_category,
+      targetTags: raw.targetTags ?? raw.target_tags,
+      pathMappings: raw.pathMappings ?? raw.path_mappings,
+      filesTotal: raw.filesTotal ?? raw.files_total ?? 0,
+      filesLinked: raw.filesLinked ?? raw.files_linked ?? 0,
+      error: raw.error,
+      createdAt: raw.createdAt ?? raw.created_at ?? "",
+      updatedAt: raw.updatedAt ?? raw.updated_at ?? "",
+      completedAt: raw.completedAt ?? raw.completed_at,
+    }
   }
 }
 

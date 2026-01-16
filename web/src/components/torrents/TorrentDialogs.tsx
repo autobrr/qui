@@ -2429,3 +2429,204 @@ export const LocationWarningDialog = memo(function LocationWarningDialog({
     </Dialog>
   )
 })
+
+interface MoveToInstanceDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  currentInstanceId: number
+  instances: Array<{
+    id: number
+    name: string
+    connected: boolean
+    hasLocalFilesystemAccess: boolean
+  }>
+  onConfirm: (targetInstanceId: number, options: {
+    deleteFromSource: boolean
+    preserveCategory: boolean
+    preserveTags: boolean
+  }) => void
+  isPending?: boolean
+}
+
+export const MoveToInstanceDialog = memo(function MoveToInstanceDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  currentInstanceId,
+  instances,
+  onConfirm,
+  isPending = false,
+}: MoveToInstanceDialogProps) {
+  const [targetInstanceId, setTargetInstanceId] = useState<number | null>(null)
+  const [deleteFromSource, setDeleteFromSource] = useState(true)
+  const [preserveCategory, setPreserveCategory] = useState(true)
+  const [preserveTags, setPreserveTags] = useState(true)
+  const wasOpen = useRef(false)
+
+  // Filter instances to show only those that:
+  // 1. Are not the current instance
+  // 2. Have local filesystem access
+  // 3. Are connected
+  const availableInstances = useMemo(() => {
+    return instances.filter(
+      (instance) =>
+        instance.id !== currentInstanceId &&
+        instance.hasLocalFilesystemAccess &&
+        instance.connected
+    )
+  }, [instances, currentInstanceId])
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setTargetInstanceId(null)
+      setDeleteFromSource(true)
+      setPreserveCategory(true)
+      setPreserveTags(true)
+    }
+    wasOpen.current = open
+  }, [open])
+
+  const handleConfirm = useCallback(() => {
+    if (targetInstanceId !== null) {
+      onConfirm(targetInstanceId, {
+        deleteFromSource,
+        preserveCategory,
+        preserveTags,
+      })
+    }
+  }, [targetInstanceId, deleteFromSource, preserveCategory, preserveTags, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setTargetInstanceId(null)
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const selectedInstance = useMemo(() => {
+    return availableInstances.find((i) => i.id === targetInstanceId)
+  }, [availableInstances, targetInstanceId])
+
+  useEffect(() => {
+    if (targetInstanceId !== null && !selectedInstance) {
+      setTargetInstanceId(null)
+    }
+  }, [targetInstanceId, selectedInstance])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Move {hashCount} torrent(s) to Another Instance</DialogTitle>
+          <DialogDescription>
+            Move the selected torrent(s) to another qBittorrent instance. Files will be linked (hardlink/reflink) to avoid duplicating disk space.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {availableInstances.length === 0 ? (
+            <div className="p-4 border rounded-md bg-muted/50">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-warning mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium">No available instances</p>
+                  <p className="text-muted-foreground mt-1">
+                    Other instances must be connected and have local filesystem access enabled to receive torrents.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="target-instance">Target Instance</Label>
+                <Select
+                  value={targetInstanceId?.toString() ?? ""}
+                  onValueChange={(value) => setTargetInstanceId(parseInt(value, 10))}
+                >
+                  <SelectTrigger id="target-instance">
+                    <SelectValue placeholder="Select target instance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableInstances.map((instance) => (
+                      <SelectItem key={instance.id} value={instance.id.toString()}>
+                        {instance.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="delete-from-source">Delete from source</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Remove the torrent from the source instance after transfer
+                    </p>
+                  </div>
+                  <Switch
+                    id="delete-from-source"
+                    checked={deleteFromSource}
+                    onCheckedChange={setDeleteFromSource}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="preserve-category">Preserve category</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Keep the same category on the target instance
+                    </p>
+                  </div>
+                  <Switch
+                    id="preserve-category"
+                    checked={preserveCategory}
+                    onCheckedChange={setPreserveCategory}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="preserve-tags">Preserve tags</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Keep the same tags on the target instance
+                    </p>
+                  </div>
+                  <Switch
+                    id="preserve-tags"
+                    checked={preserveTags}
+                    onCheckedChange={setPreserveTags}
+                  />
+                </div>
+              </div>
+
+              {selectedInstance && (
+                <div className="text-sm text-muted-foreground">
+                  Moving to: <span className="font-medium">{selectedInstance.name}</span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !selectedInstance}
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Moving...
+              </>
+            ) : (
+              "Move Torrent(s)"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})

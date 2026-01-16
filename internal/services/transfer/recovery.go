@@ -5,6 +5,7 @@ package transfer
 
 import (
 	"context"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -26,7 +27,7 @@ func (s *Service) recoverInterrupted() {
 		models.TransferStateDeletingSource,
 	}
 
-	transfers, err := s.store.ListByStates(ctx, states)
+	transfers, err := s.store.ListByStates(ctx, states, 100, 0)
 	if err != nil {
 		log.Error().Err(err).Msg("[TRANSFER] Failed to list interrupted transfers")
 		return
@@ -43,6 +44,17 @@ func (s *Service) recoverInterrupted() {
 	}
 }
 
+// tryEnqueue attempts a non-blocking enqueue; logs a warning if the queue is full.
+func (s *Service) tryEnqueue(id int64) {
+	select {
+	case s.queue <- id:
+	default:
+		log.Warn().
+			Int64("id", id).
+			Msg("[TRANSFER] Queue full, transfer will be picked up later")
+	}
+}
+
 // recoverTransfer handles recovery for a single interrupted transfer
 func (s *Service) recoverTransfer(ctx context.Context, t *models.Transfer) {
 	log.Debug().
@@ -54,22 +66,22 @@ func (s *Service) recoverTransfer(ctx context.Context, t *models.Transfer) {
 	switch t.State {
 	case models.TransferStatePending:
 		// Safe to restart
-		s.queue <- t.ID
+		s.tryEnqueue(t.ID)
 
 	case models.TransferStatePreparing:
 		// Safe to restart from beginning
 		s.updateState(ctx, t, models.TransferStatePending, "")
-		s.queue <- t.ID
+		s.tryEnqueue(t.ID)
 
 	case models.TransferStateLinksCreating:
 		// Links may be partial - attempt rollback and restart
 		s.rollbackLinks(ctx, t)
 		s.updateState(ctx, t, models.TransferStatePending, "")
-		s.queue <- t.ID
+		s.tryEnqueue(t.ID)
 
 	case models.TransferStateLinksCreated:
 		// Links are done, continue with add
-		s.queue <- t.ID
+		s.tryEnqueue(t.ID)
 
 	case models.TransferStateAddingTorrent:
 		// Check if torrent was actually added
@@ -77,24 +89,23 @@ func (s *Service) recoverTransfer(ctx context.Context, t *models.Transfer) {
 		if exists {
 			// Torrent was added - continue
 			s.updateState(ctx, t, models.TransferStateTorrentAdded, "")
-			s.queue <- t.ID
 		} else {
 			// Torrent wasn't added - rollback links and restart
 			s.rollbackLinks(ctx, t)
 			s.updateState(ctx, t, models.TransferStatePending, "")
-			s.queue <- t.ID
 		}
+		s.tryEnqueue(t.ID)
 
 	case models.TransferStateTorrentAdded:
 		// Torrent is on target - continue to delete source if needed
-		s.queue <- t.ID
+		s.tryEnqueue(t.ID)
 
 	case models.TransferStateDeletingSource:
 		// Check if source still has torrent
 		exists := s.checkTorrentExists(ctx, t.SourceInstanceID, t.TorrentHash)
 		if exists {
 			// Still there - continue deletion
-			s.queue <- t.ID
+			s.tryEnqueue(t.ID)
 		} else {
 			// Already deleted - mark complete
 			s.markCompleted(ctx, t)
@@ -122,4 +133,41 @@ func (s *Service) ReconcileInterruptedTransfers(ctx context.Context) (int64, err
 	}
 
 	return count, nil
+}
+
+// periodicRecovery runs in the background and re-enqueues pending transfers
+// that may have been missed due to a full queue.
+func (s *Service) periodicRecovery() {
+	ticker := time.NewTicker(s.recoveryInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.workerCtx.Done():
+			return
+		case <-ticker.C:
+			s.requeuePending()
+		}
+	}
+}
+
+// requeuePending queries pending transfers and attempts to enqueue them.
+func (s *Service) requeuePending() {
+	ctx := context.Background()
+
+	transfers, err := s.store.ListByStates(ctx, []models.TransferState{models.TransferStatePending}, 100, 0)
+	if err != nil {
+		log.Error().Err(err).Msg("[TRANSFER] Failed to list pending transfers for requeue")
+		return
+	}
+
+	if len(transfers) == 0 {
+		return
+	}
+
+	log.Debug().Int("count", len(transfers)).Msg("[TRANSFER] Re-enqueuing pending transfers")
+
+	for _, t := range transfers {
+		s.tryEnqueue(t.ID)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -68,6 +69,10 @@ func (h *TransfersHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if payload.PreserveTags != nil {
 		preserveTags = *payload.PreserveTags
 	}
+	if payload.SourceInstanceID <= 0 || payload.TargetInstanceID <= 0 || strings.TrimSpace(payload.TorrentHash) == "" {
+		RespondError(w, http.StatusBadRequest, "sourceInstanceId, targetInstanceId and torrentHash are required")
+		return
+	}
 
 	req := &transfer.TransferRequest{
 		SourceInstanceID: payload.SourceInstanceID,
@@ -103,7 +108,7 @@ func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
-			opts.Limit = limit
+			opts.Limit = min(limit, 1000) // Cap at 1000
 		}
 	}
 	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
@@ -117,10 +122,13 @@ func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if statesStr := r.URL.Query().Get("states"); statesStr != "" {
-		// Parse comma-separated states
+		// Parse comma-separated states, validate each
 		var states []models.TransferState
 		for _, s := range splitAndTrim(statesStr, ",") {
-			states = append(states, models.TransferState(s))
+			state := models.TransferState(s)
+			if state.IsValid() {
+				states = append(states, state)
+			}
 		}
 		opts.States = states
 	}
@@ -146,8 +154,13 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	t, err := h.service.GetTransfer(r.Context(), id)
 	if err != nil {
-		log.Error().Err(err).Int64("id", id).Msg("failed to get transfer")
-		RespondError(w, http.StatusNotFound, "Transfer not found")
+		if errors.Is(err, transfer.ErrTransferNotFound) {
+			log.Error().Err(err).Int64("id", id).Msg("failed to get transfer: transfer not found")
+			RespondError(w, http.StatusNotFound, "Transfer not found")
+			return
+		}
+		log.Error().Err(err).Int64("id", id).Msg("failed to get transfer: internal error")
+		RespondError(w, http.StatusInternalServerError, "Failed to get transfer: internal error")
 		return
 	}
 
@@ -164,12 +177,17 @@ func (h *TransfersHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.CancelTransfer(r.Context(), id); err != nil {
-		if errors.Is(err, transfer.ErrCannotCancel) {
+		if errors.Is(err, transfer.ErrTransferNotFound) {
+			log.Error().Err(err).Int64("id", id).Msg("failed to cancel transfer: transfer not found")
+			RespondError(w, http.StatusNotFound, "Transfer not found")
+			return
+		} else if errors.Is(err, transfer.ErrCannotCancel) {
+			log.Error().Err(err).Int64("id", id).Msg("failed to cancel transfer: cannot cancel in current state")
 			RespondError(w, http.StatusConflict, "Cannot cancel transfer in current state")
 			return
 		}
-		log.Error().Err(err).Int64("id", id).Msg("failed to cancel transfer")
-		RespondError(w, http.StatusInternalServerError, "Failed to cancel transfer")
+		log.Error().Err(err).Int64("id", id).Msg("failed to cancel transfer: internal error")
+		RespondError(w, http.StatusInternalServerError, "Failed to cancel transfer: internal error")
 		return
 	}
 
@@ -197,7 +215,7 @@ func (h *TransfersHandler) MoveTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.TargetInstanceID == 0 {
+	if payload.TargetInstanceID <= 0 {
 		RespondError(w, http.StatusBadRequest, "Target instance ID is required")
 		return
 	}
@@ -248,41 +266,13 @@ func splitAndTrim(s, sep string) []string {
 	if s == "" {
 		return nil
 	}
-	var parts []string
-	for _, p := range splitString(s, sep) {
-		p = trimSpace(p)
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
 		if p != "" {
-			parts = append(parts, p)
+			out = append(out, p)
 		}
 	}
-	return parts
-}
-
-func splitString(s, sep string) []string {
-	if sep == "" {
-		return []string{s}
-	}
-	var parts []string
-	start := 0
-	for i := 0; i <= len(s)-len(sep); i++ {
-		if s[i:i+len(sep)] == sep {
-			parts = append(parts, s[start:i])
-			start = i + len(sep)
-			i += len(sep) - 1
-		}
-	}
-	parts = append(parts, s[start:])
-	return parts
-}
-
-func trimSpace(s string) string {
-	start := 0
-	end := len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-	return s[start:end]
+	return out
 }

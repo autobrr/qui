@@ -8,6 +8,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/fsutil"
+	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
 // computeTargetPath determines where files should be placed on target
@@ -21,7 +22,17 @@ func (s *Service) computeTargetPath(
 		var bestMatch string
 		var bestReplacement string
 		for oldPrefix, newPrefix := range mappings {
-			if strings.HasPrefix(sourcePath, oldPrefix) {
+			// Require exact match or path separator after prefix to avoid partial name matches
+			// e.g., "/data" should not match "/data2", but should match "/data" and "/data/foo"
+			if sourcePath == oldPrefix || strings.HasPrefix(sourcePath, oldPrefix) {
+				// Ensure prefix ends on a path boundary when prefix has no trailing separator
+				if len(sourcePath) > len(oldPrefix) &&
+					!strings.HasSuffix(oldPrefix, "/") && !strings.HasSuffix(oldPrefix, "\\") {
+					next := sourcePath[len(oldPrefix)]
+					if next != '/' && next != '\\' {
+						continue
+					}
+				}
 				if len(oldPrefix) > len(bestMatch) {
 					bestMatch = oldPrefix
 					bestReplacement = newPrefix
@@ -42,28 +53,31 @@ func (s *Service) computeTargetPath(
 	return sourcePath
 }
 
-// determineLinkMode decides whether to use hardlinks, reflinks, or direct add
+// determineLinkMode decides whether to use hardlinks, reflinks, or direct (usage/symlink/copy)
 func (s *Service) determineLinkMode(
 	targetInstance *models.Instance,
 	sourcePath, targetPath string,
-) string {
+) (string, error) {
 	// Check hardlinks first (preferred - instant, no extra space)
 	if targetInstance.UseHardlinks {
 		sameFS, err := fsutil.SameFilesystem(sourcePath, targetPath)
 		if err == nil && sameFS {
-			return "hardlink"
+			return "hardlink", nil
+		} else if !targetInstance.FallbackToRegularMode {
+			return "", ErrNoLinkModeAvailable
 		}
-		// Different filesystem - fall back to reflink if enabled and fallback allowed
-		if targetInstance.UseReflinks && targetInstance.FallbackToRegularMode {
-			return "reflink"
+	} else if targetInstance.UseReflinks {
+		// Reflinks require same filesystem
+		if sameFS, err := fsutil.SameFilesystem(sourcePath, targetPath); err == nil && sameFS {
+			if supported, _ := reflinktree.SupportsReflink(targetPath); supported {
+				return "reflink", nil
+			}
+		}
+		if !targetInstance.FallbackToRegularMode {
+			return "", ErrNoLinkModeAvailable
 		}
 	}
 
-	// Check reflinks (copy-on-write)
-	if targetInstance.UseReflinks {
-		return "reflink"
-	}
-
-	// Direct add (no file linking - assumes shared storage or same paths)
-	return "direct"
+	// Plain old direct usage / copy
+	return "direct", nil
 }

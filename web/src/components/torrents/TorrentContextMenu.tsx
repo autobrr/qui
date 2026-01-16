@@ -23,6 +23,7 @@ import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import {
+  ArrowRightLeft,
   Blocks,
   CheckCircle,
   Copy,
@@ -44,6 +45,7 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -72,6 +74,9 @@ interface TorrentContextMenuProps {
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareMoveToInstance?: (hashes: string[], torrents?: Torrent[]) => void
+  canMoveToInstance?: boolean
+  moveToInstanceDisabledReason?: string
   availableCategories?: Record<string, Category>
   onSetCategory?: (category: string, hashes: string[]) => void
   isPending?: boolean
@@ -106,6 +111,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareRenameTorrent,
   onPrepareRenameFile: _onPrepareRenameFile,
   onPrepareRenameFolder: _onPrepareRenameFolder,
+  onPrepareMoveToInstance,
+  canMoveToInstance = false,
+  moveToInstanceDisabledReason,
   onPrepareTmm,
   availableCategories = {},
   onSetCategory,
@@ -497,6 +505,29 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             <Download className="mr-2 h-4 w-4" />
             {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
           </ContextMenuItem>
+        )}
+        {onPrepareMoveToInstance && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <ContextMenuItem
+                    onClick={() => canMoveToInstance && onPrepareMoveToInstance(hashes, torrents)}
+                    disabled={isPending || !canMoveToInstance}
+                    className={!canMoveToInstance ? "opacity-50" : ""}
+                  >
+                    <ArrowRightLeft className="mr-2 h-4 w-4" />
+                    Move to Instance {count > 1 ? `(${count})` : ""}
+                  </ContextMenuItem>
+                </div>
+              </TooltipTrigger>
+              {!canMoveToInstance && moveToInstanceDisabledReason && (
+                <TooltipContent side="left">
+                  <p>{moveToInstanceDisabledReason}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         )}
         <ContextMenuSub>
           <ContextMenuSubTrigger>
