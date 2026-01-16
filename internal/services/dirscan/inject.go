@@ -549,10 +549,20 @@ func (i *Injector) createLinkTree(instance *models.Instance, existingFiles []har
 			return "", fmt.Errorf("verify same filesystem: %w", err)
 		}
 		if !sameFS {
-			return "", errors.New("hardlink source and destination are on different filesystems")
+			return "", fmt.Errorf(
+				"hardlink source (%s) and destination (%s) are on different filesystems",
+				existingFiles[0].AbsPath,
+				instance.HardlinkBaseDir,
+			)
 		}
 
 		if err := hardlinktree.Create(plan); err != nil {
+			if errors.Is(err, syscall.EXDEV) {
+				return "", fmt.Errorf(
+					"create hardlink tree: %w (hardlinks cannot cross filesystems; put your scanned directory and hardlink base dir on the same mount, or enable reflinks if supported)",
+					err,
+				)
+			}
 			return "", fmt.Errorf("create hardlink tree: %w", err)
 		}
 		return injectModeHardlink, nil
