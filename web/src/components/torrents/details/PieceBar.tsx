@@ -43,77 +43,108 @@ export const PieceBar = memo(function PieceBar({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Get container width for responsive sizing
-    const containerWidth = container.clientWidth
-    const barHeight = 12
+    let rafId: number | undefined
 
-    // Set canvas size (use device pixel ratio for sharp rendering)
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = containerWidth * dpr
-    canvas.height = barHeight * dpr
-    canvas.style.width = `${containerWidth}px`
-    canvas.style.height = `${barHeight}px`
-    ctx.scale(dpr, dpr)
+    const draw = () => {
+      // Get container width for responsive sizing
+      const containerWidth = container.clientWidth
+      if (containerWidth <= 0) return
 
-    // Clear canvas with background
-    ctx.fillStyle = COLORS.background
-    ctx.beginPath()
-    ctx.roundRect(0, 0, containerWidth, barHeight, 4)
-    ctx.fill()
+      const barHeight = 12
 
-    // Calculate bucket size - aggregate pieces when there are more pieces than pixels
-    const bucketSize = Math.max(1, Math.ceil(pieceStates.length / containerWidth))
-    const numBuckets = Math.ceil(pieceStates.length / bucketSize)
+      // Set canvas size (use device pixel ratio for sharp rendering)
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = containerWidth * dpr
+      canvas.height = barHeight * dpr
+      canvas.style.width = `${containerWidth}px`
+      canvas.style.height = `${barHeight}px`
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.scale(dpr, dpr)
 
-    // Draw each bucket
-    const pieceWidth = containerWidth / numBuckets
+      // Clear canvas with background
+      ctx.fillStyle = COLORS.background
+      ctx.beginPath()
+      ctx.roundRect(0, 0, containerWidth, barHeight, 4)
+      ctx.fill()
 
-    for (let i = 0; i < numBuckets; i++) {
-      const startIdx = i * bucketSize
-      const endIdx = Math.min(startIdx + bucketSize, pieceStates.length)
-      const bucket = pieceStates.slice(startIdx, endIdx)
+      // Calculate bucket size - aggregate pieces when there are more pieces than pixels
+      const bucketSize = Math.max(1, Math.ceil(pieceStates.length / containerWidth))
+      const numBuckets = Math.ceil(pieceStates.length / bucketSize)
+      if (numBuckets <= 0) return
 
-      // Determine dominant state in bucket
-      // Priority: downloading (show activity) > not-downloaded > downloaded
-      let hasDownloading = false
-      let hasNotDownloaded = false
-      let hasDownloaded = false
+      // Draw each bucket
+      const pieceWidth = containerWidth / numBuckets
 
-      for (const state of bucket) {
-        const stateNum = Number(state)
-        if (stateNum === PIECE_STATE.DOWNLOADING) hasDownloading = true
-        else if (stateNum === PIECE_STATE.NOT_DOWNLOADED) hasNotDownloaded = true
-        else if (stateNum === PIECE_STATE.DOWNLOADED) hasDownloaded = true
+      for (let i = 0; i < numBuckets; i++) {
+        const startIdx = i * bucketSize
+        const endIdx = Math.min(startIdx + bucketSize, pieceStates.length)
+        const bucket = pieceStates.slice(startIdx, endIdx)
+
+        // Determine dominant state in bucket
+        // Priority: downloading (show activity) > not-downloaded > downloaded
+        let hasDownloading = false
+        let hasNotDownloaded = false
+        let hasDownloaded = false
+
+        for (const state of bucket) {
+          const stateNum = Number(state)
+          if (stateNum === PIECE_STATE.DOWNLOADING) hasDownloading = true
+          else if (stateNum === PIECE_STATE.NOT_DOWNLOADED) hasNotDownloaded = true
+          else if (stateNum === PIECE_STATE.DOWNLOADED) hasDownloaded = true
+        }
+
+        // Choose color based on priority
+        let color: string
+        if (hasDownloading) {
+          color = COLORS.downloading
+        } else if (hasDownloaded && !hasNotDownloaded) {
+          color = COLORS.downloaded
+        } else if (hasNotDownloaded && !hasDownloaded) {
+          color = COLORS.notDownloaded
+        } else if (hasDownloaded) {
+          // Mixed bucket with both downloaded and not-downloaded - show downloaded
+          color = COLORS.downloaded
+        } else {
+          color = COLORS.notDownloaded
+        }
+
+        // Draw bucket segment
+        const x = i * pieceWidth
+        ctx.fillStyle = color
+        ctx.fillRect(x, 0, pieceWidth + 0.5, barHeight) // +0.5 to avoid gaps
       }
 
-      // Choose color based on priority
-      let color: string
-      if (hasDownloading) {
-        color = COLORS.downloading
-      } else if (hasDownloaded && !hasNotDownloaded) {
-        color = COLORS.downloaded
-      } else if (hasNotDownloaded && !hasDownloaded) {
-        color = COLORS.notDownloaded
-      } else if (hasDownloaded) {
-        // Mixed bucket with both downloaded and not-downloaded - show downloaded
-        color = COLORS.downloaded
-      } else {
-        color = COLORS.notDownloaded
-      }
-
-      // Draw bucket segment
-      const x = i * pieceWidth
-      ctx.fillStyle = color
-      ctx.fillRect(x, 0, pieceWidth + 0.5, barHeight) // +0.5 to avoid gaps
+      // Apply rounded corners mask by redrawing with clip
+      ctx.globalCompositeOperation = "destination-in"
+      ctx.beginPath()
+      ctx.roundRect(0, 0, containerWidth, barHeight, 4)
+      ctx.fill()
+      ctx.globalCompositeOperation = "source-over"
     }
 
-    // Apply rounded corners mask by redrawing with clip
-    ctx.globalCompositeOperation = "destination-in"
-    ctx.beginPath()
-    ctx.roundRect(0, 0, containerWidth, barHeight, 4)
-    ctx.fill()
-    ctx.globalCompositeOperation = "source-over"
+    const scheduleDraw = () => {
+      if (rafId != null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(draw)
+    }
 
+    scheduleDraw()
+
+    const view = container.ownerDocument.defaultView
+
+    const ResizeObserverImpl = (globalThis as unknown as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver
+    let observer: ResizeObserver | undefined
+    if (ResizeObserverImpl) {
+      observer = new ResizeObserverImpl(() => scheduleDraw())
+      observer.observe(container)
+    } else {
+      view?.addEventListener("resize", scheduleDraw)
+    }
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId)
+      observer?.disconnect()
+      view?.removeEventListener("resize", scheduleDraw)
+    }
   }, [pieceStates])
 
   // Show solid green bar for completed torrents (no need to fetch piece states)

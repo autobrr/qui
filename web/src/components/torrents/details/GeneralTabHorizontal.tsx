@@ -319,7 +319,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             />
             <StatRow
               label="Pieces"
-              value={`${piecesStats.have} / ${piecesStats.total}`}
+              value={piecesStats.total > 0 ? `${piecesStats.have} / ${piecesStats.total}` : "—"}
             />
             {queueingEnabled && (
               <StatRow
@@ -370,13 +370,15 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               Pieces
             </h4>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {piecesStats.have} / {piecesStats.total} ({piecesStats.progress.toFixed(1)}%)
+              {piecesStats.total > 0
+                ? `${piecesStats.have} / ${piecesStats.total} (${piecesStats.progress.toFixed(1)}%)`
+                : "—"}
             </span>
           </div>
           <PieceBar
             pieceStates={needsPieceStates ? pieceStates : undefined}
             isLoading={needsPieceStates ? loadingPieces : false}
-            isComplete={!needsPieceStates}
+            isComplete={!needsPieceStates && piecesStats.progress >= 100}
           />
         </div>
       </div>
