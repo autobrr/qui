@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Shield, Server, Lock } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useIncognitoMode } from "@/lib/incognito"
 import { toast } from "sonner"
 
 interface ProxySettingsFormProps {
@@ -83,6 +84,7 @@ function NumberInput({
 
 export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
+  const [incognitoMode] = useIncognitoMode()
 
   const form = useForm({
     defaultValues: {
@@ -222,6 +224,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="proxy.example.com"
+                    className={incognitoMode ? "blur-sm select-none" : ""}
                   />
                   <p className="text-xs text-muted-foreground">
                     Proxy server hostname or IP address
@@ -284,6 +287,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder="Username"
                       autoComplete="username"
+                      className={incognitoMode ? "blur-sm select-none" : ""}
                     />
                   </div>
                 )}

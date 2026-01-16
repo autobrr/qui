@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstances } from "@/hooks/useInstances"
+import { useIncognitoMode } from "@/lib/incognito"
 import { DEFAULT_REANNOUNCE_SETTINGS, instanceUrlSchema } from "@/lib/instance-validation"
 import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
@@ -22,6 +23,7 @@ interface InstanceSettingsPanelProps {
 
 export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsPanelProps) {
   const { updateInstance, isUpdating } = useInstances()
+  const [incognitoMode] = useIncognitoMode()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   const [authBypass, setAuthBypass] = useState(instance?.username === "")
 
@@ -158,6 +160,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                   }}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="http://localhost:8080"
+                  className={incognitoMode ? "blur-sm select-none" : ""}
                 />
                 {field.state.meta.isTouched && field.state.meta.errors[0] && (
                   <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -236,6 +239,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                       placeholder="admin"
                       data-1p-ignore
                       autoComplete="off"
+                      className={incognitoMode ? "blur-sm select-none" : ""}
                     />
                   </div>
                 )}
@@ -295,6 +299,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                       placeholder="Username"
                       data-1p-ignore
                       autoComplete="off"
+                      className={incognitoMode ? "blur-sm select-none" : ""}
                     />
                   </div>
                 )}

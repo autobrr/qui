@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useIncognitoMode } from "@/lib/incognito"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { toast } from "sonner"
 
@@ -54,6 +55,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const [incognitoMode] = useIncognitoMode()
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
 
   const form = useForm({
@@ -234,6 +236,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 value={field.state.value as string}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="/downloads"
+                className={incognitoMode ? "blur-sm select-none" : ""}
               />
             </div>
           )}
@@ -264,6 +267,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="/temp-downloads"
                     disabled={!tempPathEnabled}
+                    className={incognitoMode ? "blur-sm select-none" : ""}
                   />
                 </div>
               )}
