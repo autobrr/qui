@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && touch dist/.gitkeep",
+    "build": "tsc -b && vite build && node -e \"const fs=require('fs'); fs.mkdirSync('dist',{recursive:true}); fs.closeSync(fs.openSync('dist/.gitkeep','a'));\"",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
     "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\""
