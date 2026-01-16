@@ -20,10 +20,8 @@ import (
 	"maps"
 	"math"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -8366,146 +8364,18 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		return
 	}
 
-	// Execute in a separate goroutine to avoid blocking the cross-seed operation
-	go func() {
-		log.Debug().
-			Int("instanceId", instanceID).
-			Str("torrentHash", torrentHash).
-			Int("programId", programID).
-			Str("programName", program.Name).
-			Msg("Executing external program for cross-seed injection")
-
-		// Get torrent data from sync manager
-		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(context.Background(), instanceID, []string{torrentHash})
-		if err != nil {
-			log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
-			return
-		}
-
-		if !found || targetTorrent == nil {
-			log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
-			return
-		}
-
-		// Execute the external program - simplified version of handler logic
-		launched, outcomeKnown := s.executeExternalProgramSimple(program, targetTorrent)
-
-		switch {
-		case !launched:
-			log.Error().
-				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
-				Int("programId", programID).
-				Str("programName", program.Name).
-				Msg("External program failed to launch for cross-seed injection")
-		case outcomeKnown:
-			log.Debug().
-				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
-				Int("programId", programID).
-				Str("programName", program.Name).
-				Msg("External program executed successfully for cross-seed injection")
-		default:
-			log.Debug().
-				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
-				Int("programId", programID).
-				Str("programName", program.Name).
-				Msg("External program launched for cross-seed injection (outcome unknown)")
-		}
-	}()
-}
-
-// executeExternalProgramSimple runs an external program for a torrent using simplified logic.
-// Returns (launched, outcomeKnown):
-//   - launched: true if the process was started successfully
-//   - outcomeKnown: true if we can determine success/failure (false on Windows with 'start')
-func (s *Service) executeExternalProgramSimple(program *models.ExternalProgram, torrent *qbt.Torrent) (launched, outcomeKnown bool) {
-	// Build torrent data map for variable substitution
-	torrentData := map[string]string{
-		"hash":         torrent.Hash,
-		"name":         torrent.Name,
-		"save_path":    externalprograms.ApplyPathMappings(torrent.SavePath, program.PathMappings),
-		"category":     torrent.Category,
-		"tags":         torrent.Tags,
-		"state":        string(torrent.State),
-		"size":         strconv.FormatInt(torrent.Size, 10),
-		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-		"content_path": externalprograms.ApplyPathMappings(torrent.ContentPath, program.PathMappings),
+	// Get torrent data from sync manager
+	targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{torrentHash})
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
+		return
+	} else if !found {
+		log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
+		return
 	}
 
-	// Build command arguments
-	args := externalprograms.BuildArguments(program.ArgsTemplate, torrentData)
-
-	// Build command
-	var cmd *exec.Cmd
-	if program.UseTerminal {
-		if runtime.GOOS == "windows" {
-			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
-			cmdArgs = append(cmdArgs, args...)
-			cmd = exec.Command("cmd.exe", cmdArgs...)
-		} else {
-			// Simple Unix terminal execution
-			allArgs := append([]string{program.Path}, args...)
-			cmd = exec.Command("xterm", append([]string{"-e"}, allArgs...)...)
-		}
-	} else {
-		if runtime.GOOS == "windows" {
-			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
-			cmdArgs = append(cmdArgs, args...)
-			cmd = exec.Command("cmd.exe", cmdArgs...)
-		} else {
-			if len(args) > 0 {
-				cmd = exec.Command(program.Path, args...)
-			} else {
-				cmd = exec.Command(program.Path)
-			}
-		}
-	}
-
-	// Log the command
-	log.Debug().
-		Str("program", program.Name).
-		Str("hash", torrent.Hash).
-		Str("command", fmt.Sprintf("%v", cmd.Args)).
-		Msg("External program launched")
-
-	if runtime.GOOS == "windows" {
-		// Windows uses 'start' which spawns a detached process - we can't know
-		// the child's exit status, only whether the 'start' command itself succeeded.
-		if err := cmd.Run(); err != nil {
-			log.Error().
-				Err(err).
-				Str("program", program.Name).
-				Str("hash", torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("Failed to launch external program via cmd.exe")
-			return false, false
-		}
-		return true, false // launched, but outcome unknown
-	}
-
-	if err := cmd.Start(); err != nil {
-		log.Error().
-			Err(err).
-			Str("program", program.Name).
-			Str("hash", torrent.Hash).
-			Str("command", fmt.Sprintf("%v", cmd.Args)).
-			Msg("External program failed to start")
-		return false, true
-	}
-
-	if err := cmd.Wait(); err != nil {
-		log.Debug().
-			Err(err).
-			Str("program", program.Name).
-			Str("hash", torrent.Hash).
-			Str("command", fmt.Sprintf("%v", cmd.Args)).
-			Msg("External program exited with error")
-		return false, true
-	}
-
-	return true, true
+	// Execute the external program
+	externalprograms.Execute(program, targetTorrent)
 }
 
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
