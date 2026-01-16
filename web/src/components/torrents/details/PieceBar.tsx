@@ -81,7 +81,7 @@ export const PieceBar = memo(function PieceBar({
         const bucket = pieceStates.slice(startIdx, endIdx)
 
         // Determine dominant state in bucket
-        // Priority: downloading (show activity) > not-downloaded > downloaded
+        // Priority: downloading (show activity) > downloaded > not-downloaded
         let hasDownloading = false
         let hasNotDownloaded = false
         let hasDownloaded = false
