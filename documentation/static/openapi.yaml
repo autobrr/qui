@@ -760,6 +760,12 @@ paths:
                   type: string
                   enum: [flat, by-tracker, by-instance]
                   description: Directory organization preset for hardlink mode.
+                useReflinks:
+                  type: boolean
+                  description: Enable reflink (copy-on-write) mode for cross-seed operations. Mutually exclusive with hardlink mode.
+                fallbackToRegularMode:
+                  type: boolean
+                  description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
       responses:
         '201':
           description: Instance created
@@ -853,6 +859,12 @@ paths:
                   type: string
                   enum: [flat, by-tracker, by-instance]
                   description: Directory organization preset for hardlink mode.
+                useReflinks:
+                  type: boolean
+                  description: Enable reflink (copy-on-write) mode for cross-seed operations. Mutually exclusive with hardlink mode.
+                fallbackToRegularMode:
+                  type: boolean
+                  description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
       responses:
         '200':
           description: Instance updated
@@ -1774,6 +1786,33 @@ paths:
                     relevance:
                       type: number
 
+  /api/instances/{instanceID}/torrents/{hash}/move:
+    post:
+      tags:
+        - Transfers
+      summary: Move torrent to another instance
+      description: Queue a transfer to move this torrent to another qBittorrent instance
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveRequest'
+      responses:
+        '202':
+          description: Transfer queued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: Invalid request or target instance ID required
+        '409':
+          description: Transfer already exists for this torrent
+
   /api/instances/{instanceID}/torrents/add-peers:
     post:
       tags:
@@ -2687,6 +2726,18 @@ paths:
         '500':
           description: Failed to trigger automation run
 
+  /api/cross-seed/run/cancel:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Cancel RSS automation run
+      description: Stops the currently running RSS automation run, if any.
+      responses:
+        '204':
+          description: RSS automation run cancelled successfully
+        '409':
+          description: No automation run is currently active
+
   /api/cross-seed/search/settings:
     get:
       tags:
@@ -3022,10 +3073,6 @@ paths:
                   type: array
                   items:
                     type: string
-                ignorePatterns:
-                  type: array
-                  items:
-                    type: string
                 startPaused:
                   type: boolean
                 skipIfExists:
@@ -3151,6 +3198,41 @@ paths:
           description: Invalid request body
         '500':
           description: Failed to add torrents
+
+  /api/cross-seed/torrents/{instanceID}/{hash}/local-matches:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Find local cross-seed matches
+      description: Find torrents across all qBittorrent instances that match the specified torrent (by content path, name, or release metadata)
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+        - name: strict
+          in: query
+          description: When true, fail if file overlap checks cannot complete (use for delete dialogs to avoid false negatives)
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of matching torrents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalCrossSeedMatch'
+                required:
+                  - matches
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Failed to find matches
 
   /api/log-settings:
     get:
@@ -3775,6 +3857,119 @@ paths:
         '200':
           description: Service is alive
 
+  # Transfer API endpoints
+  /api/transfers:
+    post:
+      tags:
+        - Transfers
+      summary: Create transfer
+      description: Queue a new torrent transfer between instances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          description: Transfer queued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: Invalid request
+        '409':
+          description: Transfer already exists for this torrent
+    get:
+      tags:
+        - Transfers
+      summary: List transfers
+      description: Get list of transfers with optional filtering
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Maximum number of transfers to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of transfers to skip
+        - name: instanceId
+          in: query
+          schema:
+            type: integer
+          description: Filter by source or target instance ID
+        - name: states
+          in: query
+          schema:
+            type: string
+          description: Comma-separated list of states to filter by
+      responses:
+        '200':
+          description: List of transfers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transfer'
+
+  /api/transfers/{id}:
+    get:
+      tags:
+        - Transfers
+      summary: Get transfer
+      description: Get details of a specific transfer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Transfer ID
+      responses:
+        '200':
+          description: Transfer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '404':
+          description: Transfer not found
+    delete:
+      tags:
+        - Transfers
+      summary: Cancel transfer
+      description: Cancel a pending transfer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Transfer ID
+      responses:
+        '200':
+          description: Transfer cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: cancelled
+        '400':
+          description: Invalid transfer ID
+        '409':
+          description: Cannot cancel transfer in current state
 
 components:
   securitySchemes:
@@ -3999,6 +4194,12 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink mode.
+        useReflinks:
+          type: boolean
+          description: When true, cross-seed operations use reflink (copy-on-write) mode for this instance. Mutually exclusive with hardlink mode.
+        fallbackToRegularMode:
+          type: boolean
+          description: When true, cross-seed falls back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
         sortOrder:
           type: integer
           description: Display order preference for the instance.
@@ -4522,10 +4723,6 @@ components:
           type: array
           items:
             type: string
-        ignorePatterns:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -4579,7 +4776,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that would require a manual recheck
+          description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -4607,10 +4804,6 @@ components:
           type: array
           items:
             type: string
-        ignorePatterns:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -4664,7 +4857,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that would require a manual recheck
+          description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -4821,6 +5014,12 @@ components:
         content_filtering_completed:
           type: boolean
           nullable: true
+        disc_layout:
+          type: boolean
+          description: True if this torrent contains disc-based media (Blu-ray/DVD)
+        disc_marker:
+          type: string
+          description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
 
     AsyncIndexerFilteringState:
       type: object
@@ -4996,6 +5195,57 @@ components:
           items:
             $ref: '#/components/schemas/CrossSeedApplyResult'
 
+    LocalCrossSeedMatch:
+      type: object
+      description: A torrent that matches another torrent for cross-seeding purposes
+      properties:
+        instanceId:
+          type: integer
+          description: The qBittorrent instance ID containing this torrent
+        instanceName:
+          type: string
+          description: The name of the qBittorrent instance
+        hash:
+          type: string
+          description: Torrent info hash
+        name:
+          type: string
+          description: Torrent name
+        size:
+          type: integer
+          format: int64
+          description: Total size in bytes
+        progress:
+          type: number
+          format: float
+          description: Download progress (0-1)
+        savePath:
+          type: string
+          description: Save path on disk
+        contentPath:
+          type: string
+          description: Content path on disk
+        category:
+          type: string
+          description: Torrent category
+        tags:
+          type: string
+          description: Comma-separated torrent tags
+        state:
+          type: string
+          description: Torrent state
+        tracker:
+          type: string
+          description: Primary tracker URL
+        trackerHealth:
+          type: string
+          enum: [unregistered, tracker_down]
+          description: Tracker health status (only present if unhealthy)
+        matchType:
+          type: string
+          enum: [content_path, name, release]
+          description: How this torrent was matched
+
     CrossInstanceFilterOptions:
       type: object
       description: Filter options for cross-instance torrent filtering
@@ -5137,6 +5387,10 @@ components:
         scanIntervalHours:
           type: integer
           description: Hours between scheduled scans
+        previewSort:
+          type: string
+          description: Sorting applied to the orphan preview list
+          enum: ["size_desc", "directory_size_desc"]
         maxFilesPerRun:
           type: integer
           description: Maximum orphan files to record per run (prevents DB bloat)
@@ -5162,6 +5416,9 @@ components:
         scanIntervalHours:
           type: integer
           minimum: 1
+        previewSort:
+          type: string
+          enum: ["size_desc", "directory_size_desc"]
         maxFilesPerRun:
           type: integer
           minimum: 1
@@ -5442,6 +5699,135 @@ components:
           type: string
           nullable: true
 
+    # Transfer schemas
+    Transfer:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        sourceInstanceId:
+          type: integer
+        targetInstanceId:
+          type: integer
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        state:
+          type: string
+          enum:
+            - pending
+            - preparing
+            - links_creating
+            - links_created
+            - adding_torrent
+            - torrent_added
+            - deleting_source
+            - completed
+            - failed
+            - rolled_back
+            - cancelled
+        sourceSavePath:
+          type: string
+        targetSavePath:
+          type: string
+        linkMode:
+          type: string
+          enum: ["hardlink", "reflink", "direct"]
+        deleteFromSource:
+          type: boolean
+        preserveCategory:
+          type: boolean
+        preserveTags:
+          type: boolean
+        targetCategory:
+          type: string
+        targetTags:
+          type: array
+          items:
+            type: string
+        pathMappings:
+          type: object
+          additionalProperties:
+            type: string
+        filesTotal:
+          type: integer
+        filesLinked:
+          type: integer
+        error:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TransferRequest:
+      type: object
+      required:
+        - sourceInstanceId
+        - targetInstanceId
+        - torrentHash
+      properties:
+        sourceInstanceId:
+          type: integer
+          description: ID of the source qBittorrent instance
+        targetInstanceId:
+          type: integer
+          description: ID of the target qBittorrent instance
+        torrentHash:
+          type: string
+          description: Hash of the torrent to transfer
+        pathMappings:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional path prefix mappings from source to target
+        deleteFromSource:
+          type: boolean
+          default: true
+          description: Whether to delete the torrent from source after transfer
+        preserveCategory:
+          type: boolean
+          default: true
+          description: Whether to preserve the torrent's category
+        preserveTags:
+          type: boolean
+          default: true
+          description: Whether to preserve the torrent's tags
+
+    MoveRequest:
+      type: object
+      required:
+        - targetInstanceId
+      properties:
+        targetInstanceId:
+          type: integer
+          description: ID of the target qBittorrent instance
+        pathMappings:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional path prefix mappings from source to target
+        deleteFromSource:
+          type: boolean
+          default: true
+          description: Whether to delete the torrent from source after transfer
+        preserveCategory:
+          type: boolean
+          default: true
+          description: Whether to preserve the torrent's category
+        preserveTags:
+          type: boolean
+          default: true
+          description: Whether to preserve the torrent's tags
+
 tags:
   - name: Authentication
     description: User authentication and session management
@@ -5467,5 +5853,7 @@ tags:
     description: Cross-seeding operations for finding and adding duplicate torrents
   - name: Orphan Scan
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
+  - name: Transfers
+    description: Move torrents between qBittorrent instances with hardlink/reflink support
   - name: Theme Licenses
     description: Theme license management (optional feature)

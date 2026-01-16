@@ -1599,6 +1599,15 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	return err
 }
 
+// DeleteTorrents deletes torrents from the instance
+func (sm *SyncManager) DeleteTorrents(ctx context.Context, instanceID int, hashes []string, deleteFiles bool) error {
+	action := "delete"
+	if deleteFiles {
+		action = "deleteWithFiles"
+	}
+	return sm.BulkAction(ctx, instanceID, hashes, action)
+}
+
 // AddTorrent adds a new torrent from file content
 func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
 	// Get client and sync manager

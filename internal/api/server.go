@@ -37,6 +37,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -79,6 +80,7 @@ type Server struct {
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	transferService                  *transfer.Service
 }
 
 type Dependencies struct {
@@ -115,6 +117,7 @@ type Dependencies struct {
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	TransferService                  *transfer.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -158,6 +161,7 @@ func NewServer(deps *Dependencies) *Server {
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		transferService:                  deps.TransferService,
 	}
 
 	return &s
@@ -305,6 +309,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
 
+	// Transfer handler (if service is available)
+	var transfersHandler *handlers.TransfersHandler
+	if s.transferService != nil {
+		transfersHandler = handlers.NewTransfersHandler(s.transferService)
+	}
+
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
 	if s.jackettService != nil && s.torznabIndexerStore != nil {
@@ -392,6 +402,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Post("/resolve", arrHandler.Resolve)
 			})
 
+			// Transfer management (move torrents between instances)
+			if transfersHandler != nil {
+				r.Route("/transfers", func(r chi.Router) {
+					r.Post("/", transfersHandler.Create)
+					r.Get("/", transfersHandler.List)
+					r.Get("/{id}", transfersHandler.Get)
+					r.Delete("/{id}", transfersHandler.Cancel)
+				})
+			}
+
 			// Tracker customizations (nicknames and merged domains)
 			r.Route("/tracker-customizations", func(r chi.Router) {
 				r.Get("/", trackerCustomizationHandler.List)
@@ -451,6 +471,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
+
+							// Move torrent to another instance
+							if transfersHandler != nil {
+								r.Post("/move", transfersHandler.MoveTorrent)
+							}
 						})
 					})
 
