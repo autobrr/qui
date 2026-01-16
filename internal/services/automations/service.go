@@ -7,7 +7,6 @@ package automations
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -19,9 +18,9 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )

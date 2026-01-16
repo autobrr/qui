@@ -8337,7 +8337,6 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		return
 	} else if !found {
 		log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
-		return
 	}
 
 	// Execute the external program
