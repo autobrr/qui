@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -38,6 +37,9 @@ type torrentDesiredState struct {
 	category                  *string
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
+	// Execute (last rule wins)
+	programID *int
+
 	// Delete (first rule to trigger wins)
 	shouldDelete           bool
 	deleteMode             string
@@ -60,6 +62,8 @@ type ruleRunStats struct {
 	TagSkippedMissingUnregisteredSet int
 	CategoryApplied                  int
 	CategoryConditionNotMetOrBlocked int
+	ExecuteApplied                   int
+	ExecuteConditionNotMet           int
 	DeleteApplied                    int
 	DeleteConditionNotMet            int
 }
@@ -281,6 +285,27 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Execute external program
+	if conditions.ExecuteExternalProgram != nil && conditions.ExecuteExternalProgram.Enabled {
+		// Safety: execute must always have an explicit condition.
+		if conditions.ExecuteExternalProgram.Condition == nil {
+			if stats != nil {
+				stats.ExecuteConditionNotMet++
+			}
+		} else {
+			shouldApply := EvaluateConditionWithContext(conditions.ExecuteExternalProgram.Condition, torrent, evalCtx, 0)
+			if shouldApply {
+				if stats != nil {
+					stats.ExecuteApplied++
+				}
+
+				state.programID = conditions.ExecuteExternalProgram.ProgramID
+			} else if stats != nil {
+				stats.ExecuteConditionNotMet++
+			}
+		}
+	}
+
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		// Safety: delete must always have an explicit condition.
@@ -425,6 +450,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldPause ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
+		state.programID != nil ||
 		state.shouldDelete
 }
 

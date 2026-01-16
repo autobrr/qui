@@ -7,6 +7,7 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -67,6 +69,7 @@ type Service struct {
 	ruleStore                 *models.AutomationStore
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
+	externalProgramStore      *models.ExternalProgramStore
 	syncManager               *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
@@ -76,7 +79,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, externalProgramStore *models.ExternalProgramStore, syncManager *qbittorrent.SyncManager) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -95,6 +98,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		ruleStore:                 ruleStore,
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
+		externalProgramStore:      externalProgramStore,
 		syncManager:               syncManager,
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
@@ -1232,6 +1236,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
+	externalProgramExecutions := make(map[string]*models.ExternalProgram)
 
 	type pendingDeletion struct {
 		hash          string
@@ -1525,6 +1530,23 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		if state.category != nil {
 			if torrent.Category != *state.category {
 				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
+			}
+		}
+
+		// Execute external program
+		if state.programID != nil {
+			programID := *state.programID
+			if s.externalProgramStore != nil {
+
+				program, err := s.externalProgramStore.GetByID(ctx, programID)
+				if err != nil {
+					if errors.Is(err, models.ErrExternalProgramNotFound) {
+						log.Warn().Int("programID", programID).Msg("automations: configured external program not found")
+					}
+					log.Error().Err(err).Int("programID", programID).Msg("automations: failed to get external program configuration")
+				} else {
+					externalProgramExecutions[hash] = program
+				}
 			}
 		}
 
@@ -1859,6 +1881,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
 		}
+	}
+
+	// Execute external programs
+	for torrentHash, program := range externalProgramExecutions {
+		torrent, ok := torrentByHash[torrentHash]
+		if !ok {
+			log.Warn().Str("hash", torrentHash).Msg("automations: external program execution failed: torrent not found")
+			continue
+		}
+
+		if !program.Enabled {
+			log.Debug().Int("programId", program.ID).Str("programName", program.Name).Msg("automations: external program is disabled, skipping execution")
+			continue
+		}
+
+		externalprograms.Execute(program, &torrent)
 	}
 
 	// Execute deletions

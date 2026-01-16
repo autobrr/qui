@@ -1,15 +1,96 @@
 package externalprograms
 
 import (
+	"fmt"
+	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
 
-// SplitArgs splits a command line string into arguments, respecting quoted strings.
+// buildArguments substitutes variables in the program's arguments template with torrent data.
+// Returns arguments as an array suitable for exec.Command (no manual quoting needed).
+func buildArguments(program *models.ExternalProgram, torrent *qbt.Torrent) []string {
+	torrentData := map[string]string{
+		"hash":         torrent.Hash,
+		"name":         torrent.Name,
+		"save_path":    applyPathMappings(torrent.SavePath, program.PathMappings),
+		"category":     torrent.Category,
+		"tags":         torrent.Tags,
+		"state":        string(torrent.State),
+		"size":         strconv.FormatInt(torrent.Size, 10),
+		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
+		"content_path": applyPathMappings(torrent.ContentPath, program.PathMappings),
+		"comment":      torrent.Comment,
+	}
+
+	if program.ArgsTemplate == "" {
+		return []string{}
+	}
+
+	args := splitArgs(program.ArgsTemplate)
+	for i := range args {
+		for key, value := range torrentData {
+			placeholder := "{" + key + "}"
+			args[i] = strings.ReplaceAll(args[i], placeholder, value)
+		}
+	}
+
+	return args
+}
+
+func createTerminalCommand(cmdLine string) *exec.Cmd {
+	// List of terminal emulators to try, in order of preference
+	// Each has different syntax for executing a command
+	terminals := []struct {
+		name string
+		args []string
+	}{
+		// gnome-terminal (GNOME)
+		{"gnome-terminal", []string{"--", "bash", "-c", cmdLine + "; exec bash"}},
+		// konsole (KDE)
+		{"konsole", []string{"--hold", "-e", "bash", "-c", cmdLine}},
+		// xfce4-terminal (XFCE)
+		{"xfce4-terminal", []string{"--hold", "-e", "bash", "-c", cmdLine}},
+		// mate-terminal (MATE)
+		{"mate-terminal", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
+		// xterm (fallback, available on most systems)
+		{"xterm", []string{"-hold", "-e", "bash", "-c", cmdLine}},
+		// kitty (modern terminal)
+		{"kitty", []string{"bash", "-c", cmdLine + "; exec bash"}},
+		// alacritty (modern terminal)
+		{"alacritty", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
+		// terminator
+		{"terminator", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
+	}
+
+	// Try each terminal until we find one that exists
+	for _, term := range terminals {
+		if _, err := exec.LookPath(term.name); err == nil {
+			// Found a terminal, use it
+			log.Debug().
+				Str("terminal", term.name).
+				Str("command", cmdLine).
+				Msg("Using terminal emulator for external program")
+			return exec.Command(term.name, term.args...)
+		}
+	}
+
+	// Fallback: if no terminal emulator found, just run in background
+	log.Warn().
+		Str("command", cmdLine).
+		Msg("No terminal emulator found, running command in background")
+	return exec.Command("sh", "-c", cmdLine)
+}
+
+// splitArgs splits a command line string into arguments, respecting quoted strings.
 // It strips surrounding single/double quotes from quoted segments.
-func SplitArgs(s string) []string {
+func splitArgs(s string) []string {
 	var args []string
 	var current strings.Builder
 	inQuote := false
@@ -45,30 +126,12 @@ func SplitArgs(s string) []string {
 	return args
 }
 
-// BuildArguments substitutes variables in the args template with torrent data.
-// Returns arguments as an array suitable for exec.Command (no manual quoting needed).
-func BuildArguments(template string, torrentData map[string]string) []string {
-	if template == "" {
-		return []string{}
-	}
-
-	args := SplitArgs(template)
-	for i := range args {
-		for key, value := range torrentData {
-			placeholder := "{" + key + "}"
-			args[i] = strings.ReplaceAll(args[i], placeholder, value)
-		}
-	}
-
-	return args
-}
-
-// ApplyPathMappings applies configured path mappings to convert remote paths to local paths.
+// applyPathMappings applies configured path mappings to convert remote paths to local paths.
 //
 // Mappings are matched longest-prefix-first to handle overlapping prefixes correctly.
 // Prefix matching requires a path separator boundary (/ or \) to avoid false matches
 // like "/data" matching "/data-backup".
-func ApplyPathMappings(path string, mappings []models.PathMapping) string {
+func applyPathMappings(path string, mappings []models.PathMapping) string {
 	if len(mappings) == 0 {
 		return path
 	}

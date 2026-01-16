@@ -345,7 +345,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 
 		torrent2 := qbt.Torrent{
 			Hash:        "def456",
-			Size:        50000000000, // Same size (hardlink copy)
+			Size:        50000000000,    // Same size (hardlink copy)
 			ContentPath: "/data/movie2", // Different path, but same files via hardlinks
 			SavePath:    "/data",
 		}
@@ -857,4 +857,44 @@ func TestDeleteFreesSpace(t *testing.T) {
 		result := deleteFreesSpace(DeleteModeWithFilesPreserveCrossSeeds, allTorrents[2], allTorrents)
 		require.True(t, result)
 	})
+}
+
+func TestProcessTorrents_ExecuteExternalProgram(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "source",
+			Category:    "sonarr.cross",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+		},
+		{
+			Hash:        "b",
+			Name:        "protected",
+			Category:    "sonarr",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+		},
+	}
+
+	programID := 1
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: &programID,
+				Condition: &models.RuleCondition{Field: models.FieldCategory, Operator: models.OperatorEqual, Value: "sonarr.cross"},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	_, ok := states["a"]
+	require.False(t, ok, "expected category action to be blocked when protected cross-seed exists")
 }
