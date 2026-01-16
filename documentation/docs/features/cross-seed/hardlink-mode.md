@@ -26,7 +26,8 @@ Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy
 ## Behavior
 
 - Hardlink mode is a **per-instance setting** (not per request). Each qBittorrent instance can have its own hardlink configuration.
-- If hardlink mode is enabled and a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails** (no fallback to the default mode).
+- By default, if a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails**.
+- Enable **"Fallback to regular mode"** to allow failed hardlink operations to fall back to regular cross-seed mode instead of failing. This is useful when files may occasionally be on different filesystems.
 - Hardlinked torrents are still categorized using your existing cross-seed category rules (`.cross` suffix / "use indexer name as category"); the hardlink preset only affects on-disk folder layout.
 
 ## Directory Layout
@@ -57,6 +58,7 @@ For the `flat` preset, an isolation folder is always used to keep each torrent's
 3. Enable "Hardlink mode" for that instance.
 4. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
 5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+6. Optionally enable "Fallback to regular mode" if you want failed hardlinks to use regular cross-seed mode instead of failing.
 
 ## Pause Behavior
 
@@ -116,6 +118,7 @@ Reflinks use copy-on-write semantics:
 3. Enable "Reflink mode" for that instance.
 4. Set "Base directory" to a path on the same filesystem as your downloads.
 5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+6. Optionally enable "Fallback to regular mode" if you want failed reflinks to use regular cross-seed mode instead of failing.
 
 :::note
 Hardlink and reflink modes are mutually exclusive—only one can be enabled per instance.

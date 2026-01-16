@@ -515,7 +515,7 @@ func (app *Application) runServer() {
 	defer clientPool.Close()
 
 	// Initialize managers
-	syncManager := qbittorrent.NewSyncManager(clientPool)
+	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
@@ -697,6 +697,12 @@ func (app *Application) runServer() {
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
 	})
+
+	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
+	// Use a short timeout so a locked DB can't hang startup.
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer reconcileCancel()
+	crossSeedService.ReconcileInterruptedRuns(reconcileCtx)
 
 	errorChannel := make(chan error)
 	serverReady := make(chan struct{}, 1)

@@ -12,6 +12,13 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
+// Local match type constants for determineLocalMatchType.
+const (
+	matchTypeContentPath = "content_path"
+	matchTypeName        = "name"
+	matchTypeRelease     = "release"
+)
+
 // CrossSeedRequest represents a request to cross-seed a torrent
 type CrossSeedRequest struct {
 	// TorrentData is the base64-encoded torrent file
@@ -119,6 +126,9 @@ type TorrentInfo struct {
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
 	// Async filtering status
 	ContentFilteringCompleted bool `json:"content_filtering_completed,omitempty"` // Whether async content filtering has finished
+	// Disc layout detection
+	DiscLayout bool   `json:"disc_layout,omitempty"` // True if this torrent contains disc-based media (Blu-ray/DVD)
+	DiscMarker string `json:"disc_marker,omitempty"` // The marker directory name (e.g., "BDMV" or "VIDEO_TS") if DiscLayout is true
 }
 
 // TorrentFile represents a file in the torrent
@@ -280,6 +290,29 @@ type TorrentSearchAddResult struct {
 // ApplyTorrentSearchResponse aggregates the results of adding multiple search selections.
 type ApplyTorrentSearchResponse struct {
 	Results []TorrentSearchAddResult `json:"results"`
+}
+
+// LocalMatchesResponse contains torrents from all instances that match a source torrent.
+type LocalMatchesResponse struct {
+	Matches []LocalMatch `json:"matches"`
+}
+
+// LocalMatch represents a torrent that matches the source across instances.
+type LocalMatch struct {
+	InstanceID    int     `json:"instance_id"`
+	InstanceName  string  `json:"instance_name"`
+	Hash          string  `json:"hash"`
+	Name          string  `json:"name"`
+	Size          int64   `json:"size"`
+	Progress      float64 `json:"progress"`
+	SavePath      string  `json:"save_path"`
+	ContentPath   string  `json:"content_path"`
+	Category      string  `json:"category"`
+	Tags          string  `json:"tags"`
+	State         string  `json:"state"`
+	Tracker       string  `json:"tracker"`
+	TrackerHealth string  `json:"tracker_health,omitempty"`
+	MatchType     string  `json:"match_type"` // "content_path", "name", "release"
 }
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations

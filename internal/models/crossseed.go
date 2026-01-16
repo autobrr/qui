@@ -24,8 +24,8 @@ type CrossSeedAutomationSettings struct {
 	StartPaused        bool    `json:"startPaused"`        // RSS: start added torrents paused
 	Category           *string `json:"category,omitempty"` // RSS: category for added torrents
 	TargetInstanceIDs  []int   `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
-	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
+	TargetIndexerIDs   []int   `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
+	MaxResultsPerRun   int     `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
 
 	// RSS source filtering: filter which LOCAL torrents are considered when checking RSS feeds.
 	// Empty arrays mean "all" (no filtering).
@@ -92,7 +92,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
 		StartPaused:        true,
 		Category:           nil,
-		TargetInstanceIDs: []int{},
+		TargetInstanceIDs:  []int{},
 		TargetIndexerIDs:   []int{},
 		MaxResultsPerRun:   50,
 		// RSS source filtering defaults - empty means no filtering (all torrents)
@@ -1239,6 +1239,50 @@ func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, nil
+	}
+
+	return rows, nil
+}
+
+// MarkInterruptedSearchRuns marks any search runs still in 'running' status as failed.
+// This should be called at startup to reconcile runs interrupted by a crash/restart.
+func (s *CrossSeedStore) MarkInterruptedSearchRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
+	query := `
+		UPDATE cross_seed_search_runs
+		SET status = 'failed', completed_at = ?, error_message = ?
+		WHERE status = 'running'
+	`
+
+	result, err := s.db.ExecContext(ctx, query, completedAt, message)
+	if err != nil {
+		return 0, fmt.Errorf("mark interrupted search runs: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+
+	return rows, nil
+}
+
+// MarkInterruptedAutomationRuns marks any automation runs still in 'running' status as failed.
+// This should be called at startup to reconcile runs interrupted by a crash/restart.
+func (s *CrossSeedStore) MarkInterruptedAutomationRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
+	query := `
+		UPDATE cross_seed_runs
+		SET status = 'failed', completed_at = ?, error_message = ?
+		WHERE status = 'running'
+	`
+
+	result, err := s.db.ExecContext(ctx, query, completedAt, message)
+	if err != nil {
+		return 0, fmt.Errorf("mark interrupted automation runs: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
 	}
 
 	return rows, nil

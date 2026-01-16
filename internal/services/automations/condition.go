@@ -39,6 +39,7 @@ const (
 	FieldDownloaded = models.FieldDownloaded
 	FieldUploaded   = models.FieldUploaded
 	FieldAmountLeft = models.FieldAmountLeft
+	FieldFreeSpace  = models.FieldFreeSpace
 
 	// Numeric fields (timestamps/seconds)
 	FieldAddedOn      = models.FieldAddedOn
@@ -85,6 +86,7 @@ const (
 	DeleteModeKeepFiles                   = models.DeleteModeKeepFiles
 	DeleteModeWithFiles                   = models.DeleteModeWithFiles
 	DeleteModeWithFilesPreserveCrossSeeds = models.DeleteModeWithFilesPreserveCrossSeeds
+	DeleteModeWithFilesIncludeCrossSeeds  = models.DeleteModeWithFilesIncludeCrossSeeds
 
 	// Operators
 	OperatorAnd                = models.OperatorAnd

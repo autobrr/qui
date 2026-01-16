@@ -186,6 +186,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "hardlink_base_dir", Type: "TEXT"},
 		{Name: "hardlink_dir_preset", Type: "TEXT"},
 		{Name: "use_reflinks", Type: "BOOLEAN"},
+		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -253,6 +254,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "enabled", Type: "INTEGER"},
 		{Name: "sort_order", Type: "INTEGER"},
 		{Name: "interval_seconds", Type: "INTEGER"},
+		{Name: "free_space_source", Type: "TEXT"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
 	},

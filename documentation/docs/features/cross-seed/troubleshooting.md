@@ -48,10 +48,6 @@ When the cross-seed torrent has a different display name or root folder, qui ren
 
 When the source torrent contains files not on disk (NFO, SRT, samples not matching allowed extra file patterns), a recheck determines actual progress.
 
-:::note
-In hardlink mode, missing or extra files cause the cross-seed to fail instead of triggering a recheck.
-:::
-
 ### Auto-resume behavior
 
 - Default tolerance 5% → auto-resumes at ≥95% completion
@@ -98,6 +94,19 @@ The incoming torrent has files not present in your matched torrent, and those fi
 - Check if the source torrent has extra files (NFO, samples) not present on disk
 - Verify the "Size mismatch tolerance" setting in Rules
 - Torrents below the auto-resume threshold stay paused for manual review
+
+## Blu-ray or DVD cross-seed left paused
+
+Torrents containing disc-based media (Blu-ray `BDMV` or DVD `VIDEO_TS` folder structures) are always added paused.
+
+**Why?** Disc layout torrents are sensitive to file alignment. Even minor path differences can cause qBittorrent to redownload large video segments, potentially corrupting your seeded content. Leaving them paused lets you verify the recheck completed at 100% before resuming.
+
+**What to do:**
+1. If **Skip recheck** is enabled in Cross-Seed Rules, disc-layout matches will be skipped.
+2. Otherwise, qui triggers a recheck automatically and will only auto-resume once the recheck reaches **100%**.
+3. If you have auto-resume disabled, resume manually after verifying it reaches 100%.
+
+The result message will indicate when this policy applies (example): `"disc layout detected (BDMV), full recheck required"`
 
 ## Webhook returns HTTP 400 "invalid character" error
 
