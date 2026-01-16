@@ -74,6 +74,19 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
   // Calculate pieces stats from actual piece states when available (more accurate than properties)
   const piecesStats = useMemo(() => {
+    const totalFromProperties = properties?.pieces_num || 0
+    const haveFromProperties = properties?.pieces_have || 0
+    const isCompleteFromProperties = (properties?.completion_date != null && properties.completion_date !== -1)
+      || (totalFromProperties > 0 && haveFromProperties >= totalFromProperties)
+
+    // When we don't need piece states anymore, prefer properties (react-query can keep stale pieceStates cached).
+    if (!needsPieceStates) {
+      const total = totalFromProperties
+      const have = isCompleteFromProperties ? total : haveFromProperties
+      const progress = total > 0 ? (have / total) * 100 : (isCompleteFromProperties ? 100 : 0)
+      return { have, total, progress: Math.min(100, progress) }
+    }
+
     if (pieceStates && pieceStates.length > 0) {
       const total = pieceStates.length
       const have = pieceStates.filter(state => state === 2).length
@@ -81,11 +94,11 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
       return { have, total, progress }
     }
     // For completed torrents (no piece states fetched), use properties
-    const total = properties?.pieces_num || 0
-    const have = properties?.pieces_have || 0
+    const total = totalFromProperties
+    const have = haveFromProperties
     const progress = total > 0 ? (have / total) * 100 : 0
     return { have, total, progress }
-  }, [pieceStates, properties?.pieces_have, properties?.pieces_num])
+  }, [needsPieceStates, pieceStates, properties?.completion_date, properties?.pieces_have, properties?.pieces_num])
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -360,7 +373,11 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               {piecesStats.have} / {piecesStats.total} ({piecesStats.progress.toFixed(1)}%)
             </span>
           </div>
-          <PieceBar pieceStates={pieceStates} isLoading={loadingPieces} isComplete={!needsPieceStates} />
+          <PieceBar
+            pieceStates={needsPieceStates ? pieceStates : undefined}
+            isLoading={needsPieceStates ? loadingPieces : false}
+            isComplete={!needsPieceStates}
+          />
         </div>
       </div>
     </ScrollArea>
