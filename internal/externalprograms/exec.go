@@ -13,6 +13,12 @@ import (
 
 // Execute runs an external program for a torrent.
 func Execute(program *models.ExternalProgram, torrent *qbt.Torrent) {
+	// Check params
+	if program == nil || torrent == nil {
+		log.Warn().Any("program", program).Any("torrent", torrent).Msg("Skipping external program execution - invalid params")
+		return
+	}
+
 	// Build command arguments
 	args := buildArguments(program, torrent)
 
@@ -74,7 +80,7 @@ func Execute(program *models.ExternalProgram, torrent *qbt.Torrent) {
 					Str("path", program.Path).
 					Strs("args", args).
 					Strs("command", cmd.Args).
-					Msg("Failed to launch external program  (cmd.exe exited with error which can be normal for 'start' comand)")
+					Msg("Failed to launch external program  (cmd.exe exited with error which can be normal for 'start' command)")
 			}
 		} else {
 			// Unix/Linux: Start the terminal emulator or direct process

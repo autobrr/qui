@@ -146,7 +146,7 @@ type FormState = {
   exprCategory: string
   exprIncludeCrossSeeds: boolean
   exprBlockIfCrossSeedInCategories: string[]
-  // Execute external programm settings
+  // Execute external program settings
   exprExecuteExternalProgramID: number | null
 }
 

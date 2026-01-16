@@ -567,7 +567,7 @@ type CategoryAction struct {
 
 type ExecuteExternalProgramAction struct {
 	Enabled   bool           `json:"enabled"`
-	ProgramID *int           `json:"programID"` // External program to run after successful cross-seed injection
+	ProgramID *int           `json:"programID"` // ID of the external program to execute
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
@@ -576,5 +576,5 @@ func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.ExecuteExternalProgram == nil
 }

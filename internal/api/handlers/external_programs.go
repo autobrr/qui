@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -364,51 +363,4 @@ func normalizePathCase(p string) string {
 	}
 
 	return p
-}
-
-// createTerminalCommand creates a command that spawns a terminal window on Unix/Linux
-// It tries different terminal emulators in order of preference
-// Note: Does not use context so the terminal process isn't cancelled when the HTTP request completes
-func (h *ExternalProgramsHandler) createTerminalCommand(cmdLine string) *exec.Cmd {
-	// List of terminal emulators to try, in order of preference
-	// Each has different syntax for executing a command
-	terminals := []struct {
-		name string
-		args []string
-	}{
-		// gnome-terminal (GNOME)
-		{"gnome-terminal", []string{"--", "bash", "-c", cmdLine + "; exec bash"}},
-		// konsole (KDE)
-		{"konsole", []string{"--hold", "-e", "bash", "-c", cmdLine}},
-		// xfce4-terminal (XFCE)
-		{"xfce4-terminal", []string{"--hold", "-e", "bash", "-c", cmdLine}},
-		// mate-terminal (MATE)
-		{"mate-terminal", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
-		// xterm (fallback, available on most systems)
-		{"xterm", []string{"-hold", "-e", "bash", "-c", cmdLine}},
-		// kitty (modern terminal)
-		{"kitty", []string{"bash", "-c", cmdLine + "; exec bash"}},
-		// alacritty (modern terminal)
-		{"alacritty", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
-		// terminator
-		{"terminator", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
-	}
-
-	// Try each terminal until we find one that exists
-	for _, term := range terminals {
-		if _, err := exec.LookPath(term.name); err == nil {
-			// Found a terminal, use it
-			log.Debug().
-				Str("terminal", term.name).
-				Str("command", cmdLine).
-				Msg("Using terminal emulator for external program")
-			return exec.Command(term.name, term.args...)
-		}
-	}
-
-	// Fallback: if no terminal emulator found, just run in background
-	log.Warn().
-		Str("command", cmdLine).
-		Msg("No terminal emulator found, running command in background")
-	return exec.Command("sh", "-c", cmdLine)
 }

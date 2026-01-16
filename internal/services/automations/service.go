@@ -1537,13 +1537,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		if state.programID != nil {
 			programID := *state.programID
 			if s.externalProgramStore != nil {
-
 				program, err := s.externalProgramStore.GetByID(ctx, programID)
 				if err != nil {
 					if errors.Is(err, models.ErrExternalProgramNotFound) {
 						log.Warn().Int("programID", programID).Msg("automations: configured external program not found")
+					} else {
+						log.Error().Err(err).Int("programID", programID).Msg("automations: failed to get external program configuration")
 					}
-					log.Error().Err(err).Int("programID", programID).Msg("automations: failed to get external program configuration")
 				} else {
 					externalProgramExecutions[hash] = program
 				}
