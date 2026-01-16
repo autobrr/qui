@@ -12,6 +12,8 @@ import { nodePolyfills } from "vite-plugin-node-polyfills"
 import { VitePWA } from "vite-plugin-pwa"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
+const workboxMode = nodeMajor >= 24 ? "development" : "production"
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
@@ -34,6 +36,9 @@ export default defineConfig(() => ({
         enabled: false,
       },
       workbox: {
+        // Workbox uses rollup+terser in production mode; Node 24 currently triggers an "Unexpected early exit".
+        // Use development mode on Node 24+ to keep builds working without changing runtime behavior elsewhere.
+        mode: workboxMode,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
         //maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // Allow larger bundles to be precached
         sourcemap: true,

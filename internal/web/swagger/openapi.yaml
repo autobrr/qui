@@ -1584,6 +1584,34 @@ paths:
         '500':
           description: Failed to get web seeds
 
+  /api/instances/{instanceID}/torrents/{hash}/pieces:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get torrent piece states
+      description: |
+        Get download state of each piece for a torrent.
+        States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Array of piece states
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: integer
+                  minimum: 0
+                  maximum: 2
+                  description: 'Piece state: 0 = not downloaded, 1 = downloading, 2 = downloaded'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to get piece states
+
   /api/instances/{instanceID}/torrents/{hash}/files:
     get:
       tags:
