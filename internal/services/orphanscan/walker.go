@@ -53,6 +53,7 @@ type scanWalker struct {
 	discUnitsInUse map[string]struct{}
 	discUnitCache  map[string]discUnitDecision
 	discUnitPaths  map[string]struct{}
+	seenInodes     map[inodeKey]struct{}
 	truncated      bool
 }
 
@@ -73,7 +74,25 @@ func newScanWalker(
 		discUnitsInUse: make(map[string]struct{}),
 		discUnitCache:  make(map[string]discUnitDecision),
 		discUnitPaths:  make(map[string]struct{}),
+		seenInodes:     make(map[inodeKey]struct{}),
 	}
+}
+
+type inodeKey struct {
+	dev uint64
+	ino uint64
+}
+
+func (w *scanWalker) shouldSkipDuplicate(info fs.FileInfo) bool {
+	key, nlink, ok := inodeKeyFromInfo(info)
+	if !ok || nlink > 1 {
+		return false
+	}
+	if _, exists := w.seenInodes[key]; exists {
+		return true
+	}
+	w.seenInodes[key] = struct{}{}
+	return false
 }
 
 func (w *scanWalker) walk(path string, d fs.DirEntry, walkErr error) error {
@@ -129,8 +148,12 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 	}
 
 	unitPath, isDiscUnit := discOrphanUnitWithContext(w.root, path, w.tfm, w.discUnitCache, w.ignorePaths)
-	if w.tfm.Has(normalizePath(path)) {
+	normPath := normalizePath(path)
+	if w.tfm.Has(normPath) {
 		w.markInUse(unitPath, isDiscUnit)
+		if info, infoErr := d.Info(); infoErr == nil {
+			w.shouldSkipDuplicate(info)
+		}
 		return nil
 	}
 
@@ -139,6 +162,9 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 		return nil //nolint:nilerr // best-effort scan: ignore stat failures
 	}
 	if time.Since(info.ModTime()) < w.gracePeriod {
+		return nil
+	}
+	if w.shouldSkipDuplicate(info) {
 		return nil
 	}
 	if isDiscUnit {

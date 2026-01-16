@@ -558,7 +558,11 @@ func (s *OrphanScanStore) MarkDeletingRunsFailed(ctx context.Context, errorMessa
 
 // MarkStuckRunsFailed marks old pending/scanning runs as failed.
 func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold time.Duration, statuses []string) error {
-	cutoff := time.Now().Add(-threshold)
+	// orphan_scan_runs.started_at is set by SQLite using CURRENT_TIMESTAMP which yields a UTC
+	// string like "YYYY-MM-DD HH:MM:SS". Comparing against a time.Time parameter can be
+	// driver-dependent (e.g. RFC3339 with timezone), which breaks lexicographic comparisons.
+	// Use the same UTC format as SQLite to ensure correct cutoff behavior.
+	cutoff := time.Now().Add(-threshold).UTC().Format(time.DateTime)
 
 	// Build placeholders for status list
 	placeholders := ""
