@@ -6,6 +6,7 @@ package dirscan
 import (
 	"bytes"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -419,7 +420,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 				pathParts = append([]string{root}, pathParts...)
 			}
 			tf := TorrentFile{
-				Path:   filepath.Join(pathParts...),
+				Path:   path.Join(pathParts...),
 				Size:   f.Length,
 				Offset: offset,
 			}
