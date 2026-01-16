@@ -217,6 +217,10 @@ Add or remove tags from torrents.
 | `add` | Only add to matches |
 | `remove` | Only remove from non-matches |
 
+:::note
+Tags are only added when conditions match and removed when conditions don't match. Mode limits which of these behaviors occur and does **not change** the action when conditions match. Even when using `remove` mode, tags will be removed when the torrent does **not** match the condtions, what it wont do is add tags to torrents that do match.
+:::
+
 Options:
 - **Use Tracker as Tag** - Derive tag from tracker domain
 - **Use Display Name** - Use tracker customization display name instead of raw domain
