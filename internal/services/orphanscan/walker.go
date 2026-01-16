@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -82,14 +81,6 @@ func newScanWalker(
 type inodeKey struct {
 	dev uint64
 	ino uint64
-}
-
-func inodeKeyFromInfo(info fs.FileInfo) (inodeKey, uint64, bool) {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return inodeKey{}, 0, false
-	}
-	return inodeKey{dev: uint64(stat.Dev), ino: uint64(stat.Ino)}, uint64(stat.Nlink), true
 }
 
 func (w *scanWalker) shouldSkipDuplicate(info fs.FileInfo) bool {
