@@ -148,8 +148,12 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 	}
 
 	unitPath, isDiscUnit := discOrphanUnitWithContext(w.root, path, w.tfm, w.discUnitCache, w.ignorePaths)
-	if w.tfm.Has(normalizePath(path)) {
+	normPath := normalizePath(path)
+	if w.tfm.Has(normPath) {
 		w.markInUse(unitPath, isDiscUnit)
+		if info, infoErr := d.Info(); infoErr == nil {
+			w.shouldSkipDuplicate(info)
+		}
 		return nil
 	}
 
