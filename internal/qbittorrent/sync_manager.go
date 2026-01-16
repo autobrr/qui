@@ -1789,6 +1789,22 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 	return peerSync.GetPeers(), nil
 }
 
+// GetTorrentPieceStates returns the download state of each piece for a torrent.
+// States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+func (sm *SyncManager) GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	pieceStates, err := client.GetTorrentPieceStatesCtx(ctx, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent piece states: %w", err)
+	}
+
+	return pieceStates, nil
+}
+
 // GetTorrentFilesBatch fetches file lists for many torrents using cache-aware batching.
 // Semantics:
 //   - Partial results are normal: the returned map only includes hashes that successfully produced files.

@@ -70,3 +70,4 @@ backups/*
 .gomodcache/*
 .golangci-cache/*
 torrentfiles/*
+analyses/*

@@ -445,6 +445,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/webseeds", torrentsHandler.GetTorrentWebSeeds)
+							r.Get("/pieces", torrentsHandler.GetTorrentPieceStates)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 							r.Put("/files", torrentsHandler.SetTorrentFilePriority)
 							r.Put("/rename", torrentsHandler.RenameTorrent)
