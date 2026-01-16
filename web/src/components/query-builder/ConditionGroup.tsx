@@ -1,12 +1,12 @@
-import { useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { ConditionOperator, RuleCondition } from "@/types";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import type { RuleCondition, ConditionOperator } from "@/types";
+import { useCallback } from "react";
 import { LeafCondition } from "./LeafCondition";
 
 interface ConditionGroupProps {
@@ -99,9 +99,14 @@ export function ConditionGroup({
       // If removing leaves only one child in a non-root group, replace group with child
       if (!isRoot && newChildren.length === 1) {
         onChange(newChildren[0]);
-      } else if (newChildren.length === 0 && !isRoot) {
-        // Remove empty group
-        onRemove?.();
+      } else if (newChildren.length === 0) {
+        // Remove empty group (or clear root when allowEmpty)
+        if (onRemove) {
+          onRemove();
+        } else {
+          // Root without onRemove: update with empty children (handleChange normalizes to null)
+          onChange({ ...condition, conditions: newChildren });
+        }
       } else {
         onChange({
           ...condition,
@@ -203,7 +208,7 @@ export function ConditionGroup({
                 condition={child}
                 onChange={(updated) => updateChild(index, updated)}
                 onRemove={() => removeChild(index)}
-                isOnly={children.length === 1 && isRoot}
+                isOnly={children.length === 1 && isRoot && !onRemove}
                 categoryOptions={categoryOptions}
                 hiddenFields={hiddenFields}
                 hiddenStateValues={hiddenStateValues}

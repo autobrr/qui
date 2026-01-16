@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"sort"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -38,11 +39,12 @@ type torrentDesiredState struct {
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
 	// Delete (first rule to trigger wins)
-	shouldDelete   bool
-	deleteMode     string
-	deleteRuleID   int
-	deleteRuleName string
-	deleteReason   string
+	shouldDelete           bool
+	deleteMode             string
+	deleteIncludeHardlinks bool // Whether to expand deletion to hardlink copies
+	deleteRuleID           int
+	deleteRuleName         string
+	deleteReason           string
 }
 
 type ruleRunStats struct {
@@ -112,6 +114,14 @@ func processTorrents(
 	states := make(map[string]*torrentDesiredState)
 	crossSeedIndex := buildCrossSeedIndex(torrents)
 
+	// Stable sort for deterministic pagination: oldest first, then by hash
+	sort.Slice(torrents, func(i, j int) bool {
+		if torrents[i].AddedOn != torrents[j].AddedOn {
+			return torrents[i].AddedOn < torrents[j].AddedOn
+		}
+		return torrents[i].Hash < torrents[j].Hash
+	})
+
 	for _, torrent := range torrents {
 		// Skip if recently processed
 		if skipCheck != nil && skipCheck(torrent.Hash) {
@@ -144,7 +154,7 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, crossSeedIndex, ruleStats)
+			processRuleForTorrent(rule, torrent, state, evalCtx, crossSeedIndex, ruleStats, torrents)
 		}
 
 		// Only store if there are actions to take
@@ -153,14 +163,25 @@ func processTorrents(
 		}
 	}
 
+	// Persist any active free space source state before returning
+	if evalCtx != nil {
+		evalCtx.PersistFreeSpaceSourceState()
+	}
+
 	return states
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
+	}
+
+	// Load the rule's free space source state before evaluating any conditions.
+	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
+	if evalCtx != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 	}
 
 	// Speed limits
@@ -262,23 +283,36 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
-		shouldApply := conditions.Delete.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
-
-		if shouldApply {
+		// Safety: delete must always have an explicit condition.
+		if conditions.Delete.Condition == nil {
 			if stats != nil {
-				stats.DeleteApplied++
+				stats.DeleteConditionNotMet++
 			}
-			state.shouldDelete = true
-			state.deleteMode = conditions.Delete.Mode
-			if state.deleteMode == "" {
-				state.deleteMode = DeleteModeKeepFiles
+		} else {
+			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
+			if shouldApply {
+				if stats != nil {
+					stats.DeleteApplied++
+				}
+				state.shouldDelete = true
+				state.deleteMode = conditions.Delete.Mode
+				if state.deleteMode == "" {
+					state.deleteMode = DeleteModeKeepFiles
+				}
+				state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
+				state.deleteRuleID = rule.ID
+				state.deleteRuleName = rule.Name
+				state.deleteReason = "condition matched"
+
+				// Update the cumulative free space cleared for the "free space" condition.
+				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
+				// accidentally mutate a previously-loaded rule's projection state.
+				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
+					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, allTorrents)
+				}
+			} else if stats != nil {
+				stats.DeleteConditionNotMet++
 			}
-			state.deleteRuleID = rule.ID
-			state.deleteRuleName = rule.Name
-			state.deleteReason = "condition matched"
-		} else if stats != nil {
-			stats.DeleteConditionNotMet++
 		}
 	}
 }
@@ -424,4 +458,54 @@ func parseTorrentTags(tags string) map[string]struct{} {
 		}
 	}
 	return result
+}
+
+// updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
+// Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
+// This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
+// When HardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
+// double-counting torrents that share the same physical files via hardlinks.
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, allTorrents []qbt.Torrent) {
+	if evalCtx == nil || evalCtx.FilesToClear == nil {
+		return
+	}
+
+	// Only count toward free space if this delete will actually free disk bytes
+	if !deleteFreesSpace(deleteMode, torrent, allTorrents) {
+		return
+	}
+
+	// First, check hardlink signature dedupe (if enabled and using include-cross-seeds mode).
+	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
+	// whole hardlink group via expansion; this avoids affecting other delete modes.
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
+		evalCtx.HardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		if sig, ok := evalCtx.HardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
+			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
+				// Already counted this hardlink group
+				return
+			}
+			// Mark signature as counted and add size
+			evalCtx.HardlinkSignaturesToClear[sig] = struct{}{}
+			evalCtx.SpaceToClear += torrent.Size
+			return
+		}
+	}
+
+	// Fall back to cross-seed key dedupe
+	crossSeedKey, ok := makeCrossSeedKey(torrent)
+	if !ok {
+		// If the torrent cannot be a cross-seed, we add the file size to the cumulative space to clear
+		evalCtx.SpaceToClear += torrent.Size
+		return
+	}
+
+	// If the torrent is a cross-seed of a torrent that has already been counted, we don't count it again
+	if _, ok := evalCtx.FilesToClear[crossSeedKey]; ok {
+		return
+	}
+
+	// This is a new torrent, so we add the file size to the cumulative space to clear
+	evalCtx.SpaceToClear += torrent.Size
+	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
 }

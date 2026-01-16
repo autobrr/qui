@@ -48,21 +48,51 @@ import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
   parseImportJSON,
+  toDuplicateInput,
   toExportFormat,
-  toExportJSON,
-  toDuplicateInput
+  toExportJSON
 } from "@/lib/workflow-utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse } from "@/types"
+import type { Automation, AutomationActivity, AutomationPreviewResult, AutomationPreviewTorrent, InstanceResponse, PreviewView, RuleCondition } from "@/types"
+import type { DragEndEvent } from "@dnd-kit/core"
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+
+/**
+ * Recursively checks if a condition tree uses a specific field.
+ */
+function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
+  if (!condition) return false
+  if (condition.field === field) return true
+  if (condition.conditions) {
+    return condition.conditions.some(c => conditionUsesField(c, field))
+  }
+  return false
+}
 
 interface ActivityStats {
   deletionsToday: number
@@ -95,6 +125,21 @@ function computeActivityStats(events: AutomationActivity[]): ActivityStats {
   }
 
   return { deletionsToday, failedToday, lastActivity }
+}
+
+/** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
+function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
+  if (value === undefined) return null
+  if (value === -2) return "Global"
+  if (value === -1) return "Unlimited"
+  // For ratio, show 2 decimal places; for time, show whole number
+  return isRatio ? value.toFixed(2) : String(value)
+}
+
+/** Format speed limit for compact badge display: 0 = "∞", > 0 = number */
+function formatSpeedLimitCompact(kiB: number): string {
+  if (kiB === 0) return "∞"
+  return String(kiB)
 }
 
 function formatAction(action: AutomationActivity["action"]): string {
@@ -187,6 +232,15 @@ export function WorkflowsOverview({
   const { instances } = useInstances()
   const queryClient = useQueryClient()
 
+  const reorderSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
   // Internal state for standalone usage
   const [internalExpanded, setInternalExpanded] = useState<string[]>([])
 
@@ -197,8 +251,55 @@ export function WorkflowsOverview({
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
-  const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
+  const [enableConfirm, setEnableConfirm] = useState<{
+    instanceId: number
+    rule: Automation
+    preview: AutomationPreviewResult | null
+    isInitialLoading: boolean
+  } | null>(null)
+  const [previewView, setPreviewView] = useState<PreviewView>("needed")
+  const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const previewPageSize = 25
+
+  const reorderRules = useMutation<
+    void,
+    Error,
+    { instanceId: number; orderedIds: number[] },
+    { previousRules?: Automation[] }
+  >({
+    mutationFn: ({ instanceId, orderedIds }) => api.reorderAutomations(instanceId, orderedIds),
+    onMutate: async ({ instanceId, orderedIds }) => {
+      await queryClient.cancelQueries({ queryKey: ["automations", instanceId] })
+
+      const previousRules = queryClient.getQueryData<Automation[]>(["automations", instanceId])
+      if (!previousRules) {
+        return {}
+      }
+
+      const ruleByID = new Map(previousRules.map(r => [r.id, r]))
+      const nextRules: Automation[] = []
+      for (let i = 0; i < orderedIds.length; i++) {
+        const id = orderedIds[i]
+        const rule = ruleByID.get(id)
+        if (!rule) continue
+        nextRules.push({ ...rule, sortOrder: i + 1 })
+      }
+
+      queryClient.setQueryData<Automation[]>(["automations", instanceId], nextRules)
+
+      return { previousRules }
+    },
+    onError: (error, { instanceId }, context) => {
+      if (context?.previousRules) {
+        queryClient.setQueryData<Automation[]>(["automations", instanceId], context.previousRules)
+      }
+      toast.error(error instanceof Error ? error.message : "Failed to reorder workflows")
+    },
+    onSettled: (_, __, { instanceId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+    },
+  })
 
   // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -270,23 +371,47 @@ export function WorkflowsOverview({
   })
 
   const previewRule = useMutation({
-    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
-    onSuccess: (preview, { instanceId, rule }) => {
-      // Last warning before enabling a delete rule (even if 0 matches right now).
-      setEnableConfirm({ instanceId, rule, preview })
+    mutationFn: async ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) => {
+      const minDelay = new Promise(resolve => setTimeout(resolve, 1000))
+      try {
+        const preview = await api.previewAutomation(instanceId, {
+          ...rule,
+          enabled: true,
+          previewLimit: previewPageSize,
+          previewOffset: 0,
+          previewView: view,
+        })
+        await minDelay
+        return preview
+      } catch (error) {
+        await minDelay
+        throw error
+      }
+    },
+    onSuccess: (preview) => {
+      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+      setEnableConfirm(null)
     },
   })
 
   const loadMorePreview = useMutation({
     mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset, previewView }),
     onSuccess: (preview) => {
-      setEnableConfirm(prev => prev? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }: prev
-      )
+      setEnableConfirm(prev => {
+        if (!prev?.preview) return prev
+        return {
+          ...prev,
+          preview: {
+            ...prev.preview,
+            examples: [...prev.preview.examples, ...preview.examples],
+            totalMatches: preview.totalMatches,
+          },
+        }
+      })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -401,10 +526,90 @@ export function WorkflowsOverview({
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
       // Enabling a delete or category rule - show preview first
-      previewRule.mutate({ instanceId, rule })
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      setIsLoadingPreviewView(false)
+      setEnableConfirm({ instanceId, rule, preview: null, isInitialLoading: true })
+      previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
       // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
+    }
+  }
+
+  // Check if a delete rule uses FREE_SPACE field
+  const ruleUsesFreeSpace = (rule: Automation): boolean => {
+    if (!isDeleteRule(rule)) return false
+    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
+  }
+
+  // Handler for switching preview view - refetches with new view and resets pagination
+  const handlePreviewViewChange = async (newView: PreviewView) => {
+    if (!enableConfirm) return
+    setPreviewView(newView)
+    setIsLoadingPreviewView(true)
+    try {
+      const preview = await api.previewAutomation(enableConfirm.instanceId, {
+        ...enableConfirm.rule,
+        enabled: true,
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+        previewView: newView,
+      })
+      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+    } finally {
+      setIsLoadingPreviewView(false)
+    }
+  }
+
+  // CSV columns for automation preview export
+  const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
+    { header: "Name", accessor: t => t.name },
+    { header: "Hash", accessor: t => t.hash },
+    { header: "Tracker", accessor: t => t.tracker },
+    { header: "Size", accessor: t => formatBytes(t.size) },
+    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
+    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
+    { header: "Category", accessor: t => t.category },
+    { header: "Tags", accessor: t => t.tags },
+    { header: "State", accessor: t => t.state },
+    { header: "Added On", accessor: t => t.addedOn },
+    { header: "Path", accessor: t => t.contentPath ?? "" },
+  ]
+
+  const handleExportPreviewCsv = async () => {
+    if (!enableConfirm?.preview) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: AutomationPreviewTorrent[] = []
+      let offset = 0
+      const total = enableConfirm.preview.totalMatches
+
+      while (allItems.length < total) {
+        const result = await api.previewAutomation(enableConfirm.instanceId, {
+          ...enableConfirm.rule,
+          enabled: true,
+          previewLimit: pageSize,
+          previewOffset: offset,
+          previewView,
+        })
+        allItems.push(...result.examples)
+        offset += pageSize
+        if (result.examples.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      const ruleName = (enableConfirm.rule.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      downloadBlob(csv, `${ruleName}_preview.csv`)
+      toast.success(`Exported ${allItems.length} torrents to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -416,7 +621,7 @@ export function WorkflowsOverview({
   }
 
   const handleLoadMorePreview = () => {
-    if (!enableConfirm) {
+    if (!enableConfirm?.preview) {
       return
     }
     loadMorePreview.mutate({
@@ -619,34 +824,67 @@ export function WorkflowsOverview({
                         <p className="text-sm text-muted-foreground">
                           No automations configured yet.
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateDialog(instance.id)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add your first rule
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateDialog(instance.id)}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add your first rule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openImportDialog(instance.id)}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {sortedRules.map((rule) => {
-                          const otherInstances = activeInstances.filter(i => i.id !== instance.id)
-                          return (
-                            <RulePreview
-                              key={rule.id}
-                              rule={rule}
-                              otherInstances={otherInstances}
-                              onToggle={() => handleToggle(instance.id, rule)}
-                              isToggling={toggleEnabled.isPending || previewRule.isPending}
-                              onEdit={() => openEditDialog(instance.id, rule)}
-                              onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
-                              onDuplicate={() => handleDuplicate(instance.id, rule)}
-                              onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
-                              onExport={() => handleExport(rule)}
-                            />
-                          )
-                        })}
+                        <DndContext
+                          sensors={reorderSensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(event: DragEndEvent) => {
+                            const { active, over } = event
+                            if (!over || active.id === over.id) return
+                            if (reorderRules.isPending) return
+
+                            const ids = sortedRules.map(r => r.id)
+                            const fromIndex = ids.indexOf(active.id as number)
+                            const toIndex = ids.indexOf(over.id as number)
+                            if (fromIndex === -1 || toIndex === -1) return
+
+                            const orderedIds = arrayMove(ids, fromIndex, toIndex)
+                            reorderRules.mutate({ instanceId: instance.id, orderedIds })
+                          }}
+                        >
+                          <SortableContext items={sortedRules.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-2">
+                              {sortedRules.map((rule) => {
+                                const otherInstances = activeInstances.filter(i => i.id !== instance.id)
+                                return (
+                                  <SortableRulePreview
+                                    key={rule.id}
+                                    rule={rule}
+                                    otherInstances={otherInstances}
+                                    onToggle={() => handleToggle(instance.id, rule)}
+                                    isToggling={toggleEnabled.isPending || previewRule.isPending}
+                                    onEdit={() => openEditDialog(instance.id, rule)}
+                                    onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
+                                    onDuplicate={() => handleDuplicate(instance.id, rule)}
+                                    onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
+                                    onExport={() => handleExport(rule)}
+                                    disableDrag={sortedRules.length < 2 || reorderRules.isPending}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
@@ -957,6 +1195,8 @@ export function WorkflowsOverview({
                                           label = "Torrent only"
                                         } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
                                           label = "Files kept due to cross-seeds"
+                                        } else if (deleteMode === "deleteWithFilesIncludeCrossSeeds") {
+                                          label = "With files + cross-seeds"
                                         } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
                                           label = "With files"
                                         } else {
@@ -1010,8 +1250,15 @@ export function WorkflowsOverview({
                                           <div className="flex flex-wrap gap-1.5">
                                             {limits.map(([key, count]) => {
                                               const [type, limitKiB] = key.split(":")
-                                              const limitMiB = Number(limitKiB) / 1024
-                                              const label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
+                                              const numKiB = Number(limitKiB)
+                                              // 0 = Unlimited in qBittorrent per-torrent speed limits
+                                              let label: string
+                                              if (numKiB === 0) {
+                                                label = "Unlimited"
+                                              } else {
+                                                const limitMiB = numKiB / 1024
+                                                label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
+                                              }
                                               return (
                                                 <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
                                                   {type === "upload" ? "↑" : "↓"} {label} ({count})
@@ -1116,7 +1363,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`: "Enable Delete Rule"
+          enableConfirm && isCategoryRule(enableConfirm.rule) ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}` : "Enable Delete Rule"
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1148,6 +1395,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
+        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
         onConfirm={confirmEnableRule}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
@@ -1155,17 +1403,24 @@ export function WorkflowsOverview({
         isConfirming={toggleEnabled.isPending}
         destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
+        previewView={previewView}
+        onPreviewViewChange={handlePreviewViewChange}
+        showPreviewViewToggle={enableConfirm ? ruleUsesFreeSpace(enableConfirm.rule) : false}
+        isLoadingPreview={isLoadingPreviewView}
+        onExport={handleExportPreviewCsv}
+        isExporting={isExporting}
+        isInitialLoading={enableConfirm?.isInitialLoading ?? false}
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Workflow</DialogTitle>
             <DialogDescription>
               Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <Textarea
               placeholder='{"name": "My Workflow", "conditions": {...}}'
               value={importJSON}
@@ -1173,7 +1428,7 @@ export function WorkflowsOverview({
                 setImportJSON(e.target.value)
                 setImportError(null)
               }}
-              className="min-h-[200px] font-mono text-sm"
+              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>
@@ -1211,6 +1466,7 @@ interface RulePreviewProps {
   otherInstances: InstanceResponse[]
   onToggle: () => void
   isToggling: boolean
+  dragHandle?: ReactNode
   onEdit: () => void
   onDelete: () => void
   onDuplicate: () => void
@@ -1218,7 +1474,11 @@ interface RulePreviewProps {
   onExport: () => void
 }
 
-function RulePreview({
+interface SortableRulePreviewProps extends Omit<RulePreviewProps, "dragHandle"> {
+  disableDrag: boolean
+}
+
+function SortableRulePreview({
   rule,
   otherInstances,
   onToggle,
@@ -1228,15 +1488,90 @@ function RulePreview({
   onDuplicate,
   onCopyToInstance,
   onExport,
+  disableDrag,
+}: SortableRulePreviewProps) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: rule.id,
+    disabled: disableDrag,
+  })
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-70")}>
+      <RulePreview
+        rule={rule}
+        otherInstances={otherInstances}
+        onToggle={onToggle}
+        isToggling={isToggling}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onDuplicate={onDuplicate}
+        onCopyToInstance={onCopyToInstance}
+        onExport={onExport}
+        dragHandle={(
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            ref={setActivatorNodeRef}
+            disabled={disableDrag}
+            className={cn(
+              "h-7 w-7 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground",
+              disableDrag && "cursor-default"
+            )}
+            aria-label="Drag to reorder workflow"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </Button>
+        )}
+      />
+    </div>
+  )
+}
+
+function RulePreview({
+  rule,
+  otherInstances,
+  onToggle,
+  isToggling,
+  dragHandle,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onCopyToInstance,
+  onExport,
 }: RulePreviewProps) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
+  const hasAnyCondition = Boolean(
+    (rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.condition) ||
+    (rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.condition) ||
+    (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
+    (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
+    (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
+    (rule.conditions?.category?.enabled && rule.conditions.category.condition)
+  )
 
   return (
     <div className={cn(
-      "rounded-lg border bg-muted/40 p-3 grid grid-cols-[auto_1fr_auto] items-center gap-3",
+      "rounded-lg border bg-muted/40 p-3 grid grid-cols-[auto_auto_1fr_auto] items-center gap-3",
       !rule.enabled && "opacity-60"
     )}>
+      {dragHandle ?? <div className="h-7 w-7" />}
       <Switch
         checked={rule.enabled}
         onCheckedChange={onToggle}
@@ -1268,28 +1603,33 @@ function RulePreview({
             </TooltipContent>
           </Tooltip>
         )}
+        {!hasAnyCondition && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+            All torrents
+          </Badge>
+        )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowUp className="h-3 w-3" />
-            {rule.conditions.speedLimits.uploadKiB}
+            {formatSpeedLimitCompact(rule.conditions.speedLimits.uploadKiB)}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.downloadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowDown className="h-3 w-3" />
-            {rule.conditions.speedLimits.downloadKiB}
+            {formatSpeedLimitCompact(rule.conditions.speedLimits.downloadKiB)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.ratioLimit !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Scale className="h-3 w-3" />
-            {rule.conditions.shareLimits.ratioLimit}
+            {formatShareLimit(rule.conditions.shareLimits.ratioLimit, true)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
-            {rule.conditions.shareLimits.seedingTimeMinutes}m
+            {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? "m" : ""}
           </Badge>
         )}
         {rule.conditions?.pause?.enabled && (
@@ -1301,7 +1641,7 @@ function RulePreview({
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "+ XS": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
           </Badge>
         )}
         {rule.conditions?.tag?.enabled && (

@@ -107,6 +107,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
+	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+
 	return &Dependencies{
 		Config: &config.AppConfig{
 			Config: &domain.Config{
@@ -119,14 +121,14 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		InstanceStore:             &models.InstanceStore{},
 		ClientAPIKeyStore:         &models.ClientAPIKeyStore{},
 		ClientPool:                &qbittorrent.ClientPool{},
-		SyncManager:               &qbittorrent.SyncManager{},
+		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
 		WebHandler:                &web.Handler{},
 		LicenseService:            &license.Service{},
 		UpdateService:             &update.Service{},
 		TrackerIconService:        trackerIconService,
 		BackupService:             &backups.Service{},
 		AutomationStore:           models.NewAutomationStore(db),
-		TrackerCustomizationStore: models.NewTrackerCustomizationStore(db),
+		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
 	}
 }

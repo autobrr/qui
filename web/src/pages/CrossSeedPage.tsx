@@ -6,6 +6,16 @@
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +26,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,7 +36,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
@@ -77,7 +87,6 @@ interface GlobalCrossSeedSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
-  ignorePatterns: string
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -100,7 +109,7 @@ interface GlobalCrossSeedSettings {
 }
 
 // Category mode type for type-safe radio group
-type CategoryMode = "suffix" | "indexer" | "custom"
+type CategoryMode = "reuse" | "suffix" | "indexer" | "custom"
 
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
@@ -128,7 +137,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCustomCategory: false,
   customCategory: "",
   runExternalProgramId: null,
-  ignorePatterns: "",
   // Source-specific tagging defaults
   rssAutomationTags: ["cross-seed"],
   seededSearchTags: ["cross-seed"],
@@ -150,13 +158,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
-function parseList(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
 function normalizeStringList(values: string[]): string[] {
   return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
 }
@@ -167,23 +168,6 @@ function normalizeNumberList(values: Array<string | number>): number[] {
       .map(value => Number(value))
       .filter(value => !Number.isNaN(value) && value > 0)
   ))
-}
-
-function normalizeIgnorePatterns(patterns: string): string[] {
-  return parseList(patterns.replace(/\r/g, ""))
-}
-
-function validateIgnorePatterns(raw: string): string {
-  const text = raw.replace(/\r/g, "")
-  const parts = text.split(/\n|,/)
-  for (const part of parts) {
-    const pattern = part.trim()
-    if (!pattern) continue
-    if (pattern.length > 256) {
-      return "Ignore patterns must be shorter than 256 characters"
-    }
-  }
-  return ""
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
@@ -230,6 +214,77 @@ interface CrossSeedPageProps {
   onTabChange: (tab: "auto" | "scan" | "rules") => void
 }
 
+interface RSSRunItemProps {
+  run: CrossSeedRun
+  formatDateValue: (date: string | undefined) => string
+}
+
+/** Single RSS run item - used for scheduled, manual, and other run lists */
+function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
+  const hasResults = run.results && run.results.length > 0
+  const successResults = run.results?.filter(r => r.success) ?? []
+  const failedResults = run.results?.filter(r => !r.success && r.message) ?? []
+
+  return (
+    <Collapsible>
+      <CollapsibleTrigger asChild disabled={!hasResults}>
+        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+            {run.torrentsFailed > 0 && (
+              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+            )}
+            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+          </div>
+        </div>
+      </CollapsibleTrigger>
+      {hasResults && (
+        <CollapsibleContent>
+          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+            {successResults.map((result, i) => (
+              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                {result.indexerName && (
+                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                )}
+                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+              </div>
+            ))}
+            {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+              <span className="text-xs text-muted-foreground">No results with details</span>
+            )}
+            {failedResults.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
+                {failedResults.map((result, i) => (
+                  <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                      {result.indexerName && (
+                        <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground pl-1">{result.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  )
+}
+
 /** Per-instance hardlink/reflink mode settings component */
 function HardlinkModeSettings() {
   const { instances, updateInstance, isUpdating } = useInstances()
@@ -240,6 +295,7 @@ function HardlinkModeSettings() {
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+    fallbackToRegularMode: boolean
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
@@ -263,6 +319,7 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
 
@@ -328,6 +385,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
       onSuccess: () => {
@@ -497,6 +555,24 @@ function HardlinkModeSettings() {
                                 </SelectContent>
                               </Select>
                             </div>
+
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`fallback-${instance.id}`}
+                                checked={form.fallbackToRegularMode}
+                                onCheckedChange={(checked) =>
+                                  handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
+                                }
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                  Fallback to regular mode on error
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode using existing files.
+                                </p>
+                              </div>
+                            </div>
                           </div>
                         </>
                       )}
@@ -579,7 +655,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const { data: runs, refetch: refetchRuns } = useQuery({
     queryKey: ["cross-seed", "runs"],
-    queryFn: () => api.listCrossSeedRuns({ limit: 20 }),
+    queryFn: () => api.listCrossSeedRuns({ limit: 10 }),
   })
 
   const { data: instances } = useQuery({
@@ -631,6 +707,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
     refetchInterval: 5_000,
+  })
+
+  const { data: searchRuns, refetch: refetchSearchRuns } = useQuery({
+    queryKey: ["cross-seed", "search-runs", searchInstanceId],
+    queryFn: () => searchInstanceId ? api.listCrossSeedSearchRuns(searchInstanceId, { limit: 10 }) : Promise.resolve([]),
+    enabled: !!searchInstanceId,
   })
 
   const { data: searchMetadata } = useQuery({
@@ -721,22 +803,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   useEffect(() => {
     if (settings && !globalSettingsInitialized) {
-      // If all three category modes are false, default to suffix mode
-      // This handles legacy databases where none were explicitly set
-      const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
-      const useCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+      // Normalize category flags: ensure exactly one mode is active (priority: custom > indexer > suffix > reuse)
+      const useCustomCategory = settings.useCustomCategory ?? false
+      const useCategoryFromIndexer = !useCustomCategory && (settings.useCategoryFromIndexer ?? false)
+      const useCrossCategorySuffix = !useCustomCategory && !useCategoryFromIndexer && (settings.useCrossCategorySuffix ?? true)
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
+        useCategoryFromIndexer,
         useCrossCategorySuffix,
-        useCustomCategory: settings.useCustomCategory ?? false,
+        useCustomCategory,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: Array.isArray(settings.ignorePatterns)
-          ? settings.ignorePatterns.join("\n")
-          : "",
         // Source-specific tagging
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
@@ -773,21 +852,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     setSearchCooldownMinutes(searchSettings.cooldownMinutes ?? MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
     setSearchSettingsInitialized(true)
   }, [searchSettings, searchSettingsInitialized])
-
-  const ignorePatternError = useMemo(
-    () => validateIgnorePatterns(globalSettings.ignorePatterns),
-    [globalSettings.ignorePatterns]
-  )
-
-  useEffect(() => {
-    setValidationErrors(prev => {
-      const current = prev.ignorePatterns ?? ""
-      if (current === ignorePatternError) {
-        return prev
-      }
-      return { ...prev, ignorePatterns: ignorePatternError }
-    })
-  }, [ignorePatternError])
 
   useEffect(() => {
     if (!searchInstanceId && instances && instances.length > 0) {
@@ -826,23 +890,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const ignorePatterns = Array.isArray(settings.ignorePatterns) ? settings.ignorePatterns : []
-
-    // If all three category modes are false, default to suffix mode
-    const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
-    const defaultCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+    // Normalize category flags for fallback path (same priority as init: custom > indexer > suffix > reuse)
+    const fallbackCustom = settings.useCustomCategory ?? false
+    const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
+    const fallbackSuffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategorySuffix ?? true)
 
     const globalSource = globalSettingsInitialized
       ? globalSettings
       : {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer,
-        useCrossCategorySuffix: defaultCrossCategorySuffix,
-        useCustomCategory: settings.useCustomCategory ?? false,
+        useCategoryFromIndexer: fallbackIndexer,
+        useCrossCategorySuffix: fallbackSuffix,
+        useCustomCategory: fallbackCustom,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
@@ -869,7 +931,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       useCustomCategory: globalSource.useCustomCategory,
       customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
-      ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
       rssAutomationTags: globalSource.rssAutomationTags,
       seededSearchTags: globalSource.seededSearchTags,
@@ -914,6 +975,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     onSuccess: () => {
       toast.success("Search run started")
       refetchSearchStatus()
+      refetchSearchRuns()
     },
     onError: (error: Error) => {
       if (handleIndexerError(error, "Seeded Torrent Search cannot run without Torznab indexers.")) {
@@ -928,6 +990,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     onSuccess: () => {
       toast.success("Search run canceled")
       refetchSearchStatus()
+      refetchSearchRuns()
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -949,6 +1012,20 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     },
   })
 
+  const cancelAutomationRunMutation = useMutation({
+    mutationFn: () => api.cancelCrossSeedAutomationRun(),
+    onSuccess: () => {
+      toast.success("RSS automation run canceled")
+      refetchStatus()
+      refetchRuns()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const [showCancelAutomationDialog, setShowCancelAutomationDialog] = useState(false)
+
   const handleSaveAutomation = () => {
     setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "", targetInstanceIds: "" }))
 
@@ -969,13 +1046,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
-    if (ignorePatternError) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
-      return
-    }
+    // Clear prior validation errors
+    setValidationErrors(prev => ({ ...prev, customCategory: "" }))
 
-    if (validationErrors.ignorePatterns) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
+    // Validate custom category mode has a category specified
+    if (globalSettings.useCustomCategory && !globalSettings.customCategory.trim()) {
+      setValidationErrors(prev => ({ ...prev, customCategory: "Custom category mode requires a category name" }))
+      return
     }
 
     const payload = buildGlobalPatch()
@@ -1061,11 +1138,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const searchRunning = searchStatus?.running ?? false
   const activeSearchRun = searchStatus?.run
-  const recentSearchResults = searchStatus?.recentResults ?? []
-  const recentAddedResults = useMemo(
-    () => recentSearchResults.filter(result => result.added),
-    [recentSearchResults]
-  )
 
   const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || !hasEnabledIndexers
   const startSearchRunDisabledReason = useMemo(() => {
@@ -1165,7 +1237,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const getCategoryMode = (): CategoryMode => {
     if (globalSettings.useCustomCategory) return "custom"
     if (globalSettings.useCategoryFromIndexer) return "indexer"
-    return "suffix"
+    if (globalSettings.useCrossCategorySuffix) return "suffix"
+    return "reuse"
   }
 
   // Helper to set category mode (updates all three boolean flags)
@@ -1250,11 +1323,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     [instances, searchInstanceId, searchRunning, activeSearchRun]
   )
 
-  const ignorePatternCount = useMemo(
-    () => normalizeIgnorePatterns(globalSettings.ignorePatterns).length,
-    [globalSettings.ignorePatterns]
-  )
-
   const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
   const automationStatusVariant: "default" | "secondary" | "destructive" | "outline" =
     automationRunning ? "default" : automationEnabled ? "secondary" : "destructive"
@@ -1299,6 +1367,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     }
   }, [runs])
 
+  const searchRunStats = useMemo(() => {
+    if (!searchRuns || searchRuns.length === 0) {
+      return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
+    }
+    return {
+      totalAdded: searchRuns.reduce((sum, run) => sum + run.torrentsAdded, 0),
+      totalFailed: searchRuns.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalRuns: searchRuns.length,
+    }
+  }, [searchRuns])
 
   return (
     <div className="space-y-6 p-4 lg:p-6 pb-16">
@@ -1381,8 +1459,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <span className="font-medium truncate text-right max-w-[180px]">{currentSearchInstanceName}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Recent additions</span>
-              <span className="font-medium">{recentAddedResults.length}</span>
+              <span className="text-muted-foreground">Recent runs</span>
+              <span className="font-medium">{searchRuns?.length ?? 0} runs • +{searchRuns?.reduce((sum, run) => sum + run.torrentsAdded, 0) ?? 0}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Now</span>
@@ -1648,52 +1726,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                 Scheduled ({groupedRuns.scheduled.length})
                               </div>
                               <div className="space-y-1">
-                                {groupedRuns.scheduled.map(run => {
-                                  const hasResults = run.results && run.results.length > 0
-                                  const successResults = run.results?.filter(r => r.success) ?? []
-                                  return (
-                                    <Collapsible key={run.id}>
-                                      <CollapsibleTrigger asChild disabled={!hasResults}>
-                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
-                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
-                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-                                            {run.torrentsFailed > 0 && (
-                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                                          </div>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      {hasResults && (
-                                        <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                            {successResults.map((result, i) => (
-                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
-                                                {result.indexerName && (
-                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
-                                                )}
-                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
-                                              </div>
-                                            ))}
-                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
-                                              <span className="text-xs text-muted-foreground">No successful additions</span>
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      )}
-                                    </Collapsible>
-                                  )
-                                })}
+                                {groupedRuns.scheduled.map(run => (
+                                  <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1706,52 +1741,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                 Manual ({groupedRuns.manual.length})
                               </div>
                               <div className="space-y-1">
-                                {groupedRuns.manual.map(run => {
-                                  const hasResults = run.results && run.results.length > 0
-                                  const successResults = run.results?.filter(r => r.success) ?? []
-                                  return (
-                                    <Collapsible key={run.id}>
-                                      <CollapsibleTrigger asChild disabled={!hasResults}>
-                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
-                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
-                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-                                            {run.torrentsFailed > 0 && (
-                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                                          </div>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      {hasResults && (
-                                        <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                            {successResults.map((result, i) => (
-                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
-                                                {result.indexerName && (
-                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
-                                                )}
-                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
-                                              </div>
-                                            ))}
-                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
-                                              <span className="text-xs text-muted-foreground">No successful additions</span>
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      )}
-                                    </Collapsible>
-                                  )
-                                })}
+                                {groupedRuns.manual.map(run => (
+                                  <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1764,52 +1756,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                 Other ({groupedRuns.other.length})
                               </div>
                               <div className="space-y-1">
-                                {groupedRuns.other.map(run => {
-                                  const hasResults = run.results && run.results.length > 0
-                                  const successResults = run.results?.filter(r => r.success) ?? []
-                                  return (
-                                    <Collapsible key={run.id}>
-                                      <CollapsibleTrigger asChild disabled={!hasResults}>
-                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
-                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
-                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-                                            {run.torrentsFailed > 0 && (
-                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                                          </div>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      {hasResults && (
-                                        <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                            {successResults.map((result, i) => (
-                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
-                                                {result.indexerName && (
-                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
-                                                )}
-                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
-                                              </div>
-                                            ))}
-                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
-                                              <span className="text-xs text-muted-foreground">No successful additions</span>
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      )}
-                                    </Collapsible>
-                                  )
-                                })}
+                                {groupedRuns.other.map(run => (
+                                  <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1830,24 +1779,44 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <Label htmlFor="automation-dry-run">Dry run</Label>
               </div>
               <div className="flex flex-col gap-2 w-full md:w-auto md:flex-row">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      onClick={handleTriggerAutomationRun}
-                      disabled={runButtonDisabled}
-                      className="disabled:cursor-not-allowed disabled:pointer-events-auto"
-                    >
-                      {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                      Run now
-                    </Button>
-                  </TooltipTrigger>
-                  {runButtonDisabledReason && (
-                    <TooltipContent align="end" className="max-w-xs text-xs">
-                      {runButtonDisabledReason}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
+                {automationRunning ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCancelAutomationDialog(true)}
+                    disabled={cancelAutomationRunMutation.isPending}
+                  >
+                    {cancelAutomationRunMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Stopping...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Cancel
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        onClick={handleTriggerAutomationRun}
+                        disabled={runButtonDisabled}
+                        className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                      >
+                        {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                        Run now
+                      </Button>
+                    </TooltipTrigger>
+                    {runButtonDisabledReason && (
+                      <TooltipContent align="end" className="max-w-xs text-xs">
+                        {runButtonDisabledReason}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                )}
                 <Button
                   onClick={handleSaveAutomation}
                   disabled={patchSettingsMutation.isPending}
@@ -2158,35 +2127,96 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               )}
 
-              <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md mb-4">
-                <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    Recent search additions
-                    <ChevronDown className={`h-4 w-4 transition-transform ${searchResultsOpen ? "" : "-rotate-90"}`} />
-                  </span>
-                  <Badge variant="outline">{recentAddedResults.length}</Badge>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="px-3 pb-3 space-y-2">
-                  {recentAddedResults.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No added cross-seed results recorded yet.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {recentAddedResults.map(result => (
-                        <li key={`${result.torrentHash}-${result.processedAt}`} className="flex items-start justify-between gap-3 rounded border px-3 py-3 bg-muted/40">
-                          <div className="space-y-1.5 max-w-[80%]">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
-                              <Badge variant="secondary" className="text-xs">{result.indexerName || "Indexer"}</Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{formatDateValue(result.processedAt)}</p>
-                          </div>
-                          <Badge variant="default">Added</Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-xs text-muted-foreground">Shows the last 10 additions during this run. List clears when the run stops.</p>
-                </CollapsibleContent>
+              <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen}>
+                <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Recent runs</span>
+                      {searchRunStats.totalRuns > 0 ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {searchRunStats.totalRuns} runs • +{searchRunStats.totalAdded}
+                          {searchRunStats.totalFailed > 0 && ` • ${searchRunStats.totalFailed} failed`}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No runs yet</span>
+                      )}
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${searchResultsOpen ? "rotate-180" : ""}`} />
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                    <div className="px-4 pb-3 space-y-2">
+	                      {searchRuns && searchRuns.length > 0 ? (
+	                        <div className="space-y-1">
+	                          {searchRuns.map(run => {
+	                            const successResults = run.results?.filter(r => r.added) ?? []
+	                            const failedResults = run.results?.filter(r => !r.added) ?? []
+	                            const hasResults = (run.results?.length ?? 0) > 0
+	                            return (
+	                              <Collapsible key={run.id}>
+	                                <CollapsibleTrigger asChild disabled={!hasResults}>
+	                                  <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                      {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                      {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                      {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                      <span className="text-xs text-muted-foreground">
+                                        {run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents} torrents
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                      {run.torrentsFailed > 0 && (
+                                        <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                      )}
+                                      <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                      {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                    </div>
+                                  </div>
+                                </CollapsibleTrigger>
+	                                {hasResults && (
+	                                  <CollapsibleContent>
+	                                    <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+	                                      {successResults.map((result, i) => (
+	                                        <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
+	                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+	                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
+	                                        </div>
+	                                      ))}
+	                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+	                                        <span className="text-xs text-muted-foreground">No results with details</span>
+	                                      )}
+	                                      {failedResults.length > 0 && (
+	                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+	                                          <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
+	                                          {failedResults.map((result, i) => (
+	                                            <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+	                                              <div className="flex items-center gap-2">
+	                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+	                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
+	                                              </div>
+	                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
+	                                            </div>
+	                                          ))}
+	                                        </div>
+	                                      )}
+	                                    </div>
+	                                  </CollapsibleContent>
+                                )}
+                              </Collapsible>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-2 text-xs text-muted-foreground">
+                          No search runs recorded yet.
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </div>
               </Collapsible>
             </CardContent>
             <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2267,47 +2297,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     Maximum size difference for matching. Also sets auto-resume threshold (e.g., 5% = resume at ≥95%).
                   </p>
                 </div>
-                <div className="space-y-3 pt-3 border-t border-border/50">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="global-ignore-patterns">Allowed extra files</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="How allowed extra files work"
-                          >
-                            <Info className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Plain strings act as suffix matches (e.g., <code>.nfo</code> matches any path ending in <code>.nfo</code>). Globs treat <code>/</code> as a folder separator, so <code>*.nfo</code> only matches files in the top-level folder. To match sample folders use <code>*/*sample/*</code>. Separate entries with commas or new lines.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{ignorePatternCount} pattern{ignorePatternCount === 1 ? "" : "s"}</Badge>
-                  </div>
-                  <Textarea
-                    id="global-ignore-patterns"
-                    placeholder={".nfo, .srt, */*sample/*\nor one per line"}
-                    rows={4}
-                    value={globalSettings.ignorePatterns}
-                    onChange={event => {
-                      const value = event.target.value
-                      setGlobalSettings(prev => ({ ...prev, ignorePatterns: value }))
-                      const error = validateIgnorePatterns(value)
-                      setValidationErrors(prev => ({ ...prev, ignorePatterns: error }))
-                    }}
-                    className={validationErrors.ignorePatterns ? "border-destructive" : ""}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Files matching these patterns are excluded from comparison, allowing matches between torrents that differ only in these files. Adding patterns here increases matches.
-                  </p>
-                  {validationErrors.ignorePatterns && (
-                    <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>
-                  )}
-                </div>
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">Cross-seed episodes from packs</Label>
@@ -2330,7 +2319,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">Skip recheck-required matches</Label>
-                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment or extra files</p>
+                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.</p>
                   </div>
                   <Switch
                     id="skip-recheck"
@@ -2348,7 +2337,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       {globalSettings.skipPieceBoundarySafetyCheck
-                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs—consider reflink mode instead."
+                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead."
                         : "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
                     </p>
                   </div>
@@ -2371,6 +2360,25 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   onValueChange={(value) => setCategoryMode(value as CategoryMode)}
                   className="space-y-3"
                 >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="reuse" id="category-reuse" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-reuse" className="font-medium cursor-pointer">Reuse matched torrent category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Reuse category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Cross-seeds use the exact same category as the matched torrent. If the matched torrent uses AutoTMM, cross-seeds will too; otherwise the save path is set to match the original.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keep the matched torrent's category unchanged (no .cross suffix).</p>
+                    </div>
+                  </div>
                   <div className="flex items-start gap-3">
                     <RadioGroupItem value="suffix" id="category-suffix" className="mt-0.5" />
                     <div className="space-y-0.5 flex-1">
@@ -2427,15 +2435,26 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       </div>
                       <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
                       {globalSettings.useCustomCategory && (
-                        <MultiSelect
-                          options={customCategorySelectOptions}
-                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
-                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
-                          placeholder="Select or type a category..."
-                          className="mt-2 max-w-xs"
-                          creatable
-                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
-                        />
+                        <>
+                          <MultiSelect
+                            options={customCategorySelectOptions}
+                            selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                            onChange={values => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                            placeholder="Select or type a category..."
+                            className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
+                            creatable
+                            onCreateOption={value => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: value }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                          />
+                          {validationErrors.customCategory && (
+                            <p className="text-sm text-destructive">{validationErrors.customCategory}</p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -2647,7 +2666,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button
                 onClick={handleSaveGlobal}
-                disabled={patchSettingsMutation.isPending || Boolean(ignorePatternError)}
+                disabled={patchSettingsMutation.isPending}
               >
                 {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save global cross-seed settings
@@ -2657,6 +2676,26 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={showCancelAutomationDialog} onOpenChange={setShowCancelAutomationDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel RSS Automation Run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will stop the current RSS automation run. Any torrents already added will remain, but processing of new items will stop.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelAutomationRunMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Cancel Run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
