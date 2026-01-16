@@ -1180,6 +1180,36 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, webseeds)
 }
 
+// GetTorrentPieceStates returns the download state of each piece for a torrent.
+// States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+//
+//nolint:dupl // Handler pattern is intentionally similar to other torrent detail handlers
+func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	pieceStates, err := h.syncManager.GetTorrentPieceStates(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getPieceStates") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent piece states")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent piece states")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, pieceStates)
+}
+
 // EditTrackerRequest represents a tracker edit request
 type EditTrackerRequest struct {
 	OldURL string `json:"oldURL"`
