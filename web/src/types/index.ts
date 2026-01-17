@@ -269,6 +269,14 @@ export interface CategoryAction {
   condition?: RuleCondition
 }
 
+export interface MoveInstanceAction {
+  enabled: boolean
+  targetInstanceId: number
+  pathMappings?: Record<string, string>
+  deleteFromSource: boolean
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -277,6 +285,7 @@ export interface ActionConditions {
   delete?: DeleteAction
   tag?: TagAction
   category?: CategoryAction
+  moveInstance?: MoveInstanceAction
 }
 
 export type FreeSpaceSource =
@@ -1921,6 +1930,59 @@ export interface OrphanScanFile {
 
 export interface OrphanScanRunWithFiles extends OrphanScanRun {
   files: OrphanScanFile[]
+}
+
+// Transfer Types (for moving torrents between instances)
+export type TransferState =
+  | "pending"
+  | "preparing"
+  | "links_creating"
+  | "links_created"
+  | "adding_torrent"
+  | "torrent_added"
+  | "deleting_source"
+  | "completed"
+  | "failed"
+  | "rolled_back"
+  | "cancelled"
+
+export interface Transfer {
+  id: number
+  sourceInstanceId: number
+  targetInstanceId: number
+  torrentHash: string
+  torrentName: string
+  state: TransferState
+  sourceSavePath?: string
+  targetSavePath?: string
+  linkMode?: "hardlink" | "reflink" | "direct"
+  deleteFromSource: boolean
+  preserveCategory: boolean
+  preserveTags: boolean
+  targetCategory?: string
+  targetTags?: string[]
+  pathMappings?: Record<string, string>
+  filesTotal: number
+  filesLinked: number
+  error?: string
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+}
+
+export interface MovePayload {
+  targetInstanceId: number
+  pathMappings?: Record<string, string>
+  deleteFromSource?: boolean
+  preserveCategory?: boolean
+  preserveTags?: boolean
+}
+
+export interface TransferListOptions {
+  limit?: number
+  offset?: number
+  instanceId?: number
+  states?: TransferState[]
 }
 
 // Log Settings Types

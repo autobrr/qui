@@ -505,13 +505,23 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	SpeedLimits   *SpeedLimitAction  `json:"speedLimits,omitempty"`
-	ShareLimits   *ShareLimitsAction `json:"shareLimits,omitempty"`
-	Pause         *PauseAction       `json:"pause,omitempty"`
-	Delete        *DeleteAction      `json:"delete,omitempty"`
-	Tag           *TagAction         `json:"tag,omitempty"`
-	Category      *CategoryAction    `json:"category,omitempty"`
+	SchemaVersion string               `json:"schemaVersion"`
+	SpeedLimits   *SpeedLimitAction    `json:"speedLimits,omitempty"`
+	ShareLimits   *ShareLimitsAction   `json:"shareLimits,omitempty"`
+	Pause         *PauseAction         `json:"pause,omitempty"`
+	Delete        *DeleteAction        `json:"delete,omitempty"`
+	Tag           *TagAction           `json:"tag,omitempty"`
+	Category      *CategoryAction      `json:"category,omitempty"`
+	MoveInstance  *MoveInstanceAction  `json:"moveInstance,omitempty"`
+}
+
+// MoveInstanceAction configures moving torrents to another qBittorrent instance.
+type MoveInstanceAction struct {
+	Enabled          bool              `json:"enabled"`
+	TargetInstanceID int               `json:"targetInstanceId"`
+	PathMappings     map[string]string `json:"pathMappings,omitempty"`
+	DeleteFromSource bool              `json:"deleteFromSource"`
+	Condition        *RuleCondition    `json:"condition,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -570,5 +580,5 @@ func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.MoveInstance == nil
 }

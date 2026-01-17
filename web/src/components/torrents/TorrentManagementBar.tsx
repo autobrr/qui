@@ -29,6 +29,7 @@ import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
 import {
   ArrowDown,
+  ArrowRightLeft,
   ArrowUp,
   Blocks,
   CheckCircle,
@@ -52,6 +53,7 @@ import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   AddTagsDialog,
   LocationWarningDialog,
+  MoveToInstanceDialog,
   SetCategoryDialog,
   SetLocationDialog,
   SetTagsDialog,
@@ -108,6 +110,47 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
+  // Check if move to instance is available and why not
+  const canMoveToInstance = useMemo(() => {
+    // Cannot move when Select All is active - requires loading all hashes
+    if (isAllSelected) return false
+    if (!instance?.hasLocalFilesystemAccess) return false
+    // Check if there are other connected instances with local filesystem access
+    const otherInstances = instances?.filter(
+      (i) => i.id !== instanceId && i.connected && i.hasLocalFilesystemAccess
+    )
+    return (otherInstances?.length ?? 0) > 0
+  }, [instances, instance, instanceId, isAllSelected])
+
+  const moveToInstanceDisabledReason = useMemo(() => {
+    // Cannot move when Select All is active - requires loading all hashes
+    if (isAllSelected) {
+      return "Cannot move when Select All is active - deselect and select individual torrents"
+    }
+    if (!instance?.hasLocalFilesystemAccess) {
+      return "This instance does not have local filesystem access enabled"
+    }
+    const otherInstances = instances?.filter(
+      (i) => i.id !== instanceId && i.connected && i.hasLocalFilesystemAccess
+    )
+    if ((otherInstances?.length ?? 0) === 0) {
+      return "No other connected instances with local filesystem access available"
+    }
+    return undefined
+  }, [instances, instance, instanceId, isAllSelected])
+
+  // Available target instances for move dialog
+  const availableTargetInstances = useMemo(() => {
+    return (instances ?? [])
+      .filter((i) => i.id !== instanceId)
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        connected: i.connected,
+        hasLocalFilesystemAccess: i.hasLocalFilesystemAccess,
+      }))
+  }, [instances, instanceId])
+
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
@@ -161,6 +204,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareRecheckAction,
     prepareReannounceAction,
     prepareTmmAction,
+    showMoveToInstanceDialog,
+    setShowMoveToInstanceDialog,
+    handleMoveToInstance,
+    prepareMoveToInstanceAction,
   } = useTorrentActions({
     instanceId: safeInstanceId,
     onActionComplete: (action) => {
@@ -644,6 +691,27 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             )
           })()}
 
+          {/* Move to Instance */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => canMoveToInstance && prepareMoveToInstanceAction(selectedHashes, selectedTorrents)}
+                  disabled={isPending || isDisabled || !canMoveToInstance}
+                >
+                  <ArrowRightLeft className="h-4 w-4" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {canMoveToInstance
+                ? "Move to Instance"
+                : moveToInstanceDisabledReason ?? "Move to Instance unavailable"}
+            </TooltipContent>
+          </Tooltip>
+
           {/* Delete Action */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -803,6 +871,17 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onOpenChange={setShowLocationWarningDialog}
         count={totalSelectionCount || selectedHashes.length}
         onConfirm={proceedToLocationDialog}
+        isPending={isPending}
+      />
+
+      {/* Move to Instance Dialog */}
+      <MoveToInstanceDialog
+        open={showMoveToInstanceDialog}
+        onOpenChange={setShowMoveToInstanceDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        currentInstanceId={safeInstanceId}
+        instances={availableTargetInstances}
+        onConfirm={handleMoveToInstance}
         isPending={isPending}
       />
     </>
