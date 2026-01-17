@@ -1648,10 +1648,12 @@ func hasUnsafeUnmatchedTorrentFiles(parsed *ParsedTorrent, match *MatchResult) (
 
 // downloadAndParseTorrent downloads and parses a torrent file.
 func (s *Service) downloadAndParseTorrent(ctx context.Context, result *jackett.SearchResult, l *zerolog.Logger) ([]byte, *ParsedTorrent) {
-	torrentData, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+	downloadCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
+	torrentData, err := s.jackettService.DownloadTorrent(downloadCtx, jackett.TorrentDownloadRequest{
 		IndexerID:   result.IndexerID,
 		DownloadURL: result.DownloadURL,
 		GUID:        result.GUID,
+		Pace:        true,
 	})
 	if err != nil {
 		l.Debug().Err(err).Str("title", result.Title).Msg("dirscan: failed to download torrent")

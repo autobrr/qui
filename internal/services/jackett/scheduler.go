@@ -130,6 +130,52 @@ func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
 	r.recordLocked(indexerID, dur)
 }
 
+// WaitForMinInterval blocks until a new request slot is available for the given indexer according to the
+// configured min interval and priority multiplier, then reserves the slot by recording the request time.
+//
+// Note: this intentionally does NOT wait for cooldown windows. Callers that care about cooldowns should
+// check IsInCooldown separately (downloads typically return immediately when in cooldown).
+func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.TorznabIndexer, opts *RateLimitOptions) error {
+	if r == nil || indexer == nil {
+		return nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	cfg := r.resolveOptions(opts)
+
+	for {
+		r.mu.Lock()
+		state := r.getStateLocked(indexer.ID)
+		now := time.Since(r.startTime)
+
+		wait := time.Duration(0)
+		if cfg.MinInterval > 0 && state.lastRequest >= 0 {
+			next := state.lastRequest + cfg.MinInterval
+			if next > now {
+				wait = next - now
+			}
+		}
+
+		if wait <= 0 {
+			r.recordLocked(indexer.ID, now)
+			r.mu.Unlock()
+			return nil
+		}
+		r.mu.Unlock()
+
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

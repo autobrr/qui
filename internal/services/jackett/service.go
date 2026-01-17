@@ -258,6 +258,9 @@ type TorrentDownloadRequest struct {
 	GUID        string
 	Title       string
 	Size        int64
+	// Pace applies per-indexer min-interval pacing before contacting the backend.
+	// This is useful for background/automated workflows (e.g. dirscan) to avoid bursts of .torrent downloads.
+	Pace bool
 }
 
 // ServiceOption configures optional behaviour on the Jackett service.
@@ -932,6 +935,14 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 				IndexerName: indexer.Name,
 				ResumeAt:    resumeAt,
 				Queued:      false,
+			}
+		}
+		if req.Pace {
+			// Even when search results are served from cache, downloading torrent payloads can still hit
+			// Prowlarr/private trackers very aggressively. Apply per-indexer pacing when explicitly enabled.
+			priority := resolveSearchPriority(ctx, nil, RateLimitPriorityBackground)
+			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: priority}); waitErr != nil {
+				return nil, waitErr
 			}
 		}
 	}

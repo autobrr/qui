@@ -114,6 +114,7 @@ For each configured scan directory, qui:
 Torznab searches run through the shared scheduler at background priority, so they queue behind interactive, RSS, and completion cross-seed work.
 
 If the global scan concurrency limit is reached, new scans show as `queued` until a scan slot is available.
+Dir Scan may also pause between downloading candidate torrent files from an indexer. This is intentional and helps avoid hammering Prowlarr/indexers (especially for private trackers), but it can make scans take longer when many candidates need checking.
 :::
 
 ### Already-seeding detection
