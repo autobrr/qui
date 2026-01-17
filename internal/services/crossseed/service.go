@@ -4175,7 +4175,21 @@ func (s *Service) findBestCandidateMatch(
 			continue
 		}
 
-		score := matchTypePriority(matchResult.MatchType)
+		// Since we swapped parameters above, we need to swap the partial match types to maintain
+		// correct semantics from the caller's perspective:
+		// - "partial-in-pack" from getMatchTypeWithReason means existing files are in new files
+		//   → should be "partial-contains" (new torrent contains existing torrent's files)
+		// - "partial-contains" from getMatchTypeWithReason means new files are in existing files
+		//   → should be "partial-in-pack" (new torrent's files are in existing pack)
+		actualMatchType := matchResult.MatchType
+		switch actualMatchType {
+		case "partial-in-pack":
+			actualMatchType = "partial-contains"
+		case "partial-contains":
+			actualMatchType = "partial-in-pack"
+		}
+
+		score := matchTypePriority(actualMatchType)
 		if score == 0 {
 			// Layout checks can still return named match types (e.g. "partial-contains")
 			// that we never want to use for apply, so priority 0 acts as a hard reject.
@@ -4200,7 +4214,7 @@ func (s *Service) findBestCandidateMatch(
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
-			matchType = matchResult.MatchType
+			matchType = actualMatchType
 			bestScore = score
 			bestHasRoot = hasRootFolder
 			bestFileCount = fileCount
