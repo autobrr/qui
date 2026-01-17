@@ -14,12 +14,20 @@ import (
 type torznabCaps struct {
 	Capabilities []string
 	Categories   []models.TorznabIndexerCategory
+	LimitDefault int
+	LimitMax     int
 }
+
+const defaultTorznabLimit = 100
 
 type torznabCapsResponse struct {
 	XMLName    xml.Name              `xml:"caps"`
 	Searching  torznabSearchingCaps  `xml:"searching"`
 	Categories []torznabCategoryNode `xml:"categories>category"`
+	Limits     struct {
+		Default string `xml:"default,attr"`
+		Max     string `xml:"max,attr"`
+	} `xml:"limits"`
 }
 
 type torznabSearchingCaps struct {
@@ -53,7 +61,10 @@ func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
 		return nil, fmt.Errorf("decode caps response: %w", err)
 	}
 
-	caps := &torznabCaps{}
+	caps := &torznabCaps{
+		LimitDefault: defaultTorznabLimit,
+		LimitMax:     defaultTorznabLimit,
+	}
 
 	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "search", resp.Searching.Search)
 	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "tv-search", resp.Searching.TVSearch)
@@ -83,6 +94,22 @@ func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
 				ParentCategory: &parent,
 			})
 		}
+	}
+
+	// Parse limits if present
+	if resp.Limits.Default != "" {
+		if v, err := strconv.Atoi(resp.Limits.Default); err == nil && v > 0 {
+			caps.LimitDefault = v
+		}
+	}
+	if resp.Limits.Max != "" {
+		if v, err := strconv.Atoi(resp.Limits.Max); err == nil && v > 0 {
+			caps.LimitMax = v
+		}
+	}
+
+	if caps.LimitMax > 0 && caps.LimitDefault > caps.LimitMax {
+		caps.LimitDefault = caps.LimitMax
 	}
 
 	return caps, nil
