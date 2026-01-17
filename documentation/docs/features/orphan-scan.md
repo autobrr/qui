@@ -24,6 +24,10 @@ If you have multiple **active** qBittorrent instances with `Has local filesystem
 To do this safely, qui must be able to determine whether scan roots overlap. If any other local-access instance is unreachable/not ready, the scan fails to avoid false positives.
 :::
 
+:::warning
+**Disabled instances are not protected.** If you have a disabled instance with local filesystem access that shares save paths with an active instance, its files may be flagged as orphans. Enable the instance or ensure paths don't overlap before scanning.
+:::
+
 <LocalFilesystemDocker />
 
 ## Important: Abandoned Directories
