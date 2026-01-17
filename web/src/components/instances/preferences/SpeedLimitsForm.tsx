@@ -38,6 +38,8 @@ const dayOptions = [
   { value: 9, label: "Sunday" },
 ]
 
+let speedInputIdCounter = 0
+
 function SpeedLimitInput({
   label,
   value,
@@ -49,6 +51,7 @@ function SpeedLimitInput({
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
 }) {
+  const [inputId] = React.useState(() => `speed-input-${++speedInputIdCounter}`)
   const [localValue, setLocalValue] = React.useState("")
   const [isFocused, setIsFocused] = React.useState(false)
 
@@ -63,11 +66,12 @@ function SpeedLimitInput({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <Label className="text-sm font-medium">{label}</Label>
+        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <Label htmlFor={inputId} className="text-sm font-medium">{label}</Label>
       </div>
       <div className="flex items-center gap-2">
         <Input
+          id={inputId}
           type="number"
           min="0"
           step="0.1"
@@ -83,8 +87,9 @@ function SpeedLimitInput({
           onBlur={() => setIsFocused(false)}
           placeholder="0 (Unlimited)"
           className="flex-1"
+          aria-describedby={`${inputId}-unit`}
         />
-        <span className="text-sm text-muted-foreground min-w-12">MiB/s</span>
+        <span id={`${inputId}-unit`} className="text-sm text-muted-foreground min-w-12">MiB/s</span>
       </div>
     </div>
   )
@@ -203,7 +208,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
 
   if (isLoading) {
     return (
-      <div className="text-center py-8" role="status" aria-live="polite">
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading speed limits...</p>
       </div>
     )
@@ -211,7 +216,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
 
   if (!memoizedPreferences) {
     return (
-      <div className="text-center py-8" role="alert">
+      <div className="flex items-center justify-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )

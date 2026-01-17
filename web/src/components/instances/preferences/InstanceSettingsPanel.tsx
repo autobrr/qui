@@ -278,7 +278,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                         autoComplete="off"
                       />
                       {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                       )}
                     </div>
                   )}
@@ -350,7 +350,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                         autoComplete="off"
                       />
                       {field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                       )}
                     </div>
                   )}
