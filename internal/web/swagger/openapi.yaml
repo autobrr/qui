@@ -3815,6 +3815,110 @@ paths:
         '404':
           description: Run not found
 
+  /api/public-trackers/settings:
+    get:
+      tags:
+        - Public Trackers
+      summary: Get public tracker settings
+      description: Get the current public tracker settings including cached tracker list
+      responses:
+        '200':
+          description: Public tracker settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTrackerSettings'
+        '500':
+          description: Failed to get settings
+    patch:
+      tags:
+        - Public Trackers
+      summary: Update public tracker settings
+      description: Update the public tracker list URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                trackerListUrl:
+                  type: string
+                  format: uri
+                  description: URL to fetch tracker list from
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTrackerSettings'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to update settings
+
+  /api/public-trackers/refresh:
+    post:
+      tags:
+        - Public Trackers
+      summary: Refresh public tracker list
+      description: Fetch and cache the tracker list from the configured URL
+      responses:
+        '200':
+          description: Tracker list refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTrackerSettings'
+        '500':
+          description: Failed to refresh tracker list
+
+  /api/instances/{instanceID}/torrents/public-tracker-action:
+    post:
+      tags:
+        - Public Trackers
+        - Torrents
+      summary: Execute public tracker action
+      description: Add public trackers to selected torrents with optional pruning
+      parameters:
+        - name: instanceID
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hashes
+                - pruneMode
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Torrent hashes to process
+                pruneMode:
+                  type: string
+                  enum: [all, dead, none]
+                  description: How to handle existing trackers
+      responses:
+        '200':
+          description: Action completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTrackerActionResult'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to execute action
+
   /health:
     get:
       tags:
@@ -5587,6 +5691,47 @@ components:
           type: string
           nullable: true
 
+    PublicTrackerSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+        trackerListUrl:
+          type: string
+          format: uri
+        cachedTrackers:
+          type: array
+          items:
+            type: string
+        lastFetchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PublicTrackerActionResult:
+      type: object
+      properties:
+        totalTorrents:
+          type: integer
+        processedCount:
+          type: integer
+        skippedPrivate:
+          type: integer
+        trackersAdded:
+          type: integer
+        trackersRemoved:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
 tags:
   - name: Authentication
     description: User authentication and session management
@@ -5614,3 +5759,7 @@ tags:
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Public Trackers
+    description: Public tracker list management for enhancing public torrent connectivity
+  - name: System
+    description: System health and status endpoints
