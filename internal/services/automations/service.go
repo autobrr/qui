@@ -388,6 +388,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	s.setupMissingFilesContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
@@ -423,6 +424,23 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 	}
 	return hardlinkIndex
+}
+
+// setupMissingFilesContext sets up missing files detection if needed for delete preview.
+func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
+	if instance == nil || !instance.HasLocalFilesystemAccess {
+		return
+	}
+	if rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return
+	}
+
+	cond := rule.Conditions.Delete.Condition
+	if !ConditionUsesField(cond, FieldHasMissingFiles) {
+		return
+	}
+
+	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 }
 
 // getDeleteMode returns the delete mode from rule or default.
@@ -1066,6 +1084,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		}
+	}
+
+	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
+		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)

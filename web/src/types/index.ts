@@ -188,6 +188,7 @@ export type ConditionField =
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"
+  | "HAS_MISSING_FILES"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
