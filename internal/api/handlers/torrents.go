@@ -578,6 +578,22 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					DownloadURL: url,
 				})
 				if err != nil {
+					var magnetErr *jackett.MagnetDownloadError
+					if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
+						magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
+						if err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+								return
+							}
+							log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
+							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
+							failedCount++
+							lastError = err
+						} else {
+							addedCount++
+						}
+						continue
+					}
 					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
