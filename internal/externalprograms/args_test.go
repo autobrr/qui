@@ -1,8 +1,12 @@
 package externalprograms
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -22,24 +26,61 @@ func TestSplitArgs(t *testing.T) {
 		"https://api.example.com/1/messages.json",
 	}
 
-	got := SplitArgs(in)
+	got := splitArgs(in)
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("SplitArgs() mismatch\nwant: %#v\ngot:  %#v", want, got)
+		t.Fatalf("splitArgs() mismatch\nwant: %#v\ngot:  %#v", want, got)
 	}
 }
 
 func TestBuildArguments_Substitution(t *testing.T) {
 	t.Parallel()
 
-	template := `--form-string "message=Cross-Seed added {name}"`
-	data := map[string]string{
-		"name": "Some Torrent Name",
+	tests := []struct {
+		program *models.ExternalProgram
+		torrent *qbt.Torrent
+		want    []string
+	}{
+		{
+			program: &models.ExternalProgram{
+				ID:           1,
+				Name:         "Test Program",
+				Path:         "./scripts/test.sh",
+				ArgsTemplate: "--form-string \"message=Cross-Seed added {name}\"",
+				Enabled:      true,
+				UseTerminal:  false,
+				PathMappings: []models.PathMapping{
+					{
+						From: "/home/downloads/unknown",
+						To:   "./storage/downloads/torrents/unknown",
+					},
+				},
+				CreatedAt: time.Time{},
+				UpdatedAt: time.Time{},
+			},
+			torrent: &qbt.Torrent{
+				Hash:        "asdf",
+				Name:        "Test Torrent 'asdf'",
+				SavePath:    "/storage/downloads/unknown",
+				Category:    "test-cat",
+				Tags:        "tag, foo, long-tag-name-yeaaaaah-123",
+				State:       "active",
+				Size:        1235,
+				Progress:    0.12,
+				ContentPath: "/storage/downloads/unknown",
+				Comment:     "This is a test comment!",
+			},
+			want: []string{"--form-string", "message=Cross-Seed added Test Torrent 'asdf'"},
+		},
 	}
 
-	want := []string{"--form-string", "message=Cross-Seed added Some Torrent Name"}
-	got := BuildArguments(template, data)
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("BuildArguments() mismatch\nwant: %#v\ngot:  %#v", want, got)
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%s/%s", tc.program.Name, tc.torrent.Name), func(t *testing.T) {
+			t.Parallel()
+			got := buildArguments(tc.program, tc.torrent)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("buildArguments() mismatch\nwant: %#v\ngot:  %#v", tc.want, got)
+			}
+		})
 	}
 }
 
@@ -51,10 +92,10 @@ func TestApplyPathMappings_LongestPrefixWins(t *testing.T) {
 		{From: "/data/torrents", To: "/mnt/torrents"},
 	}
 
-	got := ApplyPathMappings("/data/torrents/movies", mappings)
+	got := applyPathMappings("/data/torrents/movies", mappings)
 	want := "/mnt/torrents/movies"
 	if got != want {
-		t.Fatalf("ApplyPathMappings() mismatch\nwant: %q\ngot:  %q", want, got)
+		t.Fatalf("applyPathMappings() mismatch\nwant: %q\ngot:  %q", want, got)
 	}
 }
 
@@ -153,9 +194,9 @@ func TestApplyPathMappings_PrefixBoundary(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ApplyPathMappings(tc.path, tc.mappings)
+			got := applyPathMappings(tc.path, tc.mappings)
 			if got != tc.want {
-				t.Errorf("ApplyPathMappings(%q) = %q, want %q", tc.path, got, tc.want)
+				t.Errorf("applyPathMappings(%q) = %q, want %q", tc.path, got, tc.want)
 			}
 		})
 	}

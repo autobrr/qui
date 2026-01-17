@@ -269,6 +269,12 @@ export interface CategoryAction {
   condition?: RuleCondition
 }
 
+export interface ExecuteExternalProgramAction {
+  enabled: boolean
+  programID: number | null
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -277,6 +283,7 @@ export interface ActionConditions {
   delete?: DeleteAction
   tag?: TagAction
   category?: CategoryAction
+  executeExternalProgram?: ExecuteExternalProgramAction
 }
 
 export type FreeSpaceSource =
