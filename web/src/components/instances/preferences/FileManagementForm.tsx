@@ -126,7 +126,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
   if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading file management settings...</p>
       </div>
     )
@@ -134,7 +134,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
   if (!preferences) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )

@@ -47,6 +47,8 @@ interface ConnectionSettingsFormProps {
   onSuccess?: () => void
 }
 
+let switchIdCounter = 0
+
 function SwitchSetting({
   label,
   description,
@@ -58,18 +60,31 @@ function SwitchSetting({
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
+  const [switchId] = React.useState(() => `switch-setting-${++switchIdCounter}`)
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
+
+let numberInputIdCounter = 0
 
 function NumberInput({
   label,
@@ -88,13 +103,17 @@ function NumberInput({
   description?: string
   placeholder?: string
 }) {
+  const [inputId] = React.useState(() => `number-input-${++numberInputIdCounter}`)
+  const descriptionId = description ? `${inputId}-desc` : undefined
+
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium">{label}</Label>
+      <Label htmlFor={inputId} className="text-sm font-medium">{label}</Label>
       {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
       )}
       <Input
+        id={inputId}
         type="number"
         min={min}
         max={max}
@@ -104,6 +123,7 @@ function NumberInput({
           onChange(isNaN(val) ? 0 : val)
         }}
         placeholder={placeholder}
+        aria-describedby={descriptionId}
       />
     </div>
   )
@@ -175,7 +195,11 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
   }, [preferences, form])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading connection settings...</div>
+    return (
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+        Loading connection settings...
+      </div>
+    )
   }
 
   const getBittorrentProtocolLabel = (value: number) => {
@@ -247,7 +271,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     description="Port used for incoming BitTorrent connections"
                   />
                   {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                   )}
                 </div>
               )}
@@ -467,7 +491,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum connections across all torrents"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -494,7 +518,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum connections per individual torrent"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -521,7 +545,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum upload slots across all torrents"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -548,7 +572,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum upload slots per individual torrent"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -594,7 +618,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Minimum port for outgoing connections (0 = no limit)"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -622,7 +646,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum port for outgoing connections (0 = no limit)"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}

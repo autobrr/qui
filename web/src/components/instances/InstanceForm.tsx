@@ -181,7 +181,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
 
         <form.Field name="tlsSkipVerify">
           {(field) => (
-            <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+            <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
                 <Label htmlFor="tls-skip-verify">Skip TLS Certificate Verification</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
@@ -199,7 +199,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
 
         <form.Field name="hasLocalFilesystemAccess">
           {(field) => (
-            <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+            <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
                 <Label htmlFor="local-filesystem-access">Local Filesystem Access</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
