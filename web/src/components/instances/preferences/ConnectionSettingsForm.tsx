@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
+import { useIncognitoMode } from "@/lib/incognito"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
 import React from "react"
@@ -46,6 +47,8 @@ interface ConnectionSettingsFormProps {
   onSuccess?: () => void
 }
 
+let switchIdCounter = 0
+
 function SwitchSetting({
   label,
   description,
@@ -57,18 +60,31 @@ function SwitchSetting({
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
+  const [switchId] = React.useState(() => `switch-setting-${++switchIdCounter}`)
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
+
+let numberInputIdCounter = 0
 
 function NumberInput({
   label,
@@ -87,13 +103,17 @@ function NumberInput({
   description?: string
   placeholder?: string
 }) {
+  const [inputId] = React.useState(() => `number-input-${++numberInputIdCounter}`)
+  const descriptionId = description ? `${inputId}-desc` : undefined
+
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium">{label}</Label>
+      <Label htmlFor={inputId} className="text-sm font-medium">{label}</Label>
       {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
       )}
       <Input
+        id={inputId}
         type="number"
         min={min}
         max={max}
@@ -103,6 +123,7 @@ function NumberInput({
           onChange(isNaN(val) ? 0 : val)
         }}
         placeholder={placeholder}
+        aria-describedby={descriptionId}
       />
     </div>
   )
@@ -111,6 +132,7 @@ function NumberInput({
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
+  const [incognitoMode] = useIncognitoMode()
 
   const form = useForm({
     defaultValues: {
@@ -173,7 +195,11 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
   }, [preferences, form])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading connection settings...</div>
+    return (
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+        Loading connection settings...
+      </div>
+    )
   }
 
   const getBittorrentProtocolLabel = (value: number) => {
@@ -245,7 +271,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     description="Port used for incoming BitTorrent connections"
                   />
                   {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                   )}
                 </div>
               )}
@@ -397,7 +423,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     id="network_interface"
                     value={field.state.value || "Auto-detect"}
                     readOnly
-                    className="bg-muted"
+                    className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                     disabled
                   />
                   <p className="text-xs text-muted-foreground">
@@ -416,7 +442,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     value={field.state.value || "Auto-detect"}
                     readOnly
                     disabled
-                    className="bg-muted"
+                    className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                   />
                   <p className="text-xs text-muted-foreground">
                     IP address of the current interface. Configuration requires missing API endpoints.
@@ -465,7 +491,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum connections across all torrents"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -492,7 +518,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum connections per individual torrent"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -519,7 +545,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum upload slots across all torrents"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -546,7 +572,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum upload slots per individual torrent"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -592,7 +618,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Minimum port for outgoing connections (0 = no limit)"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -620,7 +646,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   description="Maximum port for outgoing connections (0 = no limit)"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -657,6 +683,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="/path/to/filter.dat"
                   disabled={!form.state.values.ip_filter_enabled}
+                  className={incognitoMode ? "blur-sm select-none" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
                   Path to IP filter file (.dat, .p2p, .p2b formats)
@@ -687,7 +714,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 192.168.1.100
 10.0.0.50
 2001:db8::1`}
-                  className="min-h-[100px] font-mono text-sm"
+                  className={incognitoMode ? "min-h-[100px] font-mono text-sm blur-sm select-none" : "min-h-[100px] font-mono text-sm"}
                 />
                 <p className="text-xs text-muted-foreground">
                   Add IP addresses to permanently ban from connecting (one per line)
@@ -698,19 +725,21 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
       </div>
 
-      <form.Subscribe
-        selector={(state) => [state.canSubmit, state.isSubmitting]}
-      >
-        {([canSubmit, isSubmitting]) => (
-          <Button
-            type="submit"
-            disabled={!canSubmit || isSubmitting || isUpdating}
-            className="w-full"
-          >
-            {isSubmitting || isUpdating ? "Updating..." : "Update Connection Settings"}
-          </Button>
-        )}
-      </form.Subscribe>
+      <div className="flex justify-end pt-4">
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </form>
   )
 }
