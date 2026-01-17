@@ -88,6 +88,15 @@ type EvalContext struct {
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
+
+	// ContentGroupByHash maps torrent hash to its content group (all torrents sharing same ContentPath).
+	// Used for SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT, REGISTERED_SAME_CONTENT_COUNT conditions.
+	ContentGroupByHash map[string][]string
+
+	// BasenameGroupByHash maps torrent hash to its basename group (all torrents sharing same content folder/file name).
+	// Used when IncludeCrossSeeds is enabled for *_SAME_CONTENT_COUNT fields.
+	// Groups torrents like "D:\Movies\SomeMovie" and "E:\Downloads\SomeMovie" together.
+	BasenameGroupByHash map[string][]string
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -134,6 +143,97 @@ func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[strin
 	}
 
 	return categoryIndex, categoryNames
+}
+
+// BuildContentGroupIndex builds a map of torrent hash → list of all hashes sharing the same ContentPath.
+// This enables SAME_CONTENT_COUNT, UNREGISTERED_SAME_CONTENT_COUNT, and REGISTERED_SAME_CONTENT_COUNT conditions.
+// Uses normalized ContentPath for case-insensitive, platform-agnostic comparison.
+func BuildContentGroupIndex(torrents []qbt.Torrent) map[string][]string {
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	// First pass: group torrents by normalized ContentPath
+	byContentPath := make(map[string][]string) // normalized path → list of hashes
+	for _, t := range torrents {
+		normalizedPath := normalizePath(t.ContentPath)
+		if normalizedPath == "" {
+			continue // Skip torrents without ContentPath
+		}
+		byContentPath[normalizedPath] = append(byContentPath[normalizedPath], t.Hash)
+	}
+
+	// Second pass: build hash → group mapping (only for groups with 2+ torrents)
+	result := make(map[string][]string)
+	for _, hashes := range byContentPath {
+		if len(hashes) < 2 {
+			continue // No cross-seeds, skip single-torrent groups
+		}
+		// All torrents in this group share the same content
+		for _, h := range hashes {
+			result[h] = hashes
+		}
+	}
+
+	return result
+}
+
+// getContentBasename extracts just the folder/file name from a content path.
+// For "D:\Movies\Some.Movie.2024" returns "some.movie.2024" (lowercased).
+// This allows matching cross-seeds that have the same content but different parent directories.
+func getContentBasename(contentPath string) string {
+	normalized := normalizePath(contentPath)
+	if normalized == "" {
+		return ""
+	}
+	// Find the last path component
+	if idx := strings.LastIndex(normalized, "/"); idx >= 0 {
+		return normalized[idx+1:]
+	}
+	return normalized
+}
+
+// BuildBasenameGroupIndex builds a map of torrent hash → list of all hashes sharing the same content basename.
+// This groups cross-seeds that have the same folder/file name but different full paths.
+// For example, "D:\Movies\SomeMovie" and "E:\Downloads\SomeMovie" would be grouped together.
+func BuildBasenameGroupIndex(torrents []qbt.Torrent) map[string][]string {
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	// First pass: group torrents by content basename
+	byBasename := make(map[string][]string) // basename → list of hashes
+	for _, t := range torrents {
+		basename := getContentBasename(t.ContentPath)
+		if basename == "" {
+			continue // Skip torrents without ContentPath
+		}
+		byBasename[basename] = append(byBasename[basename], t.Hash)
+	}
+
+	// Debug: log groups with many members
+	for basename, hashes := range byBasename {
+		if len(hashes) >= 5 {
+			log.Trace().
+				Str("basename", basename).
+				Int("count", len(hashes)).
+				Msg("automations: basename group with 5+ members")
+		}
+	}
+
+	// Second pass: build hash → group mapping (only for groups with 2+ torrents)
+	result := make(map[string][]string)
+	for _, hashes := range byBasename {
+		if len(hashes) < 2 {
+			continue // No cross-seeds, skip single-torrent groups
+		}
+		// All torrents in this group share the same content basename
+		for _, h := range hashes {
+			result[h] = hashes
+		}
+	}
+
+	return result
 }
 
 // existsInCategory checks if a different torrent with the exact same name exists in the target category.
@@ -216,6 +316,83 @@ func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *Ev
 	return false
 }
 
+// getContentGroup returns the appropriate content group for a torrent.
+// When includeCrossSeeds is true and BasenameGroupByHash is available, uses basename matching
+// (matches torrents with the same folder/file name regardless of parent directory).
+// Otherwise uses ContentPath matching (exact path match).
+func getContentGroup(hash string, includeCrossSeeds bool, ctx *EvalContext) []string {
+	if ctx == nil {
+		return nil
+	}
+	// When includeCrossSeeds is enabled, prefer basename matching (broader match)
+	if includeCrossSeeds && ctx.BasenameGroupByHash != nil {
+		if group := ctx.BasenameGroupByHash[hash]; len(group) > 0 {
+			return group
+		}
+	}
+	// Fall back to ContentPath matching (exact match)
+	if ctx.ContentGroupByHash != nil {
+		return ctx.ContentGroupByHash[hash]
+	}
+	return nil
+}
+
+// getSameContentCount returns the total count of torrents sharing the same ContentPath (including self).
+// When includeCrossSeeds is true, also matches by content basename (folder/file name).
+// Returns 1 if no content group data is available (torrent only counts itself).
+func getSameContentCount(hash string, includeCrossSeeds bool, ctx *EvalContext) int {
+	group := getContentGroup(hash, includeCrossSeeds, ctx)
+	if len(group) == 0 {
+		return 1 // Not in any group, count only self
+	}
+	return len(group)
+}
+
+// getUnregisteredSameContentCount returns the count of OTHER unregistered torrents sharing the same ContentPath.
+// When includeCrossSeeds is true, also matches by content basename (folder/file name).
+// Excludes the current torrent from the count.
+func getUnregisteredSameContentCount(hash string, includeCrossSeeds bool, ctx *EvalContext) int {
+	group := getContentGroup(hash, includeCrossSeeds, ctx)
+	if len(group) == 0 {
+		return 0 // Not in any group
+	}
+	count := 0
+	for _, h := range group {
+		if h == hash {
+			continue // Skip self
+		}
+		if ctx != nil && ctx.UnregisteredSet != nil {
+			if _, isUnreg := ctx.UnregisteredSet[h]; isUnreg {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// getRegisteredSameContentCount returns the count of OTHER registered torrents sharing the same ContentPath.
+// When includeCrossSeeds is true, also matches by content basename (folder/file name).
+// Excludes the current torrent from the count.
+func getRegisteredSameContentCount(hash string, includeCrossSeeds bool, ctx *EvalContext) int {
+	group := getContentGroup(hash, includeCrossSeeds, ctx)
+	if len(group) == 0 {
+		return 0 // Not in any group
+	}
+	count := 0
+	for _, h := range group {
+		if h == hash {
+			continue // Skip self
+		}
+		// Registered = not in UnregisteredSet
+		if ctx == nil || ctx.UnregisteredSet == nil {
+			count++ // If no unregistered data, assume all are registered
+		} else if _, isUnreg := ctx.UnregisteredSet[h]; !isUnreg {
+			count++
+		}
+	}
+	return count
+}
+
 // ConditionUsesField checks if a condition tree references a specific field.
 func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 	if cond == nil {
@@ -226,6 +403,22 @@ func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 	}
 	for _, child := range cond.Conditions {
 		if ConditionUsesField(child, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// ConditionUsesIncludeCrossSeeds checks if any condition in the tree uses IncludeCrossSeeds.
+func ConditionUsesIncludeCrossSeeds(cond *RuleCondition) bool {
+	if cond == nil {
+		return false
+	}
+	if cond.IncludeCrossSeeds {
+		return true
+	}
+	for _, child := range cond.Conditions {
+		if ConditionUsesIncludeCrossSeeds(child) {
 			return true
 		}
 	}
@@ -399,6 +592,27 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.NumIncomplete, cond)
 	case FieldTrackersCount:
 		return compareInt64(torrent.TrackersCount, cond)
+
+	// Cross-seed count fields
+	case FieldSameContentCount:
+		count := getSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+		return compareInt64(int64(count), cond)
+	case FieldUnregisteredSameContentCount:
+		count := getUnregisteredSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+		// Handle percentage operators
+		if isPercentOperator(cond.Operator) {
+			total := getSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+			return comparePercent(count, total, cond)
+		}
+		return compareInt64(int64(count), cond)
+	case FieldRegisteredSameContentCount:
+		count := getRegisteredSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+		// Handle percentage operators
+		if isPercentOperator(cond.Operator) {
+			total := getSameContentCount(torrent.Hash, cond.IncludeCrossSeeds, ctx)
+			return comparePercent(count, total, cond)
+		}
+		return compareInt64(int64(count), cond)
 
 	// Boolean fields
 	case FieldPrivate:
@@ -676,6 +890,48 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 			return false
 		}
 		return float64(value) >= *cond.MinValue && float64(value) <= *cond.MaxValue
+	default:
+		return false
+	}
+}
+
+// isPercentOperator returns true if the operator is a percentage-based operator.
+func isPercentOperator(op ConditionOperator) bool {
+	switch op {
+	case OperatorGreaterThanPercent, OperatorGreaterThanOrEqualPercent,
+		OperatorLessThanPercent, OperatorLessThanOrEqualPercent:
+		return true
+	default:
+		return false
+	}
+}
+
+// comparePercent compares a count as a percentage of total against the condition value.
+// The condition value should be a percentage (0-100).
+// For example, if count=3 and total=4, the percentage is 75%.
+func comparePercent(count, total int, cond *RuleCondition) bool {
+	if total == 0 {
+		return false // Avoid division by zero
+	}
+
+	// Parse the condition value as percentage (0-100)
+	condPercent, err := strconv.ParseFloat(cond.Value, 64)
+	if err != nil {
+		return false
+	}
+
+	// Calculate actual percentage
+	actualPercent := (float64(count) / float64(total)) * 100
+
+	switch cond.Operator {
+	case OperatorGreaterThanPercent:
+		return actualPercent > condPercent
+	case OperatorGreaterThanOrEqualPercent:
+		return actualPercent >= condPercent
+	case OperatorLessThanPercent:
+		return actualPercent < condPercent
+	case OperatorLessThanOrEqualPercent:
+		return actualPercent <= condPercent
 	default:
 		return false
 	}

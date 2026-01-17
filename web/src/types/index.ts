@@ -185,6 +185,10 @@ export type ConditionField =
   | "NUM_COMPLETE"
   | "NUM_INCOMPLETE"
   | "TRACKERS_COUNT"
+  // Cross-seed count fields
+  | "SAME_CONTENT_COUNT"
+  | "UNREGISTERED_SAME_CONTENT_COUNT"
+  | "REGISTERED_SAME_CONTENT_COUNT"
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"
@@ -209,6 +213,11 @@ export type ConditionOperator =
   | "LESS_THAN_OR_EQUAL"
   | "BETWEEN"
   | "MATCHES"
+  // Percentage operators (for content count fields)
+  | "GREATER_THAN_PERCENT"
+  | "GREATER_THAN_OR_EQUAL_PERCENT"
+  | "LESS_THAN_PERCENT"
+  | "LESS_THAN_OR_EQUAL_PERCENT"
   // Cross-category lookup operators (NAME field only)
   | "EXISTS_IN"
   | "CONTAINS_IN"
@@ -224,6 +233,8 @@ export interface RuleCondition {
   regex?: boolean
   negate?: boolean
   conditions?: RuleCondition[]
+  /** For *_SAME_CONTENT_COUNT fields: also match by content basename (folder/file name) for cross-seed detection */
+  includeCrossSeeds?: boolean
 }
 
 export interface SpeedLimitAction {

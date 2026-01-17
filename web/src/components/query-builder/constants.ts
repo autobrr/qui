@@ -42,6 +42,11 @@ export const CONDITION_FIELDS = {
   NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
 
+  // Cross-seed count fields
+  SAME_CONTENT_COUNT: { label: "Same Content Count", type: "integer" as const, description: "Total torrents sharing the same content (including self)" },
+  UNREGISTERED_SAME_CONTENT_COUNT: { label: "Unregistered Same Content", type: "integer" as const, description: "Other unregistered torrents sharing the same content" },
+  REGISTERED_SAME_CONTENT_COUNT: { label: "Registered Same Content", type: "integer" as const, description: "Other registered torrents sharing the same content" },
+
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
@@ -204,6 +209,10 @@ export const FIELD_GROUPS = [
     fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
   },
   {
+    label: "Cross-Seeds",
+    fields: ["SAME_CONTENT_COUNT", "UNREGISTERED_SAME_CONTENT_COUNT", "REGISTERED_SAME_CONTENT_COUNT"],
+  },
+  {
     label: "Files",
     fields: ["HARDLINK_SCOPE", "HAS_MISSING_FILES"],
   },
@@ -221,6 +230,17 @@ export const NAME_SPECIAL_OPERATORS = [
   { value: "CONTAINS_IN", label: "similar exists in" },
 ];
 
+// Percentage operators for content count fields (UNREGISTERED_SAME_CONTENT_COUNT, REGISTERED_SAME_CONTENT_COUNT)
+export const PERCENT_OPERATORS = [
+  { value: "GREATER_THAN_PERCENT", label: "> %" },
+  { value: "GREATER_THAN_OR_EQUAL_PERCENT", label: ">= %" },
+  { value: "LESS_THAN_PERCENT", label: "< %" },
+  { value: "LESS_THAN_OR_EQUAL_PERCENT", label: "<= %" },
+];
+
+// Fields that support percentage operators (comparing count as % of total)
+const PERCENT_ENABLED_FIELDS = ["UNREGISTERED_SAME_CONTENT_COUNT", "REGISTERED_SAME_CONTENT_COUNT"];
+
 // Helper to get operators for a field
 export function getOperatorsForField(field: string) {
   const type = getFieldType(field);
@@ -229,6 +249,11 @@ export function getOperatorsForField(field: string) {
   // Add special cross-category operators for NAME field only
   if (field === "NAME") {
     return [...baseOperators, ...NAME_SPECIAL_OPERATORS];
+  }
+
+  // Add percentage operators for content count fields
+  if (PERCENT_ENABLED_FIELDS.includes(field)) {
+    return [...baseOperators, ...PERCENT_OPERATORS];
   }
 
   return baseOperators;
