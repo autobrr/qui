@@ -4,6 +4,7 @@
  */
 
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
+import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -210,8 +211,8 @@ function aggregateInstanceMetadata(
 }
 
 interface CrossSeedPageProps {
-  activeTab: "auto" | "scan" | "rules"
-  onTabChange: (tab: "auto" | "scan" | "rules") => void
+  activeTab: "auto" | "scan" | "dir-scan" | "rules"
+  onTabChange: (tab: "auto" | "scan" | "dir-scan" | "rules") => void
 }
 
 interface RSSRunItemProps {
@@ -1477,9 +1478,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
+        <TabsList className="grid w-full grid-cols-4 gap-2 md:w-auto">
           <TabsTrigger value="auto">Auto</TabsTrigger>
           <TabsTrigger value="scan">Scan</TabsTrigger>
+          <TabsTrigger value="dir-scan">Dir Scan</TabsTrigger>
           <TabsTrigger value="rules">Rules</TabsTrigger>
         </TabsList>
 
@@ -2674,6 +2676,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             </CardFooter>
           </Card>
 
+        </TabsContent>
+
+        <TabsContent value="dir-scan" className="space-y-6">
+          <DirScanTab instances={instances ?? []} />
         </TabsContent>
       </Tabs>
 
