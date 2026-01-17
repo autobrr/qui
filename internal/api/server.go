@@ -34,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/publictrackers"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -77,6 +78,7 @@ type Server struct {
 	orphanScanService                *orphanscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	publicTrackersService            *publictrackers.Service
 }
 
 type Dependencies struct {
@@ -112,6 +114,7 @@ type Dependencies struct {
 	OrphanScanService                *orphanscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	PublicTrackersService            *publictrackers.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -154,6 +157,7 @@ func NewServer(deps *Dependencies) *Server {
 		orphanScanService:                deps.OrphanScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		publicTrackersService:            deps.PublicTrackersService,
 	}
 
 	return &s
@@ -295,6 +299,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
+	publicTrackersHandler := handlers.NewPublicTrackersHandler(s.publicTrackersService)
 	logsHandler := handlers.NewLogsHandler(s.config)
 
 	// Torznab/Jackett handler
@@ -396,6 +401,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
 
+			// Public trackers management
+			r.Route("/public-trackers", func(r chi.Router) {
+				r.Get("/settings", publicTrackersHandler.GetSettings)
+				r.Patch("/settings", publicTrackersHandler.UpdateSettings)
+				r.Post("/refresh", publicTrackersHandler.RefreshTrackerList)
+			})
+
 			// Log exclusions (muted log message patterns)
 			r.Get("/log-exclusions", logExclusionsHandler.Get)
 			r.Put("/log-exclusions", logExclusionsHandler.Update)
@@ -426,6 +438,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 						r.Post("/add-peers", torrentsHandler.AddPeers)
 						r.Post("/ban-peers", torrentsHandler.BanPeers)
+						r.Post("/public-tracker-action", publicTrackersHandler.ExecuteAction)
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details

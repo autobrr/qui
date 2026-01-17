@@ -126,6 +126,7 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
+import { PublicTrackerActionDialog } from "./PublicTrackerActionDialog"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -768,6 +769,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
+    showPublicTrackerDialog,
+    setShowPublicTrackerDialog,
     contextHashes,
     contextTorrents,
     isPending,
@@ -800,6 +803,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareRecheckAction,
     prepareReannounceAction,
     prepareTmmAction,
+    preparePublicTrackerAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -2487,6 +2491,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         onPrepareRecheck={prepareRecheckAction}
                         onPrepareReannounce={prepareReannounceAction}
                         onPrepareTmm={prepareTmmAction}
+                        onPreparePublicTrackerAction={preparePublicTrackerAction}
                         availableCategories={availableCategories}
                         onSetCategory={handleSetCategoryDirect}
                         isPending={isPending}
@@ -2600,6 +2605,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onPrepareTmm={prepareTmmAction}
+                      onPreparePublicTrackerAction={preparePublicTrackerAction}
                       availableCategories={availableCategories}
                       onSetCategory={handleSetCategoryDirect}
                       isPending={isPending}
@@ -2903,6 +2909,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
           onConfirm={proceedToLocationDialog}
           isPending={isPending}
+        />
+
+        {/* Public Tracker Action Dialog */}
+        <PublicTrackerActionDialog
+          open={showPublicTrackerDialog}
+          onOpenChange={setShowPublicTrackerDialog}
+          instanceId={instanceId}
+          hashes={contextHashes}
+          torrents={contextTorrents}
         />
 
         {/* Instance Preferences Dialog */}

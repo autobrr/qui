@@ -1939,3 +1939,34 @@ export interface LogSettingsUpdate {
   maxSize?: number
   maxBackups?: number
 }
+
+// Public Tracker Settings Types
+export interface PublicTrackerSettings {
+  id: number
+  trackerListUrl: string
+  cachedTrackers: string[]
+  lastFetchedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PublicTrackerSettingsInput {
+  trackerListUrl?: string
+  cachedTrackers?: string[]
+}
+
+export type PruneMode = "all" | "dead" | "none"
+
+export interface PublicTrackerActionRequest {
+  hashes: string[]
+  pruneMode: PruneMode
+}
+
+export interface PublicTrackerActionResult {
+  totalTorrents: number
+  processedCount: number
+  skippedPrivate: number
+  trackersAdded: number
+  trackersRemoved: number
+  errors?: string[]
+}
