@@ -6,12 +6,13 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
+
+let switchIdCounter = 0
 
 function SwitchSetting({
   label,
@@ -24,16 +25,27 @@ function SwitchSetting({
   onCheckedChange: (checked: boolean) => void
   description?: string
 }) {
+  const [switchId] = React.useState(() => `queue-switch-${++switchIdCounter}`)
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
 
@@ -77,16 +89,8 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
 
   if (isLoading || !preferences) {
     return (
-      <div className="text-center py-8" role="status" aria-live="polite">
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading queue settings...</p>
-      </div>
-    )
-  }
-
-  if (!preferences) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
   }

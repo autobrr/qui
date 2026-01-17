@@ -725,19 +725,21 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
       </div>
 
-      <form.Subscribe
-        selector={(state) => [state.canSubmit, state.isSubmitting]}
-      >
-        {([canSubmit, isSubmitting]) => (
-          <Button
-            type="submit"
-            disabled={!canSubmit || isSubmitting || isUpdating}
-            className="w-full"
-          >
-            {isSubmitting || isUpdating ? "Updating..." : "Update Connection Settings"}
-          </Button>
-        )}
-      </form.Subscribe>
+      <div className="flex justify-end pt-4">
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </form>
   )
 }
