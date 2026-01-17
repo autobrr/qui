@@ -34,6 +34,12 @@ var ignoredOrphanFileNamePrefixes = []string{
 	"~$",
 }
 
+// ignoredOrphanFileNameSuffixes are filename (not path) suffixes that are commonly created by
+// torrent clients and should not be treated as orphan content (e.g. "*.parts" from qBittorrent).
+var ignoredOrphanFileNameSuffixes = []string{
+	".parts",
+}
+
 // ignoredOrphanDirNames are directory names that should be skipped entirely during scanning.
 // These are typically system metadata/recycle bins/snapshot internals, not real content.
 var ignoredOrphanDirNames = []string{
@@ -595,6 +601,11 @@ func isIgnoredOrphanFileName(name string) bool {
 			return true
 		}
 	}
+	for _, suffix := range ignoredOrphanFileNameSuffixes {
+		if hasSuffixFold(name, suffix) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -617,6 +628,13 @@ func hasPrefixFold(s, prefix string) bool {
 		return false
 	}
 	return strings.EqualFold(s[:len(prefix)], prefix)
+}
+
+func hasSuffixFold(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+	return strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 
 // isPathProtectedByIgnorePaths checks if a path should not be deleted because:
