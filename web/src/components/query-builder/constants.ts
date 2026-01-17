@@ -28,7 +28,7 @@ export const CONDITION_FIELDS = {
 
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
-  PROGRESS: { label: "Progress", type: "float" as const, description: "Download progress (0-1)" },
+  PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
   AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
 
   // Speed fields (bytes/s)
@@ -50,7 +50,7 @@ export const CONDITION_FIELDS = {
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -86,6 +86,15 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "BETWEEN", label: "between" },
   ],
   float: [
+    { value: "EQUAL", label: "=" },
+    { value: "NOT_EQUAL", label: "!=" },
+    { value: "GREATER_THAN", label: ">" },
+    { value: "GREATER_THAN_OR_EQUAL", label: ">=" },
+    { value: "LESS_THAN", label: "<" },
+    { value: "LESS_THAN_OR_EQUAL", label: "<=" },
+    { value: "BETWEEN", label: "between" },
+  ],
+  percentage: [
     { value: "EQUAL", label: "=" },
     { value: "NOT_EQUAL", label: "!=" },
     { value: "GREATER_THAN", label: ">" },
