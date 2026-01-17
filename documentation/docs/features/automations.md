@@ -218,7 +218,7 @@ Add or remove tags from torrents.
 | `remove` | Only remove from non-matches |
 
 :::note
-Tags are only ever added when conditions match and removed when conditions don't match. Mode limits which of these behaviors occur and does not change the action when conditions match. Even when using `remove` mode, tags will be removed when the torrent does **not** match the conditions; what it won't do is add tags to torrents that do match.
+Mode does not change the way torrents are flagged, meaning, even with `mode: remove`, tags will be removed if the torrent does **NOT** match the conditions. `mode: remove` simply means that tags will not be added to torrents that do match.
 :::
 
 Options:
