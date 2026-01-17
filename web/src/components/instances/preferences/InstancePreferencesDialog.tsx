@@ -27,16 +27,29 @@ import { useInstances } from "@/hooks/useInstances"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { Instance } from "@/types"
 import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
+
 import { toast } from "sonner"
-import { AdvancedNetworkForm } from "./AdvancedNetworkForm"
-import { ConnectionSettingsForm } from "./ConnectionSettingsForm"
-import { FileManagementForm } from "./FileManagementForm"
+
+// Lazy load tab content components - only Instance tab is eagerly loaded
 import { InstanceSettingsPanel } from "./InstanceSettingsPanel"
-import { NetworkDiscoveryForm } from "./NetworkDiscoveryForm"
-import { QueueManagementForm } from "./QueueManagementForm"
-import { SeedingLimitsForm } from "./SeedingLimitsForm"
-import { SpeedLimitsForm } from "./SpeedLimitsForm"
+
+const SpeedLimitsForm = lazy(() => import("./SpeedLimitsForm").then(m => ({ default: m.SpeedLimitsForm })))
+const QueueManagementForm = lazy(() => import("./QueueManagementForm").then(m => ({ default: m.QueueManagementForm })))
+const FileManagementForm = lazy(() => import("./FileManagementForm").then(m => ({ default: m.FileManagementForm })))
+const SeedingLimitsForm = lazy(() => import("./SeedingLimitsForm").then(m => ({ default: m.SeedingLimitsForm })))
+const ConnectionSettingsForm = lazy(() => import("./ConnectionSettingsForm").then(m => ({ default: m.ConnectionSettingsForm })))
+const NetworkDiscoveryForm = lazy(() => import("./NetworkDiscoveryForm").then(m => ({ default: m.NetworkDiscoveryForm })))
+const AdvancedNetworkForm = lazy(() => import("./AdvancedNetworkForm").then(m => ({ default: m.AdvancedNetworkForm })))
+
+/** Loading fallback for lazy-loaded tab content */
+function TabLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center py-12" role="status" aria-live="polite">
+      <div className="text-sm text-muted-foreground">Loading...</div>
+    </div>
+  )
+}
 
 interface InstancePreferencesDialogProps {
   open: boolean
@@ -128,7 +141,7 @@ export function InstancePreferencesDialog({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 ml-1"
+                      className="h-9 w-9 p-0 ml-1"
                       aria-label="Instance actions"
                     >
                       <MoreVertical className="h-4 w-4" />
@@ -161,40 +174,49 @@ export function InstancePreferencesDialog({
           </DialogHeader>
 
           <Tabs defaultValue={defaultTab ?? "instance"} className="w-full">
-            <TabsList className="grid w-full grid-cols-8">
-              <TabsTrigger value="instance" className="flex items-center gap-2">
-                <Server className="h-4 w-4" />
-                <span className="hidden sm:inline">Instance</span>
-              </TabsTrigger>
-              <TabsTrigger value="speed" className="flex items-center gap-2">
-                <Gauge className="h-4 w-4" />
-                <span className="hidden sm:inline">Speed</span>
-              </TabsTrigger>
-              <TabsTrigger value="queue" className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                <span className="hidden sm:inline">Queue</span>
-              </TabsTrigger>
-              <TabsTrigger value="files" className="flex items-center gap-2">
-                <Folder className="h-4 w-4" />
-                <span className="hidden sm:inline">Files</span>
-              </TabsTrigger>
-              <TabsTrigger value="seeding" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Seeding</span>
-              </TabsTrigger>
-              <TabsTrigger value="connection" className="flex items-center gap-2">
-                <Wifi className="h-4 w-4" />
-                <span className="hidden sm:inline">Connection</span>
-              </TabsTrigger>
-              <TabsTrigger value="discovery" className="flex items-center gap-2">
-                <Radar className="h-4 w-4" />
-                <span className="hidden sm:inline">Discovery</span>
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                <span className="hidden sm:inline">Advanced</span>
-              </TabsTrigger>
-            </TabsList>
+            {/* Scrollable container with fade indicators */}
+            <div className="relative">
+              {/* Left fade indicator */}
+              <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none sm:hidden" />
+              {/* Right fade indicator */}
+              <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none sm:hidden" />
+
+              <TabsList className="flex w-full overflow-x-auto -mx-1 px-1 h-11 sm:h-9">
+                <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
+                  <Server className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Instance</span>
+                </TabsTrigger>
+                <div className="h-6 w-px bg-muted-foreground/50 mx-1 sm:mx-2 self-center shrink-0" />
+                <TabsTrigger value="speed" className="flex items-center gap-1.5 shrink-0">
+                  <Gauge className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Speed</span>
+                </TabsTrigger>
+                <TabsTrigger value="queue" className="flex items-center gap-1.5 shrink-0">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Queue</span>
+                </TabsTrigger>
+                <TabsTrigger value="files" className="flex items-center gap-1.5 shrink-0">
+                  <Folder className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Files</span>
+                </TabsTrigger>
+                <TabsTrigger value="seeding" className="flex items-center gap-1.5 shrink-0">
+                  <Upload className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Seeding</span>
+                </TabsTrigger>
+                <TabsTrigger value="connection" className="flex items-center gap-1.5 shrink-0">
+                  <Wifi className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Connect</span>
+                </TabsTrigger>
+                <TabsTrigger value="discovery" className="flex items-center gap-1.5 shrink-0">
+                  <Radar className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Discovery</span>
+                </TabsTrigger>
+                <TabsTrigger value="advanced" className="flex items-center gap-1.5 shrink-0">
+                  <Settings className="h-4 w-4" />
+                  <span className="text-xs sm:text-sm">Advanced</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="instance" className="mt-6">
               <div className="space-y-1 mb-6">
@@ -219,7 +241,9 @@ export function InstancePreferencesDialog({
                   Configure download and upload speed limits
                 </p>
               </div>
-              <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="queue" className="mt-6">
@@ -229,7 +253,9 @@ export function InstancePreferencesDialog({
                   Configure torrent queue settings and active torrent limits
                 </p>
               </div>
-              <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="files" className="mt-6">
@@ -239,7 +265,9 @@ export function InstancePreferencesDialog({
                   Configure file paths and torrent management settings
                 </p>
               </div>
-              <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="seeding" className="mt-6">
@@ -249,7 +277,9 @@ export function InstancePreferencesDialog({
                   Configure share ratio and seeding time limits
                 </p>
               </div>
-              <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="connection" className="mt-6">
@@ -259,7 +289,9 @@ export function InstancePreferencesDialog({
                   Configure listening port, protocol settings, and connection limits
                 </p>
               </div>
-              <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="discovery" className="mt-6">
@@ -269,7 +301,9 @@ export function InstancePreferencesDialog({
                   Configure peer discovery protocols and tracker settings
                 </p>
               </div>
-              <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-6">
@@ -279,7 +313,9 @@ export function InstancePreferencesDialog({
                   Performance tuning, disk I/O, peer management, and security settings
                 </p>
               </div>
-              <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
+              <Suspense fallback={<TabLoadingFallback />}>
+                <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
+              </Suspense>
             </TabsContent>
 
           </Tabs>

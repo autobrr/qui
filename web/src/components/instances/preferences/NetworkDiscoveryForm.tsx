@@ -82,7 +82,11 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
   }, [preferences, form])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading network discovery settings...</div>
+    return (
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+        Loading network discovery settings...
+      </div>
+    )
   }
 
   const getEncryptionLabel = (value: number) => {

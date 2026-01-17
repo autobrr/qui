@@ -96,15 +96,17 @@ function TimeInput({
   onHourChange,
   onMinuteChange,
   disabled = false,
+  labelPrefix = "Schedule",
 }: {
   hour: number
   minute: number
   onHourChange: (hour: number) => void
   onMinuteChange: (minute: number) => void
   disabled?: boolean
+  labelPrefix?: string
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" role="group" aria-label={`${labelPrefix} time`}>
       <Input
         type="number"
         min="0"
@@ -118,8 +120,9 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
+        aria-label={`${labelPrefix} hour (0-23)`}
       />
-      <span className="text-muted-foreground">:</span>
+      <span className="text-muted-foreground" aria-hidden="true">:</span>
       <Input
         type="number"
         min="0"
@@ -133,6 +136,7 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
+        aria-label={`${labelPrefix} minute (0-59)`}
       />
     </div>
   )
@@ -199,7 +203,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
 
   if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading speed limits...</p>
       </div>
     )
@@ -207,7 +211,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
 
   if (!memoizedPreferences) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
@@ -245,7 +249,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Download}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
@@ -274,7 +278,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Upload}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
@@ -303,7 +307,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Download}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
@@ -332,7 +336,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Upload}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
@@ -384,6 +388,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                   setIsFormDirty(true)
                                   minField.handleChange(minute)
                                 }}
+                                labelPrefix="Start"
                               />
                             )}
                           </form.Field>
@@ -410,6 +415,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                   setIsFormDirty(true)
                                   minField.handleChange(minute)
                                 }}
+                                labelPrefix="End"
                               />
                             )}
                           </form.Field>
