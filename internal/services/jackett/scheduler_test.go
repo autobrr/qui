@@ -850,6 +850,44 @@ func TestRateLimiter_RecordRequest(t *testing.T) {
 	}
 }
 
+func TestRateLimiter_WaitForMinInterval_ReservesSlot(t *testing.T) {
+	limiter := NewRateLimiter(50 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1}
+
+	limiter.RecordRequest(indexer.ID, time.Time{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	if err := limiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground}); err != nil {
+		t.Fatalf("WaitForMinInterval returned error: %v", err)
+	}
+
+	// We just reserved a slot; immediately after, there should be some wait remaining.
+	wait := limiter.NextWait(indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground})
+	if wait <= 0 {
+		t.Fatalf("expected positive wait after reserving slot, got %v", wait)
+	}
+}
+
+func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
+	limiter := NewRateLimiter(50 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1}
+
+	limiter.SetCooldown(indexer.ID, time.Now().Add(1*time.Hour))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	if err := limiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground}); err != nil {
+		t.Fatalf("WaitForMinInterval returned error: %v", err)
+	}
+	if time.Since(start) > 150*time.Millisecond {
+		t.Fatalf("WaitForMinInterval waited unexpectedly long (cooldown should be ignored)")
+	}
+}
+
 func TestRateLimiter_ClearCooldown(t *testing.T) {
 	limiter := NewRateLimiter(5 * time.Millisecond)
 
