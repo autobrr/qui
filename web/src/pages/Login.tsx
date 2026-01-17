@@ -24,7 +24,7 @@ import { toast } from "sonner"
 
 export function Login() {
   const navigate = useNavigate()
-  const { login, isLoggingIn, loginError, setIsAuthenticated } = useAuth()
+  const { login, isLoggingIn, loginError, setIsAuthenticated, isAuthenticated, isLoading } = useAuth()
 
   // Query to check if setup is required
   const { data: setupRequired } = useQuery({
@@ -45,6 +45,12 @@ export function Login() {
   })
 
   useEffect(() => {
+    // Redirect to homepage if user is already authenticated
+    if (isAuthenticated && !isLoading) {
+      navigate({ to: "/dashboard" })
+      return
+    }
+
     // Redirect to setup if required
     if (setupRequired) {
       navigate({ to: "/setup" })
@@ -67,7 +73,7 @@ export function Login() {
         toast.error(error.message || "OIDC authentication failed")
       })
     }
-  }, [setupRequired, navigate, setIsAuthenticated])
+  }, [setupRequired, navigate, setIsAuthenticated, isAuthenticated, isLoading])
 
   const form = useForm({
     defaultValues: {
