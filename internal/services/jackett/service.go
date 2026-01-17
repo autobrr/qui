@@ -109,6 +109,7 @@ const (
 
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
+	searchCacheScopeDirScan   = "dir-scan"
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -258,6 +259,9 @@ type TorrentDownloadRequest struct {
 	GUID        string
 	Title       string
 	Size        int64
+	// Pace applies per-indexer min-interval pacing before contacting the backend.
+	// This is useful for background/automated workflows (e.g. dirscan) to avoid bursts of .torrent downloads.
+	Pace bool
 }
 
 // ServiceOption configures optional behaviour on the Jackett service.
@@ -547,6 +551,19 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) error {
 // SearchGeneric performs a general Torznab search across specified or all enabled indexers
 func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) error {
 	return s.performSearch(ctx, req, searchCacheScopeGeneral)
+}
+
+// SearchWithScope performs a Torznab search with a custom cache scope.
+// This is used by dir-scan and other features that need cache separation.
+func (s *Service) SearchWithScope(ctx context.Context, req *TorznabSearchRequest, scope string) error {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return errors.New("invalid scope: empty")
+	}
+	if s == nil {
+		return errors.New("nil service")
+	}
+	return s.performSearch(ctx, req, scope)
 }
 
 // performSearch is the shared implementation for Search and SearchGeneric
@@ -919,6 +936,15 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 				IndexerName: indexer.Name,
 				ResumeAt:    resumeAt,
 				Queued:      false,
+			}
+		}
+		if req.Pace {
+			// Even when search results are served from cache, downloading torrent payloads can still hit
+			// Prowlarr/private trackers very aggressively. Apply per-indexer pacing when explicitly enabled.
+			priority := resolveSearchPriority(ctx, nil, RateLimitPriorityBackground)
+			opts := rateLimitOptionsForPriority(priority)
+			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer, opts); waitErr != nil {
+				return nil, waitErr
 			}
 		}
 	}
@@ -1826,6 +1852,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
 
+		// Note: the prowlarr workaround only applies to the prowlarr backend.
+
 		if opts.logSearchActivity {
 			log.Debug().
 				Int("indexer_id", idx.ID).
@@ -1852,6 +1880,10 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
+
+		// Apply the year->query workaround after capability processing so that
+		// ID-driven searches which lose IDs can still restore the original query.
+		s.applyProwlarrWorkaround(idx, paramsMap)
 
 		if opts.logSearchActivity {
 			log.Debug().
