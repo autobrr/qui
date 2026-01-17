@@ -91,6 +91,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Field | Description |
 |-------|-------------|
 | Hardlink Scope | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access) |
+| Has Missing Files | Boolean - completed torrent has files missing on disk (requires local filesystem access) |
 
 ### State Values
 
@@ -259,6 +260,17 @@ Requires "Local filesystem access" enabled on the instance.
 :::
 
 Use case: Identify library imports vs pure cross-seeds for selective cleanup.
+
+## Missing Files Detection
+
+The `Has Missing Files` field detects whether any files belonging to a completed torrent are missing from disk.
+
+- Only checks **completed torrents**
+- Returns `true` if **any** file is missing from its expected path
+
+:::note
+Requires "Local filesystem access" enabled on the instance.
+:::
 
 ## Important Behavior
 

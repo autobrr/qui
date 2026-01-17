@@ -50,6 +50,8 @@ type EvalContext struct {
 	TrackerDownSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
+	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
+	HasMissingFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
@@ -425,6 +427,23 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown scope - don't match
 		}
 		return compareHardlinkScope(scope, cond)
+
+	case FieldHasMissingFiles:
+		// Instances without local filesystem access cannot detect missing files.
+		// Return false so the condition doesn't match and rules won't trigger unintended actions.
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		// If missing files couldn't be computed for this torrent (incomplete, etc.),
+		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
+		if ctx.HasMissingFilesByHash == nil {
+			return false
+		}
+		hasMissing, ok := ctx.HasMissingFilesByHash[torrent.Hash]
+		if !ok {
+			return false // Unknown state - don't match
+		}
+		return compareBool(hasMissing, cond)
 
 	default:
 		return false
