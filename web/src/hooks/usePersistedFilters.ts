@@ -6,11 +6,29 @@
 import { useEffect, useState } from "react"
 import type { TorrentFilters } from "@/types"
 
+// Safe localStorage wrapper that returns fallback on error
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch (error) {
+    console.error(`Failed to read from localStorage key "${key}":`, error)
+    return null
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch (error) {
+    console.error(`Failed to write to localStorage key "${key}":`, error)
+  }
+}
+
 export function usePersistedFilters(instanceId: number) {
   // Initialize state with persisted values immediately
   const [filters, setFilters] = useState<TorrentFilters>(() => {
-    const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
-    const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
+    const global = JSON.parse(safeGetItem("qui-filters-global") || "{}")
+    const instance = JSON.parse(safeGetItem(`qui-filters-${instanceId}`) || "{}")
 
     return {
       status: global.status || [],
@@ -27,8 +45,8 @@ export function usePersistedFilters(instanceId: number) {
 
   // Load filters when instanceId changes
   useEffect(() => {
-    const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
-    const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
+    const global = JSON.parse(safeGetItem("qui-filters-global") || "{}")
+    const instance = JSON.parse(safeGetItem(`qui-filters-${instanceId}`) || "{}")
 
     setFilters({
       status: global.status || [],
@@ -45,11 +63,11 @@ export function usePersistedFilters(instanceId: number) {
 
   // Save filters when they change
   useEffect(() => {
-    localStorage.setItem("qui-filters-global", JSON.stringify({
+    safeSetItem("qui-filters-global", JSON.stringify({
       status: filters.status,
       excludeStatus: filters.excludeStatus,
     }))
-    localStorage.setItem(`qui-filters-${instanceId}`, JSON.stringify({
+    safeSetItem(`qui-filters-${instanceId}`, JSON.stringify({
       categories: filters.categories,
       excludeCategories: filters.excludeCategories,
       tags: filters.tags,

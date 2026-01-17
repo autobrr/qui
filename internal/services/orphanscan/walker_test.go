@@ -266,6 +266,53 @@ func TestWalkScanRoot_IgnoresFuseHiddenFiles(t *testing.T) {
 	}
 }
 
+func TestWalkScanRoot_IgnoresPartsFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	partsFile := filepath.Join(root, "movie.mkv.parts")
+	if err := os.WriteFile(partsFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	normal := filepath.Join(root, orphanFileName)
+	if err := os.WriteFile(normal, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(partsFile, old, old)
+	_ = os.Chtimes(normal, old, old)
+
+	tfm := NewTorrentFileMap()
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, filepath.Base(o.Path))
+	}
+	for _, p := range paths {
+		if strings.HasSuffix(p, ".parts") {
+			t.Fatalf("expected *.parts to be ignored, got orphan %q", p)
+		}
+	}
+	foundNormal := false
+	for _, p := range paths {
+		if p == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
 func writeOldFile(t *testing.T, path string) {
 	t.Helper()
 
