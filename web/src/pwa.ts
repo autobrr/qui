@@ -7,6 +7,13 @@ import { toast } from "sonner"
 import { getBaseUrl, withBasePath } from "./lib/base-url"
 
 let hasRegistered = false
+let registrationErrorShown = false
+
+const showRegistrationError = (message: string) => {
+  if (registrationErrorShown) return
+  registrationErrorShown = true
+  toast.error(message, { duration: 8000 })
+}
 
 export function setupPWAAutoUpdate(): void {
   if (hasRegistered) return
@@ -111,10 +118,12 @@ export function setupPWAAutoUpdate(): void {
 
       wb.register({ immediate: true }).catch((error) => {
         console.error("Service worker registration failed", error)
+        showRegistrationError("Offline support could not start (registration failed).")
       })
     })
     .catch((error) => {
       console.error("Failed to load Workbox for PWA registration", error)
+      showRegistrationError("Offline support could not start (workbox load failed).")
     })
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {

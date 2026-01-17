@@ -5,12 +5,14 @@
 
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt"
 import { useDynamicFavicon } from "@/hooks/useDynamicFavicon"
 import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
 import { initializeTheme } from "@/utils/theme"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider } from "@tanstack/react-router"
 import { useEffect } from "react"
+import { useOfflineRedirect } from "@/hooks/useOfflineRedirect"
 import { setupPWAAutoUpdate } from "./pwa"
 import { router } from "./router"
 
@@ -26,6 +28,7 @@ const queryClient = new QueryClient({
 
 function App() {
   useDynamicFavicon()
+  useOfflineRedirect()
 
   useEffect(() => {
     initializeTheme().catch(console.error)
@@ -40,6 +43,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <RouterProvider router={router} />
+        <PWAInstallPrompt />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
