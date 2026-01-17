@@ -1254,16 +1254,17 @@ func (s *Service) recordRunInjection(
 	injectResult *InjectResult,
 	injectErr error,
 ) {
-	if s == nil || s.store == nil || runID <= 0 || dir == nil || parsed == nil || searchee == nil || result == nil || injectResult == nil {
+	if s == nil || s.store == nil || runID <= 0 || dir == nil || parsed == nil || searchee == nil || result == nil {
 		return
 	}
 
 	status := models.DirScanRunInjectionStatusAdded
 	errorMessage := ""
-	if injectErr != nil || !injectResult.Success {
+	success := injectResult != nil && injectResult.Success
+	if injectErr != nil || !success {
 		status = models.DirScanRunInjectionStatusFailed
 		switch {
-		case injectResult.ErrorMessage != "":
+		case injectResult != nil && injectResult.ErrorMessage != "":
 			errorMessage = injectResult.ErrorMessage
 		case injectErr != nil:
 			errorMessage = injectErr.Error()
@@ -1287,11 +1288,15 @@ func (s *Service) recordRunInjection(
 		IndexerName:        indexerName,
 		TrackerDomain:      trackerDomain,
 		TrackerDisplayName: trackerDisplayName,
-		LinkMode:           injectResult.Mode,
-		SavePath:           injectResult.SavePath,
+		LinkMode:           "",
+		SavePath:           "",
 		Category:           category,
 		Tags:               tags,
 		ErrorMessage:       errorMessage,
+	}
+	if injectResult != nil {
+		inj.LinkMode = injectResult.Mode
+		inj.SavePath = injectResult.SavePath
 	}
 
 	if err := s.store.CreateRunInjection(ctx, inj); err != nil {

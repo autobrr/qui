@@ -160,6 +160,10 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 		}
 
 		if wait <= 0 {
+			if ctx.Err() != nil {
+				r.mu.Unlock()
+				return ctx.Err()
+			}
 			r.recordLocked(indexer.ID, now)
 			r.mu.Unlock()
 			return nil

@@ -941,7 +941,8 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 			// Even when search results are served from cache, downloading torrent payloads can still hit
 			// Prowlarr/private trackers very aggressively. Apply per-indexer pacing when explicitly enabled.
 			priority := resolveSearchPriority(ctx, nil, RateLimitPriorityBackground)
-			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: priority}); waitErr != nil {
+			opts := rateLimitOptionsForPriority(priority)
+			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer, opts); waitErr != nil {
 				return nil, waitErr
 			}
 		}
