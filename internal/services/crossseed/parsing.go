@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/anacrolix/torrent/metainfo"
+	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 )
@@ -492,33 +493,37 @@ func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error)
 
 // ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
 func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	name, hash, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
+	name, hash, _, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
 	return name, hash, files, err
 }
 
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
-func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hash string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
+func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hashV1, hashV2 string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
+		return "", "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
 	infoVal, err := mi.UnmarshalInfo()
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
+		return "", "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
 	name = infoVal.Name
-	hash = mi.HashInfoBytes().HexString()
+	hashV1 = mi.HashInfoBytes().HexString()
+	if infoVal.HasV2() {
+		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
+		hashV2 = h.HexString()
+	}
 
 	if name == "" {
-		return "", "", nil, nil, errors.New("torrent has no name")
+		return "", "", "", nil, nil, errors.New("torrent has no name")
 	}
 
 	files = BuildTorrentFilesFromInfo(name, infoVal)
 
-	return name, hash, files, &infoVal, nil
+	return name, hashV1, hashV2, files, &infoVal, nil
 }
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
