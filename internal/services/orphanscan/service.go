@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -888,7 +887,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			failedDeletes++
 
 			// Detect error type for user-facing message
-			if errors.Is(err, syscall.EROFS) || strings.Contains(err.Error(), "read-only file system") {
+			if isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system") {
 				sawReadOnly = true
 			} else if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted") {
 				sawPermissionDenied = true

@@ -61,7 +61,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Field | Description |
 |-------|-------------|
 | Ratio | Upload/download ratio |
-| Progress | Download progress (0-1) |
+| Progress | Download progress (0-100%) |
 | Availability | Distributed copies available |
 
 #### Speed Fields (bytes/s)
@@ -216,6 +216,10 @@ Add or remove tags from torrents.
 | `full` | Add to matches, remove from non-matches (smart toggle) |
 | `add` | Only add to matches |
 | `remove` | Only remove from non-matches |
+
+:::note
+Mode does not change the way torrents are flagged, meaning, even with `mode: remove`, tags will be removed if the torrent does **NOT** match the conditions. `mode: remove` simply means that tags will not be added to torrents that do match.
+:::
 
 Options:
 - **Use Tracker as Tag** - Derive tag from tracker domain

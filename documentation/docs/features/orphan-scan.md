@@ -5,6 +5,7 @@ description: Find and remove files not associated with any torrent.
 ---
 
 import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
+import OrphanScanDefaultIgnores from '@site/docs/_partials/_orphan-scan-default-ignores.mdx';
 
 # Orphan Scan
 
@@ -41,6 +42,8 @@ Directories are only scanned if at least one torrent points to them. If you dele
 | Max files per run | Limit results to prevent overwhelming large scans | 1,000 |
 | Auto-cleanup | Automatically delete orphans from scheduled scans | Disabled |
 | Auto-cleanup max files | Only auto-delete if orphan count is at or below this threshold | 100 |
+
+<OrphanScanDefaultIgnores />
 
 ## Workflow
 
