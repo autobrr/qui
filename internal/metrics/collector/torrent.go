@@ -417,5 +417,5 @@ func resolveTrackerForStats(domain string, customizations []*models.TrackerCusto
 		}
 	}
 
-	return "", false
+	return domain, true
 }
