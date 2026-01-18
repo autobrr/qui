@@ -28,6 +28,7 @@ import {
   getOperatorsForField,
   HARDLINK_SCOPE_VALUES,
   TORRENT_STATES,
+  CATEGORY_UNCATEGORIZED_VALUE,
   type DisabledField,
   type DisabledStateValue
 } from "./constants";
@@ -203,6 +204,18 @@ export function LeafCondition({
 
   const handleValueChange = (value: string) => {
     onChange({ ...condition, value });
+  };
+
+  const handleCategoryValueChange = (value: string) => {
+    const actualValue = value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value;
+    onChange({ ...condition, value: actualValue });
+  };
+
+  const getCategoryDisplayValue = (): string => {
+    if (condition.field === "CATEGORY" && !condition.value) {
+      return CATEGORY_UNCATEGORIZED_VALUE;
+    }
+    return condition.value ?? "";
   };
 
   const handleMinValueChange = (value: string) => {
@@ -697,15 +710,18 @@ export function LeafCondition({
           <span className="text-sm text-muted-foreground">%</span>
         </div>
       ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
-        // Category selector for category-related conditions when categories available
-        <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
+        <Select value={getCategoryDisplayValue()} onValueChange={handleCategoryValueChange}>
           <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
           <SelectContent>
             {categoryOptions.map((cat) => (
               <SelectItem key={cat.value} value={cat.value}>
-                {cat.label}
+                {cat.value === CATEGORY_UNCATEGORIZED_VALUE ? (
+                  <span className="italic text-muted-foreground">Uncategorized</span>
+                ) : (
+                  cat.label
+                )}
               </SelectItem>
             ))}
           </SelectContent>

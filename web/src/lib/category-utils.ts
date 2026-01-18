@@ -4,6 +4,7 @@
  */
 
 import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
+import { CATEGORY_UNCATEGORIZED_VALUE } from "@/components/query-builder/constants"
 
 /** Build category select options from categories object, preserving any manually-typed selections */
 export function buildCategorySelectOptions(
@@ -11,7 +12,9 @@ export function buildCategorySelectOptions(
   ...selectedArrays: string[][]
 ): Array<{ label: string; value: string }> {
   const tree = buildCategoryTree(categories, {})
-  const flattened: { label: string; value: string }[] = []
+  const flattened: { label: string; value: string }[] = [
+    { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+  ]
 
   const visitNodes = (nodes: CategoryNode[]) => {
     for (const node of nodes) {
