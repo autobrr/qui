@@ -5291,10 +5291,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	case err := <-errCh:
 		return nil, wrapCrossSeedSearchError(err)
 	case <-waitCtx.Done():
-		if ctx.Err() != nil {
-			return nil, wrapCrossSeedSearchError(ctx.Err())
+		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+			return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
 		}
-		return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+		return nil, wrapCrossSeedSearchError(waitCtx.Err())
 	}
 
 	searchResults := searchResp.Results
