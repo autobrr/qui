@@ -5260,12 +5260,15 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	var searchResp *jackett.SearchResponse
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
+	var onAllCompleteOnce sync.Once
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
-		if err != nil {
-			errCh <- err
-		} else {
-			respCh <- resp
-		}
+		onAllCompleteOnce.Do(func() {
+			if err != nil {
+				errCh <- err
+			} else {
+				respCh <- resp
+			}
+		})
 	}
 	err = s.jackettService.Search(ctx, searchReq)
 	if err != nil {
@@ -5277,6 +5280,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		// continue
 	case err := <-errCh:
 		return nil, wrapCrossSeedSearchError(err)
+	case <-ctx.Done():
+		return nil, wrapCrossSeedSearchError(ctx.Err())
 	case <-time.After(5 * time.Minute):
 		return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
 	}
