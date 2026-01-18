@@ -30,6 +30,8 @@ export interface Instance {
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
   // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks: boolean
+  // Fallback to regular mode when reflink/hardlink fails
+  fallbackToRegularMode: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -50,6 +52,8 @@ export interface InstanceFormData {
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
   // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks?: boolean
+  // Fallback to regular mode when reflink/hardlink fails
+  fallbackToRegularMode?: boolean
   reannounceSettings: InstanceReannounceSettings
 }
 
@@ -184,6 +188,7 @@ export type ConditionField =
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"
+  | "HAS_MISSING_FILES"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -242,7 +247,8 @@ export interface PauseAction {
 
 export interface DeleteAction {
   enabled: boolean
-  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
   condition?: RuleCondition
 }
 
@@ -273,6 +279,12 @@ export interface ActionConditions {
   category?: CategoryAction
 }
 
+export type FreeSpaceSource =
+  | { type: "qbittorrent" }
+  | { type: "path"; path: string }
+
+export type FreeSpaceSourceType = FreeSpaceSource["type"]
+
 export interface Automation {
   id: number
   instanceId: number
@@ -280,6 +292,7 @@ export interface Automation {
   trackerPattern: string
   trackerDomains?: string[]
   conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
   enabled: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
@@ -292,14 +305,18 @@ export interface AutomationInput {
   trackerPattern?: string
   trackerDomains?: string[]
   conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
   enabled?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
 
+export type PreviewView = "needed" | "eligible"
+
 export interface AutomationPreviewInput extends AutomationInput {
   previewLimit?: number
   previewOffset?: number
+  previewView?: PreviewView
 }
 
 export interface AutomationActivity {
@@ -319,7 +336,7 @@ export interface AutomationActivity {
     seedingMinutes?: number
     seedingLimitMinutes?: number
     filesKept?: boolean
-    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
     limitKiB?: number
     count?: number
     type?: string
@@ -347,8 +364,10 @@ export interface AutomationPreviewTorrent {
   addedOn: number
   uploaded: number
   downloaded: number
+  contentPath?: string
   isUnregistered?: boolean
   isCrossSeed?: boolean
+  isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
   hardlinkScope?: string // none, torrents_only, outside_qbittorrent
   // Additional fields for dynamic columns
   numSeeds: number
@@ -367,6 +386,7 @@ export interface AutomationPreviewResult {
   totalMatches: number
   crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
+  warnings?: string[] // Warnings explaining why certain operations were skipped
 }
 
 export interface RegexValidationError {
@@ -402,6 +422,7 @@ export interface InstanceCapabilities {
   supportsSubcategories: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
+  supportsFreeSpacePathSource: boolean
   webAPIVersion?: string
 }
 
@@ -1554,6 +1575,8 @@ export interface CrossSeedTorrentInfo {
   searchType?: string
   searchCategories?: number[]
   requiredCaps?: string[]
+  discLayout?: boolean
+  discMarker?: string
   // Pre-filtering information for UI context menu
   availableIndexers?: number[]
   filteredIndexers?: number[]
@@ -1842,6 +1865,8 @@ export type OrphanScanTriggerType = "manual" | "scheduled"
 
 export type OrphanScanFileStatus = "pending" | "deleted" | "skipped" | "failed"
 
+export type OrphanScanPreviewSort = "size_desc" | "directory_size_desc"
+
 export interface OrphanScanSettings {
   id?: number
   instanceId: number
@@ -1849,6 +1874,7 @@ export interface OrphanScanSettings {
   gracePeriodMinutes: number
   ignorePaths: string[]
   scanIntervalHours: number
+  previewSort: OrphanScanPreviewSort
   maxFilesPerRun: number
   autoCleanupEnabled: boolean
   autoCleanupMaxFiles: number
@@ -1861,6 +1887,7 @@ export interface OrphanScanSettingsUpdate {
   gracePeriodMinutes?: number
   ignorePaths?: string[]
   scanIntervalHours?: number
+  previewSort?: OrphanScanPreviewSort
   maxFilesPerRun?: number
   autoCleanupEnabled?: boolean
   autoCleanupMaxFiles?: number
@@ -1911,4 +1938,136 @@ export interface LogSettingsUpdate {
   path?: string
   maxSize?: number
   maxBackups?: number
+}
+
+// Directory Scanner Types
+export type DirScanMatchMode = "strict" | "flexible"
+
+export type DirScanFileStatus =
+  | "pending"
+  | "matched"
+  | "no_match"
+  | "error"
+  | "already_seeding"
+  | "in_qbittorrent"
+
+export type DirScanRunStatus =
+  | "queued"
+  | "scanning"
+  | "searching"
+  | "injecting"
+  | "success"
+  | "failed"
+  | "canceled"
+
+export interface DirScanSettings {
+  id: number
+  enabled: boolean
+  matchMode: DirScanMatchMode
+  sizeTolerancePercent: number
+  minPieceRatio: number
+  allowPartial: boolean
+  skipPieceBoundarySafetyCheck: boolean
+  startPaused: boolean
+  category: string
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanSettingsUpdate {
+  enabled?: boolean
+  matchMode?: DirScanMatchMode
+  sizeTolerancePercent?: number
+  minPieceRatio?: number
+  allowPartial?: boolean
+  skipPieceBoundarySafetyCheck?: boolean
+  startPaused?: boolean
+  category?: string
+  tags?: string[]
+}
+
+export interface DirScanDirectory {
+  id: number
+  path: string
+  qbitPathPrefix?: string
+  category?: string
+  tags: string[]
+  enabled: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes: number
+  lastScanAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanDirectoryCreate {
+  path: string
+  qbitPathPrefix?: string
+  category?: string
+  tags?: string[]
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanDirectoryUpdate {
+  path?: string
+  qbitPathPrefix?: string
+  category?: string
+  tags?: string[]
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId?: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanRun {
+  id: number
+  directoryId: number
+  status: DirScanRunStatus
+  triggeredBy: string
+  filesFound: number
+  filesSkipped: number
+  matchesFound: number
+  torrentsAdded: number
+  errorMessage?: string
+  startedAt: string
+  completedAt?: string
+}
+
+export type DirScanRunInjectionStatus = "added" | "failed"
+
+export interface DirScanRunInjection {
+  id: number
+  runId: number
+  directoryId: number
+  status: DirScanRunInjectionStatus
+  searcheeName: string
+  torrentName: string
+  infoHash: string
+  contentType: string
+  indexerName?: string
+  trackerDomain?: string
+  trackerDisplayName?: string
+  linkMode?: string
+  savePath?: string
+  category?: string
+  tags: string[]
+  errorMessage?: string
+  createdAt: string
+}
+
+export interface DirScanFile {
+  id: number
+  directoryId: number
+  filePath: string
+  fileSize: number
+  fileModTime: string
+  status: DirScanFileStatus
+  matchedTorrentHash?: string
+  matchedIndexerId?: number
+  lastProcessedAt?: string
 }

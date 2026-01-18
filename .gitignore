@@ -67,4 +67,7 @@ tracker-icons/*
 .device-id-*
 backups/*
 .gocache/*
+.gomodcache/*
+.golangci-cache/*
 torrentfiles/*
+analyses/*

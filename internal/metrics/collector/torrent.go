@@ -26,8 +26,6 @@ type TorrentCollector struct {
 	torrentsPausedDesc           *prometheus.Desc
 	torrentsErrorDesc            *prometheus.Desc
 	torrentsCheckingDesc         *prometheus.Desc
-	downloadSpeedDesc            *prometheus.Desc
-	uploadSpeedDesc              *prometheus.Desc
 	sessionDownload              *prometheus.Desc
 	sessionUpload                *prometheus.Desc
 	allTimeDownload              *prometheus.Desc
@@ -73,18 +71,6 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 		torrentsCheckingDesc: prometheus.NewDesc(
 			"qbittorrent_torrents_checking",
 			"Number of torrents being checked by instance",
-			[]string{"instance_id", "instance_name"},
-			nil,
-		),
-		downloadSpeedDesc: prometheus.NewDesc(
-			"qbittorrent_download_speed_bytes_per_second",
-			"Current download speed in bytes per second by instance",
-			[]string{"instance_id", "instance_name"},
-			nil,
-		),
-		uploadSpeedDesc: prometheus.NewDesc(
-			"qbittorrent_upload_speed_bytes_per_second",
-			"Current upload speed in bytes per second by instance",
 			[]string{"instance_id", "instance_name"},
 			nil,
 		),
@@ -157,8 +143,6 @@ func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.torrentsPausedDesc
 	ch <- c.torrentsErrorDesc
 	ch <- c.torrentsCheckingDesc
-	ch <- c.downloadSpeedDesc
-	ch <- c.uploadSpeedDesc
 	ch <- c.sessionDownload
 	ch <- c.sessionUpload
 	ch <- c.allTimeDownload
@@ -403,32 +387,6 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				c.allTimeUpload,
 				prometheus.CounterValue,
 				float64(stats.AlltimeUl),
-				instanceIDStr,
-				instanceName,
-			)
-		}
-
-		speeds, err := c.syncManager.GetInstanceSpeeds(ctx, instance.ID)
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instance.ID).
-				Str("instanceName", instanceName).
-				Msg("Failed to get instance speeds for metrics")
-			c.reportError(ch, instanceIDStr, instanceName, "instance_speeds")
-		} else if speeds != nil {
-			ch <- prometheus.MustNewConstMetric(
-				c.downloadSpeedDesc,
-				prometheus.GaugeValue,
-				float64(speeds.Download),
-				instanceIDStr,
-				instanceName,
-			)
-
-			ch <- prometheus.MustNewConstMetric(
-				c.uploadSpeedDesc,
-				prometheus.GaugeValue,
-				float64(speeds.Upload),
 				instanceIDStr,
 				instanceName,
 			)
