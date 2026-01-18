@@ -217,7 +217,7 @@ func rateLimitOptionsForPriority(priority RateLimitPriority) *RateLimitOptions {
 		return &RateLimitOptions{
 			Priority:    RateLimitPriorityCompletion,
 			MinInterval: defaultMinRequestInterval,
-			// MaxWait: 0 - completion searches queue and wait indefinitely
+			MaxWait:     completionMaxWait,
 		}
 	default:
 		return &RateLimitOptions{
