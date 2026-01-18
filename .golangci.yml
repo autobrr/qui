@@ -50,11 +50,6 @@ linters:
         - alltime # Already used in metrics
         - hardlink
         - hardlinked
-    
-    staticcheck:
-      checks:
-        - all
-        - -G404
 
   exclusions:
     generated: lax
