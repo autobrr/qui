@@ -957,8 +957,15 @@ func (db *DB) migrate() error {
 			filename TEXT NOT NULL UNIQUE,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
-	`); err != nil {
-		return fmt.Errorf("failed to create migrations table: %w", err)
+		`); err != nil {
+			return fmt.Errorf("failed to create migrations table: %w", err)
+		}
+
+	// Handle historical migration file renames.
+	// If we ever rename an embedded migration file, we must update the filename
+	// stored in the migrations table so existing databases don't re-run it.
+	if err := db.normalizeMigrationFilenames(ctx); err != nil {
+		return fmt.Errorf("failed to normalize migration filenames: %w", err)
 	}
 
 	// Get all migration files
@@ -990,6 +997,41 @@ func (db *DB) migrate() error {
 	// Apply all pending migrations in a single transaction
 	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
+	renames := []struct {
+		from string
+		to   string
+	}{
+		{
+			from: "052_add_dir_scan.sql",
+			to:   "053_add_dir_scan.sql",
+		},
+	}
+
+	for _, r := range renames {
+		// If both entries exist, keep the new name.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			DELETE FROM migrations
+			WHERE filename = ?
+			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+		}
+
+		// Rename old -> new if the new entry doesn't already exist.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			UPDATE migrations
+			SET filename = ?
+			WHERE filename = ?
+			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.to, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+		}
 	}
 
 	return nil
