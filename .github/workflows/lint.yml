@@ -35,8 +35,8 @@ jobs:
       - name: Lint frontend
         working-directory: web
         run: |
-          webfiles=$$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
-            if [ -n "$$webfiles" ]; then echo "$$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
+          webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
+          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
     
   backend:
     runs-on: blacksmith-2vcpu-ubuntu-2404
