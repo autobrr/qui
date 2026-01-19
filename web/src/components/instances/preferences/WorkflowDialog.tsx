@@ -1054,7 +1054,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Delete requires at least one condition")
       return
     }
-    if (formState.moveEnabled && !formState.exprMovePath) {
+    if (submitState.moveEnabled && !submitState.exprMovePath) {
       toast.error("Move requires a path")
       return
     }
