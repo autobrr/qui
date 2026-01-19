@@ -2146,6 +2146,10 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}`, { method: "DELETE" })
   }
 
+  async resetDirScanFiles(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
   async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
     return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
       method: "POST",

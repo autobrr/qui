@@ -101,6 +101,17 @@ export function useDeleteDirScanDirectory() {
   })
 }
 
+export function useResetDirScanFiles(directoryId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.resetDirScanFiles(directoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dir-scan", "directory", directoryId, "files"] })
+    },
+  })
+}
+
 export function useTriggerDirScan(directoryId: number) {
   const queryClient = useQueryClient()
 

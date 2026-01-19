@@ -1966,6 +1966,7 @@ export interface DirScanSettings {
   matchMode: DirScanMatchMode
   sizeTolerancePercent: number
   minPieceRatio: number
+  maxSearcheesPerRun: number
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
@@ -1980,6 +1981,7 @@ export interface DirScanSettingsUpdate {
   matchMode?: DirScanMatchMode
   sizeTolerancePercent?: number
   minPieceRatio?: number
+  maxSearcheesPerRun?: number
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean

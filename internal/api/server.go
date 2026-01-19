@@ -553,6 +553,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Get("/", dirScanHandler.GetDirectory)
 							r.Patch("/", dirScanHandler.UpdateDirectory)
 							r.Delete("/", dirScanHandler.DeleteDirectory)
+							r.Post("/reset-files", dirScanHandler.ResetFiles)
 							r.Post("/scan", dirScanHandler.TriggerScan)
 							r.Delete("/scan", dirScanHandler.CancelScan)
 							r.Get("/status", dirScanHandler.GetStatus)

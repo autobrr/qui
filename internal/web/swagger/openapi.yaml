@@ -2791,6 +2791,22 @@ paths:
         '500':
           description: Failed to delete directory
 
+  /api/dir-scan/directories/{directoryID}/reset-files:
+    post:
+      tags:
+        - Dir Scan
+      summary: Reset directory scan progress
+      description: Deletes tracked dir-scan file state for the directory so the next scan re-processes it
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '204':
+          description: Scan progress reset
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to reset scan progress
+
   /api/dir-scan/directories/{directoryID}/scan:
     post:
       tags:
@@ -5945,6 +5961,9 @@ components:
           type: number
           format: double
           description: Minimum percent of torrent pieces that must already exist on disk for partial matches
+        maxSearcheesPerRun:
+          type: integer
+          description: Maximum eligible searchees to process per scan run (0 = unlimited)
         allowPartial:
           type: boolean
         skipPieceBoundarySafetyCheck:
@@ -5969,6 +5988,7 @@ components:
         - matchMode
         - sizeTolerancePercent
         - minPieceRatio
+        - maxSearcheesPerRun
         - allowPartial
         - skipPieceBoundarySafetyCheck
         - startPaused
@@ -5990,6 +6010,8 @@ components:
         minPieceRatio:
           type: number
           format: double
+        maxSearcheesPerRun:
+          type: integer
         allowPartial:
           type: boolean
         skipPieceBoundarySafetyCheck:
