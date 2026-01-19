@@ -332,7 +332,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "external_program_started" | "external_program_failed"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"

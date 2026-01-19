@@ -412,7 +412,7 @@ func TestIntegration_ExternalProgram_StoreOperations(t *testing.T) {
 
 	// Verify deletion
 	_, err = store.GetByID(ctx, program.ID)
-	assert.Equal(t, models.ErrExternalProgramNotFound, err)
+	assert.ErrorIs(t, err, models.ErrExternalProgramNotFound)
 
 	// List should be empty
 	programs, err = store.List(ctx)

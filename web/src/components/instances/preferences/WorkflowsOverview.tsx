@@ -166,6 +166,10 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Share"
     case "paused":
       return "Pause"
+    case "external_program_started":
+      return "Started"
+    case "external_program_failed":
+      return "Failed"
     default:
       return action
   }
@@ -684,6 +688,8 @@ export function WorkflowsOverview({
     speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    external_program_started: "bg-green-500/10 text-green-500 border-green-500/20",
+    external_program_failed: "bg-red-500/10 text-destructive border-destructive/30",
   }
 
   const openCreateDialog = (instanceId: number) => {
