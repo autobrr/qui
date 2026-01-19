@@ -356,11 +356,12 @@ func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx 
 		return
 	}
 
-	if !conditionMet {
+	switch {
+	case !conditionMet:
 		stats.MoveConditionNotMet++
-	} else if alreadyAtDest {
+	case alreadyAtDest:
 		stats.MoveAlreadyAtDestination++
-	} else {
+	default:
 		stats.MoveBlockedByCrossSeed++
 	}
 }
