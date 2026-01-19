@@ -1,3 +1,6 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package externalprograms
 
 import (
@@ -129,7 +132,20 @@ func Execute(ctx context.Context, program *models.ExternalProgram, torrent *qbt.
 			// Unix/Linux: Build command string and spawn in a terminal
 			allArgs := append([]string{program.Path}, args...)
 			fullCmd := shellquote.Join(allArgs...)
-			cmd = createTerminalCommand(ctx, fullCmd)
+			var err error
+			cmd, err = createTerminalCommand(ctx, fullCmd)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("hash", torrent.Hash).
+					Str("programName", program.Name).
+					Int("programId", program.ID).
+					Msg("Failed to create terminal command")
+				return ExecutionResult{
+					Started: false,
+					Error:   err,
+				}
+			}
 		} else {
 			// Launch directly without terminal
 			cmd = exec.CommandContext(ctx, program.Path, args...)

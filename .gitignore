@@ -30,6 +30,7 @@ node_modules/
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+.vite
 # Ditto for yarn, except we're using pnpm
 yarn.lock
 .pnpm-store
@@ -37,6 +38,7 @@ yarn.lock
 package-lock.json
 
 # Others
+./qui
 web/build
 bin/
 dist/

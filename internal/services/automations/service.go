@@ -1955,7 +1955,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			var reason string
 
 			if result.Started {
-				action = models.ActivityActionExternalProgramExecuted
+				action = models.ActivityActionExternalProgramStarted
 				outcome = models.ActivityOutcomeSuccess
 			} else {
 				action = models.ActivityActionExternalProgramFailed

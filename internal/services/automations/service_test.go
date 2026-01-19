@@ -1397,7 +1397,7 @@ func TestExternalProgramActivityFields(t *testing.T) {
 		Hash:          hash,
 		TorrentName:   torrentName,
 		TrackerDomain: trackerDomain,
-		Action:        models.ActivityActionExternalProgramExecuted,
+		Action:        models.ActivityActionExternalProgramStarted,
 		RuleID:        &ruleID,
 		RuleName:      ruleName,
 		Outcome:       models.ActivityOutcomeSuccess,
@@ -1407,7 +1407,7 @@ func TestExternalProgramActivityFields(t *testing.T) {
 	assert.Equal(t, hash, activity.Hash)
 	assert.Equal(t, torrentName, activity.TorrentName)
 	assert.Equal(t, trackerDomain, activity.TrackerDomain)
-	assert.Equal(t, models.ActivityActionExternalProgramExecuted, activity.Action)
+	assert.Equal(t, models.ActivityActionExternalProgramStarted, activity.Action)
 	assert.NotNil(t, activity.RuleID)
 	assert.Equal(t, ruleID, *activity.RuleID)
 	assert.Equal(t, ruleName, activity.RuleName)
@@ -1431,7 +1431,7 @@ func TestExternalProgramActivityFields(t *testing.T) {
 	assert.Equal(t, "program path not allowed", failedActivity.Reason)
 
 	// Verify activity action constants are correct
-	assert.Equal(t, "external_program_started", models.ActivityActionExternalProgramExecuted)
+	assert.Equal(t, "external_program_started", models.ActivityActionExternalProgramStarted)
 	assert.Equal(t, "external_program_failed", models.ActivityActionExternalProgramFailed)
 
 	// Use the program details for test coverage only

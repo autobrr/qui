@@ -25,8 +25,8 @@ const (
 	ActivityActionSpeedLimitsChanged      = "speed_limits_changed"     // Batch speed limit operation
 	ActivityActionShareLimitsChanged      = "share_limits_changed"     // Batch share limit operation
 	ActivityActionPaused                  = "paused"                   // Batch pause operation
-	ActivityActionExternalProgramExecuted = "external_program_started" // External program execution started
-	ActivityActionExternalProgramFailed   = "external_program_failed"  // External program failed to start
+	ActivityActionExternalProgramStarted = "external_program_started" // External program execution started
+	ActivityActionExternalProgramFailed  = "external_program_failed"  // External program failed to start
 )
 
 // Activity outcome types

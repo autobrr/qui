@@ -47,7 +47,9 @@ func (h *ExternalProgramsHandler) ListExternalPrograms(w http.ResponseWriter, r 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(programs)
+	if err := json.NewEncoder(w).Encode(programs); err != nil {
+		log.Error().Err(err).Msg("Failed to encode external programs response")
+	}
 }
 
 // CreateExternalProgram handles POST /api/external-programs
@@ -90,7 +92,9 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(program)
+	if err := json.NewEncoder(w).Encode(program); err != nil {
+		log.Error().Err(err).Int("id", program.ID).Msg("Failed to encode created program response")
+	}
 }
 
 // UpdateExternalProgram handles PUT /api/external-programs/{id}
@@ -148,7 +152,9 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(program)
+	if err := json.NewEncoder(w).Encode(program); err != nil {
+		log.Error().Err(err).Int("id", program.ID).Msg("Failed to encode updated program response")
+	}
 }
 
 // DeleteExternalProgram handles DELETE /api/external-programs/{id}
@@ -258,9 +264,9 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"results": results,
-	})
+	if err := json.NewEncoder(w).Encode(map[string]any{"results": results}); err != nil {
+		log.Error().Err(err).Int("programId", req.ProgramID).Msg("Failed to encode execution results response")
+	}
 }
 
 // executeForHash executes the external program for a single torrent hash
@@ -298,7 +304,13 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 
 func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
 	if h == nil || h.config == nil {
-		return true
+		// Fail closed - deny by default when misconfigured
+		log.Error().Str("path", programPath).Msg("ExternalProgramsHandler misconfigured: nil handler or config, blocking path")
+		return false
 	}
-	return externalprograms.IsPathAllowed(programPath, h.config.ExternalProgramAllowList)
+	allowed := externalprograms.IsPathAllowed(programPath, h.config.ExternalProgramAllowList)
+	if !allowed {
+		log.Warn().Str("path", programPath).Msg("External program path blocked by allowlist")
+	}
+	return allowed
 }

@@ -481,14 +481,16 @@ func TestIsPathAllowed_NilHandler(t *testing.T) {
 	t.Parallel()
 
 	var handler *ExternalProgramsHandler
-	assert.True(t, handler.isPathAllowed("/any/path"))
+	// Fail closed - deny when handler is nil (security fix)
+	assert.False(t, handler.isPathAllowed("/any/path"))
 }
 
 func TestIsPathAllowed_NilConfig(t *testing.T) {
 	t.Parallel()
 
 	handler := &ExternalProgramsHandler{config: nil}
-	assert.True(t, handler.isPathAllowed("/any/path"))
+	// Fail closed - deny when config is nil (security fix)
+	assert.False(t, handler.isPathAllowed("/any/path"))
 }
 
 func TestIsPathAllowed_EmptyAllowList(t *testing.T) {

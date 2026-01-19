@@ -48,7 +48,10 @@ func buildArguments(program *models.ExternalProgram, torrent *qbt.Torrent) []str
 	return args
 }
 
-func createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
+// ErrNoTerminalEmulator is returned when UseTerminal is requested but no terminal emulator is available.
+var ErrNoTerminalEmulator = fmt.Errorf("no terminal emulator available (tried: gnome-terminal, konsole, xfce4-terminal, mate-terminal, xterm, kitty, alacritty, terminator)")
+
+func createTerminalCommand(ctx context.Context, cmdLine string) (*exec.Cmd, error) {
 	// List of terminal emulators to try, in order of preference
 	// Each has different syntax for executing a command
 	terminals := []struct {
@@ -81,15 +84,15 @@ func createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
 				Str("terminal", term.name).
 				Str("command", cmdLine).
 				Msg("Using terminal emulator for external program")
-			return exec.CommandContext(ctx, term.name, term.args...)
+			return exec.CommandContext(ctx, term.name, term.args...), nil
 		}
 	}
 
-	// Fallback: if no terminal emulator found, just run in background
-	log.Warn().
+	// No terminal emulator found - return error instead of silently falling back
+	log.Error().
 		Str("command", cmdLine).
-		Msg("No terminal emulator found, running command in background")
-	return exec.CommandContext(ctx, "sh", "-c", cmdLine)
+		Msg("No terminal emulator found. UseTerminal was requested but cannot be fulfilled.")
+	return nil, ErrNoTerminalEmulator
 }
 
 // splitArgs splits a command line string into arguments, respecting quoted strings.
@@ -227,6 +230,7 @@ func IsPathAllowed(programPath string, allowList []string) bool {
 func normalizePath(p string) string {
 	cleaned, err := filepath.Abs(p)
 	if err != nil {
+		log.Debug().Err(err).Str("path", p).Msg("filepath.Abs failed, using Clean fallback")
 		cleaned = filepath.Clean(p)
 	}
 
@@ -235,9 +239,12 @@ func normalizePath(p string) string {
 	} else {
 		// If symlink resolution fails (e.g., path doesn't exist yet),
 		// try to resolve just the parent directory
+		log.Debug().Err(err).Str("path", cleaned).Msg("EvalSymlinks failed, attempting parent resolution")
 		dir := filepath.Dir(cleaned)
 		if dirResolved, dirErr := filepath.EvalSymlinks(dir); dirErr == nil {
 			cleaned = filepath.Join(dirResolved, filepath.Base(cleaned))
+		} else {
+			log.Debug().Err(dirErr).Str("path", dir).Msg("Parent symlink resolution also failed")
 		}
 	}
 
