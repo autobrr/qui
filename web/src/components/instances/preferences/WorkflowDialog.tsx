@@ -755,10 +755,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
-    if (input.moveEnabled) {
+    const trimmedMovePath = input.exprMovePath?.trim()
+    if (input.moveEnabled && trimmedMovePath) {
       conditions.move = {
         enabled: true,
-        path: input.exprMovePath,
+        path: trimmedMovePath,
         blockIfCrossSeed: input.exprMoveBlockIfCrossSeed,
         condition: input.actionCondition ?? undefined,
       }
@@ -1054,7 +1055,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Delete requires at least one condition")
       return
     }
-    if (submitState.moveEnabled && !submitState.exprMovePath) {
+    const trimmedSubmitMovePath = submitState.exprMovePath?.trim()
+    if (submitState.moveEnabled && !trimmedSubmitMovePath) {
       toast.error("Move requires a path")
       return
     }
