@@ -1,0 +1,61 @@
+version: "2"
+
+issues:
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - goimports
+    - gofmt
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/autobrr/qui
+
+linters:
+  enable:
+    - containedctx
+    - copyloopvar
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - ginkgolinter
+    - gocritic
+    - gosec
+    - loggercheck
+    - mirror
+    - misspell
+    - noctx
+    - perfsprint
+    - prealloc
+    - revive
+    - rowserrcheck
+    - spancheck
+    - testifylint
+    - unconvert
+    - whitespace
+    - modernize
+
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: false
+    
+    misspell:
+      ignore-rules:
+        - alltime # Already used in metrics
+        - hardlink
+        - hardlinked
+    
+    gosec:
+      excludes:
+        - G115
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
