@@ -200,7 +200,7 @@ func TestMovePathNormalization(t *testing.T) {
 }
 
 func TestMoveBlockedByCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -245,7 +245,7 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 }
 
 func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Test with a single torrent that has no cross-seed partner,
 	// so it won't be blocked even with BlockIfCrossSeed=true
@@ -280,7 +280,7 @@ func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 }
 
 func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -326,7 +326,7 @@ func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
 }
 
 func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -372,7 +372,7 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 }
 
 func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
