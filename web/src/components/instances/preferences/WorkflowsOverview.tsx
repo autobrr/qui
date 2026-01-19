@@ -223,10 +223,14 @@ function formatPausedSummary(details: AutomationActivity["details"]): string {
 }
 
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
-  const count = Object.values(details?.paths ?? {}).reduce((sum, value) => sum + value, 0)
-  return outcome === "failed" 
-    ? `${count} torrent${count !== 1 ? "s" : ""} failed to move`
-    : `${count} torrent${count !== 1 ? "s" : ""} moved`
+  const count = Object.values(details?.paths ?? {}).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+  if (outcome === "failed") {
+    return `${count} torrent${count !== 1 ? "s" : ""} failed to move`
+  }
+  return `${count} torrent${count !== 1 ? "s" : ""} moved`
 }
 
 interface WorkflowsOverviewProps {
