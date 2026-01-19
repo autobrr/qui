@@ -2,6 +2,7 @@ package externalprograms
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -49,7 +50,7 @@ func buildArguments(program *models.ExternalProgram, torrent *qbt.Torrent) []str
 }
 
 // ErrNoTerminalEmulator is returned when UseTerminal is requested but no terminal emulator is available.
-var ErrNoTerminalEmulator = fmt.Errorf("no terminal emulator available (tried: gnome-terminal, konsole, xfce4-terminal, mate-terminal, xterm, kitty, alacritty, terminator)")
+var ErrNoTerminalEmulator = errors.New("no terminal emulator available (tried: gnome-terminal, konsole, xfce4-terminal, mate-terminal, xterm, kitty, alacritty, terminator)")
 
 func createTerminalCommand(ctx context.Context, cmdLine string) (*exec.Cmd, error) {
 	// List of terminal emulators to try, in order of preference
@@ -84,7 +85,7 @@ func createTerminalCommand(ctx context.Context, cmdLine string) (*exec.Cmd, erro
 				Str("terminal", term.name).
 				Str("command", cmdLine).
 				Msg("Using terminal emulator for external program")
-			return exec.CommandContext(ctx, term.name, term.args...), nil
+			return exec.CommandContext(ctx, term.name, term.args...), nil //nolint:gosec
 		}
 	}
 

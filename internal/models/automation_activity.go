@@ -14,17 +14,17 @@ import (
 
 // Activity action types
 const (
-	ActivityActionDeletedRatio            = "deleted_ratio"
-	ActivityActionDeletedSeeding          = "deleted_seeding"
-	ActivityActionDeletedUnregistered     = "deleted_unregistered"
-	ActivityActionDeletedCondition        = "deleted_condition" // Expression-based deletion
-	ActivityActionDeleteFailed            = "delete_failed"
-	ActivityActionLimitFailed             = "limit_failed"
-	ActivityActionTagsChanged             = "tags_changed"             // Batch tag operation
-	ActivityActionCategoryChanged         = "category_changed"         // Batch category operation
-	ActivityActionSpeedLimitsChanged      = "speed_limits_changed"     // Batch speed limit operation
-	ActivityActionShareLimitsChanged      = "share_limits_changed"     // Batch share limit operation
-	ActivityActionPaused                  = "paused"                   // Batch pause operation
+	ActivityActionDeletedRatio           = "deleted_ratio"
+	ActivityActionDeletedSeeding         = "deleted_seeding"
+	ActivityActionDeletedUnregistered    = "deleted_unregistered"
+	ActivityActionDeletedCondition       = "deleted_condition" // Expression-based deletion
+	ActivityActionDeleteFailed           = "delete_failed"
+	ActivityActionLimitFailed            = "limit_failed"
+	ActivityActionTagsChanged            = "tags_changed"             // Batch tag operation
+	ActivityActionCategoryChanged        = "category_changed"         // Batch category operation
+	ActivityActionSpeedLimitsChanged     = "speed_limits_changed"     // Batch speed limit operation
+	ActivityActionShareLimitsChanged     = "share_limits_changed"     // Batch share limit operation
+	ActivityActionPaused                 = "paused"                   // Batch pause operation
 	ActivityActionExternalProgramStarted = "external_program_started" // External program execution started
 	ActivityActionExternalProgramFailed  = "external_program_failed"  // External program failed to start
 )

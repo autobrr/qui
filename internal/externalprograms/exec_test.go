@@ -2,6 +2,7 @@ package externalprograms
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -243,7 +244,7 @@ func TestExecute_ContextCancellation(t *testing.T) {
 	if result.Error == nil {
 		t.Error("Execute() expected error from context cancellation")
 	}
-	if result.Error != context.DeadlineExceeded {
+	if !errors.Is(result.Error, context.DeadlineExceeded) {
 		t.Errorf("Execute() expected DeadlineExceeded error, got: %v", result.Error)
 	}
 }
@@ -406,12 +407,12 @@ func TestIsPathAllowed_Symlinks(t *testing.T) {
 	scriptPath := filepath.Join(realDir, "script.sh")
 
 	// Create real directory
-	if err := os.MkdirAll(realDir, 0755); err != nil {
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
 		t.Fatalf("Failed to create real dir: %v", err)
 	}
 
 	// Create script file
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho test"), 0755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho test"), 0o755); err != nil { //nolint:gosec
 		t.Fatalf("Failed to create script: %v", err)
 	}
 
@@ -477,7 +478,7 @@ func TestExecute_StderrCapture(t *testing.T) {
 	// Create a temp script that writes to stderr
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "stderr_test.sh")
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'error message' >&2\n"), 0755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'error message' >&2\n"), 0o755); err != nil { //nolint:gosec
 		t.Fatalf("Failed to create script: %v", err)
 	}
 

@@ -932,7 +932,7 @@ func TestProcessTorrents_ExecuteExternalProgram_ConditionNotMet(t *testing.T) {
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 
 	// No action should be applied since condition doesn't match
-	require.Len(t, states, 0, "expected no state when condition not met")
+	require.Empty(t, states, "expected no state when condition not met")
 }
 
 func TestProcessTorrents_ExecuteExternalProgram_NilCondition(t *testing.T) {
@@ -960,7 +960,7 @@ func TestProcessTorrents_ExecuteExternalProgram_NilCondition(t *testing.T) {
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, stats)
 
 	// No action should be applied when condition is nil (safety requirement)
-	require.Len(t, states, 0, "expected no state when condition is nil")
+	require.Empty(t, states, "expected no state when condition is nil")
 
 	// Stats should show condition not met
 	require.NotNil(t, stats[1])
@@ -996,7 +996,7 @@ func TestProcessTorrents_ExecuteExternalProgram_NilProgramID(t *testing.T) {
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, stats)
 
 	// No action should be applied when programID is nil (safety requirement)
-	require.Len(t, states, 0, "expected no state when programID is nil")
+	require.Empty(t, states, "expected no state when programID is nil")
 
 	// Stats should show condition not met
 	require.NotNil(t, stats[1])
@@ -1031,7 +1031,7 @@ func TestProcessTorrents_ExecuteExternalProgram_Disabled(t *testing.T) {
 	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 
 	// No action should be applied when action is disabled
-	require.Len(t, states, 0, "expected no state when action is disabled")
+	require.Empty(t, states, "expected no state when action is disabled")
 }
 
 func TestProcessTorrents_ExecuteExternalProgram_RuleIDCapture(t *testing.T) {

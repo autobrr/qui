@@ -74,7 +74,7 @@ func (m *mockExternalProgramStore) Delete(ctx context.Context, id int) error {
 
 // mockQBClient implements qBittorrent client methods for testing
 type mockQBClient struct {
-	getTorrentsFn func(opts qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	getTorrentsFn func(_ qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 }
 
 func (m *mockQBClient) GetTorrents(opts qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -86,7 +86,7 @@ func (m *mockQBClient) GetTorrents(opts qbt.TorrentFilterOptions) ([]qbt.Torrent
 
 // mockClientPool implements the client pool interface for testing
 type mockClientPool struct {
-	getClientFn func(ctx context.Context, instanceID int) (*mockQBClient, error)
+	getClientFn func(_ context.Context, instanceID int) (*mockQBClient, error)
 }
 
 // ============================================================================
@@ -129,7 +129,7 @@ func newTestableHandler(store *mockExternalProgramStore, pool *mockClientPool, c
 
 // executeForHash tests the core execution logic for a single hash
 func (h *testableExternalProgramsHandler) executeForHash(
-	ctx context.Context,
+	_ context.Context,
 	program *models.ExternalProgram,
 	hash string,
 	torrentIndex map[string]*qbt.Torrent,
@@ -194,7 +194,7 @@ func TestExecuteExternalProgram_Success(t *testing.T) {
 	}
 
 	store := &mockExternalProgramStore{
-		getByIDFn: func(ctx context.Context, id int) (*models.ExternalProgram, error) {
+		getByIDFn: func(_ context.Context, id int) (*models.ExternalProgram, error) {
 			if id == 1 {
 				return program, nil
 			}
@@ -203,10 +203,10 @@ func TestExecuteExternalProgram_Success(t *testing.T) {
 	}
 
 	pool := &mockClientPool{
-		getClientFn: func(ctx context.Context, instanceID int) (*mockQBClient, error) {
+		getClientFn: func(_ context.Context, instanceID int) (*mockQBClient, error) {
 			if instanceID == 1 {
 				return &mockQBClient{
-					getTorrentsFn: func(opts qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+					getTorrentsFn: func(_ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 						return torrents, nil
 					},
 				}, nil
@@ -425,7 +425,7 @@ func TestExecuteForHash_MultipleHashes(t *testing.T) {
 
 	// Execute for multiple hashes
 	hashes := []string{"abc123", "def456", "notfound"}
-	var results []map[string]any
+	results := make([]map[string]any, 0, len(hashes))
 
 	for _, hash := range hashes {
 		result := handler.executeForHash(context.Background(), program, hash, torrentIndex)
@@ -526,8 +526,8 @@ func TestIsPathAllowed_SubdirectoryAccess(t *testing.T) {
 	// Create the subdirectories so path normalization works
 	subDir := filepath.Join(tempDir, "subdir")
 	deepDir := filepath.Join(tempDir, "deep", "nested", "dir")
-	require.NoError(t, os.MkdirAll(subDir, 0755))
-	require.NoError(t, os.MkdirAll(deepDir, 0755))
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
+	require.NoError(t, os.MkdirAll(deepDir, 0o755))
 
 	handler := &ExternalProgramsHandler{
 		config: &domain.Config{ExternalProgramAllowList: []string{tempDir}},
@@ -551,7 +551,7 @@ func TestListExternalPrograms_Success(t *testing.T) {
 	}
 
 	store := &mockExternalProgramStore{
-		listFn: func(ctx context.Context) ([]*models.ExternalProgram, error) {
+		listFn: func(_ context.Context) ([]*models.ExternalProgram, error) {
 			return programs, nil
 		},
 	}
@@ -565,7 +565,8 @@ func TestListExternalPrograms_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	err = json.NewEncoder(w).Encode(result)
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -581,27 +582,27 @@ func TestListExternalPrograms_Empty(t *testing.T) {
 	t.Parallel()
 
 	store := &mockExternalProgramStore{
-		listFn: func(ctx context.Context) ([]*models.ExternalProgram, error) {
+		listFn: func(_ context.Context) ([]*models.ExternalProgram, error) {
 			return []*models.ExternalProgram{}, nil
 		},
 	}
 
 	result, err := store.List(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, result, 0)
+	assert.Empty(t, result)
 }
 
 func TestListExternalPrograms_DBError(t *testing.T) {
 	t.Parallel()
 
 	store := &mockExternalProgramStore{
-		listFn: func(ctx context.Context) ([]*models.ExternalProgram, error) {
+		listFn: func(_ context.Context) ([]*models.ExternalProgram, error) {
 			return nil, errors.New("database error")
 		},
 	}
 
 	result, err := store.List(context.Background())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "database error")
 }
@@ -610,7 +611,7 @@ func TestCreateExternalProgram_Success(t *testing.T) {
 	t.Parallel()
 
 	store := &mockExternalProgramStore{
-		createFn: func(ctx context.Context, c *models.ExternalProgramCreate) (*models.ExternalProgram, error) {
+		createFn: func(_ context.Context, c *models.ExternalProgramCreate) (*models.ExternalProgram, error) {
 			return &models.ExternalProgram{
 				ID:           1,
 				Name:         c.Name,
@@ -732,7 +733,7 @@ func TestUpdateExternalProgram_NotFound(t *testing.T) {
 	t.Parallel()
 
 	store := &mockExternalProgramStore{
-		updateFn: func(ctx context.Context, id int, u *models.ExternalProgramUpdate) (*models.ExternalProgram, error) {
+		updateFn: func(_ context.Context, _ int, _ *models.ExternalProgramUpdate) (*models.ExternalProgram, error) {
 			return nil, models.ErrExternalProgramNotFound
 		},
 	}
@@ -742,7 +743,7 @@ func TestUpdateExternalProgram_NotFound(t *testing.T) {
 		Path: "/opt/scripts/test.sh",
 	})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.ErrorIs(t, err, models.ErrExternalProgramNotFound)
 }
@@ -773,7 +774,7 @@ func TestDeleteExternalProgram_Success(t *testing.T) {
 
 	deleted := false
 	store := &mockExternalProgramStore{
-		deleteFn: func(ctx context.Context, id int) error {
+		deleteFn: func(_ context.Context, id int) error {
 			if id == 1 {
 				deleted = true
 				return nil
@@ -791,13 +792,13 @@ func TestDeleteExternalProgram_NotFound(t *testing.T) {
 	t.Parallel()
 
 	store := &mockExternalProgramStore{
-		deleteFn: func(ctx context.Context, id int) error {
+		deleteFn: func(_ context.Context, _ int) error {
 			return models.ErrExternalProgramNotFound
 		},
 	}
 
 	err := store.Delete(context.Background(), 999)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.ErrorIs(t, err, models.ErrExternalProgramNotFound)
 }
 

@@ -371,7 +371,7 @@ func TestIntegration_ExternalProgram_StoreOperations(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, program)
-	assert.True(t, program.ID > 0)
+	assert.Positive(t, program.ID)
 	assert.Equal(t, "Test Program", program.Name)
 	assert.Equal(t, "/bin/echo", program.Path)
 	assert.Equal(t, "{hash} {name}", program.ArgsTemplate)

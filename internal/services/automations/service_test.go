@@ -1342,10 +1342,10 @@ func TestPendingExecution_TrackerDomainCapture(t *testing.T) {
 	// Simulate the pattern used in service.go:1585-1592
 	trackerDomains := []string{"tracker.example.com", "backup.tracker.org"}
 	state := &torrentDesiredState{
-		hash:           "abc123",
-		name:           "Test Torrent",
-		trackerDomains: trackerDomains,
-		executeRuleID:  1,
+		hash:            "abc123",
+		name:            "Test Torrent",
+		trackerDomains:  trackerDomains,
+		executeRuleID:   1,
 		executeRuleName: "Test Rule",
 	}
 
@@ -1361,10 +1361,10 @@ func TestPendingExecution_TrackerDomainCapture(t *testing.T) {
 func TestPendingExecution_EmptyTrackerDomains(t *testing.T) {
 	// Test that empty tracker domains are handled gracefully
 	state := &torrentDesiredState{
-		hash:           "abc123",
-		name:           "Test Torrent",
-		trackerDomains: []string{}, // Empty
-		executeRuleID:  1,
+		hash:            "abc123",
+		name:            "Test Torrent",
+		trackerDomains:  []string{}, // Empty
+		executeRuleID:   1,
 		executeRuleName: "Test Rule",
 	}
 
@@ -1373,7 +1373,7 @@ func TestPendingExecution_EmptyTrackerDomains(t *testing.T) {
 		trackerDomain = state.trackerDomains[0]
 	}
 
-	assert.Equal(t, "", trackerDomain)
+	assert.Empty(t, trackerDomain)
 }
 
 func TestExternalProgramActivityFields(t *testing.T) {

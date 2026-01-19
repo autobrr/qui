@@ -429,8 +429,8 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate        ConditionField = "PRIVATE"
-	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldPrivate         ConditionField = "PRIVATE"
+	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields

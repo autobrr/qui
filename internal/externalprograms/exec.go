@@ -126,7 +126,7 @@ func Execute(ctx context.Context, program *models.ExternalProgram, torrent *qbt.
 		}
 		cmdArgs = append(cmdArgs, program.Path)
 		cmdArgs = append(cmdArgs, args...)
-		cmd = exec.CommandContext(ctx, "cmd.exe", cmdArgs...)
+		cmd = exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec
 	} else {
 		if program.UseTerminal {
 			// Unix/Linux: Build command string and spawn in a terminal
@@ -148,7 +148,7 @@ func Execute(ctx context.Context, program *models.ExternalProgram, torrent *qbt.
 			}
 		} else {
 			// Launch directly without terminal
-			cmd = exec.CommandContext(ctx, program.Path, args...)
+			cmd = exec.CommandContext(ctx, program.Path, args...) //nolint:gosec
 		}
 	}
 
