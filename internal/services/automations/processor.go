@@ -326,26 +326,42 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
-		conditionMet := conditions.Move.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Move.Condition, torrent, evalCtx, 0)
-		alreadyAtDest := inSavePath(torrent, conditions.Move.Path)
+		evaluateMoveAction(conditions.Move, torrent, evalCtx, crossSeedIndex, stats, state)
+	}
+}
 
-		// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
-		if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, conditions.Move, crossSeedIndex, evalCtx) {
-			if stats != nil {
-				stats.MoveApplied++
-			}
-			state.shouldMove = true
-			state.movePath = conditions.Move.Path
-		} else if stats != nil {
-			if !conditionMet {
-				stats.MoveConditionNotMet++
-			} else if alreadyAtDest {
-				stats.MoveAlreadyAtDestination++
-			} else {
-				stats.MoveBlockedByCrossSeed++
-			}
+func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
+	pathValid := strings.TrimSpace(action.Path) != ""
+	if !pathValid {
+		if stats != nil {
+			stats.MoveConditionNotMet++
 		}
+		return
+	}
+
+	conditionMet := action.Condition == nil ||
+		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
+	alreadyAtDest := inSavePath(torrent, action.Path)
+
+	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
+	if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx) {
+		if stats != nil {
+			stats.MoveApplied++
+		}
+		state.shouldMove = true
+		state.movePath = action.Path
+		return
+	}
+	if stats == nil {
+		return
+	}
+
+	if !conditionMet {
+		stats.MoveConditionNotMet++
+	} else if alreadyAtDest {
+		stats.MoveAlreadyAtDestination++
+	} else {
+		stats.MoveBlockedByCrossSeed++
 	}
 }
 
