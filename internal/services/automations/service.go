@@ -1892,103 +1892,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	// Execute deletions
-	//
-	// Note on tracker announces: No explicit pause/reannounce step is needed before
-	// deletion. When qBittorrent's DeleteTorrents API is called, libtorrent automatically
-	// sends a "stopped" announce to all trackers with the final uploaded/downloaded stats.
-	//
-	// References:
-	// - libtorrent/src/torrent.cpp:stop_announcing() - sends stopped event to all trackers
-	// - qBittorrent/src/base/bittorrent/sessionimpl.cpp:removeTorrent() - triggers libtorrent removal
-	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
-	//
-	// This behavior is identical for both BitTorrent v1 and v2 torrents.
-	for mode, hashes := range deleteHashesByMode {
-		if len(hashes) == 0 {
-			continue
-		}
-
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
-
-				// Record failed deletion activity
-				if s.activityStore != nil {
-					for _, hash := range batch {
-						if pending, ok := pendingByHash[hash]; ok {
-							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-								InstanceID:    instanceID,
-								Hash:          hash,
-								TorrentName:   pending.torrentName,
-								TrackerDomain: pending.trackerDomain,
-								Action:        models.ActivityActionDeleteFailed,
-								RuleID:        &pending.ruleID,
-								RuleName:      pending.ruleName,
-								Outcome:       models.ActivityOutcomeFailed,
-								Reason:        err.Error(),
-								Details:       detailsJSON,
-							}); err != nil {
-								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-							}
-						}
-					}
-				}
-			} else {
-				if mode == DeleteModeKeepFiles {
-					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents (files kept)")
-				} else {
-					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents with files")
-
-					// Start FREE_SPACE cooldown if files were deleted by a FREE_SPACE rule
-					// This allows qBittorrent time to refresh its disk free space reading
-					if len(freeSpaceDeleteRuleIDs) > 0 {
-						for _, hash := range batch {
-							if pending, ok := pendingByHash[hash]; ok {
-								if _, isFSRule := freeSpaceDeleteRuleIDs[pending.ruleID]; isFSRule {
-									s.mu.Lock()
-									s.lastFreeSpaceDeleteAt[instanceID] = now
-									s.mu.Unlock()
-									log.Debug().
-										Int("instanceID", instanceID).
-										Int("ruleID", pending.ruleID).
-										Dur("cooldown", freeSpaceDeleteCooldown).
-										Msg("automations: started FREE_SPACE delete cooldown")
-									break // Only need to set once per batch
-								}
-							}
-						}
-					}
-				}
-
-				// Record successful deletion activity
-				if s.activityStore != nil {
-					for _, hash := range batch {
-						if pending, ok := pendingByHash[hash]; ok {
-							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-								InstanceID:    instanceID,
-								Hash:          hash,
-								TorrentName:   pending.torrentName,
-								TrackerDomain: pending.trackerDomain,
-								Action:        pending.action,
-								RuleID:        &pending.ruleID,
-								RuleName:      pending.ruleName,
-								Outcome:       models.ActivityOutcomeSuccess,
-								Reason:        pending.reason,
-								Details:       detailsJSON,
-							}); err != nil {
-								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
 	// Execute moves - sort paths for deterministic processing order
 	sortedPaths := make([]string, 0, len(moveBatches))
 	for path := range moveBatches {
@@ -2097,6 +2000,103 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				Details:    detailsJSON,
 			}); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
+		}
+	}
+
+	// Execute deletions
+	//
+	// Note on tracker announces: No explicit pause/reannounce step is needed before
+	// deletion. When qBittorrent's DeleteTorrents API is called, libtorrent automatically
+	// sends a "stopped" announce to all trackers with the final uploaded/downloaded stats.
+	//
+	// References:
+	// - libtorrent/src/torrent.cpp:stop_announcing() - sends stopped event to all trackers
+	// - qBittorrent/src/base/bittorrent/sessionimpl.cpp:removeTorrent() - triggers libtorrent removal
+	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
+	//
+	// This behavior is identical for both BitTorrent v1 and v2 torrents.
+	for mode, hashes := range deleteHashesByMode {
+		if len(hashes) == 0 {
+			continue
+		}
+
+		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
+
+				// Record failed deletion activity
+				if s.activityStore != nil {
+					for _, hash := range batch {
+						if pending, ok := pendingByHash[hash]; ok {
+							detailsJSON, _ := json.Marshal(pending.details)
+							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+								InstanceID:    instanceID,
+								Hash:          hash,
+								TorrentName:   pending.torrentName,
+								TrackerDomain: pending.trackerDomain,
+								Action:        models.ActivityActionDeleteFailed,
+								RuleID:        &pending.ruleID,
+								RuleName:      pending.ruleName,
+								Outcome:       models.ActivityOutcomeFailed,
+								Reason:        err.Error(),
+								Details:       detailsJSON,
+							}); err != nil {
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+							}
+						}
+					}
+				}
+			} else {
+				if mode == DeleteModeKeepFiles {
+					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents (files kept)")
+				} else {
+					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents with files")
+
+					// Start FREE_SPACE cooldown if files were deleted by a FREE_SPACE rule
+					// This allows qBittorrent time to refresh its disk free space reading
+					if len(freeSpaceDeleteRuleIDs) > 0 {
+						for _, hash := range batch {
+							if pending, ok := pendingByHash[hash]; ok {
+								if _, isFSRule := freeSpaceDeleteRuleIDs[pending.ruleID]; isFSRule {
+									s.mu.Lock()
+									s.lastFreeSpaceDeleteAt[instanceID] = now
+									s.mu.Unlock()
+									log.Debug().
+										Int("instanceID", instanceID).
+										Int("ruleID", pending.ruleID).
+										Dur("cooldown", freeSpaceDeleteCooldown).
+										Msg("automations: started FREE_SPACE delete cooldown")
+									break // Only need to set once per batch
+								}
+							}
+						}
+					}
+				}
+
+				// Record successful deletion activity
+				if s.activityStore != nil {
+					for _, hash := range batch {
+						if pending, ok := pendingByHash[hash]; ok {
+							detailsJSON, _ := json.Marshal(pending.details)
+							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+								InstanceID:    instanceID,
+								Hash:          hash,
+								TorrentName:   pending.torrentName,
+								TrackerDomain: pending.trackerDomain,
+								Action:        pending.action,
+								RuleID:        &pending.ruleID,
+								RuleName:      pending.ruleName,
+								Outcome:       models.ActivityOutcomeSuccess,
+								Reason:        pending.reason,
+								Details:       detailsJSON,
+							}); err != nil {
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+							}
+						}
+					}
+				}
 			}
 		}
 	}
