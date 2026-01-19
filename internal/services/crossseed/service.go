@@ -5260,14 +5260,27 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	var searchResp *jackett.SearchResponse
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
+	var onAllCompleteOnce sync.Once
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer waitCancel()
+
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
-		if err != nil {
-			errCh <- err
-		} else {
-			respCh <- resp
-		}
+		onAllCompleteOnce.Do(func() {
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-waitCtx.Done():
+				}
+			} else {
+				select {
+				case respCh <- resp:
+				case <-waitCtx.Done():
+				}
+			}
+		})
 	}
-	err = s.jackettService.Search(ctx, searchReq)
+	err = s.jackettService.Search(waitCtx, searchReq)
 	if err != nil {
 		return nil, wrapCrossSeedSearchError(err)
 	}
@@ -5277,8 +5290,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		// continue
 	case err := <-errCh:
 		return nil, wrapCrossSeedSearchError(err)
-	case <-time.After(5 * time.Minute):
-		return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+	case <-waitCtx.Done():
+		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+			return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+		}
+		return nil, wrapCrossSeedSearchError(waitCtx.Err())
 	}
 
 	searchResults := searchResp.Results

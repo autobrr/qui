@@ -42,6 +42,10 @@ var priorityMultipliers = map[RateLimitPriority]float64{
 const (
 	// Keep RSS responsive; we'll skip indexers that need more than this wait.
 	rssMaxWait = 15 * time.Second
+	// Completion searches should not be blocked indefinitely by a single rate-limited/down indexer.
+	// Keep this modest so the overall end-to-end completion automation stays bounded even when some
+	// indexers are slow or temporarily unavailable.
+	completionMaxWait = 30 * time.Second
 	// Background jobs are least urgent; allow more wait before skipping.
 	backgroundMaxWait = 60 * time.Second
 	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
@@ -875,7 +879,7 @@ func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
 		case RateLimitPriorityRSS:
 			return rssMaxWait
 		case RateLimitPriorityCompletion:
-			return 0 // No limit - completion searches queue and wait for rate limits
+			return completionMaxWait
 		case RateLimitPriorityBackground:
 			return backgroundMaxWait
 		case RateLimitPriorityInteractive:
