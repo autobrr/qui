@@ -188,6 +188,7 @@ export type ConditionField =
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"
+  | "HAS_MISSING_FILES"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -1947,4 +1948,136 @@ export interface LogSettingsUpdate {
   path?: string
   maxSize?: number
   maxBackups?: number
+}
+
+// Directory Scanner Types
+export type DirScanMatchMode = "strict" | "flexible"
+
+export type DirScanFileStatus =
+  | "pending"
+  | "matched"
+  | "no_match"
+  | "error"
+  | "already_seeding"
+  | "in_qbittorrent"
+
+export type DirScanRunStatus =
+  | "queued"
+  | "scanning"
+  | "searching"
+  | "injecting"
+  | "success"
+  | "failed"
+  | "canceled"
+
+export interface DirScanSettings {
+  id: number
+  enabled: boolean
+  matchMode: DirScanMatchMode
+  sizeTolerancePercent: number
+  minPieceRatio: number
+  allowPartial: boolean
+  skipPieceBoundarySafetyCheck: boolean
+  startPaused: boolean
+  category: string
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanSettingsUpdate {
+  enabled?: boolean
+  matchMode?: DirScanMatchMode
+  sizeTolerancePercent?: number
+  minPieceRatio?: number
+  allowPartial?: boolean
+  skipPieceBoundarySafetyCheck?: boolean
+  startPaused?: boolean
+  category?: string
+  tags?: string[]
+}
+
+export interface DirScanDirectory {
+  id: number
+  path: string
+  qbitPathPrefix?: string
+  category?: string
+  tags: string[]
+  enabled: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes: number
+  lastScanAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanDirectoryCreate {
+  path: string
+  qbitPathPrefix?: string
+  category?: string
+  tags?: string[]
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanDirectoryUpdate {
+  path?: string
+  qbitPathPrefix?: string
+  category?: string
+  tags?: string[]
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId?: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanRun {
+  id: number
+  directoryId: number
+  status: DirScanRunStatus
+  triggeredBy: string
+  filesFound: number
+  filesSkipped: number
+  matchesFound: number
+  torrentsAdded: number
+  errorMessage?: string
+  startedAt: string
+  completedAt?: string
+}
+
+export type DirScanRunInjectionStatus = "added" | "failed"
+
+export interface DirScanRunInjection {
+  id: number
+  runId: number
+  directoryId: number
+  status: DirScanRunInjectionStatus
+  searcheeName: string
+  torrentName: string
+  infoHash: string
+  contentType: string
+  indexerName?: string
+  trackerDomain?: string
+  trackerDisplayName?: string
+  linkMode?: string
+  savePath?: string
+  category?: string
+  tags: string[]
+  errorMessage?: string
+  createdAt: string
+}
+
+export interface DirScanFile {
+  id: number
+  directoryId: number
+  filePath: string
+  fileSize: number
+  fileModTime: string
+  status: DirScanFileStatus
+  matchedTorrentHash?: string
+  matchedIndexerId?: number
+  lastProcessedAt?: string
 }

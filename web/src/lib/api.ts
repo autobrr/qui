@@ -34,6 +34,14 @@ import type {
   CrossSeedTorrentSearchSelection,
   DashboardSettings,
   DashboardSettingsInput,
+  DirScanDirectory,
+  DirScanDirectoryCreate,
+  DirScanDirectoryUpdate,
+  DirScanFile,
+  DirScanRun,
+  DirScanRunInjection,
+  DirScanSettings,
+  DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
@@ -1357,6 +1365,11 @@ class ApiClient {
     return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
   }
 
+  // Piece states: 0 = not downloaded, 1 = downloading, 2 = downloaded
+  async getTorrentPieceStates(instanceId: number, hash: string): Promise<number[]> {
+    return this.request<number[]>(`/instances/${instanceId}/torrents/${hash}/pieces`)
+  }
+
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/add-peers`, {
       method: "POST",
@@ -2090,6 +2103,111 @@ class ApiClient {
   // Get the SSE log stream URL for EventSource
   getLogStreamUrl(limit = 1000): string {
     return `${API_BASE}/logs/stream?limit=${limit}`
+  }
+
+  // Directory Scanner endpoints
+  async getDirScanSettings(): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings")
+  }
+
+  async updateDirScanSettings(data: DirScanSettingsUpdate): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listDirScanDirectories(): Promise<DirScanDirectory[]> {
+    return this.request<DirScanDirectory[]>("/dir-scan/directories")
+  }
+
+  async getDirScanDirectory(directoryId: number): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`)
+  }
+
+  async createDirScanDirectory(data: DirScanDirectoryCreate): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>("/dir-scan/directories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateDirScanDirectory(
+    directoryId: number,
+    data: DirScanDirectoryUpdate
+  ): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteDirScanDirectory(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}`, { method: "DELETE" })
+  }
+
+  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
+      method: "POST",
+    })
+  }
+
+  async cancelDirScan(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
+  }
+
+  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
+    return this.request<DirScanRun | { status: "idle" }>(
+      `/dir-scan/directories/${directoryId}/status`
+    )
+  }
+
+  async listDirScanRuns(
+    directoryId: number,
+    options?: { limit?: number }
+  ): Promise<DirScanRun[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRun[]>(`/dir-scan/directories/${directoryId}/runs${suffix}`)
+  }
+
+  async listDirScanRunInjections(
+    directoryId: number,
+    runId: number,
+    options?: { limit?: number; offset?: number }
+  ): Promise<DirScanRunInjection[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRunInjection[]>(
+      `/dir-scan/directories/${directoryId}/runs/${runId}/injections${suffix}`
+    )
+  }
+
+  async listDirScanFiles(
+    directoryId: number,
+    options?: { limit?: number; offset?: number; status?: string }
+  ): Promise<DirScanFile[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    if (options?.status) {
+      params.set("status", options.status)
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanFile[]>(`/dir-scan/directories/${directoryId}/files${suffix}`)
   }
 }
 

@@ -167,6 +167,11 @@ type ValidatedTrackerMapping struct {
 	UpdatedAt      time.Time
 }
 
+// TrackerCustomizationLister provides access to tracker customizations for sorting.
+type TrackerCustomizationLister interface {
+	List(ctx context.Context) ([]*models.TrackerCustomization, error)
+}
+
 type SyncManager struct {
 	clientPool   *ClientPool
 	exprCache    *ttlcache.Cache[string, *vm.Program]
@@ -194,6 +199,11 @@ type SyncManager struct {
 	// Validated tracker mapping cache - avoids stale MainData.Trackers entries
 	validatedTrackerMu      sync.RWMutex
 	validatedTrackerMapping map[int]*ValidatedTrackerMapping
+
+	// Tracker customization store for custom display names in sorting
+	trackerCustomizationStore TrackerCustomizationLister
+	// Cached tracker display name map (domain -> displayName), refreshed periodically
+	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -212,20 +222,24 @@ type OptimisticTorrentUpdate struct {
 	Action        string           `json:"action"`
 }
 
-// NewSyncManager creates a new sync manager
-func NewSyncManager(clientPool *ClientPool) *SyncManager {
+// NewSyncManager creates a new sync manager.
+// The trackerCustomizationStore parameter enables custom display names for tracker sorting;
+// pass nil if custom tracker names are not needed.
+func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCustomizationLister) *SyncManager {
 	sm := &SyncManager{
-		clientPool:              clientPool,
-		exprCache:               ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
-		debouncedSyncTimers:     make(map[int]*time.Timer),
-		syncDebounceDelay:       200 * time.Millisecond,
-		syncDebounceMinJitter:   10 * time.Millisecond,
-		fileFetchSem:            make(map[int]chan struct{}),
-		fileFetchMaxConcurrent:  16,
-		trackerHealthCache:      make(map[int]*TrackerHealthCounts),
-		trackerHealthCancel:     make(map[int]context.CancelFunc),
-		trackerHealthRefresh:    60 * time.Second,
-		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		clientPool:                clientPool,
+		trackerCustomizationStore: trackerCustomizationStore,
+		exprCache:                 ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		debouncedSyncTimers:       make(map[int]*time.Timer),
+		syncDebounceDelay:         200 * time.Millisecond,
+		syncDebounceMinJitter:     10 * time.Millisecond,
+		fileFetchSem:              make(map[int]chan struct{}),
+		fileFetchMaxConcurrent:    16,
+		trackerHealthCache:        make(map[int]*TrackerHealthCounts),
+		trackerHealthCancel:       make(map[int]context.CancelFunc),
+		trackerHealthRefresh:      60 * time.Second,
+		validatedTrackerMapping:   make(map[int]*ValidatedTrackerMapping),
+		trackerDisplayNameCache:   ttlcache.New(ttlcache.Options[string, map[string]string]{}.SetDefaultTTL(60 * time.Second)),
 	}
 
 	// Set up bidirectional reference for background task notifications
@@ -257,6 +271,60 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 		return nil
 	}
 	return v.(FilesManager)
+}
+
+// InvalidateTrackerDisplayNameCache clears the cached tracker display name map.
+// Call this when tracker customizations are created, updated, or deleted to ensure
+// sorting uses the latest custom display names.
+func (sm *SyncManager) InvalidateTrackerDisplayNameCache() {
+	if sm == nil || sm.trackerDisplayNameCache == nil {
+		return
+	}
+	sm.trackerDisplayNameCache.Delete("tracker_display_names")
+}
+
+// getTrackerDisplayNameMap returns a cached map of lowercase domain -> display name.
+// The cache is refreshed every 60 seconds. Returns an empty map if no customizations are configured.
+func (sm *SyncManager) getTrackerDisplayNameMap() map[string]string {
+	const cacheKey = "tracker_display_names"
+
+	if sm == nil || sm.trackerDisplayNameCache == nil {
+		return make(map[string]string)
+	}
+
+	// Check cache first
+	if cached, found := sm.trackerDisplayNameCache.Get(cacheKey); found {
+		return cached
+	}
+
+	// No cached value or expired - build new map
+	if sm.trackerCustomizationStore == nil {
+		// Store empty map in cache to avoid repeated nil checks
+		empty := make(map[string]string)
+		sm.trackerDisplayNameCache.Set(cacheKey, empty, ttlcache.DefaultTTL)
+		return empty
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	customizations, err := sm.trackerCustomizationStore.List(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load tracker customizations for sorting")
+		// Return empty map on error (don't cache to allow retry)
+		return make(map[string]string)
+	}
+
+	// Build the map: each domain maps to its display name
+	result := make(map[string]string)
+	for _, c := range customizations {
+		for _, domain := range c.Domains {
+			result[strings.ToLower(domain)] = c.DisplayName
+		}
+	}
+
+	sm.trackerDisplayNameCache.Set(cacheKey, result, ttlcache.DefaultTTL)
+	return result
 }
 
 // StartTrackerHealthRefresh starts a background goroutine that periodically refreshes
@@ -1327,6 +1395,8 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 				}
 				return result
 			})
+		case "tracker":
+			sm.sortCrossInstanceTorrentsByTracker(allTorrents, order == "desc")
 		}
 	} else {
 		// Default sort by name if no sort specified for consistent ordering
@@ -1717,6 +1787,22 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 
 	// Return the current peer data (already merged with incremental updates)
 	return peerSync.GetPeers(), nil
+}
+
+// GetTorrentPieceStates returns the download state of each piece for a torrent.
+// States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+func (sm *SyncManager) GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	pieceStates, err := client.GetTorrentPieceStatesCtx(ctx, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent piece states: %w", err)
+	}
+
+	return pieceStates, nil
 }
 
 // GetTorrentFilesBatch fetches file lists for many torrents using cache-aware batching.
@@ -4046,18 +4132,23 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 	})
 }
 
-// sortTorrentsByTracker normalizes tracker values to compare by domain first, then full URL.
+// sortTorrentsByTracker normalizes tracker values to compare by display name first, then domain, then full URL.
+// Display names come from tracker customizations, allowing merged trackers to sort together.
 // This prevents qBittorrent's case-sensitive/raw string ordering from splitting identical hosts.
 func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) {
 	if len(torrents) <= 1 {
 		return
 	}
 
+	// Get display name lookup from cached tracker customizations
+	displayNameMap := sm.getTrackerDisplayNameMap()
+
 	type trackerSortKey struct {
-		hasDomain  bool
-		domain     string
-		normalized string
-		hash       string
+		hasDomain   bool
+		displayName string // custom name if configured, otherwise domain
+		domain      string
+		normalized  string
+		hash        string
 	}
 
 	keys := make([]trackerSortKey, len(torrents))
@@ -4086,6 +4177,12 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 
 			key.hasDomain = true
 			key.domain = domain
+			// Look up custom display name; fallback to domain
+			if customName, ok := displayNameMap[domain]; ok {
+				key.displayName = strings.ToLower(customName)
+			} else {
+				key.displayName = domain
+			}
 		}
 
 		addCandidate(torrent.Tracker)
@@ -4113,6 +4210,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		a := keys[aIdx]
 		b := keys[bIdx]
 
+		// Sort torrents with trackers before those without
 		if a.hasDomain != b.hasDomain {
 			if a.hasDomain {
 				return -1
@@ -4120,6 +4218,15 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return 1
 		}
 
+		// Primary sort by display name (custom name or domain)
+		if cmp := strings.Compare(a.displayName, b.displayName); cmp != 0 {
+			if desc {
+				return -cmp
+			}
+			return cmp
+		}
+
+		// Secondary sort by domain for stable ordering when display names match
 		if cmp := strings.Compare(a.domain, b.domain); cmp != 0 {
 			if desc {
 				return -cmp
@@ -4127,6 +4234,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return cmp
 		}
 
+		// Tertiary sort by normalized URL
 		if cmp := strings.Compare(a.normalized, b.normalized); cmp != 0 {
 			if desc {
 				return -cmp
@@ -4134,6 +4242,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return cmp
 		}
 
+		// Final tiebreaker by hash for determinism
 		cmp := strings.Compare(a.hash, b.hash)
 		if desc {
 			return -cmp
@@ -4151,6 +4260,63 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		sorted[i] = torrents[srcIdx]
 	}
 	copy(torrents, sorted)
+}
+
+// sortCrossInstanceTorrentsByTracker sorts cross-instance torrents by tracker display name.
+// Uses the same hasDomain semantics as per-instance sorting: torrents without valid trackers
+// always go to the end, regardless of sort direction.
+func (sm *SyncManager) sortCrossInstanceTorrentsByTracker(torrents []CrossInstanceTorrentView, desc bool) {
+	if len(torrents) <= 1 {
+		return
+	}
+
+	displayNameMap := sm.getTrackerDisplayNameMap()
+
+	slices.SortFunc(torrents, func(a, b CrossInstanceTorrentView) int {
+		return sm.compareCrossInstanceByTracker(&a, &b, displayNameMap, desc)
+	})
+}
+
+// compareCrossInstanceByTracker compares two cross-instance torrents by tracker display name.
+func (sm *SyncManager) compareCrossInstanceByTracker(a, b *CrossInstanceTorrentView, displayNameMap map[string]string, desc bool) int {
+	domainA := strings.ToLower(sm.ExtractDomainFromURL(a.Tracker))
+	domainB := strings.ToLower(sm.ExtractDomainFromURL(b.Tracker))
+
+	hasDomainA := domainA != "" && domainA != "unknown"
+	hasDomainB := domainB != "" && domainB != "unknown"
+
+	// Sort torrents with trackers before those without (not reversed by desc)
+	if hasDomainA != hasDomainB {
+		if hasDomainA {
+			return -1
+		}
+		return 1
+	}
+
+	// Resolve display names from customizations
+	displayA := resolveDisplayName(domainA, displayNameMap)
+	displayB := resolveDisplayName(domainB, displayNameMap)
+
+	// Multi-field comparison: displayName -> domain -> instance -> name -> hash
+	result := cmp.Or(
+		strings.Compare(displayA, displayB),
+		strings.Compare(domainA, domainB),
+		strings.Compare(a.InstanceName, b.InstanceName),
+		strings.Compare(a.Name, b.Name),
+		strings.Compare(a.Hash, b.Hash),
+	)
+	if desc {
+		return -result
+	}
+	return result
+}
+
+// resolveDisplayName returns the display name for a domain, using custom name if available.
+func resolveDisplayName(domain string, displayNameMap map[string]string) string {
+	if customName, ok := displayNameMap[domain]; ok {
+		return strings.ToLower(customName)
+	}
+	return domain
 }
 
 // sortTorrentsByNameCaseInsensitive enforces a case-insensitive ordering for torrent names.

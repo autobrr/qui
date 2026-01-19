@@ -4175,7 +4175,21 @@ func (s *Service) findBestCandidateMatch(
 			continue
 		}
 
-		score := matchTypePriority(matchResult.MatchType)
+		// Since we swapped parameters above, we need to swap the partial match types to maintain
+		// correct semantics from the caller's perspective:
+		// - "partial-in-pack" from getMatchTypeWithReason means existing files are in new files
+		//   → should be "partial-contains" (new torrent contains existing torrent's files)
+		// - "partial-contains" from getMatchTypeWithReason means new files are in existing files
+		//   → should be "partial-in-pack" (new torrent's files are in existing pack)
+		actualMatchType := matchResult.MatchType
+		switch actualMatchType {
+		case "partial-in-pack":
+			actualMatchType = "partial-contains"
+		case "partial-contains":
+			actualMatchType = "partial-in-pack"
+		}
+
+		score := matchTypePriority(actualMatchType)
 		if score == 0 {
 			// Layout checks can still return named match types (e.g. "partial-contains")
 			// that we never want to use for apply, so priority 0 acts as a hard reject.
@@ -4200,7 +4214,7 @@ func (s *Service) findBestCandidateMatch(
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
-			matchType = matchResult.MatchType
+			matchType = actualMatchType
 			bestScore = score
 			bestHasRoot = hasRootFolder
 			bestFileCount = fileCount
@@ -4873,6 +4887,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
+	searchRelease := sourceRelease
+	if contentInfo.ContentType == "tv" {
+		searchRelease = s.deriveSourceReleaseForSearch(sourceRelease, sourceFiles)
+	}
 
 	// Detect disc layout for this torrent
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
@@ -4895,7 +4913,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
-	queryRelease := sourceRelease
+	queryRelease := searchRelease
 	if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
 		// For music, create a proper music release object by parsing the torrent name as music
 		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
@@ -5188,19 +5206,19 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		// Add season/episode info for TV content only if not already set by safe query
-		if sourceRelease.Series > 0 && searchReq.Season == nil {
-			season := sourceRelease.Series
+		if searchRelease.Series > 0 && searchReq.Season == nil {
+			season := searchRelease.Series
 			searchReq.Season = &season
 
-			if sourceRelease.Episode > 0 && searchReq.Episode == nil {
-				episode := sourceRelease.Episode
+			if searchRelease.Episode > 0 && searchReq.Episode == nil {
+				episode := searchRelease.Episode
 				searchReq.Episode = &episode
 			}
 		}
 
 		// Add year info if available
-		if sourceRelease.Year > 0 {
-			searchReq.Year = sourceRelease.Year
+		if searchRelease.Year > 0 {
+			searchReq.Year = searchRelease.Year
 		}
 
 		// Use the appropriate release object for logging based on content type
@@ -5209,7 +5227,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			// For music, create a proper music release object by parsing the torrent name as music
 			logRelease = *ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
-			logRelease = *sourceRelease
+			logRelease = *searchRelease
 		}
 
 		logEvent := log.Debug().
@@ -5242,14 +5260,27 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	var searchResp *jackett.SearchResponse
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
+	var onAllCompleteOnce sync.Once
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer waitCancel()
+
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
-		if err != nil {
-			errCh <- err
-		} else {
-			respCh <- resp
-		}
+		onAllCompleteOnce.Do(func() {
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-waitCtx.Done():
+				}
+			} else {
+				select {
+				case respCh <- resp:
+				case <-waitCtx.Done():
+				}
+			}
+		})
 	}
-	err = s.jackettService.Search(ctx, searchReq)
+	err = s.jackettService.Search(waitCtx, searchReq)
 	if err != nil {
 		return nil, wrapCrossSeedSearchError(err)
 	}
@@ -5259,8 +5290,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		// continue
 	case err := <-errCh:
 		return nil, wrapCrossSeedSearchError(err)
-	case <-time.After(5 * time.Minute):
-		return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+	case <-waitCtx.Done():
+		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+			return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+		}
+		return nil, wrapCrossSeedSearchError(waitCtx.Err())
 	}
 
 	searchResults := searchResp.Results
@@ -5298,19 +5332,19 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(sourceRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
 			releaseFilteredCount++
 			continue
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
 		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
-		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, sourceRelease, opts.FindIndividualEpisodes); reject {
+		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
 			releaseFilteredCount++
 			continue
 		}
 
-		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(sourceRelease) && isTVEpisode(candidateRelease)
+		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 
 		// Size validation: check if candidate size is within tolerance of source size
 		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
@@ -5326,7 +5360,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			continue
 		}
 
-		score, reason := evaluateReleaseMatch(sourceRelease, candidateRelease)
+		score, reason := evaluateReleaseMatch(searchRelease, candidateRelease)
 		if score <= 0 {
 			score = 1.0
 		}

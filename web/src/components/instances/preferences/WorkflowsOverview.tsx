@@ -834,14 +834,24 @@ export function WorkflowsOverview({
                         <p className="text-sm text-muted-foreground">
                           No automations configured yet.
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateDialog(instance.id)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add your first rule
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateDialog(instance.id)}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add your first rule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openImportDialog(instance.id)}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1429,14 +1439,14 @@ export function WorkflowsOverview({
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Workflow</DialogTitle>
             <DialogDescription>
               Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <Textarea
               placeholder='{"name": "My Workflow", "conditions": {...}}'
               value={importJSON}
@@ -1444,7 +1454,7 @@ export function WorkflowsOverview({
                 setImportJSON(e.target.value)
                 setImportError(null)
               }}
-              className="min-h-[200px] font-mono text-sm"
+              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>

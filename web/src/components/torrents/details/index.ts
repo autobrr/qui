@@ -6,6 +6,7 @@
 export { CrossSeedTable } from "./CrossSeedTable"
 export { GeneralTabHorizontal } from "./GeneralTabHorizontal"
 export { PeersTable } from "./PeersTable"
+export { PieceBar } from "./PieceBar"
 export { StatRow } from "./StatRow"
 export { TorrentFileTable } from "./TorrentFileTable"
 export { TrackerContextMenu } from "./TrackerContextMenu"

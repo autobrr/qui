@@ -14,7 +14,7 @@ import (
 )
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -54,7 +54,7 @@ func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -98,7 +98,7 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	torrents := []qbt.Torrent{
 		{
@@ -746,7 +746,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 }
 
 func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Create 5 torrents with different ages, each 20GB
 	// Oldest first: torrent1, torrent2, torrent3, torrent4, torrent5
@@ -809,7 +809,7 @@ func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 }
 
 func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Create torrents where some are cross-seeds (same content path)
 	// torrent1 and torrent2 are cross-seeds (same 30GB file)
@@ -869,7 +869,7 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 }
 
 func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Create torrents in random order
 	torrents := []qbt.Torrent{
@@ -913,7 +913,7 @@ func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 }
 
 func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Create torrents with same AddedOn time - should sort by hash
 	torrents := []qbt.Torrent{
@@ -986,7 +986,7 @@ func TestProcessTorrents_HandlesNilFilesToClearGracefully(t *testing.T) {
 // The correct behavior is that keep-files deletions do NOT contribute to SpaceToClear,
 // so the FREE_SPACE condition remains true and matches all eligible torrents.
 func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Create 5 torrents with different ages, each 20GB
 	torrents := []qbt.Torrent{
@@ -1038,7 +1038,7 @@ func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
 }
 
 func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFiles(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil)
+	sm := qbittorrent.NewSyncManager(nil, nil)
 
 	// Create torrents where some are cross-seeds (same content path)
 	// torrent1, torrent2, torrent3 are ALL cross-seeds sharing the same files
