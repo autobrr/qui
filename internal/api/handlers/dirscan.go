@@ -387,6 +387,17 @@ func (h *DirScanHandler) ResetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	run, err := h.service.GetActiveRun(r.Context(), dirID)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to check active run before reset")
+		RespondError(w, http.StatusInternalServerError, "Failed to reset scan progress")
+		return
+	}
+	if run != nil {
+		RespondError(w, http.StatusConflict, "Cannot reset scan progress while a scan is running")
+		return
+	}
+
 	if err := h.service.ResetFilesForDirectory(r.Context(), dirID); err != nil {
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to reset tracked files")
 		RespondError(w, http.StatusInternalServerError, "Failed to reset scan progress")

@@ -69,12 +69,12 @@ func (s *Service) refreshTrackedFilesFromScan(ctx context.Context, directoryID i
 		if searchee == nil {
 			continue
 		}
-		alreadySeeding := isAlreadySeedingByFileID(searchee, fileIDIndex)
 		for _, scanned := range searchee.Files {
 			if scanned == nil {
 				continue
 			}
 
+			alreadySeeding := isFileAlreadySeedingByFileID(scanned, fileIDIndex)
 			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, alreadySeeding)
 			if err != nil {
 				return nil, err
@@ -95,6 +95,14 @@ func (s *Service) refreshTrackedFilesFromScan(ctx context.Context, directoryID i
 	}
 
 	return idx, nil
+}
+
+func isFileAlreadySeedingByFileID(scanned *ScannedFile, index map[string]string) bool {
+	if scanned == nil || scanned.FileID.IsZero() || len(index) == 0 {
+		return false
+	}
+	_, ok := index[string(scanned.FileID.Bytes())]
+	return ok
 }
 
 func buildTrackedFileUpsert(directoryID int, scanned *ScannedFile, idx *trackedFilesIndex, alreadySeeding bool) (*models.DirScanFile, error) {
@@ -130,10 +138,17 @@ func buildTrackedFileUpsert(directoryID int, scanned *ScannedFile, idx *trackedF
 		}
 	}
 
-	// If all files in this searchee are already seeding, treat the file as final (unless it
-	// was already finalized to a different status like matched).
+	// If the file is already seeding, treat it as final (unless it was already finalized
+	// to a different status like matched).
 	if alreadySeeding && (existing == nil || !isFinalFileStatus(existing.Status)) {
 		status = models.DirScanFileStatusAlreadySeeding
+		matchedTorrentHash = ""
+		matchedIndexerID = nil
+	}
+
+	// If the torrent disappeared since the last scan, clear already_seeding so the file becomes eligible again.
+	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding && !alreadySeeding {
+		status = models.DirScanFileStatusPending
 		matchedTorrentHash = ""
 		matchedIndexerID = nil
 	}

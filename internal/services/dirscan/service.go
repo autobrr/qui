@@ -338,6 +338,15 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 	return nil
 }
 
+// GetActiveRun returns the currently active run for a directory, if any.
+func (s *Service) GetActiveRun(ctx context.Context, directoryID int) (*models.DirScanRun, error) {
+	run, err := s.store.GetActiveRun(ctx, directoryID)
+	if err != nil {
+		return nil, fmt.Errorf("get active run: %w", err)
+	}
+	return run, nil
+}
+
 // GetStatus returns the status of a directory's current or most recent scan.
 func (s *Service) GetStatus(ctx context.Context, directoryID int) (*models.DirScanRun, error) {
 	// First check for active run
@@ -795,7 +804,8 @@ func (s *Service) processRootSearchee(
 	workItems := buildSearcheeWorkItems(searchee, s.parser)
 	for _, item := range workItems {
 		if ctx.Err() != nil {
-			return matchesFoundOut, torrentsAddedOut
+			hasProcessingError = true
+			break
 		}
 		if shouldSkipWorkItemTVGroup(item, injectedTVGroups) {
 			continue
@@ -908,8 +918,15 @@ func (s *Service) processRootSearchee(
 		}
 	}
 
+	finalizeCtx := ctx
+	if ctx.Err() != nil {
+		persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		finalizeCtx = persistCtx
+	}
+
 	if err := s.finalizeRootSearcheeFileStatuses(
-		ctx,
+		finalizeCtx,
 		dir.ID,
 		searchee,
 		fileUpdates,

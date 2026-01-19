@@ -1065,6 +1065,21 @@ func scanRunInjectionFromScanner(scanner sqlScanner) (*DirScanRunInjection, erro
 
 // --- File Operations ---
 
+func (s *DirScanStore) deleteDuplicateFileIDRows(ctx context.Context, directoryID int, fileID []byte, keepPath string) error {
+	if s == nil || s.db == nil || directoryID <= 0 || len(fileID) == 0 || keepPath == "" {
+		return nil
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM dir_scan_files
+		WHERE directory_id = ? AND file_id = ? AND file_path <> ?
+	`, directoryID, fileID, keepPath)
+	if err != nil {
+		return fmt.Errorf("dedupe file_id rows: %w", err)
+	}
+	return nil
+}
+
 // UpsertFile inserts or updates a scanned file.
 func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error {
 	if file == nil {
@@ -1098,7 +1113,14 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 		`, file.FilePath, file.FileSize, file.FileModTime, file.FileID, file.Status,
 			matchedTorrentHash, matchedIndexerID, file.DirectoryID, file.FileID)
 		if err == nil {
-			if rows, rowsErr := res.RowsAffected(); rowsErr == nil && rows > 0 {
+			rows, rowsErr := res.RowsAffected()
+			if rowsErr != nil {
+				return fmt.Errorf("rows affected: %w", rowsErr)
+			}
+			if rows > 0 {
+				if err := s.deleteDuplicateFileIDRows(ctx, file.DirectoryID, file.FileID, file.FilePath); err != nil {
+					return err
+				}
 				return nil
 			}
 		}
@@ -1121,6 +1143,10 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 		file.Status, matchedTorrentHash, matchedIndexerID)
 	if err != nil {
 		return fmt.Errorf("upsert file: %w", err)
+	}
+
+	if err := s.deleteDuplicateFileIDRows(ctx, file.DirectoryID, file.FileID, file.FilePath); err != nil {
+		return err
 	}
 
 	return nil
