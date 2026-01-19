@@ -858,3 +858,327 @@ func TestDeleteFreesSpace(t *testing.T) {
 		require.True(t, result)
 	})
 }
+
+// ============================================================================
+// Phase 2.1: ExecuteExternalProgram Action Tests
+// ============================================================================
+
+func intPtr(i int) *int {
+	return &i
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_ConditionMet(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Name:           "Execute Program Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(42),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+
+	require.Len(t, states, 1)
+	state, ok := states["a"]
+	require.True(t, ok, "expected torrent 'a' to have state")
+	require.NotNil(t, state.programID, "expected programID to be set")
+	require.Equal(t, 42, *state.programID)
+	require.Equal(t, 1, state.executeRuleID, "expected executeRuleID to match rule ID")
+	require.Equal(t, "Execute Program Rule", state.executeRuleName, "expected executeRuleName to match rule name")
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_ConditionNotMet(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "tv"},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(42),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies", // Does not match "tv"
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+
+	// No action should be applied since condition doesn't match
+	require.Len(t, states, 0, "expected no state when condition not met")
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_NilCondition(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(42),
+				Condition: nil, // Safety: nil condition should be rejected
+			},
+		},
+	}
+
+	stats := make(map[int]*ruleRunStats)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, stats)
+
+	// No action should be applied when condition is nil (safety requirement)
+	require.Len(t, states, 0, "expected no state when condition is nil")
+
+	// Stats should show condition not met
+	require.NotNil(t, stats[1])
+	require.Equal(t, 1, stats[1].ExecuteConditionNotMet, "expected ExecuteConditionNotMet to be incremented")
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_NilProgramID(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: nil, // Safety: nil programID should be rejected
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	stats := make(map[int]*ruleRunStats)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, stats)
+
+	// No action should be applied when programID is nil (safety requirement)
+	require.Len(t, states, 0, "expected no state when programID is nil")
+
+	// Stats should show condition not met
+	require.NotNil(t, stats[1])
+	require.Equal(t, 1, stats[1].ExecuteConditionNotMet, "expected ExecuteConditionNotMet to be incremented")
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_Disabled(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   false, // Disabled action
+				ProgramID: intPtr(42),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+
+	// No action should be applied when action is disabled
+	require.Len(t, states, 0, "expected no state when action is disabled")
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_RuleIDCapture(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	rule := &models.Automation{
+		ID:             123,
+		Name:           "My Execute Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(99),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	stats := make(map[int]*ruleRunStats)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, stats)
+
+	require.Len(t, states, 1)
+	state := states["a"]
+	require.NotNil(t, state.programID)
+
+	// Verify rule ID and name are captured correctly
+	require.Equal(t, 123, state.executeRuleID)
+	require.Equal(t, "My Execute Rule", state.executeRuleName)
+
+	// Verify stats
+	require.NotNil(t, stats[123])
+	require.Equal(t, 1, stats[123].ExecuteApplied)
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_LastRuleWins(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	rule1 := &models.Automation{
+		ID:             1,
+		Name:           "First Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(10),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	rule2 := &models.Automation{
+		ID:             2,
+		Name:           "Second Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(20),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	// Both rules match - last rule should win
+	states := processTorrents(torrents, []*models.Automation{rule1, rule2}, nil, sm, nil, nil)
+
+	require.Len(t, states, 1)
+	state := states["a"]
+	require.NotNil(t, state.programID)
+
+	// Last rule wins: rule2's programID (20) and rule info
+	require.Equal(t, 20, *state.programID, "expected last rule's programID to win")
+	require.Equal(t, 2, state.executeRuleID, "expected last rule's ID")
+	require.Equal(t, "Second Rule", state.executeRuleName, "expected last rule's name")
+}
+
+func TestProcessTorrents_ExecuteExternalProgram_WithOtherActions(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "torrent1", Category: "movies"},
+	}
+
+	// Rule with both execute and category actions
+	rule := &models.Automation{
+		ID:             1,
+		Name:           "Combined Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Category: &models.CategoryAction{
+				Enabled:  true,
+				Category: "processed",
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(42),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+
+	require.Len(t, states, 1)
+	state := states["a"]
+
+	// Both actions should be applied
+	require.NotNil(t, state.programID, "expected programID to be set")
+	require.Equal(t, 42, *state.programID)
+
+	require.NotNil(t, state.category, "expected category to be set")
+	require.Equal(t, "processed", *state.category)
+}

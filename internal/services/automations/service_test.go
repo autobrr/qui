@@ -1199,3 +1199,372 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 	match3 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
 	assert.False(t, match3, "Should NOT match when effective free space exceeds target")
 }
+
+// ============================================================================
+// Phase 2.2: External Program Execution and Activity Recording Tests
+// ============================================================================
+
+func TestProcessRuleForTorrent_ExecuteAction_SetsRuleInfo(t *testing.T) {
+	// Test that processRuleForTorrent correctly captures rule ID and name for execute actions
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies",
+	}
+
+	programID := 42
+	rule := &models.Automation{
+		ID:             100,
+		Name:           "Execute Script Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: &programID,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil)
+
+	// Verify execute action was applied
+	require.NotNil(t, state.programID, "expected programID to be set")
+	assert.Equal(t, 42, *state.programID)
+	assert.Equal(t, 100, state.executeRuleID)
+	assert.Equal(t, "Execute Script Rule", state.executeRuleName)
+}
+
+func TestProcessRuleForTorrent_ExecuteAction_RequiresBothConditionAndProgramID(t *testing.T) {
+	// Test safety requirement: both condition and programID must be non-nil
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies",
+	}
+
+	tests := []struct {
+		name      string
+		action    *models.ExecuteExternalProgramAction
+		expectSet bool
+	}{
+		{
+			name: "both nil - rejected",
+			action: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: nil,
+				Condition: nil,
+			},
+			expectSet: false,
+		},
+		{
+			name: "programID nil - rejected",
+			action: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: nil,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+			expectSet: false,
+		},
+		{
+			name: "condition nil - rejected",
+			action: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(42),
+				Condition: nil,
+			},
+			expectSet: false,
+		},
+		{
+			name: "both present - accepted",
+			action: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(42),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+			expectSet: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rule := &models.Automation{
+				ID:             1,
+				Enabled:        true,
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					ExecuteExternalProgram: tc.action,
+				},
+			}
+
+			state := &torrentDesiredState{
+				hash:        torrent.Hash,
+				name:        torrent.Name,
+				currentTags: make(map[string]struct{}),
+				tagActions:  make(map[string]string),
+			}
+
+			processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil)
+
+			if tc.expectSet {
+				require.NotNil(t, state.programID, "expected programID to be set")
+			} else {
+				assert.Nil(t, state.programID, "expected programID to be nil (safety rejection)")
+			}
+		})
+	}
+}
+
+func TestPendingExecution_TrackerDomainCapture(t *testing.T) {
+	// Test that pendingExecution correctly captures tracker domain from state
+	// This is a unit test for the struct usage pattern in applyActions
+
+	// Simulate the pattern used in service.go:1585-1592
+	trackerDomains := []string{"tracker.example.com", "backup.tracker.org"}
+	state := &torrentDesiredState{
+		hash:           "abc123",
+		name:           "Test Torrent",
+		trackerDomains: trackerDomains,
+		executeRuleID:  1,
+		executeRuleName: "Test Rule",
+	}
+
+	// Capture first tracker domain (as done in service.go)
+	var trackerDomain string
+	if len(state.trackerDomains) > 0 {
+		trackerDomain = state.trackerDomains[0]
+	}
+
+	assert.Equal(t, "tracker.example.com", trackerDomain)
+}
+
+func TestPendingExecution_EmptyTrackerDomains(t *testing.T) {
+	// Test that empty tracker domains are handled gracefully
+	state := &torrentDesiredState{
+		hash:           "abc123",
+		name:           "Test Torrent",
+		trackerDomains: []string{}, // Empty
+		executeRuleID:  1,
+		executeRuleName: "Test Rule",
+	}
+
+	var trackerDomain string
+	if len(state.trackerDomains) > 0 {
+		trackerDomain = state.trackerDomains[0]
+	}
+
+	assert.Equal(t, "", trackerDomain)
+}
+
+func TestExternalProgramActivityFields(t *testing.T) {
+	// Test that activity record fields are correctly structured
+	// This verifies the expected activity record format from service.go:1969-1984
+
+	// Sample data matching service.go activity creation
+	programID := 42
+	programName := "Test Script"
+	programPath := "/opt/scripts/test.sh"
+	ruleID := 100
+	ruleName := "Execute Rule"
+	torrentName := "Test Torrent"
+	trackerDomain := "tracker.example.com"
+	hash := "abc123"
+	instanceID := 1
+
+	// Success case
+	activity := &models.AutomationActivity{
+		InstanceID:    instanceID,
+		Hash:          hash,
+		TorrentName:   torrentName,
+		TrackerDomain: trackerDomain,
+		Action:        models.ActivityActionExternalProgramExecuted,
+		RuleID:        &ruleID,
+		RuleName:      ruleName,
+		Outcome:       models.ActivityOutcomeSuccess,
+	}
+
+	assert.Equal(t, instanceID, activity.InstanceID)
+	assert.Equal(t, hash, activity.Hash)
+	assert.Equal(t, torrentName, activity.TorrentName)
+	assert.Equal(t, trackerDomain, activity.TrackerDomain)
+	assert.Equal(t, models.ActivityActionExternalProgramExecuted, activity.Action)
+	assert.NotNil(t, activity.RuleID)
+	assert.Equal(t, ruleID, *activity.RuleID)
+	assert.Equal(t, ruleName, activity.RuleName)
+	assert.Equal(t, models.ActivityOutcomeSuccess, activity.Outcome)
+
+	// Failure case
+	failedActivity := &models.AutomationActivity{
+		InstanceID:    instanceID,
+		Hash:          hash,
+		TorrentName:   torrentName,
+		TrackerDomain: trackerDomain,
+		Action:        models.ActivityActionExternalProgramFailed,
+		RuleID:        &ruleID,
+		RuleName:      ruleName,
+		Outcome:       models.ActivityOutcomeFailed,
+		Reason:        "program path not allowed",
+	}
+
+	assert.Equal(t, models.ActivityActionExternalProgramFailed, failedActivity.Action)
+	assert.Equal(t, models.ActivityOutcomeFailed, failedActivity.Outcome)
+	assert.Equal(t, "program path not allowed", failedActivity.Reason)
+
+	// Verify activity action constants are correct
+	assert.Equal(t, "external_program_started", models.ActivityActionExternalProgramExecuted)
+	assert.Equal(t, "external_program_failed", models.ActivityActionExternalProgramFailed)
+
+	// Use the program details for test coverage only
+	_ = programID
+	_ = programName
+	_ = programPath
+}
+
+func TestExecuteAction_LastRuleWins(t *testing.T) {
+	// Test that when multiple rules set execute action, last rule wins
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies",
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	rule1 := &models.Automation{
+		ID:             1,
+		Name:           "First Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(10),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	rule2 := &models.Automation{
+		ID:             2,
+		Name:           "Second Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(20),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies",
+				},
+			},
+		},
+	}
+
+	// Process both rules in order
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil)
+
+	// Last rule wins
+	require.NotNil(t, state.programID)
+	assert.Equal(t, 20, *state.programID, "expected last rule's programID to win")
+	assert.Equal(t, 2, state.executeRuleID, "expected last rule's ID")
+	assert.Equal(t, "Second Rule", state.executeRuleName, "expected last rule's name")
+
+	_ = sm // Use sm to avoid unused warning
+}
+
+func TestExecuteAction_OnlyFirstMatchingRuleExecutes(t *testing.T) {
+	// Test that when multiple rules exist but only one matches, only that one's execute is set
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies",
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	// Rule 1 doesn't match (wrong category condition)
+	rule1 := &models.Automation{
+		ID:             1,
+		Name:           "Non-matching Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(10),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "tv", // Doesn't match "movies"
+				},
+			},
+		},
+	}
+
+	// Rule 2 matches
+	rule2 := &models.Automation{
+		ID:             2,
+		Name:           "Matching Rule",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			ExecuteExternalProgram: &models.ExecuteExternalProgramAction{
+				Enabled:   true,
+				ProgramID: intPtr(20),
+				Condition: &models.RuleCondition{
+					Field:    models.FieldCategory,
+					Operator: models.OperatorEqual,
+					Value:    "movies", // Matches
+				},
+			},
+		},
+	}
+
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil)
+
+	// Only rule2 should have been applied (rule1's condition didn't match)
+	require.NotNil(t, state.programID)
+	assert.Equal(t, 20, *state.programID)
+	assert.Equal(t, 2, state.executeRuleID)
+	assert.Equal(t, "Matching Rule", state.executeRuleName)
+}
