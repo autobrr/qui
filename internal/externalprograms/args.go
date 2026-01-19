@@ -1,8 +1,12 @@
 package externalprograms
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,7 +48,7 @@ func buildArguments(program *models.ExternalProgram, torrent *qbt.Torrent) []str
 	return args
 }
 
-func createTerminalCommand(cmdLine string) *exec.Cmd {
+func createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
 	// List of terminal emulators to try, in order of preference
 	// Each has different syntax for executing a command
 	terminals := []struct {
@@ -77,7 +81,7 @@ func createTerminalCommand(cmdLine string) *exec.Cmd {
 				Str("terminal", term.name).
 				Str("command", cmdLine).
 				Msg("Using terminal emulator for external program")
-			return exec.Command(term.name, term.args...)
+			return exec.CommandContext(ctx, term.name, term.args...)
 		}
 	}
 
@@ -85,7 +89,7 @@ func createTerminalCommand(cmdLine string) *exec.Cmd {
 	log.Warn().
 		Str("command", cmdLine).
 		Msg("No terminal emulator found, running command in background")
-	return exec.Command("sh", "-c", cmdLine)
+	return exec.CommandContext(ctx, "sh", "-c", cmdLine)
 }
 
 // splitArgs splits a command line string into arguments, respecting quoted strings.
@@ -173,4 +177,77 @@ func applyPathMappings(path string, mappings []models.PathMapping) string {
 	}
 
 	return path
+}
+
+// IsPathAllowed checks if a program path is permitted by the allowlist.
+// If the allowlist is empty or nil, all paths are allowed.
+// The path is normalized before comparison to handle symlinks and case differences (Windows).
+func IsPathAllowed(programPath string, allowList []string) bool {
+	programPath = strings.TrimSpace(programPath)
+	if programPath == "" {
+		return false
+	}
+
+	if len(allowList) == 0 {
+		return true
+	}
+
+	normalizedProgramPath := normalizePath(programPath)
+	sep := string(os.PathSeparator)
+
+	for _, allowed := range allowList {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "" {
+			continue
+		}
+
+		normalizedAllowedPath := normalizePath(allowed)
+
+		// Exact match
+		if normalizedProgramPath == normalizedAllowedPath {
+			return true
+		}
+
+		// Directory prefix match
+		allowedPrefix := normalizedAllowedPath
+		if !strings.HasSuffix(allowedPrefix, sep) {
+			allowedPrefix += sep
+		}
+
+		if strings.HasPrefix(normalizedProgramPath, allowedPrefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// normalizePath returns a canonical form of the path for comparison.
+// Resolves symlinks, makes path absolute, and normalizes case on Windows.
+func normalizePath(p string) string {
+	cleaned, err := filepath.Abs(p)
+	if err != nil {
+		cleaned = filepath.Clean(p)
+	}
+
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
+		cleaned = resolved
+	} else {
+		// If symlink resolution fails (e.g., path doesn't exist yet),
+		// try to resolve just the parent directory
+		dir := filepath.Dir(cleaned)
+		if dirResolved, dirErr := filepath.EvalSymlinks(dir); dirErr == nil {
+			cleaned = filepath.Join(dirResolved, filepath.Base(cleaned))
+		}
+	}
+
+	return normalizePathCase(cleaned)
+}
+
+// normalizePathCase normalizes path case for case-insensitive file systems (Windows).
+func normalizePathCase(p string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(p)
+	}
+	return p
 }

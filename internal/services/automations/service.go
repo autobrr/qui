@@ -33,6 +33,10 @@ type Config struct {
 	MaxBatchHashes        int
 	ActivityRetentionDays int
 	ApplyTimeout          time.Duration // timeout for applying all actions per instance
+
+	// ExternalProgramAllowList restricts which paths can be executed.
+	// If empty, all paths are allowed. If set, only programs under these paths can run.
+	ExternalProgramAllowList []string
 }
 
 // DefaultRuleInterval is the cadence for rules that don't specify their own interval.
@@ -1259,7 +1263,15 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
-	externalProgramExecutions := make(map[string]*models.ExternalProgram)
+
+	type pendingExecution struct {
+		program       *models.ExternalProgram
+		ruleID        int
+		ruleName      string
+		torrentName   string
+		trackerDomain string
+	}
+	externalProgramExecutions := make(map[string]*pendingExecution)
 
 	type pendingDeletion struct {
 		hash          string
@@ -1568,7 +1580,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 						log.Error().Err(err).Int("programID", programID).Msg("automations: failed to get external program configuration")
 					}
 				} else {
-					externalProgramExecutions[hash] = program
+					trackerDomain := ""
+					if len(state.trackerDomains) > 0 {
+						trackerDomain = state.trackerDomains[0]
+					}
+					externalProgramExecutions[hash] = &pendingExecution{
+						program:       program,
+						ruleID:        state.executeRuleID,
+						ruleName:      state.executeRuleName,
+						torrentName:   state.name,
+						trackerDomain: trackerDomain,
+					}
 				}
 			}
 		}
@@ -1907,19 +1929,72 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Execute external programs
-	for torrentHash, program := range externalProgramExecutions {
+	for torrentHash, pending := range externalProgramExecutions {
 		torrent, ok := torrentByHash[torrentHash]
 		if !ok {
 			log.Warn().Str("hash", torrentHash).Msg("automations: external program execution failed: torrent not found")
 			continue
 		}
 
-		if !program.Enabled {
-			log.Debug().Int("programId", program.ID).Str("programName", program.Name).Msg("automations: external program is disabled, skipping execution")
+		if !pending.program.Enabled {
+			log.Debug().Int("programId", pending.program.ID).Str("programName", pending.program.Name).Msg("automations: external program is disabled, skipping execution")
 			continue
 		}
 
-		externalprograms.Execute(program, &torrent)
+		// Execute with path allowlist validation (P0.1 fix: centralized security check)
+		opts := externalprograms.ExecuteOptions{
+			Mode:      externalprograms.ModeAsync,
+			AllowList: s.cfg.ExternalProgramAllowList,
+		}
+		result := externalprograms.Execute(ctx, pending.program, &torrent, opts)
+
+		// Record activity for the execution
+		if s.activityStore != nil {
+			var action string
+			var outcome string
+			var reason string
+
+			if result.Started {
+				action = models.ActivityActionExternalProgramExecuted
+				outcome = models.ActivityOutcomeSuccess
+			} else {
+				action = models.ActivityActionExternalProgramFailed
+				outcome = models.ActivityOutcomeFailed
+				if result.Error != nil {
+					reason = result.Error.Error()
+				}
+			}
+
+			ruleID := pending.ruleID
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"programId":   pending.program.ID,
+				"programName": pending.program.Name,
+				"programPath": pending.program.Path,
+			})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID:    instanceID,
+				Hash:          torrentHash,
+				TorrentName:   pending.torrentName,
+				TrackerDomain: pending.trackerDomain,
+				Action:        action,
+				RuleID:        &ruleID,
+				RuleName:      pending.ruleName,
+				Outcome:       outcome,
+				Reason:        reason,
+				Details:       detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Str("hash", torrentHash).Int("instanceID", instanceID).Msg("automations: failed to record external program activity")
+			}
+		}
+
+		if !result.Started {
+			log.Warn().
+				Err(result.Error).
+				Str("hash", torrentHash).
+				Str("programName", pending.program.Name).
+				Int("programId", pending.program.ID).
+				Msg("automations: external program failed to start")
+		}
 	}
 
 	// Execute deletions

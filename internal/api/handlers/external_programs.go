@@ -8,9 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -280,10 +277,15 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		return result
 	}
 
-	// Execute the external program
-	externalprograms.Execute(program, torrent)
+	// Execute the external program (async mode - fire and forget)
+	// The allowlist check is already done at the handler level, so we pass empty here
+	execResult := externalprograms.Execute(ctx, program, torrent, externalprograms.DefaultOptions())
 
-	// Return immediately without waiting for the command to complete
+	if !execResult.Started {
+		result["error"] = fmt.Sprintf("Failed to start program: %v", execResult.Error)
+		return result
+	}
+
 	result["success"] = true
 	if program.UseTerminal {
 		result["message"] = "Terminal window opened successfully"
@@ -294,73 +296,9 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	return result
 }
 
-func normalizePath(p string) string {
-	cleaned, err := filepath.Abs(p)
-	if err != nil {
-		cleaned = filepath.Clean(p)
-	}
-
-	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
-		cleaned = resolved
-	} else {
-		dir := filepath.Dir(cleaned)
-		if dirResolved, dirErr := filepath.EvalSymlinks(dir); dirErr == nil {
-			cleaned = filepath.Join(dirResolved, filepath.Base(cleaned))
-		}
-	}
-
-	return normalizePathCase(cleaned)
-}
-
 func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
-	programPath = strings.TrimSpace(programPath)
-	if programPath == "" {
-		return false
-	}
-
 	if h == nil || h.config == nil {
 		return true
 	}
-
-	allowList := h.config.ExternalProgramAllowList
-	if len(allowList) == 0 {
-		return true
-	}
-
-	normalizedProgramPath := normalizePath(programPath)
-
-	sep := string(os.PathSeparator)
-
-	for _, allowed := range allowList {
-		allowed = strings.TrimSpace(allowed)
-		if allowed == "" {
-			continue
-		}
-
-		normalizedAllowedPath := normalizePath(allowed)
-
-		if normalizedProgramPath == normalizedAllowedPath {
-			return true
-		}
-
-		allowedPrefix := normalizedAllowedPath
-		if !strings.HasSuffix(allowedPrefix, sep) {
-			allowedPrefix += sep
-		}
-
-		if strings.HasPrefix(normalizedProgramPath, allowedPrefix) {
-			return true
-		}
-	}
-
-	log.Warn().Str("path", programPath).Msg("External program path blocked by allow list")
-	return false
-}
-
-func normalizePathCase(p string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(p)
-	}
-
-	return p
+	return externalprograms.IsPathAllowed(programPath, h.config.ExternalProgramAllowList)
 }

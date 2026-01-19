@@ -38,7 +38,9 @@ type torrentDesiredState struct {
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
 	// Execute (last rule wins)
-	programID *int
+	programID       *int
+	executeRuleID   int
+	executeRuleName string
 
 	// Delete (first rule to trigger wins)
 	shouldDelete           bool
@@ -300,6 +302,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				}
 
 				state.programID = conditions.ExecuteExternalProgram.ProgramID
+				state.executeRuleID = rule.ID
+				state.executeRuleName = rule.Name
 			} else if stats != nil {
 				stats.ExecuteConditionNotMet++
 			}

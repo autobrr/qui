@@ -268,7 +268,8 @@ type Service struct {
 	arrService               *arr.Service // ARR service for ID lookup
 
 	// External program execution
-	externalProgramStore *models.ExternalProgramStore
+	externalProgramStore     *models.ExternalProgramStore
+	externalProgramAllowList []string
 
 	// Per-instance completion settings
 	completionStore *models.InstanceCrossSeedCompletionStore
@@ -339,6 +340,7 @@ func NewService(
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
 	recoverErroredTorrents bool,
+	externalProgramAllowList []string,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -368,6 +370,7 @@ func NewService(
 		jackettService:                jackettService,
 		arrService:                    arrService,
 		externalProgramStore:          externalProgramStore,
+		externalProgramAllowList:      externalProgramAllowList,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
 		automationWake:                make(chan struct{}, 1),
@@ -8374,8 +8377,20 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		return
 	}
 
-	// Execute the external program
-	externalprograms.Execute(program, targetTorrent)
+	// Execute the external program with path allowlist validation (P0.1 fix)
+	opts := externalprograms.ExecuteOptions{
+		Mode:      externalprograms.ModeAsync,
+		AllowList: s.externalProgramAllowList,
+	}
+	result := externalprograms.Execute(ctx, program, targetTorrent, opts)
+	if !result.Started {
+		log.Warn().
+			Err(result.Error).
+			Str("torrentHash", torrentHash).
+			Str("programName", program.Name).
+			Int("programId", program.ID).
+			Msg("crossseed: external program failed to start")
+	}
 }
 
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
