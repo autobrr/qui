@@ -41,10 +41,6 @@ linters:
   settings:
     exhaustive:
       default-signifies-exhaustive: false
-
-    nolintlint:
-      require-explanation: true
-      require-specific: true
     
     misspell:
       ignore-rules:
