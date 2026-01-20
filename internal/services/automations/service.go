@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -68,6 +69,7 @@ type Service struct {
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
+	externalProgramService    *externalprograms.Service // for executing external programs
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
@@ -76,7 +78,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, externalProgramService *externalprograms.Service) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -96,6 +98,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
+		externalProgramService:    externalProgramService,
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
@@ -1260,6 +1263,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	categoryBatches := make(map[string][]string) // category name -> hashes
 	moveBatches := make(map[string][]string)     // path -> hashes
 
+	// External program execution tracking
+	var programExecutions []pendingProgramExec
+
 	type pendingDeletion struct {
 		hash          string
 		torrentName   string
@@ -1557,6 +1563,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 		if state.shouldMove {
 			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
+		}
+
+		// External program execution
+		if state.externalProgramID != nil {
+			programExecutions = append(programExecutions, pendingProgramExec{
+				hash:      hash,
+				torrent:   torrent,
+				programID: *state.externalProgramID,
+				ruleID:    state.programRuleID,
+				ruleName:  state.programRuleName,
+			})
 		}
 
 		// Mark as processed
@@ -2003,6 +2020,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			}
 		}
 	}
+
+	// Execute external programs (async, fire-and-forget)
+	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
 
 	// Execute deletions
 	//
@@ -2549,4 +2569,47 @@ func (s *Service) applySpeedLimits(
 		}
 	}
 	return successCounts
+}
+
+// pendingProgramExec tracks a pending external program execution
+type pendingProgramExec struct {
+	hash      string
+	torrent   qbt.Torrent
+	programID int
+	ruleID    int
+	ruleName  string
+}
+
+// executeExternalProgramsFromAutomation executes external programs for matching torrents.
+// Programs are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
+func (s *Service) executeExternalProgramsFromAutomation(ctx context.Context, instanceID int, executions []pendingProgramExec) {
+	if s.externalProgramService == nil || len(executions) == 0 {
+		return
+	}
+
+	// Group by program ID to log summary
+	programCounts := make(map[int]int)
+	for _, exec := range executions {
+		programCounts[exec.programID]++
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("executions", len(executions)).
+		Interface("programCounts", programCounts).
+		Msg("automations: executing external programs")
+
+	for _, exec := range executions {
+		torrent := exec.torrent // Copy to avoid closure issues
+		ruleID := exec.ruleID
+
+		// Execute asynchronously - the service handles its own activity logging
+		go s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+			ProgramID:  exec.programID,
+			Torrent:    &torrent,
+			InstanceID: instanceID,
+			RuleID:     &ruleID,
+			RuleName:   exec.ruleName,
+		})
+	}
 }

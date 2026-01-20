@@ -30,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -57,6 +58,7 @@ type Server struct {
 	reannounceService                *reannounce.Service
 	clientAPIKeyStore                *models.ClientAPIKeyStore
 	externalProgramStore             *models.ExternalProgramStore
+	externalProgramService           *externalprograms.Service
 	clientPool                       *qbittorrent.ClientPool
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
@@ -92,6 +94,7 @@ type Dependencies struct {
 	ReannounceService                *reannounce.Service
 	ClientAPIKeyStore                *models.ClientAPIKeyStore
 	ExternalProgramStore             *models.ExternalProgramStore
+	ExternalProgramService           *externalprograms.Service
 	ClientPool                       *qbittorrent.ClientPool
 	SyncManager                      *qbittorrent.SyncManager
 	WebHandler                       *web.Handler
@@ -134,6 +137,7 @@ func NewServer(deps *Dependencies) *Server {
 		instanceReannounce:               deps.InstanceReannounce,
 		clientAPIKeyStore:                deps.ClientAPIKeyStore,
 		externalProgramStore:             deps.ExternalProgramStore,
+		externalProgramService:           deps.ExternalProgramService,
 		reannounceCache:                  deps.ReannounceCache,
 		clientPool:                       deps.ClientPool,
 		syncManager:                      deps.SyncManager,
@@ -285,7 +289,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
-	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool, s.config.Config)
+	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)

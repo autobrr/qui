@@ -513,6 +513,7 @@ type ActionConditions struct {
 	Tag           *TagAction         `json:"tag,omitempty"`
 	Category      *CategoryAction    `json:"category,omitempty"`
 	Move          *MoveAction        `json:"move,omitempty"`
+	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -573,10 +574,17 @@ type MoveAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
+// ExternalProgramAction configures external program execution with optional conditions.
+type ExternalProgramAction struct {
+	Enabled   bool           `json:"enabled"`
+	ProgramID int            `json:"programId"` // FK to external_programs table
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil && ac.ExternalProgram == nil
 }
