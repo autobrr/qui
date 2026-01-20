@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"modernc.org/sqlite"
+	lib "modernc.org/sqlite/lib"
 )
 
 // MatchMode defines how files are matched to torrent files.
@@ -1112,7 +1114,13 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 			WHERE directory_id = ? AND file_id = ?
 		`, file.FilePath, file.FileSize, file.FileModTime, file.FileID, file.Status,
 			matchedTorrentHash, matchedIndexerID, file.DirectoryID, file.FileID)
-		if err == nil {
+		if err != nil {
+			// If the target path is already tracked, fall back to the path-upsert which will merge state.
+			var sqlErr *sqlite.Error
+			if !errors.As(err, &sqlErr) || sqlErr.Code() != lib.SQLITE_CONSTRAINT_UNIQUE {
+				return fmt.Errorf("update by file_id: %w", err)
+			}
+		} else {
 			rows, rowsErr := res.RowsAffected()
 			if rowsErr != nil {
 				return fmt.Errorf("rows affected: %w", rowsErr)

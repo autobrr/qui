@@ -113,6 +113,10 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		settings.MinPieceRatio = *payload.MinPieceRatio
 	}
 	if payload.MaxSearcheesPerRun != nil {
+		if *payload.MaxSearcheesPerRun < 0 {
+			RespondError(w, http.StatusBadRequest, "maxSearcheesPerRun must be >= 0")
+			return
+		}
 		settings.MaxSearcheesPerRun = *payload.MaxSearcheesPerRun
 	}
 	if payload.AllowPartial != nil {
