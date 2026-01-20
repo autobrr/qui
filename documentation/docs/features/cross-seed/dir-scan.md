@@ -168,6 +168,17 @@ Open **Dir Scan > Settings**:
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
 
+### "Max searchees per run" explained
+
+This setting limits how many **top-level folders/files** Dir Scan will process in a single run.
+
+- If your directory is a TV root like `/mnt/storage/media/tv`, then each **show folder** is one searchee (for example `Show.Name/`, `Another.Show/`).
+- If your directory is a movies root like `/mnt/storage/media/movies`, then each **movie folder** is one searchee (for example `Movie.Title (2024)/`, `Another.Movie (2023)/`).
+
+So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run (so already-final files won't be reprocessed). See [Incremental progress and resets](#incremental-progress-and-resets).
+
+This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
+
 ## Directories
 
 Each scan directory has its own configuration:
