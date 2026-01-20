@@ -830,7 +830,7 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		match, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
+		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -858,19 +858,54 @@ func (s *Service) processRootSearchee(
 				fileUpdates[f.Path] = dirScanFileUpdate{status: models.DirScanFileStatusError}
 			}
 		}
-		if match == nil {
+		if len(matches) == 0 {
 			continue
 		}
 
-		matchesFoundOut++
-		if match.injected {
-			torrentsAddedOut++
+		var (
+			anyInjected  bool
+			anyNonFailed bool
+			primaryMatch *searcheeMatch
+		)
+
+		for _, m := range matches {
+			if m == nil {
+				continue
+			}
+
+			matchesFoundOut++
+
+			if m.injected {
+				torrentsAddedOut++
+				anyInjected = true
+			}
+			if !m.injectionFailed {
+				anyNonFailed = true
+			}
+
+			if primaryMatch == nil {
+				primaryMatch = m
+				continue
+			}
+			if !primaryMatch.injected && m.injected {
+				primaryMatch = m
+				continue
+			}
+			if !primaryMatch.injected && !primaryMatch.inQBittorrent && m.inQBittorrent {
+				primaryMatch = m
+				continue
+			}
+		}
+
+		if anyInjected {
 			markTVGroupInjected(injectedTVGroups, item.tvGroup)
 		}
 
 		s.setRunProgress(runID, matchesFoundOut, torrentsAddedOut)
 
-		if match.injectionFailed {
+		// If we found matches but all accepted injections failed, mark this work as error so it can be inspected.
+		// (A successful injection or an "already in qBittorrent" outcome is considered a success.)
+		if !anyNonFailed || primaryMatch == nil {
 			hasProcessingError = true
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -888,24 +923,24 @@ func (s *Service) processRootSearchee(
 		}
 
 		updateStatus := models.DirScanFileStatusMatched
-		if match.inQBittorrent {
+		if !anyInjected && primaryMatch.inQBittorrent {
 			updateStatus = models.DirScanFileStatusInQBittorrent
 		}
 
 		hasAcceptedMatch = true
 
 		var indexerID *int
-		if match.searchResult != nil && match.searchResult.IndexerID > 0 {
-			id := match.searchResult.IndexerID
+		if primaryMatch.searchResult != nil && primaryMatch.searchResult.IndexerID > 0 {
+			id := primaryMatch.searchResult.IndexerID
 			indexerID = &id
 		}
 
-		if match.matchResult != nil {
+		if primaryMatch.matchResult != nil {
 			var torrentHash string
-			if match.parsedTorrent != nil {
-				torrentHash = match.parsedTorrent.InfoHash
+			if primaryMatch.parsedTorrent != nil {
+				torrentHash = primaryMatch.parsedTorrent.InfoHash
 			}
-			for _, pair := range match.matchResult.MatchedFiles {
+			for _, pair := range primaryMatch.matchResult.MatchedFiles {
 				if pair.SearcheeFile == nil {
 					continue
 				}
@@ -1169,6 +1204,71 @@ type searcheeOutcome struct {
 	searchError bool
 }
 
+type tryMatchResultsStats struct {
+	skippedTooSmall         int
+	skippedTooLarge         int
+	skippedExists           int
+	skippedIndexerSatisfied int
+	attemptedMatches        int
+}
+
+func tryMatchResultsPerIndexer(
+	results []jackett.SearchResult,
+	minSize, maxSize int64,
+	shouldSkipExists func(result *jackett.SearchResult) bool,
+	attempt func(result *jackett.SearchResult) *searcheeMatch,
+) ([]*searcheeMatch, tryMatchResultsStats) {
+	stats := tryMatchResultsStats{}
+	if len(results) == 0 {
+		return nil, stats
+	}
+
+	var matches []*searcheeMatch
+	satisfiedIndexers := make(map[int]struct{})
+
+	for i := range results {
+		result := &results[i]
+
+		if result.IndexerID > 0 {
+			if _, ok := satisfiedIndexers[result.IndexerID]; ok {
+				stats.skippedIndexerSatisfied++
+				continue
+			}
+		}
+
+		if minSize > 0 && result.Size < minSize {
+			stats.skippedTooSmall++
+			continue
+		}
+		if maxSize > 0 && result.Size > maxSize {
+			stats.skippedTooLarge++
+			continue
+		}
+
+		if shouldSkipExists != nil && shouldSkipExists(result) {
+			stats.skippedExists++
+			continue
+		}
+
+		stats.attemptedMatches++
+		match := attempt(result)
+		if match != nil {
+			matches = append(matches, match)
+			// Only mark an indexer as satisfied once we successfully injected (or confirmed the
+			// torrent already exists in qBittorrent). If injection failed, keep trying other
+			// results from the same indexer.
+			if result.IndexerID > 0 && !match.injectionFailed {
+				satisfiedIndexers[result.IndexerID] = struct{}{}
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil, stats
+	}
+	return matches, stats
+}
+
 // processSearchee searches for and processes a single searchee.
 func (s *Service) processSearchee(
 	ctx context.Context,
@@ -1178,7 +1278,7 @@ func (s *Service) processSearchee(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) (*searcheeMatch, searcheeOutcome) {
+) ([]*searcheeMatch, searcheeOutcome) {
 	if searchee == nil || settings == nil || matcher == nil {
 		return nil, searcheeOutcome{}
 	}
@@ -1382,49 +1482,45 @@ func (s *Service) tryMatchResults(
 	matcher *Matcher,
 	runID int64,
 	l *zerolog.Logger,
-) *searcheeMatch {
-	skippedTooSmall := 0
-	skippedTooLarge := 0
-	skippedExists := 0
-	attemptedMatches := 0
-
-	for i := range response.Results {
-		result := &response.Results[i]
-
-		if minSize > 0 && result.Size < minSize {
-			skippedTooSmall++
-			continue
-		}
-		if maxSize > 0 && result.Size > maxSize {
-			skippedTooLarge++
-			continue
-		}
-
-		if exists, ok := s.searchResultAlreadyExists(ctx, dir.TargetInstanceID, result, l); ok && exists {
-			skippedExists++
-			continue
-		}
-
-		attemptedMatches++
-		match := s.tryMatchAndInject(ctx, dir, searchee, result, contentType, settings, matcher, runID, l)
-		if match != nil {
-			return match
-		}
-	}
+) []*searcheeMatch {
+	matches, stats := tryMatchResultsPerIndexer(
+		response.Results,
+		minSize,
+		maxSize,
+		func(result *jackett.SearchResult) bool {
+			if exists, ok := s.searchResultAlreadyExists(ctx, dir.TargetInstanceID, result, l); ok && exists {
+				return true
+			}
+			return false
+		},
+		func(result *jackett.SearchResult) *searcheeMatch {
+			return s.tryMatchAndInject(ctx, dir, searchee, result, contentType, settings, matcher, runID, l)
+		},
+	)
 
 	if l != nil {
-		l.Debug().
+		ev := l.Debug().
 			Str("name", searchee.Name).
 			Int("results", len(response.Results)).
-			Int("attemptedMatches", attemptedMatches).
-			Int("skippedTooSmall", skippedTooSmall).
-			Int("skippedTooLarge", skippedTooLarge).
-			Int("skippedExists", skippedExists).
+			Int("matches", len(matches)).
+			Int("attemptedMatches", stats.attemptedMatches).
+			Int("skippedTooSmall", stats.skippedTooSmall).
+			Int("skippedTooLarge", stats.skippedTooLarge).
+			Int("skippedExists", stats.skippedExists).
+			Int("skippedIndexerSatisfied", stats.skippedIndexerSatisfied).
 			Int64("minResultSize", minSize).
 			Int64("maxResultSize", maxSize).
-			Msg("dirscan: no matching search results")
+			Str("contentType", contentType)
+		if len(matches) == 0 {
+			ev.Msg("dirscan: no matching search results")
+		} else {
+			ev.Msg("dirscan: matched search results")
+		}
 	}
-	return nil
+	if len(matches) == 0 {
+		return nil
+	}
+	return matches
 }
 
 func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int, result *jackett.SearchResult, l *zerolog.Logger) (exists, checked bool) {
