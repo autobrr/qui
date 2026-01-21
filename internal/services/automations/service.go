@@ -388,6 +388,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	s.setupMissingFilesContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
@@ -423,6 +424,23 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 	}
 	return hardlinkIndex
+}
+
+// setupMissingFilesContext sets up missing files detection if needed for delete preview.
+func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
+	if instance == nil || !instance.HasLocalFilesystemAccess {
+		return
+	}
+	if rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return
+	}
+
+	cond := rule.Conditions.Delete.Condition
+	if !ConditionUsesField(cond, FieldHasMissingFiles) {
+		return
+	}
+
+	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 }
 
 // getDeleteMode returns the delete mode from rule or default.
@@ -1068,6 +1086,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
+	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
+		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+	}
+
 	// Get free space on instance (only if rules use FREE_SPACE field)
 	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
@@ -1195,6 +1218,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
 				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 				Int("deleteNoMatch", stats.DeleteConditionNotMet).
+				Int("moveNoMatch", stats.MoveConditionNotMet).
+				Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
+				Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
 				Msg("automations: rule matched trackers but applied no actions")
 		}
 	}
@@ -1232,6 +1258,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
+	moveBatches := make(map[string][]string)     // path -> hashes
 
 	type pendingDeletion struct {
 		hash          string
@@ -1526,6 +1553,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			if torrent.Category != *state.category {
 				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
 			}
+		}
+
+		if state.shouldMove {
+			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
 		}
 
 		// Mark as processed
@@ -1858,6 +1889,118 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			Details:    detailsJSON,
 		}); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
+		}
+	}
+
+	// Execute moves - sort paths for deterministic processing order
+	sortedPaths := make([]string, 0, len(moveBatches))
+	for path := range moveBatches {
+		sortedPaths = append(sortedPaths, path)
+	}
+	sort.Strings(sortedPaths)
+
+	movedHashes := make(map[string]struct{})
+	successfulMovesByPath := make(map[string]int)
+	failedMovesByPath := make(map[string]int)
+	for _, path := range sortedPaths {
+		hashes := moveBatches[path]
+		successfulMovesForPath := 0
+		failedMovesForPath := 0
+
+		// Before moving, we need to get all of the cross-seeds for each torrent to avoid breaking cross-seeds
+		var expandedHashes []string
+		for _, hash := range hashes {
+			if _, exists := movedHashes[hash]; exists {
+				continue // Already moved
+			}
+			expandedHashes = append(expandedHashes, hash)
+			movedHashes[hash] = struct{}{}
+		}
+
+		keysToExpand := make(map[crossSeedKey]struct{})
+		for _, hash := range hashes {
+			if t, exists := torrentByHash[hash]; exists {
+				if key, ok := makeCrossSeedKey(t); ok {
+					keysToExpand[key] = struct{}{}
+				}
+			}
+		}
+
+		if len(keysToExpand) > 0 {
+			for _, t := range torrents {
+				if normalizePath(t.SavePath) == normalizePath(path) {
+					continue // Already in target path
+				}
+				if _, exists := movedHashes[t.Hash]; exists {
+					continue // Already moved
+				}
+				if key, ok := makeCrossSeedKey(t); ok {
+					if _, matched := keysToExpand[key]; matched {
+						expandedHashes = append(expandedHashes, t.Hash)
+						movedHashes[t.Hash] = struct{}{}
+					}
+				}
+			}
+		}
+
+		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if len(batch) == 0 {
+				continue
+			}
+
+			if err := s.syncManager.SetLocation(ctx, instanceID, batch, path); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: move failed")
+				failedMovesForPath += len(batch)
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: moved torrent")
+				successfulMovesForPath += len(batch)
+			}
+		}
+
+		successfulMovesByPath[path] = successfulMovesForPath
+		failedMovesByPath[path] = failedMovesForPath
+	}
+
+	// Record aggregated move activity
+	if s.activityStore != nil {
+		var hasSuccesses, hasFailures bool
+		for _, count := range successfulMovesByPath {
+			if count > 0 {
+				hasSuccesses = true
+				break
+			}
+		}
+		for _, count := range failedMovesByPath {
+			if count > 0 {
+				hasFailures = true
+				break
+			}
+		}
+
+		if hasSuccesses {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeSuccess,
+				Details:    detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
+		}
+		if hasFailures {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeFailed,
+				Details:    detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
 		}
 	}
 

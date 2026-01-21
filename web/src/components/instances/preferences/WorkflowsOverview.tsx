@@ -76,7 +76,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -166,6 +166,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Share"
     case "paused":
       return "Pause"
+    case "moved":
+      return "Move"
     default:
       return action
   }
@@ -218,6 +220,17 @@ function formatShareLimitsSummary(details: AutomationActivity["details"]): strin
 function formatPausedSummary(details: AutomationActivity["details"]): string {
   const count = details?.count ?? 0
   return `${count} torrent${count !== 1 ? "s" : ""} paused`
+}
+
+function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = Object.values(details?.paths ?? {}).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+  if (outcome === "failed") {
+    return `${count} torrent${count !== 1 ? "s" : ""} failed to move`
+  }
+  return `${count} torrent${count !== 1 ? "s" : ""} moved`
 }
 
 interface WorkflowsOverviewProps {
@@ -684,6 +697,7 @@ export function WorkflowsOverview({
     speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    moved: "bg-green-500/10 text-green-500 border-green-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -824,14 +838,24 @@ export function WorkflowsOverview({
                         <p className="text-sm text-muted-foreground">
                           No automations configured yet.
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateDialog(instance.id)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add your first rule
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateDialog(instance.id)}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add your first rule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openImportDialog(instance.id)}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1062,6 +1086,10 @@ export function WorkflowsOverview({
                                         <span className="font-medium text-sm block">
                                           {formatPausedSummary(event.details)}
                                         </span>
+                                      ) : event.action === "moved" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatMovedSummary(event.details, event.outcome)}
+                                        </span>
                                       ) : (
                                         <TruncatedText className="font-medium text-sm block cursor-default">
                                           {event.torrentName || event.hash}
@@ -1078,7 +1106,7 @@ export function WorkflowsOverview({
                                       >
                                         {formatAction(event.action)}
                                       </Badge>
-                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused"].includes(event.action) && (
+                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "moved"].includes(event.action) && (
                                         <Badge
                                           variant="outline"
                                           className={cn(
@@ -1283,6 +1311,18 @@ export function WorkflowsOverview({
                                       {event.ruleName && (
                                         <span className="text-muted-foreground">Rule: {event.ruleName}</span>
                                       )}
+                                      {event.details?.paths && (() => {
+                                        const paths = Object.entries(event.details.paths as Record<string, number>)
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {paths.map(([path, count]) => (
+                                              <Badge key={path} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
+                                                {path} ({count})
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )
+                                      })()}
                                     </div>
                                   )}
                                 </div>
@@ -1403,14 +1443,14 @@ export function WorkflowsOverview({
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Workflow</DialogTitle>
             <DialogDescription>
               Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <Textarea
               placeholder='{"name": "My Workflow", "conditions": {...}}'
               value={importJSON}
@@ -1418,7 +1458,7 @@ export function WorkflowsOverview({
                 setImportJSON(e.target.value)
                 setImportError(null)
               }}
-              className="min-h-[200px] font-mono text-sm"
+              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>
@@ -1553,7 +1593,8 @@ function RulePreview({
     (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
     (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
     (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
-    (rule.conditions?.category?.enabled && rule.conditions.category.condition)
+    (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
+    (rule.conditions?.move?.enabled && rule.conditions.move.condition)
   )
 
   return (
@@ -1644,6 +1685,12 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
             <Folder className="h-3 w-3" />
             {rule.conditions.category.category}
+          </Badge>
+        )}
+        {rule.conditions?.move?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Move className="h-3 w-3" />
+            {rule.conditions.move.path}
           </Badge>
         )}
         <Button

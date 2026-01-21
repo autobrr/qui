@@ -11,7 +11,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceSettings } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -79,7 +79,11 @@ interface InstanceFormProps {
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
-  const [authBypass, setAuthBypass] = useState(false)
+  const [authBypass, setAuthBypass] = useState(instance?.username === "")
+
+  useEffect(() => {
+    setAuthBypass(instance?.username === "")
+  }, [instance?.username])
 
   const handleSubmit = (data: InstanceFormData) => {
     let submitData: InstanceFormData
@@ -101,6 +105,14 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         ...data,
         basicUsername: "",
         basicPassword: "",
+      }
+    }
+
+    if (authBypass) {
+      submitData = {
+        ...submitData,
+        username: "",
+        password: "",
       }
     }
 

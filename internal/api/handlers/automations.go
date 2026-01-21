@@ -245,20 +245,7 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 }
 
 func normalizeTrackerDomains(domains []string) []string {
-	seen := make(map[string]struct{})
-	var out []string
-	for _, d := range domains {
-		trimmed := strings.TrimSpace(d)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	return out
+	return models.SanitizeCommaSeparatedStringSlice(domains)
 }
 
 // validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.
@@ -315,8 +302,8 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Validate hardlink fields require local filesystem access
-	if conditionsUseHardlink(payload.Conditions) {
+	// Validate fields that require local filesystem access
+	if conditionsRequireLocalAccess(payload.Conditions) {
 		instance, err := h.instanceStore.Get(ctx, instanceID)
 		if err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {
@@ -327,7 +314,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			return http.StatusInternalServerError, "Failed to validate automation", err
 		}
 		if !instance.HasLocalFilesystemAccess {
-			return http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
+			return http.StatusBadRequest, "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
 		}
 	}
 
@@ -383,9 +370,11 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition))
 }
 
-// conditionsUseHardlink checks if any enabled action condition uses HARDLINK_SCOPE field.
-func conditionsUseHardlink(conditions *models.ActionConditions) bool {
-	return conditionsUseField(conditions, automations.FieldHardlinkScope)
+// conditionsRequireLocalAccess checks if any enabled action condition uses fields
+// that require local filesystem access (HARDLINK_SCOPE or HAS_MISSING_FILES).
+func conditionsRequireLocalAccess(conditions *models.ActionConditions) bool {
+	return conditionsUseField(conditions, automations.FieldHardlinkScope) ||
+		conditionsUseField(conditions, automations.FieldHasMissingFiles)
 }
 
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
