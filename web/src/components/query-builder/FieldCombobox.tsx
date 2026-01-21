@@ -64,12 +64,19 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
 
                   if (isDisabled) {
                     return (
-                      <DisabledOption key={field} reason={disabledReason} className="px-2 py-1.5">
-                        <Check className="mr-2 size-3 opacity-0" />
-                        <span>{fieldDef?.label ?? field}</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">
-                          {fieldDef?.type}
-                        </span>
+                      <DisabledOption key={field} reason={disabledReason}>
+                        <CommandItem value={`${fieldDef?.label ?? field} ${group.label}`}>
+                          <Check
+                            className={cn(
+                              "mr-2 size-3",
+                              value === field ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <span>{fieldDef?.label ?? field}</span>
+                          <span className="ml-auto text-[10px] text-muted-foreground">
+                            {fieldDef?.type}
+                          </span>
+                        </CommandItem>
                       </DisabledOption>
                     );
                   }

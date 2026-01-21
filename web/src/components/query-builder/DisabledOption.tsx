@@ -1,10 +1,17 @@
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { cloneElement, isValidElement } from "react";
+
+type DisabledOptionChildProps = {
+  className?: string;
+  disabled?: boolean;
+  "aria-disabled"?: boolean;
+};
 
 interface DisabledOptionProps {
   children: ReactNode;
@@ -13,19 +20,37 @@ interface DisabledOptionProps {
 }
 
 export function DisabledOption({ children, reason, className }: DisabledOptionProps) {
+  let child: ReactElement;
+
+  if (isValidElement<DisabledOptionChildProps>(children)) {
+    child = cloneElement(children, {
+      className: cn(
+        children.props.className,
+        "cursor-not-allowed data-[disabled]:pointer-events-auto data-[disabled=true]:pointer-events-auto",
+        className
+      ),
+      disabled: true,
+      "aria-disabled": true,
+    });
+  } else {
+    child = (
+      <div
+        className={cn(
+          "relative flex cursor-not-allowed select-none items-center rounded-sm text-sm opacity-50 outline-none",
+          className
+        )}
+        role="option"
+        aria-disabled="true"
+      >
+        {children}
+      </div>
+    );
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div
-          className={cn(
-            "relative flex cursor-not-allowed select-none items-center rounded-sm text-sm opacity-50 outline-none",
-            className
-          )}
-          role="option"
-          aria-disabled="true"
-        >
-          {children}
-        </div>
+        {child}
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[200px]">
         {reason}

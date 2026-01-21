@@ -24,7 +24,7 @@ import {
   HARDLINK_SCOPE_VALUES,
   TORRENT_STATES,
   type DisabledField,
-  type DisabledStateValue,
+  type DisabledStateValue
 } from "./constants";
 import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
@@ -562,8 +562,8 @@ export function LeafCondition({
 
               if (isDisabled) {
                 return (
-                  <DisabledOption key={state.value} reason={disabledInfo.reason} className="w-full py-1.5 pl-2 pr-8">
-                    {state.label}
+                  <DisabledOption key={state.value} reason={disabledInfo.reason}>
+                    <SelectItem value={state.value}>{state.label}</SelectItem>
                   </DisabledOption>
                 );
               }
