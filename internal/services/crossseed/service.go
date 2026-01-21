@@ -2804,19 +2804,19 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	// Parse torrent metadata to get name, hash, files, and info for validation
-	torrentName, torrentHashV1, torrentHashV2, sourceFiles, torrentInfo, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse torrent: %w", err)
 	}
-	torrentHash := torrentHashV1
-	if torrentInfo != nil && !torrentInfo.HasV1() && torrentHashV2 != "" {
-		torrentHash = torrentHashV2
+	torrentHash := meta.HashV1
+	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+		torrentHash = meta.HashV2
 	}
-	sourceRelease := s.releaseCache.Parse(torrentName)
+	sourceRelease := s.releaseCache.Parse(meta.Name)
 
 	// Use FindCandidates to locate matching torrents
 	findReq := &FindCandidatesRequest{
-		TorrentName:            torrentName,
+		TorrentName:            meta.Name,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
 	}
@@ -2840,13 +2840,13 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	// Detect disc layout from source files
-	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
+	isDiscLayout, discMarker := isDiscLayoutTorrent(meta.Files)
 
 	response := &CrossSeedResponse{
 		Success: false,
 		Results: make([]InstanceCrossSeedResult, 0),
 		TorrentInfo: &TorrentInfo{
-			Name:       torrentName,
+			Name:       meta.Name,
 			Hash:       torrentHash,
 			DiscLayout: isDiscLayout,
 			DiscMarker: discMarker,
@@ -2854,9 +2854,9 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	if response.TorrentInfo != nil {
-		response.TorrentInfo.TotalFiles = len(sourceFiles)
+		response.TorrentInfo.TotalFiles = len(meta.Files)
 		var totalSize int64
-		for _, f := range sourceFiles {
+		for _, f := range meta.Files {
 			totalSize += f.Size
 		}
 		if totalSize > 0 {
@@ -2866,7 +2866,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 
 	// Process each instance with matching candidates
 	for _, candidate := range candidatesResp.Candidates {
-		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req, sourceRelease, sourceFiles, torrentInfo)
+		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, meta.HashV2, meta.Name, req, sourceRelease, meta.Files, meta.Info)
 		response.Results = append(response.Results, result)
 		if result.Success {
 			response.Success = true

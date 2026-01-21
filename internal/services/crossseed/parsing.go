@@ -485,6 +485,14 @@ func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName stri
 	return &musicRelease
 }
 
+type TorrentMetadata struct {
+	Name   string
+	HashV1 string
+	HashV2 string
+	Files  qbt.TorrentFiles
+	Info   *metainfo.Info
+}
+
 // ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
 func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
 	name, hash, _, err = ParseTorrentMetadata(torrentBytes)
@@ -493,37 +501,48 @@ func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error)
 
 // ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
 func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	name, hash, _, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
-	return name, hash, files, err
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	return meta.Name, meta.HashV1, meta.Files, nil
 }
 
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
-func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hashV1, hashV2 string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
+func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
-		return "", "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
+		return TorrentMetadata{}, fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
 	infoVal, err := mi.UnmarshalInfo()
 	if err != nil {
-		return "", "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
+		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name = infoVal.Name
-	hashV1 = strings.ToUpper(mi.HashInfoBytes().HexString())
+	name := infoVal.Name
+	hashV1 := strings.ToUpper(mi.HashInfoBytes().HexString())
+	var hashV2 string
 	if infoVal.HasV2() {
 		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
 		hashV2 = strings.ToUpper(h.HexString())
 	}
 
 	if name == "" {
-		return "", "", "", nil, nil, errors.New("torrent has no name")
+		return TorrentMetadata{}, errors.New("torrent has no name")
 	}
 
-	files = BuildTorrentFilesFromInfo(name, infoVal)
+	files := BuildTorrentFilesFromInfo(name, infoVal)
 
-	return name, hashV1, hashV2, files, &infoVal, nil
+	return TorrentMetadata{
+		Name:   name,
+		HashV1: hashV1,
+		HashV2: hashV2,
+		Files:  files,
+		Info:   &infoVal,
+	}, nil
 }
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
