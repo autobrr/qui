@@ -52,13 +52,33 @@ func NewService(
 
 // ExecuteRequest contains all parameters needed to execute an external program.
 type ExecuteRequest struct {
-	ProgramID  int
+	// ProgramID is used to fetch the program from the store.
+	// Either ProgramID or Program must be provided.
+	ProgramID int
+	// Program is an optional pre-loaded program configuration.
+	// When provided, ProgramID is ignored and no database lookup is performed.
+	Program *models.ExternalProgram
+
 	Torrent    *qbt.Torrent
 	InstanceID int
 
 	// Optional: automation context for activity logging
 	RuleID   *int
 	RuleName string
+}
+
+// Validate checks that the request has all required fields.
+func (r ExecuteRequest) Validate() error {
+	if r.Program == nil && r.ProgramID <= 0 {
+		return errors.New("either programID or program must be provided")
+	}
+	if r.Torrent == nil {
+		return errors.New("torrent is required")
+	}
+	if r.InstanceID <= 0 {
+		return errors.New("instanceID must be positive")
+	}
+	return nil
 }
 
 // ExecuteResult contains the result of an execution attempt.
@@ -68,56 +88,57 @@ type ExecuteResult struct {
 	Error   error
 }
 
-// Execute runs an external program asynchronously with the given torrent data.
-// It returns immediately after launching the program (fire-and-forget).
-func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
-	if s == nil || s.programStore == nil {
-		return ExecuteResult{
-			Success: false,
-			Error:   errors.New("external program service not initialized"),
-		}
-	}
-
-	// Fetch the program configuration
-	program, err := s.programStore.GetByID(ctx, req.ProgramID)
-	if err != nil {
-		if errors.Is(err, models.ErrExternalProgramNotFound) {
-			return ExecuteResult{
-				Success: false,
-				Error:   fmt.Errorf("program not found: %d", req.ProgramID),
-			}
-		}
-		return ExecuteResult{
-			Success: false,
-			Error:   fmt.Errorf("failed to get program: %w", err),
-		}
-	}
-
-	return s.ExecuteProgram(ctx, program, req.Torrent, req.InstanceID, req.RuleID, req.RuleName)
+// SuccessResult creates a successful execution result.
+func SuccessResult(message string) ExecuteResult {
+	return ExecuteResult{Success: true, Message: message}
 }
 
-// ExecuteProgram runs an external program with a pre-loaded program configuration.
-// This is useful when the caller already has the program loaded.
-func (s *Service) ExecuteProgram(
-	ctx context.Context,
-	program *models.ExternalProgram,
-	torrent *qbt.Torrent,
-	instanceID int,
-	ruleID *int,
-	ruleName string,
-) ExecuteResult {
+// FailureResult creates a failed execution result.
+func FailureResult(err error) ExecuteResult {
+	return ExecuteResult{Success: false, Error: err}
+}
+
+// FailureResultWithMessage creates a failed execution result with an additional message.
+func FailureResultWithMessage(err error, message string) ExecuteResult {
+	return ExecuteResult{Success: false, Error: err, Message: message}
+}
+
+// Execute runs an external program asynchronously with the given torrent data.
+// It returns immediately after launching the program (fire-and-forget).
+//
+// The program can be provided in two ways:
+//   - By ID: Set ProgramID to fetch the program from the store
+//   - Directly: Set Program to use a pre-loaded program configuration
+func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
+	program := req.Program
+
+	// If no pre-loaded program, fetch by ID
 	if program == nil {
-		return ExecuteResult{
-			Success: false,
-			Error:   errors.New("program is nil"),
+		if s == nil || s.programStore == nil {
+			return FailureResult(errors.New("external program service not initialized"))
+		}
+
+		var err error
+		program, err = s.programStore.GetByID(ctx, req.ProgramID)
+		if err != nil {
+			if errors.Is(err, models.ErrExternalProgramNotFound) {
+				return FailureResult(fmt.Errorf("program not found: %d", req.ProgramID))
+			}
+			return FailureResult(fmt.Errorf("failed to get program: %w", err))
 		}
 	}
 
-	if torrent == nil {
-		return ExecuteResult{
-			Success: false,
-			Error:   errors.New("torrent is nil"),
-		}
+	return s.executeProgram(ctx, program, req)
+}
+
+// executeProgram is the internal implementation that runs a program with a pre-loaded configuration.
+func (s *Service) executeProgram(ctx context.Context, program *models.ExternalProgram, req ExecuteRequest) ExecuteResult {
+	if program == nil {
+		return FailureResult(errors.New("program is nil"))
+	}
+
+	if req.Torrent == nil {
+		return FailureResult(errors.New("torrent is nil"))
 	}
 
 	// Check if program is enabled
@@ -126,23 +147,17 @@ func (s *Service) ExecuteProgram(
 			Int("programId", program.ID).
 			Str("programName", program.Name).
 			Msg("external program is disabled, skipping execution")
-		return ExecuteResult{
-			Success: false,
-			Error:   errors.New("program is disabled"),
-		}
+		return FailureResult(errors.New("program is disabled"))
 	}
 
 	// Validate against allowlist
 	if !s.IsPathAllowed(program.Path) {
-		s.logActivity(ctx, instanceID, torrent, program, ruleID, ruleName, false, "path not allowed by allowlist")
-		return ExecuteResult{
-			Success: false,
-			Error:   errors.New("program path is not allowed by allowlist"),
-		}
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, "path not allowed by allowlist")
+		return FailureResult(errors.New("program path is not allowed by allowlist"))
 	}
 
 	// Build torrent data map for variable substitution
-	torrentData := buildTorrentData(torrent, program.PathMappings)
+	torrentData := buildTorrentData(req.Torrent, program.PathMappings)
 
 	// Build command arguments
 	args := extargs.BuildArguments(program.ArgsTemplate, torrentData)
@@ -155,25 +170,22 @@ func (s *Service) ExecuteProgram(
 		Str("program", program.Name).
 		Str("path", program.Path).
 		Strs("args", args).
-		Str("hash", torrent.Hash).
+		Str("hash", req.Torrent.Hash).
 		Str("full_command", fmt.Sprintf("%v", cmd.Args)).
 		Msg("executing external program")
 
 	// Execute in goroutine (fire-and-forget)
-	go s.executeAsync(cmd, program, torrent)
+	go s.executeAsync(cmd, program, req.Torrent)
 
 	// Log success activity immediately (we've launched the program)
-	s.logActivity(ctx, instanceID, torrent, program, ruleID, ruleName, true, "program launched")
+	s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program launched")
 
 	message := "Program started successfully"
 	if program.UseTerminal {
 		message = "Terminal window opened successfully"
 	}
 
-	return ExecuteResult{
-		Success: true,
-		Message: message,
-	}
+	return SuccessResult(message)
 }
 
 // executeAsync runs the command in a goroutine and handles process lifecycle.

@@ -2600,16 +2600,29 @@ func (s *Service) executeExternalProgramsFromAutomation(ctx context.Context, ins
 		Msg("automations: executing external programs")
 
 	for _, exec := range executions {
-		torrent := exec.torrent // Copy to avoid closure issues
+		// Copy to avoid closure issues
+		torrent := exec.torrent
 		ruleID := exec.ruleID
+		programID := exec.programID
+		ruleName := exec.ruleName
 
 		// Execute asynchronously - the service handles its own activity logging
-		go s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
-			ProgramID:  exec.programID,
-			Torrent:    &torrent,
-			InstanceID: instanceID,
-			RuleID:     &ruleID,
-			RuleName:   exec.ruleName,
-		})
+		go func() {
+			result := s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+				ProgramID:  programID,
+				Torrent:    &torrent,
+				InstanceID: instanceID,
+				RuleID:     &ruleID,
+				RuleName:   ruleName,
+			})
+			if !result.Success {
+				log.Error().
+					Err(result.Error).
+					Int("programID", programID).
+					Str("ruleName", ruleName).
+					Str("torrentHash", torrent.Hash).
+					Msg("automation: external program execution failed")
+			}
+		}()
 	}
 }

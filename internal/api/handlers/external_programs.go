@@ -49,7 +49,9 @@ func (h *ExternalProgramsHandler) ListExternalPrograms(w http.ResponseWriter, r 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(programs)
+	if err := json.NewEncoder(w).Encode(programs); err != nil {
+		log.Error().Err(err).Msg("Failed to encode external programs response")
+	}
 }
 
 // CreateExternalProgram handles POST /api/external-programs
@@ -93,7 +95,9 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(program)
+	if err := json.NewEncoder(w).Encode(program); err != nil {
+		log.Error().Err(err).Msg("Failed to encode created program response")
+	}
 }
 
 // UpdateExternalProgram handles PUT /api/external-programs/{id}
@@ -152,7 +156,9 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(program)
+	if err := json.NewEncoder(w).Encode(program); err != nil {
+		log.Error().Err(err).Msg("Failed to encode updated program response")
+	}
 }
 
 // DeleteExternalProgram handles DELETE /api/external-programs/{id}
@@ -215,7 +221,7 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 
 	ctx := r.Context()
 
-	// Get the program configuration
+	// Get the program configuration (we need it to get the instance ID for bulk torrent fetch)
 	program, err := h.externalProgramStore.GetByID(ctx, req.ProgramID)
 	if err != nil {
 		if err == models.ErrExternalProgramNotFound {
@@ -224,11 +230,6 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		}
 		log.Error().Err(err).Int("programId", req.ProgramID).Msg("Failed to get external program")
 		http.Error(w, "Failed to get program configuration", http.StatusInternalServerError)
-		return
-	}
-
-	if !program.Enabled {
-		http.Error(w, "Program is disabled", http.StatusBadRequest)
 		return
 	}
 
@@ -271,7 +272,11 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		}
 
 		// Execute using the shared external programs service
-		execResult := h.externalProgramService.ExecuteProgram(ctx, program, torrent, req.InstanceID, nil, "")
+		execResult := h.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+			Program:    program,
+			Torrent:    torrent,
+			InstanceID: req.InstanceID,
+		})
 		result["success"] = execResult.Success
 		if execResult.Success {
 			result["message"] = execResult.Message
@@ -283,7 +288,7 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"results": results,
-	})
+	if err := json.NewEncoder(w).Encode(map[string]any{"results": results}); err != nil {
+		log.Error().Err(err).Msg("Failed to encode execute response")
+	}
 }
