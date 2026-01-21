@@ -139,6 +139,17 @@ func validateBlobPath(baseDir, blobPath string) string {
 	if baseDir == "" || blobPath == "" {
 		return ""
 	}
+
+	// Treat Unix-style absolute paths as unsafe on all platforms.
+	// (On Windows, filepath.IsAbs("/etc/passwd") is false.)
+	if strings.HasPrefix(blobPath, "/") {
+		return ""
+	}
+	// Reject any Windows volume-prefixed path (e.g. C:\..., \\server\share\...).
+	if filepath.VolumeName(blobPath) != "" {
+		return ""
+	}
+
 	rel := filepath.Clean(blobPath)
 	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
 		return ""

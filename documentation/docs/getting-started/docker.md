@@ -5,7 +5,7 @@ description: Run qui in Docker with compose or standalone.
 ---
 
 import CodeBlock from '@theme/CodeBlock';
-import DockerCompose from '!!raw-loader!@site/../docker-compose.yml';
+import DockerCompose from '!!raw-loader!@site/../distrib/docker/docker-compose.yml';
 import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
 
 # Docker
@@ -43,8 +43,11 @@ Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm
 4. Keep the default **Network Type** (`bridge` works for most setups)
 5. Add a port mapping: **Host port** `7476` → **Container port** `7476`
 6. Add a path mapping: **Container Path** `/config` → **Host Path** `/mnt/user/appdata/qui`
-7. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
-8. Click **Apply** to pull the image and start the container
+7. Enable **Advanced View** (top right)
+8. Set **Icon URL** to `https://raw.githubusercontent.com/autobrr/qui/main/web/public/icon.png`
+9. Set **WebUI** to `http://[IP]:[PORT:7476]`
+10. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
+11. Click **Apply** to pull the image and start the container
 
 The `/config` mount stores `config.toml`, the SQLite database, and logs. Point it at your preferred appdata share so settings persist across upgrades.
 

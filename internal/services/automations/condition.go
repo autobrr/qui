@@ -72,6 +72,7 @@ const (
 	// Boolean fields
 	FieldPrivate        = models.FieldPrivate
 	FieldIsUnregistered = models.FieldIsUnregistered
+	FieldHasMissingFiles = models.FieldHasMissingFiles
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope
@@ -86,6 +87,7 @@ const (
 	DeleteModeKeepFiles                   = models.DeleteModeKeepFiles
 	DeleteModeWithFiles                   = models.DeleteModeWithFiles
 	DeleteModeWithFilesPreserveCrossSeeds = models.DeleteModeWithFilesPreserveCrossSeeds
+	DeleteModeWithFilesIncludeCrossSeeds  = models.DeleteModeWithFilesIncludeCrossSeeds
 
 	// Operators
 	OperatorAnd                = models.OperatorAnd
