@@ -129,15 +129,30 @@ export function RSSPage({
   const { instances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("rss")
 
-  // Auto-select first instance if none selected
+  // Auto-select/validate instance selection
   useEffect(() => {
-    if (selectedInstanceId === undefined && instances && instances.length > 0) {
-      const firstConnected = instances.find((i) => i.connected)
-      if (firstConnected) {
-        setSelectedInstanceId(firstConnected.id)
-      } else if (instances[0]) {
-        setSelectedInstanceId(instances[0].id)
+    if (!instances || instances.length === 0) {
+      if (selectedInstanceId !== undefined) {
+        setSelectedInstanceId(undefined)
       }
+      return
+    }
+
+    if (selectedInstanceId !== undefined) {
+      const exists = instances.some((i) => i.id === selectedInstanceId)
+      if (exists) {
+        return
+      }
+      const fallbackInstance = instances.find((i) => i.connected) ?? instances[0]
+      setSelectedInstanceId(fallbackInstance?.id)
+      return
+    }
+
+    const firstConnected = instances.find((i) => i.connected)
+    if (firstConnected) {
+      setSelectedInstanceId(firstConnected.id)
+    } else if (instances[0]) {
+      setSelectedInstanceId(instances[0].id)
     }
   }, [selectedInstanceId, setSelectedInstanceId, instances])
 
@@ -912,6 +927,15 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
               className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${isSelected? "bg-primary/10 text-primary": "hover:bg-muted"
               }`}
               onClick={() => onSelect(itemPath)}
+              role="button"
+              tabIndex={0}
+              aria-current={isSelected ? "page" : undefined}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  onSelect(itemPath)
+                }
+              }}
             >
               <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
               }`} />
@@ -973,6 +997,15 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
               <div
                 className="group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-muted"
                 onClick={() => toggleFolder(itemPath)}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    toggleFolder(itemPath)
+                  }
+                }}
               >
                 <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
                 <Folder className="h-3.5 w-3.5 text-muted-foreground" />
