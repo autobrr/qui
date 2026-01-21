@@ -372,7 +372,8 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
 		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
 		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
-		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition))
+		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
+		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
 }
 
 // conditionsRequireLocalAccess checks if any enabled action condition uses fields

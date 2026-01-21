@@ -331,6 +331,45 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "external program disabled returns false",
+			conditions: &models.ActionConditions{
+				ExternalProgram: &models.ExternalProgramAction{
+					Enabled:   false,
+					ProgramID: 1,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "external program enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				ExternalProgram: &models.ExternalProgramAction{
+					Enabled:   true,
+					ProgramID: 1,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "external program enabled without FREE_SPACE returns false",
+			conditions: &models.ActionConditions{
+				ExternalProgram: &models.ExternalProgramAction{
+					Enabled:   true,
+					ProgramID: 1,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldSize,
+					},
+				},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
