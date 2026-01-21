@@ -144,6 +144,10 @@ export function RSSPage({
   const instanceId = selectedInstanceId ?? 0
 
   const handleInstanceSelection = (value: string) => {
+    if (value === "") {
+      setSelectedInstanceId(undefined)
+      return
+    }
     const parsed = parseInt(value, 10)
     if (Number.isNaN(parsed)) {
       setSelectedInstanceId(undefined)
@@ -208,7 +212,7 @@ export function RSSPage({
 
   // Instance selector component (reused in different places)
   const renderInstanceSelector = () => (
-    <Select value={instanceId?.toString() ?? ""} onValueChange={handleInstanceSelection}>
+    <Select value={instanceId > 0 ? instanceId.toString() : ""} onValueChange={handleInstanceSelection}>
       <SelectTrigger className="!w-[240px] !max-w-[240px]">
         <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <HardDrive className="h-4 w-4 flex-shrink-0" />
