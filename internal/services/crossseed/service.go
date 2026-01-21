@@ -8369,7 +8369,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-// executeExternalProgram runs the configured external program for a successfully injected torrent
+// executeExternalProgram runs the configured external program for a successfully injected torrent.
+//
+// WARNING: No rate limiting is applied. Rapid injections can spawn many concurrent processes.
 func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
 	if s.externalProgramService == nil {
 		return

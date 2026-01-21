@@ -305,12 +305,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
-  const { data: externalPrograms, isError: externalProgramsError } = useQuery({
+  const { data: allExternalPrograms, isError: externalProgramsError } = useQuery({
     queryKey: ["externalPrograms"],
     queryFn: () => api.listExternalPrograms(),
     enabled: open,
-    select: (data) => data.filter(p => p.enabled),
   })
+  // Show enabled programs + the currently selected program (even if disabled) so users can see what's configured
+  const externalPrograms = useMemo(() => {
+    if (!allExternalPrograms) return undefined
+    const selectedId = formState.exprExternalProgramId
+    return allExternalPrograms.filter(p => p.enabled || p.id === selectedId)
+  }, [allExternalPrograms, formState.exprExternalProgramId])
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
@@ -1807,8 +1812,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </SelectTrigger>
                               <SelectContent>
                                 {externalPrograms.map(program => (
-                                  <SelectItem key={program.id} value={program.id.toString()}>
+                                  <SelectItem
+                                    key={program.id}
+                                    value={program.id.toString()}
+                                  >
                                     {program.name}
+                                    {!program.enabled && (
+                                      <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>
+                                    )}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

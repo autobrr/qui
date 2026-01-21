@@ -2585,6 +2585,10 @@ type pendingProgramExec struct {
 
 // executeExternalProgramsFromAutomation executes external programs for matching torrents.
 // Programs are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
+//
+// WARNING: No rate limiting or process count limits are applied. If many torrents match a rule
+// with an external program action, many processes will be spawned concurrently. Long-running
+// or stuck programs can exhaust system resources.
 func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, instanceID int, executions []pendingProgramExec) {
 	if len(executions) == 0 {
 		return

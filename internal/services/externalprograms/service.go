@@ -110,6 +110,12 @@ func FailureResultWithMessage(err error, message string) ExecuteResult {
 // The program can be provided in two ways:
 //   - By ID: Set ProgramID to fetch the program from the store
 //   - Directly: Set Program to use a pre-loaded program configuration
+//
+// WARNING: This function spawns processes without any rate limiting or process count limits.
+// Callers should be aware that rapid invocations (e.g., from automations matching many torrents)
+// can spawn a large number of concurrent processes. If the external program runs indefinitely
+// or takes a long time to complete, this can exhaust system resources. Consider implementing
+// caller-side throttling or ensuring the external programs exit promptly.
 func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
 	// Validate request first
 	if err := req.Validate(); err != nil {
@@ -153,6 +159,7 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 			Int("programId", program.ID).
 			Str("programName", program.Name).
 			Msg("external program is disabled, skipping execution")
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, "program is disabled")
 		return FailureResult(errors.New("program is disabled"))
 	}
 

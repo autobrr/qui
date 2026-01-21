@@ -410,13 +410,13 @@ func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID
 
 // ClearExternalProgramAction removes the external program action from all automations
 // that reference the given program ID. This is used for cascade delete.
+// Clears references regardless of whether the action is enabled or disabled.
 func (s *AutomationStore) ClearExternalProgramAction(ctx context.Context, programID int) (int64, error) {
 	// Set externalProgram to null in the conditions JSON for all matching automations
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
 		SET conditions = json_remove(conditions, '$.externalProgram')
-		WHERE json_extract(conditions, '$.externalProgram.enabled') = 1
-		  AND json_extract(conditions, '$.externalProgram.programId') = ?
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
 	`, programID)
 	if err != nil {
 		return 0, err
@@ -559,14 +559,14 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	SpeedLimits   *SpeedLimitAction  `json:"speedLimits,omitempty"`
-	ShareLimits   *ShareLimitsAction `json:"shareLimits,omitempty"`
-	Pause         *PauseAction       `json:"pause,omitempty"`
-	Delete        *DeleteAction      `json:"delete,omitempty"`
-	Tag           *TagAction         `json:"tag,omitempty"`
-	Category      *CategoryAction    `json:"category,omitempty"`
-	Move          *MoveAction        `json:"move,omitempty"`
+	SchemaVersion   string                 `json:"schemaVersion"`
+	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
+	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
+	Pause           *PauseAction           `json:"pause,omitempty"`
+	Delete          *DeleteAction          `json:"delete,omitempty"`
+	Tag             *TagAction             `json:"tag,omitempty"`
+	Category        *CategoryAction        `json:"category,omitempty"`
+	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
 }
 

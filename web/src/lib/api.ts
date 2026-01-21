@@ -108,7 +108,7 @@ import type {
   TrackerCustomizationInput,
   User,
   WarningResponse,
-  WebSeed,
+  WebSeed
 } from "@/types"
 import type {
   ArrInstance,
