@@ -126,8 +126,55 @@ Content-Type: application/json
 
 The response contains a `results` array with per-hash `success` flags and optional error messages. Treat the endpoint as fire-and-forget; it returns once the processes have been spawned.
 
+## Automation Integration
+
+External programs can be triggered automatically via automation rules, allowing you to run scripts when torrents match specific conditions.
+
+### Setting Up Automation Triggers
+
+1. Create and enable an external program in **Settings → External Programs**
+2. Go to **Automations** and create or edit a rule
+3. Add an **External Program** action and select your program
+4. Optionally add a condition override specific to this action
+
+### Behavior
+
+| Aspect | Description |
+|--------|-------------|
+| **Execution** | Programs run asynchronously (fire-and-forget) to avoid blocking automation processing |
+| **Configuration** | Uses the same program settings (path, arguments, path mappings) as manual execution |
+| **Availability** | Only enabled programs appear in the automation dropdown |
+| **Combinable** | Can be combined with other actions (speed limits, share limits, pause, tag, category) |
+
+### Activity Logging
+
+Automation-triggered executions are logged in the activity feed with:
+- Rule name and rule ID that triggered the execution
+- Torrent name and hash
+- Success or failure status
+- Error details if the program failed to start
+
+:::note
+Success is logged after the program actually starts, not when queued. If the program fails to start (e.g., executable not found, permission denied), the error is captured and logged.
+:::
+
+### Example Use Cases
+
+**Post-processing completed downloads:**
+- Condition: `State is completed`
+- Action: External Program that runs a media processing script
+
+**Webhook notifications:**
+- Condition: `Is Unregistered is true`
+- Action: External Program that sends a notification via curl/webhook
+
+**Media library scans:**
+- Condition: Category changed to "movies" (use category action + external program)
+- Action: External Program that triggers Plex/Jellyfin scan
+
 ## Troubleshooting
 
 - **Docker**: The executable must be inside the container or bind-mounted.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
 - **Multiple torrents**: The program runs once per torrent. Ensure your script handles concurrent executions or uses a locking mechanism.
+- **Automation not triggering**: Ensure the program is enabled in Settings → External Programs. Disabled programs do not appear in automation dropdowns.
