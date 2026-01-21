@@ -15,25 +15,25 @@ import {
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
-import { CONDITION_FIELDS, FIELD_GROUPS } from "./constants";
+import { CONDITION_FIELDS, FIELD_GROUPS, type DisabledField } from "./constants";
+import { DisabledOption } from "./DisabledOption";
 
 interface FieldComboboxProps {
   value: string;
   onChange: (value: string) => void;
-  hiddenFields?: string[];
+  disabledFields?: DisabledField[];
 }
 
-export function FieldCombobox({ value, onChange, hiddenFields }: FieldComboboxProps) {
+export function FieldCombobox({ value, onChange, disabledFields }: FieldComboboxProps) {
   const [open, setOpen] = useState(false);
 
-  const selectedField = value? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS]: null;
+  const selectedField = value ? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS] : null;
 
-  const visibleGroups = FIELD_GROUPS
-    .map(group => ({
-      ...group,
-      fields: group.fields.filter(field => !hiddenFields?.includes(field)),
-    }))
-    .filter(group => group.fields.length > 0);
+  // Check if a field is disabled and get its reason
+  const getDisabledReason = (field: string): string | null => {
+    const disabled = disabledFields?.find(d => d.field === field);
+    return disabled?.reason ?? null;
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -55,10 +55,25 @@ export function FieldCombobox({ value, onChange, hiddenFields }: FieldComboboxPr
           <CommandInput placeholder="Search fields..." className="h-9" />
           <CommandList>
             <CommandEmpty>No field found.</CommandEmpty>
-            {visibleGroups.map((group) => (
+            {FIELD_GROUPS.map((group) => (
               <CommandGroup key={group.label} heading={group.label}>
                 {group.fields.map((field) => {
                   const fieldDef = CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS];
+                  const disabledReason = getDisabledReason(field);
+                  const isDisabled = disabledReason !== null;
+
+                  if (isDisabled) {
+                    return (
+                      <DisabledOption key={field} reason={disabledReason} className="px-2 py-1.5">
+                        <Check className="mr-2 size-3 opacity-0" />
+                        <span>{fieldDef?.label ?? field}</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">
+                          {fieldDef?.type}
+                        </span>
+                      </DisabledOption>
+                    );
+                  }
+
                   return (
                     <CommandItem
                       key={field}

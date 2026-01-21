@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useCallback, useMemo } from "react";
 import { ConditionGroup } from "./ConditionGroup";
+import type { DisabledField, DisabledStateValue } from "./constants";
 
 interface QueryBuilderProps {
   condition: RuleCondition | null;
@@ -24,10 +25,10 @@ interface QueryBuilderProps {
   allowEmpty?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to hide from the selector */
-  hiddenFields?: string[];
-  /** Optional list of "state" option values to hide */
-  hiddenStateValues?: string[];
+  /** Optional list of fields to disable with reasons */
+  disabledFields?: DisabledField[];
+  /** Optional list of "state" option values to disable with reasons */
+  disabledStateValues?: DisabledStateValue[];
 }
 
 export function QueryBuilder({
@@ -36,8 +37,8 @@ export function QueryBuilder({
   className,
   allowEmpty,
   categoryOptions,
-  hiddenFields,
-  hiddenStateValues,
+  disabledFields,
+  disabledStateValues,
 }: QueryBuilderProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -177,8 +178,8 @@ export function QueryBuilder({
           onRemove={allowEmpty ? () => onChange(null) : undefined}
           isRoot
           categoryOptions={categoryOptions}
-          hiddenFields={hiddenFields}
-          hiddenStateValues={hiddenStateValues}
+          disabledFields={disabledFields}
+          disabledStateValues={disabledStateValues}
         />
       </div>
     </DndContext>
