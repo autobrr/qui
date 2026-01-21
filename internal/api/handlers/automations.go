@@ -716,6 +716,9 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	if conditions.Category != nil {
 		validateConditionRegex(conditions.Category.Condition, "/conditions/category/condition", &result)
 	}
+	if conditions.ExternalProgram != nil {
+		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
+	}
 
 	return result
 }

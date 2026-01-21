@@ -2450,6 +2450,9 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 		if ac.Move != nil && ConditionUsesField(ac.Move.Condition, field) {
 			return true
 		}
+		if ac.ExternalProgram != nil && ConditionUsesField(ac.ExternalProgram.Condition, field) {
+			return true
+		}
 	}
 	return false
 }
