@@ -1073,14 +1073,37 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
 
   const articles = feed.articles ?? []
 
+  const sortedArticles = useMemo(() => {
+    if (articles.length <= 1) return articles
+
+    return [...articles].sort((a, b) => {
+      const aTime = Date.parse(a.date)
+      const bTime = Date.parse(b.date)
+      const aValid = Number.isFinite(aTime)
+      const bValid = Number.isFinite(bTime)
+
+      if (aValid && bValid) {
+        const diff = bTime - aTime
+        if (diff !== 0) return diff
+      }
+
+      // Put valid dates first; push invalid/missing dates to the bottom.
+      if (aValid && !bValid) return -1
+      if (!aValid && bValid) return 1
+
+      // Ensure deterministic ordering when dates are equal/missing.
+      return a.id.localeCompare(b.id)
+    })
+  }, [articles])
+
   const filteredArticles = useMemo(() => {
-    if (!search.trim()) return articles
+    if (!search.trim()) return sortedArticles
     const term = search.toLowerCase()
-    return articles.filter((article) =>
+    return sortedArticles.filter((article) =>
       article.title?.toLowerCase().includes(term) ||
       article.description?.toLowerCase().includes(term)
     )
-  }, [articles, search])
+  }, [sortedArticles, search])
 
   const handleMarkAsRead = async (articleId: string) => {
     try {
