@@ -23,12 +23,12 @@ import {
   Search,
   Settings,
   Tag,
-  Trash2,
+  Trash2
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
-import { Alert } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -39,14 +39,14 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -57,7 +57,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -65,7 +65,7 @@ import {
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle,
+  SheetTitle
 } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -92,7 +92,7 @@ import {
   useRSSMatchingArticles,
   useRSSRules,
   useSetRSSFeedURL,
-  useSetRSSRule,
+  useSetRSSRule
 } from "@/hooks/useRSS"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { renderTextWithLinks } from "@/lib/linkUtils"
@@ -102,7 +102,7 @@ import type {
   RSSArticle,
   RSSAutoDownloadRule,
   RSSFeed,
-  RSSItems,
+  RSSItems
 } from "@/types"
 import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
@@ -158,12 +158,21 @@ export function RSSPage({
   const {
     data: feedsData,
     isLoading: feedsLoading,
+    isError: feedsIsError,
+    error: feedsError,
+    refetch: refetchFeeds,
     sseStatus,
     sseReconnectAttempt,
   } = useRSSFeeds(instanceId, {
     enabled: instanceId > 0,
   })
-  const { data: rulesData, isLoading: rulesLoading } = useRSSRules(instanceId, {
+  const {
+    data: rulesData,
+    isLoading: rulesLoading,
+    isError: rulesIsError,
+    error: rulesError,
+    refetch: refetchRules,
+  } = useRSSRules(instanceId, {
     enabled: instanceId > 0,
   })
   const { preferences, updatePreferences, isUpdating: isUpdatingPreferences } = useInstancePreferences(instanceId, {
@@ -214,10 +223,8 @@ export function RSSPage({
             <div className="flex items-center max-w-40 gap-2">
               <span className="truncate">{inst.name}</span>
               <span
-                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${inst.connected
-                  ? "bg-green-500"
-                  : "bg-red-500"
-                  }`}
+                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${inst.connected? "bg-green-500": "bg-red-500"
+                }`}
               />
             </div>
           </SelectItem>
@@ -361,25 +368,15 @@ export function RSSPage({
               {sseStatus !== "disabled" && isRSSProcessingEnabled && feedsData && Object.keys(feedsData).length > 0 && (
                 <Badge
                   variant="outline"
-                  className={`gap-2 ${sseStatus === "live"
-                    ? "border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400"
-                    : sseStatus === "reconnecting" || sseStatus === "connecting"
-                      ? "border-yellow-500/50 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400"
-                      : "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400"
-                    }`}
+                  className={`gap-2 ${sseStatus === "live"? "border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400": sseStatus === "reconnecting" || sseStatus === "connecting"? "border-yellow-500/50 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400": "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400"
+                  }`}
                 >
                   {sseStatus === "connecting" && <Loader2 className="h-3 w-3 animate-spin" />}
                   {sseStatus === "reconnecting" && <Loader2 className="h-3 w-3 animate-spin" />}
                   {sseStatus === "live" && <span className="h-2 w-2 rounded-full bg-green-500" />}
                   {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-red-500" />}
                   <span className="text-xs">
-                    {sseStatus === "live"
-                      ? "SSE Live"
-                      : sseStatus === "connecting"
-                        ? "SSE Connecting"
-                        : sseStatus === "reconnecting"
-                          ? `Reconnecting${sseReconnectAttempt > 0 ? ` (${sseReconnectAttempt}/5)` : ""}`
-                          : "Disconnected"}
+                    {sseStatus === "live"? "SSE Live": sseStatus === "connecting"? "SSE Connecting": sseStatus === "reconnecting"? `Reconnecting${sseReconnectAttempt > 0 ? ` (${sseReconnectAttempt}/5)` : ""}`: "Disconnected"}
                   </span>
                 </Badge>
               )}
@@ -459,6 +456,11 @@ export function RSSPage({
             instanceId={instanceId}
             feedsData={feedsData}
             feedsLoading={feedsLoading}
+            feedsIsError={feedsIsError}
+            feedsError={feedsError}
+            onRetry={() => {
+              refetchFeeds()
+            }}
             selectedFeedPath={selectedFeedPath}
             onFeedSelect={onFeedSelect}
           />
@@ -469,6 +471,11 @@ export function RSSPage({
             instanceId={instanceId}
             rulesData={rulesData}
             rulesLoading={rulesLoading}
+            rulesIsError={rulesIsError}
+            rulesError={rulesError}
+            onRetry={() => {
+              refetchRules()
+            }}
             selectedRuleName={selectedRuleName}
             onRuleSelect={onRuleSelect}
             feedsData={feedsData}
@@ -506,11 +513,23 @@ interface FeedsTabProps {
   instanceId: number
   feedsData: RSSItems | undefined
   feedsLoading: boolean
+  feedsIsError: boolean
+  feedsError: unknown
+  onRetry: () => void
   selectedFeedPath?: string
   onFeedSelect: (feedPath: string | undefined) => void
 }
 
-function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFeedSelect }: FeedsTabProps) {
+function FeedsTab({
+  instanceId,
+  feedsData,
+  feedsLoading,
+  feedsIsError,
+  feedsError,
+  onRetry,
+  selectedFeedPath,
+  onFeedSelect,
+}: FeedsTabProps) {
   const queryClient = useQueryClient()
   const removeFeed = useRemoveRSSItem(instanceId)
   const refreshFeed = useRefreshRSSFeed(instanceId)
@@ -553,6 +572,37 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    )
+  }
+
+  if (feedsIsError) {
+    const message = feedsError instanceof Error ? feedsError.message : "Failed to load RSS feeds"
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <Alert
+            variant="destructive"
+            className="flex items-center gap-3 [&>svg]:static [&>svg]:shrink-0 [&>svg~*]:pl-0"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <div className="flex-1 min-w-0">
+              <AlertTitle>Failed to load RSS feeds</AlertTitle>
+              <AlertDescription className="break-words">{message}</AlertDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 !px-3"
+              onClick={() => {
+                onRetry()
+                queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
+              }}
+            >
+              Retry
+            </Button>
+          </Alert>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -855,14 +905,12 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
           return (
             <div
               key={itemPath}
-              className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${isSelected
-                ? "bg-primary/10 text-primary"
-                : "hover:bg-muted"
-                }`}
+              className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${isSelected? "bg-primary/10 text-primary": "hover:bg-muted"
+              }`}
               onClick={() => onSelect(itemPath)}
             >
               <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
-                }`} />
+              }`} />
               <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`} title={feed.title && feed.title !== name ? feed.title : undefined}>
                 {name}
               </span>
@@ -1062,7 +1110,7 @@ function stripHtml(html: string): string {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi, "$2 $1")
     .replace(/<[^>]*>/g, "")
-    .replace(/&quot;/g, '"')
+    .replace(/&quot;/g, "\"")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -1153,6 +1201,9 @@ interface RulesTabProps {
   instanceId: number
   rulesData: Record<string, RSSAutoDownloadRule> | undefined
   rulesLoading: boolean
+  rulesIsError: boolean
+  rulesError: unknown
+  onRetry: () => void
   selectedRuleName?: string
   onRuleSelect: (ruleName: string | undefined) => void
   feedsData: RSSItems | undefined
@@ -1164,6 +1215,9 @@ function RulesTab({
   instanceId,
   rulesData,
   rulesLoading,
+  rulesIsError,
+  rulesError,
+  onRetry,
   selectedRuleName,
   onRuleSelect,
   feedsData,
@@ -1172,6 +1226,7 @@ function RulesTab({
 }: RulesTabProps) {
   const setRule = useSetRSSRule(instanceId)
   const removeRule = useRemoveRSSRule(instanceId)
+  const queryClient = useQueryClient()
   const [editRuleOpen, setEditRuleOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<{ name: string; rule: RSSAutoDownloadRule } | null>(null)
 
@@ -1180,6 +1235,37 @@ function RulesTab({
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    )
+  }
+
+  if (rulesIsError) {
+    const message = rulesError instanceof Error ? rulesError.message : "Failed to load RSS rules"
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <Alert
+            variant="destructive"
+            className="flex items-center gap-3 [&>svg]:static [&>svg]:shrink-0 [&>svg~*]:pl-0"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <div className="flex-1 min-w-0">
+              <AlertTitle>Failed to load RSS rules</AlertTitle>
+              <AlertDescription className="break-words">{message}</AlertDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 !px-3"
+              onClick={() => {
+                onRetry()
+                queryClient.invalidateQueries({ queryKey: rssKeys.rules(instanceId) })
+              }}
+            >
+              Retry
+            </Button>
+          </Alert>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -1304,9 +1390,7 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
   return (
     <div
       className={`flex items-center gap-3 px-3 py-2 rounded-md border transition-colors ${
-        isSelected
-          ? "border-primary bg-accent"
-          : "border-border hover:bg-accent"
+        isSelected? "border-primary bg-accent": "border-border hover:bg-accent"
       }`}
     >
       <Switch checked={rule.enabled} onCheckedChange={onToggle} />

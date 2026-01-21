@@ -79,6 +79,17 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Don't report SSE as "connected" until we know RSS polling can succeed at least once.
+	// This avoids a confusing "SSE Live" UI state when the instance is disabled or RSS fetch fails.
+	if _, err := h.syncManager.GetRSSItems(r.Context(), instanceID, true); err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "GetRSSItems") {
+			return
+		}
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("RSS SSE initial poll failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to establish RSS event stream")
+		return
+	}
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

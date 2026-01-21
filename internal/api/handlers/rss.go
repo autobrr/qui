@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -103,7 +104,10 @@ func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	withData := r.URL.Query().Get("withData") == "true"
+	withData := true
+	if withDataParam := r.URL.Query().Get("withData"); withDataParam != "" {
+		withData = withDataParam == "true"
+	}
 
 	items, err := h.syncManager.GetRSSItems(r.Context(), instanceID, withData)
 	if err != nil {
@@ -223,7 +227,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 				// Check if this is a new item (not in existingNames) and is a feed (has url field)
 				if !existingNames[name] {
 					// Check if it's a feed by unmarshaling and looking for url field
-					var itemMap map[string]interface{}
+					var itemMap map[string]any
 					if err := json.Unmarshal(rawItem, &itemMap); err != nil {
 						log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding new feed")
 						continue
@@ -589,4 +593,3 @@ func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
 
 	RespondJSON(w, http.StatusOK, nil)
 }
-
