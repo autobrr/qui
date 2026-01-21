@@ -511,10 +511,10 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hashV1, hashV2 str
 	}
 
 	name = infoVal.Name
-	hashV1 = mi.HashInfoBytes().HexString()
+	hashV1 = strings.ToUpper(mi.HashInfoBytes().HexString())
 	if infoVal.HasV2() {
 		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
-		hashV2 = h.HexString()
+		hashV2 = strings.ToUpper(h.HexString())
 	}
 
 	if name == "" {
