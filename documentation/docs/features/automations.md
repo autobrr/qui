@@ -234,6 +234,13 @@ Options:
 - **Include Cross-Seeds** - Also move cross-seeds (matching ContentPath AND SavePath)
 - **Block If Cross-Seed In Categories** - Prevent move if another cross-seed is in protected categories
 
+### Move
+
+Move torrents to a different path on disk. This is needed to move the contents if AutoTMM is not enabled.
+
+Options:
+- **Skip if cross-seeds don't match the rule's conditions** - Skip the move if the torrent has cross-seeds that don't match the rule's conditions
+
 ## Cross-Seed Awareness
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
