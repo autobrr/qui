@@ -23,17 +23,20 @@ type ExternalProgramsHandler struct {
 	externalProgramStore   *models.ExternalProgramStore
 	externalProgramService *externalprograms.Service
 	clientPool             *qbittorrent.ClientPool
+	automationStore        *models.AutomationStore
 }
 
 func NewExternalProgramsHandler(
 	store *models.ExternalProgramStore,
 	service *externalprograms.Service,
 	pool *qbittorrent.ClientPool,
+	automationStore *models.AutomationStore,
 ) *ExternalProgramsHandler {
 	return &ExternalProgramsHandler{
 		externalProgramStore:   store,
 		externalProgramService: service,
 		clientPool:             pool,
+		automationStore:        automationStore,
 	}
 }
 
@@ -160,6 +163,12 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 }
 
 // DeleteExternalProgram handles DELETE /api/external-programs/{id}
+// Query params:
+//   - force=true: Proceed with deletion even if automations reference this program.
+//     The external program action will be removed from all referencing automations.
+//
+// If automations reference this program and force is not set, returns 409 Conflict
+// with a list of affected automations.
 func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
@@ -174,6 +183,44 @@ func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r
 	}
 
 	ctx := r.Context()
+	force := r.URL.Query().Get("force") == "true"
+
+	// Check if any automations reference this program
+	if h.automationStore != nil {
+		refs, err := h.automationStore.FindByExternalProgramID(ctx, id)
+		if err != nil {
+			log.Error().Err(err).Int("id", id).Msg("Failed to check automation references")
+			http.Error(w, "Failed to check automation references", http.StatusInternalServerError)
+			return
+		}
+
+		if len(refs) > 0 {
+			if !force {
+				// Return conflict with list of affected automations
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				if err := json.NewEncoder(w).Encode(map[string]any{
+					"error":       "Program is referenced by automations",
+					"message":     "This program is used by one or more automation rules. Use force=true to delete anyway, which will remove the external program action from these automations.",
+					"automations": refs,
+				}); err != nil {
+					log.Error().Err(err).Msg("Failed to encode conflict response")
+				}
+				return
+			}
+
+			// Force delete: clear the external program action from all referencing automations
+			cleared, err := h.automationStore.ClearExternalProgramAction(ctx, id)
+			if err != nil {
+				log.Error().Err(err).Int("id", id).Msg("Failed to clear external program actions from automations")
+				http.Error(w, "Failed to clear external program actions from automations", http.StatusInternalServerError)
+				return
+			}
+			log.Info().Int("id", id).Int64("automationsUpdated", cleared).Msg("Cleared external program action from automations")
+		}
+	}
+
+	// Delete the program
 	if err := h.externalProgramStore.Delete(ctx, id); err != nil {
 		if err == models.ErrExternalProgramNotFound {
 			http.Error(w, "Program not found", http.StatusNotFound)
@@ -228,6 +275,18 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		}
 		log.Error().Err(err).Int("programId", req.ProgramID).Msg("Failed to get external program")
 		http.Error(w, "Failed to get program configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Pre-check: program must be enabled
+	if !program.Enabled {
+		http.Error(w, "Program is disabled", http.StatusBadRequest)
+		return
+	}
+
+	// Pre-check: path must be allowed
+	if !h.externalProgramService.IsPathAllowed(program.Path) {
+		http.Error(w, "Program path is not allowed", http.StatusForbidden)
 		return
 	}
 

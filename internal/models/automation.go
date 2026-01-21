@@ -376,6 +376,54 @@ func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedID
 	return tx.Commit()
 }
 
+// AutomationReference represents a minimal automation reference for cascade delete warnings.
+type AutomationReference struct {
+	ID         int    `json:"id"`
+	InstanceID int    `json:"instanceId"`
+	Name       string `json:"name"`
+}
+
+// FindByExternalProgramID returns automations that reference the given external program ID.
+// Uses SQLite's json_extract to query the conditions JSON column.
+func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID int) ([]*AutomationReference, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, instance_id, name
+		FROM automations
+		WHERE json_extract(conditions, '$.externalProgram.enabled') = 1
+		  AND json_extract(conditions, '$.externalProgram.programId') = ?
+	`, programID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []*AutomationReference
+	for rows.Next() {
+		var ref AutomationReference
+		if err := rows.Scan(&ref.ID, &ref.InstanceID, &ref.Name); err != nil {
+			return nil, err
+		}
+		refs = append(refs, &ref)
+	}
+	return refs, rows.Err()
+}
+
+// ClearExternalProgramAction removes the external program action from all automations
+// that reference the given program ID. This is used for cascade delete.
+func (s *AutomationStore) ClearExternalProgramAction(ctx context.Context, programID int) (int64, error) {
+	// Set externalProgram to null in the conditions JSON for all matching automations
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE automations
+		SET conditions = json_remove(conditions, '$.externalProgram')
+		WHERE json_extract(conditions, '$.externalProgram.enabled') = 1
+		  AND json_extract(conditions, '$.externalProgram.programId') = ?
+	`, programID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func boolToInt(v bool) int {
 	if v {
 		return 1

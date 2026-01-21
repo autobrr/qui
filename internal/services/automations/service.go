@@ -2592,6 +2592,25 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 			Int("instanceID", instanceID).
 			Int("pendingExecutions", len(executions)).
 			Msg("external program service not initialized, skipping executions")
+
+		// Log activity entries so users can see what happened
+		if s.activityStore != nil {
+			for _, exec := range executions {
+				ruleID := exec.ruleID
+				if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
+					InstanceID:  instanceID,
+					Hash:        exec.hash,
+					TorrentName: exec.torrent.Name,
+					Action:      externalprograms.ActivityActionExternalProgram,
+					RuleID:      &ruleID,
+					RuleName:    exec.ruleName,
+					Outcome:     models.ActivityOutcomeFailed,
+					Reason:      "External program service not configured",
+				}); err != nil {
+					log.Warn().Err(err).Str("hash", exec.hash).Msg("failed to log external program activity")
+				}
+			}
+		}
 		return
 	}
 

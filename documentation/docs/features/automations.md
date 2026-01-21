@@ -325,9 +325,9 @@ Only sends API calls when the torrent's current setting differs from the desired
 
 ### Processing Order
 
-- **First match wins** for exclusive actions (delete, category)
-- **Accumulative** for combinable actions (tags, speed limits)
-- Delete ends torrent processing (no further rules evaluated)
+- **First match wins** for delete actions (delete ends torrent processing, no further rules evaluated)
+- **Last rule wins** for speed limits, share limits, category, and external program actions
+- **Accumulative** for tag actions (tags are combined across matching rules)
 
 ### Free Space Condition Behavior
 

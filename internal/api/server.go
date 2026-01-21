@@ -289,7 +289,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
-	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool)
+	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)

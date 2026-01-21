@@ -305,7 +305,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
-  const { data: externalPrograms } = useQuery({
+  const { data: externalPrograms, isError: externalProgramsError } = useQuery({
     queryKey: ["externalPrograms"],
     queryFn: () => api.listExternalPrograms(),
     enabled: open,
@@ -1790,7 +1790,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Program</Label>
-                          {externalPrograms && externalPrograms.length > 0 ? (
+                          {externalProgramsError ? (
+                            <div className="text-sm text-destructive p-2 border border-destructive/50 rounded-md bg-destructive/10">
+                              Failed to load external programs. Please try again.
+                            </div>
+                          ) : externalPrograms && externalPrograms.length > 0 ? (
                             <Select
                               value={formState.exprExternalProgramId?.toString() ?? ""}
                               onValueChange={(value) => setFormState(prev => ({
