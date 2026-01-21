@@ -168,7 +168,8 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 	args := extargs.BuildArguments(program.ArgsTemplate, torrentData)
 
 	// Build and execute command
-	cmd := s.buildCommand(program, args)
+	// Use background context since the command runs async and parent context may be cancelled
+	cmd := s.buildCommand(context.Background(), program, args)
 
 	// Log the command being executed
 	log.Debug().
@@ -255,46 +256,48 @@ func (s *Service) executeAsync(
 }
 
 // buildCommand creates the appropriate exec.Cmd based on platform and settings.
-func (s *Service) buildCommand(program *models.ExternalProgram, args []string) *exec.Cmd {
+func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
 	if program.UseTerminal {
-		return s.buildTerminalCommand(program, args)
+		return s.buildTerminalCommand(ctx, program, args)
 	}
-	return s.buildDirectCommand(program, args)
+	return s.buildDirectCommand(ctx, program, args)
 }
 
 // buildTerminalCommand creates a command that opens in a terminal window.
-func (s *Service) buildTerminalCommand(program *models.ExternalProgram, args []string) *exec.Cmd {
+func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
-		cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
+		cmdArgs := make([]string, 0, 6+len(args))
+		cmdArgs = append(cmdArgs, "/c", "start", "", "cmd", "/k", program.Path)
 		cmdArgs = append(cmdArgs, args...)
-		return exec.Command("cmd.exe", cmdArgs...)
+		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
 	}
 
 	// Unix/Linux: Build command string and spawn in a terminal
 	allArgs := append([]string{program.Path}, args...)
 	fullCmd := shellquote.Join(allArgs...)
-	return s.createTerminalCommand(fullCmd)
+	return s.createTerminalCommand(ctx, fullCmd)
 }
 
 // buildDirectCommand creates a command that runs directly without a terminal.
-func (s *Service) buildDirectCommand(program *models.ExternalProgram, args []string) *exec.Cmd {
+func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
-		cmdArgs := []string{"/c", "start", "", "/b", program.Path}
+		cmdArgs := make([]string, 0, 5+len(args))
+		cmdArgs = append(cmdArgs, "/c", "start", "", "/b", program.Path)
 		cmdArgs = append(cmdArgs, args...)
-		return exec.Command("cmd.exe", cmdArgs...)
+		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
 	}
 
 	// Unix/Linux: Direct execution
 	if len(args) > 0 {
-		return exec.Command(program.Path, args...)
+		return exec.CommandContext(ctx, program.Path, args...) //nolint:gosec // intentional external program execution
 	}
-	return exec.Command(program.Path)
+	return exec.CommandContext(ctx, program.Path) //nolint:gosec // intentional external program execution
 }
 
 // createTerminalCommand creates a command that spawns a terminal window on Unix/Linux.
-func (s *Service) createTerminalCommand(cmdLine string) *exec.Cmd {
+func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
 	// List of terminal emulators to try, in order of preference
 	terminals := []struct {
 		name string
@@ -317,7 +320,7 @@ func (s *Service) createTerminalCommand(cmdLine string) *exec.Cmd {
 				Str("terminal", term.name).
 				Str("command", cmdLine).
 				Msg("using terminal emulator for external program")
-			return exec.Command(term.name, term.args...)
+			return exec.CommandContext(ctx, term.name, term.args...) //nolint:gosec // intentional external program execution
 		}
 	}
 
@@ -325,7 +328,7 @@ func (s *Service) createTerminalCommand(cmdLine string) *exec.Cmd {
 	log.Warn().
 		Str("command", cmdLine).
 		Msg("no terminal emulator found, running command in background")
-	return exec.Command("sh", "-c", cmdLine)
+	return exec.CommandContext(ctx, "sh", "-c", cmdLine) //nolint:gosec // intentional external program execution
 }
 
 // IsPathAllowed checks if the program path is allowed by the allowlist.

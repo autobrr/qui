@@ -2582,7 +2582,7 @@ type pendingProgramExec struct {
 
 // executeExternalProgramsFromAutomation executes external programs for matching torrents.
 // Programs are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
-func (s *Service) executeExternalProgramsFromAutomation(ctx context.Context, instanceID int, executions []pendingProgramExec) {
+func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, instanceID int, executions []pendingProgramExec) {
 	if len(executions) == 0 {
 		return
 	}

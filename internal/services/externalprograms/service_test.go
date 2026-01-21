@@ -23,7 +23,7 @@ type mockProgramStore struct {
 	err      error
 }
 
-func (m *mockProgramStore) GetByID(ctx context.Context, id int) (*models.ExternalProgram, error) {
+func (m *mockProgramStore) GetByID(_ context.Context, id int) (*models.ExternalProgram, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -39,7 +39,7 @@ type mockActivityStore struct {
 	err        error
 }
 
-func (m *mockActivityStore) Create(ctx context.Context, activity *models.AutomationActivity) error {
+func (m *mockActivityStore) Create(_ context.Context, activity *models.AutomationActivity) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -70,7 +70,7 @@ func TestNewService(t *testing.T) {
 }
 
 func TestService_Execute_NilService(t *testing.T) {
-	var s *Service = nil
+	var s *Service
 
 	result := s.Execute(context.Background(), ExecuteRequest{
 		ProgramID:  1,
@@ -79,7 +79,7 @@ func TestService_Execute_NilService(t *testing.T) {
 	})
 
 	assert.False(t, result.Success)
-	assert.Error(t, result.Error)
+	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "not initialized")
 }
 
@@ -95,7 +95,7 @@ func TestService_Execute_NilProgramStore(t *testing.T) {
 	})
 
 	assert.False(t, result.Success)
-	assert.Error(t, result.Error)
+	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "not initialized")
 }
 
@@ -118,7 +118,7 @@ func TestService_Execute_WithProgramObject(t *testing.T) {
 
 	// Should fail with "disabled" because we used the provided program
 	assert.False(t, result.Success)
-	assert.Error(t, result.Error)
+	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "program is disabled")
 }
 
@@ -132,7 +132,7 @@ func TestService_Execute_NilTorrent(t *testing.T) {
 	})
 
 	assert.False(t, result.Success)
-	assert.Error(t, result.Error)
+	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "torrent is required")
 }
 
@@ -158,7 +158,7 @@ func TestService_Execute_DisabledProgram(t *testing.T) {
 	})
 
 	assert.False(t, result.Success)
-	assert.Error(t, result.Error)
+	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "program is disabled")
 }
 
@@ -191,7 +191,7 @@ func TestService_Execute_PathBlocked(t *testing.T) {
 	})
 
 	assert.False(t, result.Success)
-	assert.Error(t, result.Error)
+	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "not allowed by allowlist")
 }
 
@@ -271,9 +271,8 @@ func TestService_IsPathAllowed(t *testing.T) {
 }
 
 func TestService_IsPathAllowed_NilService(t *testing.T) {
-	var s *Service = nil
 	// This would panic, so we test that a properly initialized service handles nil config
-	s = &Service{config: nil}
+	s := &Service{config: nil}
 	assert.True(t, s.IsPathAllowed("/any/path"))
 }
 
@@ -445,16 +444,16 @@ func TestBuildTorrentData_EmptyFields(t *testing.T) {
 
 	data := buildTorrentData(torrent, nil)
 
-	assert.Equal(t, "", data["hash"])
-	assert.Equal(t, "", data["name"])
-	assert.Equal(t, "", data["save_path"])
-	assert.Equal(t, "", data["category"])
-	assert.Equal(t, "", data["tags"])
-	assert.Equal(t, "", data["state"])
+	assert.Empty(t, data["hash"])
+	assert.Empty(t, data["name"])
+	assert.Empty(t, data["save_path"])
+	assert.Empty(t, data["category"])
+	assert.Empty(t, data["tags"])
+	assert.Empty(t, data["state"])
 	assert.Equal(t, "0", data["size"])
 	assert.Equal(t, "0.00", data["progress"])
-	assert.Equal(t, "", data["content_path"])
-	assert.Equal(t, "", data["comment"])
+	assert.Empty(t, data["content_path"])
+	assert.Empty(t, data["comment"])
 }
 
 func TestExecuteRequest_Validate(t *testing.T) {
@@ -546,7 +545,7 @@ func TestExecuteResult_Constructors(t *testing.T) {
 	t.Run("SuccessResult", func(t *testing.T) {
 		result := SuccessResult("Program started")
 		assert.True(t, result.Success)
-		assert.Nil(t, result.Error)
+		require.NoError(t, result.Error)
 		assert.Equal(t, "Program started", result.Message)
 	})
 

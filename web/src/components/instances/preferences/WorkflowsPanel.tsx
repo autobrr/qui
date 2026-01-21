@@ -411,13 +411,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"
-              ? "Delete with files (preserve cross-seeds)"
-              : conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"
-                ? "Delete with files (include cross-seeds)"
-                : conditions.delete.mode === "deleteWithFiles"
-                  ? "Delete with files"
-                  : "Delete (keep files)"}</p>
+            <p>{conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "Delete with files (preserve cross-seeds)": conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "Delete with files (include cross-seeds)": conditions.delete.mode === "deleteWithFiles"? "Delete with files": "Delete (keep files)"}</p>
           </TooltipContent>
         </Tooltip>
       )}
