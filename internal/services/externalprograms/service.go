@@ -297,31 +297,184 @@ func (s *Service) buildDirectCommand(ctx context.Context, program *models.Extern
 	return exec.CommandContext(ctx, program.Path) //nolint:gosec // intentional external program execution
 }
 
-// createTerminalCommand creates a command that spawns a terminal window on Unix/Linux.
-func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
-	// List of terminal emulators to try, in order of preference
-	terminals := []struct {
-		name string
-		args []string
-	}{
-		{"gnome-terminal", []string{"--", "bash", "-c", cmdLine + "; exec bash"}},
-		{"konsole", []string{"--hold", "-e", "bash", "-c", cmdLine}},
-		{"xfce4-terminal", []string{"--hold", "-e", "bash", "-c", cmdLine}},
-		{"mate-terminal", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
-		{"xterm", []string{"-hold", "-e", "bash", "-c", cmdLine}},
-		{"kitty", []string{"bash", "-c", cmdLine + "; exec bash"}},
-		{"alacritty", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
-		{"terminator", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
+// terminalCandidate represents a terminal emulator to check for availability.
+type terminalCandidate struct {
+	name string
+}
+
+// getTerminalCandidates returns terminal emulators in priority order for the current platform.
+// Priority: cross-platform CLI terminals → Linux terminals → macOS native terminals.
+func getTerminalCandidates() []terminalCandidate {
+	// Cross-platform terminals (highest priority, checked on all platforms)
+	candidates := []terminalCandidate{
+		{"wezterm"},
+		{"hyper"},
+		{"kitty"},
+		{"alacritty"},
 	}
 
-	// Try each terminal until we find one that exists
-	for _, term := range terminals {
-		if _, err := exec.LookPath(term.name); err == nil {
-			log.Debug().
-				Str("terminal", term.name).
-				Str("command", cmdLine).
-				Msg("using terminal emulator for external program")
-			return exec.CommandContext(ctx, term.name, term.args...) //nolint:gosec // intentional external program execution
+	// Linux terminal emulators (not checked on macOS)
+	if runtime.GOOS != "darwin" {
+		candidates = append(candidates,
+			terminalCandidate{"gnome-terminal"},
+			terminalCandidate{"konsole"},
+			terminalCandidate{"xfce4-terminal"},
+			terminalCandidate{"mate-terminal"},
+			terminalCandidate{"xterm"},
+			terminalCandidate{"terminator"},
+		)
+	}
+
+	// macOS native terminals (lower priority than CLI terminals)
+	if runtime.GOOS == "darwin" {
+		candidates = append(candidates,
+			terminalCandidate{"iterm2"},
+			terminalCandidate{"apple-terminal"},
+		)
+	}
+
+	return candidates
+}
+
+// escapeAppleScript escapes a string for use in AppleScript.
+// AppleScript requires backslashes, double quotes, and control characters to be escaped.
+func escapeAppleScript(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	s = strings.ReplaceAll(s, "\r", "\\r")
+	s = strings.ReplaceAll(s, "\t", "\\t")
+	return s
+}
+
+// detectTerminalFromEnv checks the TERM_PROGRAM environment variable to detect the current terminal.
+// Returns the terminal name and true if a known terminal is detected, empty string and false otherwise.
+func detectTerminalFromEnv() (string, bool) {
+	termProgram := os.Getenv("TERM_PROGRAM")
+	if termProgram == "" {
+		return "", false
+	}
+
+	switch termProgram {
+	case "iTerm.app":
+		return "iterm2", true
+	case "Apple_Terminal":
+		return "apple-terminal", true
+	case "WezTerm":
+		return "wezterm", true
+	case "Hyper":
+		return "hyper", true
+	case "kitty":
+		return "kitty", true
+	case "alacritty":
+		return "alacritty", true
+	default:
+		return "", false
+	}
+}
+
+// buildTerminalArgs constructs the command name and arguments for a specific terminal.
+// Returns the executable name and arguments to spawn a terminal with the given command.
+func buildTerminalArgs(terminal, cmdLine string) (string, []string) {
+	// Command suffix to keep terminal open after execution
+	keepOpen := cmdLine + "; exec bash"
+
+	switch terminal {
+	// macOS native terminals (use osascript/AppleScript)
+	case "iterm2":
+		script := fmt.Sprintf(`tell application "iTerm"
+	create window with default profile
+	tell current session of current window
+		write text "%s"
+	end tell
+end tell`, escapeAppleScript(keepOpen))
+		return "osascript", []string{"-e", script}
+
+	case "apple-terminal":
+		script := fmt.Sprintf(`tell application "Terminal"
+	do script "%s"
+	activate
+end tell`, escapeAppleScript(keepOpen))
+		return "osascript", []string{"-e", script}
+
+	// Cross-platform terminals
+	case "wezterm":
+		return "wezterm", []string{"start", "--", "bash", "-c", keepOpen}
+	case "hyper":
+		return "hyper", []string{"-e", "bash", "-c", keepOpen}
+	case "kitty":
+		return "kitty", []string{"bash", "-c", keepOpen}
+	case "alacritty":
+		return "alacritty", []string{"-e", "bash", "-c", keepOpen}
+
+	// Linux terminal emulators
+	case "gnome-terminal":
+		return "gnome-terminal", []string{"--", "bash", "-c", keepOpen}
+	case "konsole":
+		// konsole uses --hold flag to keep window open, so no need for "; exec bash"
+		return "konsole", []string{"--hold", "-e", "bash", "-c", cmdLine}
+	case "xfce4-terminal":
+		// xfce4-terminal uses --hold flag to keep window open, so no need for "; exec bash"
+		return "xfce4-terminal", []string{"--hold", "-e", "bash", "-c", cmdLine}
+	case "mate-terminal":
+		return "mate-terminal", []string{"-e", "bash", "-c", keepOpen}
+	case "xterm":
+		// xterm uses -hold flag to keep window open, so no need for "; exec bash"
+		return "xterm", []string{"-hold", "-e", "bash", "-c", cmdLine}
+	case "terminator":
+		return "terminator", []string{"-e", "bash", "-c", keepOpen}
+
+	default:
+		return "", nil
+	}
+}
+
+// isTerminalAvailable checks if a terminal is available on the system.
+func isTerminalAvailable(terminal string) bool {
+	switch terminal {
+	case "iterm2":
+		// Check if iTerm2 app bundle exists
+		_, err := os.Stat("/Applications/iTerm.app")
+		return err == nil
+	case "apple-terminal":
+		// Terminal.app is always available on macOS
+		return runtime.GOOS == "darwin"
+	default:
+		// Check if executable is in PATH
+		_, err := exec.LookPath(terminal)
+		return err == nil
+	}
+}
+
+// createTerminalCommand creates a command that spawns a terminal window on Unix/Linux/macOS.
+func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
+	// Priority 1: Check TERM_PROGRAM env var (user's current terminal)
+	if terminal, found := detectTerminalFromEnv(); found {
+		if isTerminalAvailable(terminal) {
+			cmdName, args := buildTerminalArgs(terminal, cmdLine)
+			if cmdName != "" {
+				log.Debug().
+					Str("terminal", terminal).
+					Str("source", "TERM_PROGRAM").
+					Str("command", cmdLine).
+					Msg("using terminal emulator for external program")
+				return exec.CommandContext(ctx, cmdName, args...) //nolint:gosec // intentional external program execution
+			}
+		}
+	}
+
+	// Priority 2: Try terminal candidates in order
+	for _, tc := range getTerminalCandidates() {
+		if isTerminalAvailable(tc.name) {
+			cmdName, args := buildTerminalArgs(tc.name, cmdLine)
+			if cmdName != "" {
+				log.Debug().
+					Str("terminal", tc.name).
+					Str("source", "detection").
+					Str("command", cmdLine).
+					Msg("using terminal emulator for external program")
+				return exec.CommandContext(ctx, cmdName, args...) //nolint:gosec // intentional external program execution
+			}
 		}
 	}
 

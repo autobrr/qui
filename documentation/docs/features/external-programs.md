@@ -40,7 +40,7 @@ External programs always run on the same machine (or container) that is hosting 
 | **Program Path** | Absolute path to the executable or script. Use the host path seen by the qui backend (e.g. `/usr/local/bin/my-script.sh`, `C:\Scripts\postprocess.bat`, `C:\python312\python.exe`). |
 | **Arguments Template** | Optional string of command-line arguments. qui substitutes torrent metadata placeholders before spawning the process. |
 | **Path Mappings** | Optional array of `from → to` prefixes that rewrite remote qBittorrent paths into local mount points. Helpful when qui runs locally but qBittorrent stores data elsewhere. |
-| **Launch in terminal window** | Opens the program in an interactive terminal (`cmd.exe` on Windows, first available emulator on Linux/macOS). Disable for GUI apps or background daemons. |
+| **Launch in terminal window** | Opens the program in an interactive terminal window. See [Supported Terminal Emulators](#supported-terminal-emulators) for the list of detected terminals. Disable for GUI apps or background daemons. |
 | **Enable this program** | Determines whether the program shows up in the torrent context menu. |
 
 ## Torrent Placeholders
@@ -89,6 +89,34 @@ Given the template above, `{save_path}` becomes `/mnt/qbt/Movies` instead of `/d
 - **Disable terminal window** for GUI applications or background tasks.
 
 Programs run asynchronously - qui does not wait for completion.
+
+### Supported Terminal Emulators
+
+When "Launch in terminal window" is enabled, qui automatically detects and uses an available terminal emulator. Detection priority:
+
+1. **TERM_PROGRAM environment variable** - If qui is running inside a terminal, that terminal is preferred
+2. **Cross-platform terminals** (checked on all platforms):
+   - WezTerm
+   - Hyper
+   - Kitty
+   - Alacritty
+3. **Linux terminals**:
+   - GNOME Terminal
+   - Konsole
+   - Xfce4 Terminal
+   - MATE Terminal
+   - xterm
+   - Terminator
+4. **macOS native terminals**:
+   - iTerm2
+   - Terminal.app
+5. **Fallback**: If no terminal is found, the command runs in the background via `sh -c`
+
+On Windows, `cmd.exe` is always used.
+
+:::tip
+Terminal windows stay open after the command finishes, allowing you to inspect output. Close the window manually when done.
+:::
 
 ## Executing Programs
 
