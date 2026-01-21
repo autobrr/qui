@@ -21,6 +21,7 @@ interface InstanceMetadata {
 export function useInstanceMetadata(instanceId: number) {
   const query = useQuery<InstanceMetadata>({
     queryKey: ["instance-metadata", instanceId],
+    enabled: instanceId > 0,
     queryFn: async () => {
       // Fetch metadata in parallel for efficiency
       const [categories, tags, preferences] = await Promise.all([
