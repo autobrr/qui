@@ -8375,6 +8375,12 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		return
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
+	}
+
 	// Get current settings to check if external program is configured
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -8391,7 +8397,7 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 	// Execute in a separate goroutine to avoid blocking the cross-seed operation
 	go func() {
 		// Get torrent data from sync manager
-		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(context.Background(), instanceID, []string{torrentHash})
+		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{torrentHash})
 		if err != nil {
 			log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
 			return
@@ -8409,8 +8415,7 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 			Msg("Executing external program for cross-seed injection")
 
 		// Execute using the shared external programs service
-		execCtx := context.WithoutCancel(ctx)
-		result := s.externalProgramService.Execute(execCtx, externalprograms.ExecuteRequest{
+		result := s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
 			ProgramID:  programID,
 			Torrent:    targetTorrent,
 			InstanceID: instanceID,

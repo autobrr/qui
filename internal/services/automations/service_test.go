@@ -1208,7 +1208,7 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 // executeExternalProgramsFromAutomation tests
 // -----------------------------------------------------------------------------
 
-func TestExecuteExternalProgramsFromAutomation_EmptyExecutions(t *testing.T) {
+func TestExecuteExternalProgramsFromAutomation_EmptyExecutions(_ *testing.T) {
 	// Test that empty executions list returns early without any side effects
 	s := &Service{}
 
@@ -1218,7 +1218,7 @@ func TestExecuteExternalProgramsFromAutomation_EmptyExecutions(t *testing.T) {
 	// If we get here without panic, the test passes
 }
 
-func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(t *testing.T) {
+func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *testing.T) {
 	// Test that nil externalProgramService is handled gracefully
 	// and doesn't panic (activity logging requires a real store, tested separately)
 	s := &Service{

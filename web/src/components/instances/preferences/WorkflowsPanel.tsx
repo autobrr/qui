@@ -465,7 +465,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Program ID: {conditions.externalProgram.programId}</p>
+            <p>Program ID: {conditions.externalProgram.programId ?? "-"}</p>
           </TooltipContent>
         </Tooltip>
       )}
