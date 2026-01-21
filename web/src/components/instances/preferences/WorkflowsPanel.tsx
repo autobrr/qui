@@ -22,7 +22,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Terminal, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -317,7 +317,8 @@ function RuleSummary({ rule }: { rule: Automation }) {
     conditions?.pause?.enabled ||
     conditions?.delete?.enabled ||
     conditions?.tag?.enabled ||
-    conditions?.category?.enabled
+    conditions?.category?.enabled ||
+    conditions?.externalProgram?.enabled
 
   if (!hasActions && !isAllTrackers && trackers.length === 0) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
@@ -452,6 +453,14 @@ function RuleSummary({ rule }: { rule: Automation }) {
             <p>Move to category: {conditions.category.category}</p>
           </TooltipContent>
         </Tooltip>
+      )}
+
+      {/* External Program */}
+      {conditions?.externalProgram?.enabled && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-teal-600 border-teal-600/50 cursor-default">
+          <Terminal className="h-3 w-3" />
+          External program
+        </Badge>
       )}
     </div>
   )

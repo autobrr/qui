@@ -77,7 +77,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -169,6 +169,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Pause"
     case "moved":
       return "Move"
+    case "external_program":
+      return "External program"
     default:
       return action
   }
@@ -699,6 +701,7 @@ export function WorkflowsOverview({
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
+    external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -1091,6 +1094,10 @@ export function WorkflowsOverview({
                                         <span className="font-medium text-sm block">
                                           {formatMovedSummary(event.details, event.outcome)}
                                         </span>
+                                      ) : event.action === "external_program" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatExternalProgramSummary(event.details, event.outcome === "failed")}
+                                        </span>
                                       ) : (
                                         <TruncatedText className="font-medium text-sm block cursor-default">
                                           {event.torrentName || event.hash}
@@ -1107,7 +1114,7 @@ export function WorkflowsOverview({
                                       >
                                         {formatAction(event.action)}
                                       </Badge>
-                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "moved"].includes(event.action) && (
+                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "moved", "external_program"].includes(event.action) && (
                                         <Badge
                                           variant="outline"
                                           className={cn(
@@ -1309,6 +1316,9 @@ export function WorkflowsOverview({
                                           </div>
                                         )
                                       })()}
+                                      {event.action === "external_program" && event.details?.programName && (
+                                        <span className="text-muted-foreground">Program: {event.details.programName}</span>
+                                      )}
                                       {event.ruleName && (
                                         <span className="text-muted-foreground">Rule: {event.ruleName}</span>
                                       )}
@@ -1595,7 +1605,8 @@ function RulePreview({
     (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
     (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
     (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
-    (rule.conditions?.move?.enabled && rule.conditions.move.condition)
+    (rule.conditions?.move?.enabled && rule.conditions.move.condition) ||
+    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition)
   )
 
   return (
@@ -1692,6 +1703,12 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Move className="h-3 w-3" />
             {rule.conditions.move.path}
+          </Badge>
+        )}
+        {rule.conditions?.externalProgram?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-teal-600 border-teal-600/50">
+            <Terminal className="h-3 w-3" />
+            Program
           </Badge>
         )}
         <Button

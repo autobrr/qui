@@ -59,7 +59,7 @@ import type {
   RegexValidationError,
   RuleCondition
 } from "@/types"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
@@ -81,10 +81,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -94,6 +94,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   tag: "Tag",
   category: "Category",
   move: "Move",
+  externalProgram: "Run external program",
 }
 
 function getDisabledFields(capabilities: Capabilities): DisabledField[] {
@@ -142,6 +143,7 @@ type FormState = {
   tagEnabled: boolean
   categoryEnabled: boolean
   moveEnabled: boolean
+  externalProgramEnabled: boolean
   // Speed limits settings (mode-based)
   exprUploadMode: SpeedLimitMode
   exprUploadValue?: number // KiB/s, only used when mode is "custom"
@@ -170,6 +172,8 @@ type FormState = {
   // Move action settings
   exprMovePath: string
   exprMoveBlockIfCrossSeed: boolean
+  // External program action settings
+  exprExternalProgramId: number | null
 }
 
 const emptyFormState: FormState = {
@@ -187,6 +191,7 @@ const emptyFormState: FormState = {
   tagEnabled: false,
   categoryEnabled: false,
   moveEnabled: false,
+  externalProgramEnabled: false,
   exprUploadMode: "no_change",
   exprUploadValue: undefined,
   exprDownloadMode: "no_change",
@@ -208,6 +213,7 @@ const emptyFormState: FormState = {
   exprBlockIfCrossSeedInCategories: [],
   exprMovePath: "",
   exprMoveBlockIfCrossSeed: false,
+  exprExternalProgramId: null,
 }
 
 // Helper to get enabled actions from form state
@@ -220,6 +226,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
+  if (state.externalProgramEnabled) actions.push("externalProgram")
   return actions
 }
 
@@ -265,6 +272,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
+  const { data: externalPrograms } = useQuery({
+    queryKey: ["externalPrograms"],
+    queryFn: () => api.listExternalPrograms(),
+    enabled: open,
+    select: (data) => data.filter(p => p.enabled),
+  })
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
@@ -438,6 +451,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let tagEnabled = false
         let categoryEnabled = false
         let moveEnabled = false
+        let externalProgramEnabled = false
         let exprUploadMode: SpeedLimitMode = "no_change"
         let exprUploadValue: number | undefined
         let exprDownloadMode: SpeedLimitMode = "no_change"
@@ -459,6 +473,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprBlockIfCrossSeedInCategories: string[] = []
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
+        let exprExternalProgramId: number | null = null
 
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
@@ -477,6 +492,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
             ?? conditions.move?.condition
+            ?? conditions.externalProgram?.condition
             ?? null
 
           if (conditions.speedLimits?.enabled) {
@@ -558,6 +574,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprMovePath = conditions.move.path ?? ""
             exprMoveBlockIfCrossSeed = conditions.move.blockIfCrossSeed ?? false
           }
+          if (conditions.externalProgram?.enabled) {
+            externalProgramEnabled = true
+            exprExternalProgramId = conditions.externalProgram.programId ?? null
+          }
         }
 
         const newState: FormState = {
@@ -576,6 +596,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           tagEnabled,
           categoryEnabled,
           moveEnabled,
+          externalProgramEnabled,
           exprUploadMode,
           exprUploadValue,
           exprDownloadMode,
@@ -597,6 +618,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprMoveBlockIfCrossSeed,
           exprIncludeCrossSeeds,
           exprBlockIfCrossSeedInCategories,
+          exprExternalProgramId,
         }
         setFormState(newState)
       } else {
@@ -793,6 +815,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.externalProgramEnabled && input.exprExternalProgramId) {
+      conditions.externalProgram = {
+        enabled: true,
+        programId: input.exprExternalProgramId,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
 
     const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
@@ -840,6 +869,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.tagEnabled,
     formState.categoryEnabled,
     formState.moveEnabled,
+    formState.externalProgramEnabled,
   ].filter(Boolean).length
 
   const previewMutation = useMutation({
@@ -1080,6 +1110,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
+    if (submitState.externalProgramEnabled) {
+      if (!submitState.exprExternalProgramId) {
+        toast.error("Select an external program")
+        return
+      }
+    }
     if (submitState.deleteEnabled && !submitState.actionCondition) {
       toast.error("Delete requires at least one condition")
       return
@@ -1270,6 +1306,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             tagEnabled: false,
                             categoryEnabled: false,
                             moveEnabled: false,
+                            externalProgramEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -1288,6 +1325,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
+                        <SelectItem value="externalProgram">Run external program</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1727,6 +1765,59 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <Label htmlFor="include-crossseeds" className="text-sm cursor-pointer whitespace-nowrap">
                                 Include affected cross-seeds
                               </Label>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* External Program */}
+                    {formState.externalProgramEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Run external program</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, externalProgramEnabled: false, exprExternalProgramId: null }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Program</Label>
+                          {externalPrograms && externalPrograms.length > 0 ? (
+                            <Select
+                              value={formState.exprExternalProgramId?.toString() ?? ""}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprExternalProgramId: value ? parseInt(value, 10) : null,
+                              }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a program..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {externalPrograms.map(program => (
+                                  <SelectItem key={program.id} value={program.id.toString()}>
+                                    {program.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
+                              No external programs configured.{" "}
+                              <a
+                                href="/settings?tab=external-programs"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                Configure in Settings
+                              </a>
                             </div>
                           )}
                         </div>
