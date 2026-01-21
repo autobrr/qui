@@ -117,6 +117,11 @@ export class RSSEventSource {
       return
     }
 
+    // Prevent overlapping reconnect timers when multiple error events fire quickly.
+    if (this.reconnectTimer) {
+      return
+    }
+
     // Close existing connection if any
     if (this.eventSource) {
       this.eventSource.close()
@@ -133,6 +138,7 @@ export class RSSEventSource {
     console.debug(`RSS SSE reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
 
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
       this.connect()
     }, delay)
   }
