@@ -179,6 +179,35 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	targetFolder := req.Path
 
+	matchesFeedURL := func(feedURL, reqURL string) bool {
+		feedURL = strings.TrimSpace(feedURL)
+		reqURL = strings.TrimSpace(reqURL)
+		if feedURL == reqURL {
+			return true
+		}
+
+		feedParsed, feedErr := url.Parse(feedURL)
+		reqParsed, reqErr := url.Parse(reqURL)
+		if feedErr != nil || reqErr != nil {
+			return false
+		}
+
+		feedParsed.Fragment = ""
+		reqParsed.Fragment = ""
+
+		normalizePath := func(p string) string {
+			if p == "/" {
+				return ""
+			}
+			return strings.TrimRight(p, "/")
+		}
+
+		return strings.EqualFold(feedParsed.Scheme, reqParsed.Scheme) &&
+			strings.EqualFold(feedParsed.Host, reqParsed.Host) &&
+			normalizePath(feedParsed.Path) == normalizePath(reqParsed.Path) &&
+			feedParsed.RawQuery == reqParsed.RawQuery
+	}
+
 	// If a folder path is specified, we need to:
 	// 1. Add the feed to root (no path)
 	// 2. Find the newly created feed's name
@@ -220,24 +249,49 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Find the new feed name (only if we have a baseline to compare against)
+		if !hasBaseline {
+			log.Warn().Int("instanceID", instanceID).Msg("RSS feed added to root; could not determine baseline to safely move into folder")
+			RespondJSON(w, http.StatusCreated, WarningResponse{
+				Warning: "Feed added to root - could not move to folder",
+			})
+			return
+		}
+
 		var newFeedName string
-		if hasBaseline {
-			for name, rawItem := range newFeeds {
-				// Check if this is a new item (not in existingNames) and is a feed (has url field)
-				if !existingNames[name] {
-					// Check if it's a feed by unmarshaling and looking for url field
-					var itemMap map[string]any
-					if err := json.Unmarshal(rawItem, &itemMap); err != nil {
-						log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding new feed")
-						continue
-					}
-					if _, hasURL := itemMap["url"]; hasURL {
-						newFeedName = name
-						break
-					}
-				}
+		type rssFeedMeta struct {
+			URL string `json:"url"`
+		}
+
+		// Deterministically identify the feed to move by matching the URL we just added.
+		var candidates []string
+		for name, rawItem := range newFeeds {
+			if existingNames[name] {
+				continue
 			}
+
+			var meta rssFeedMeta
+			if err := json.Unmarshal(rawItem, &meta); err != nil {
+				log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding feed to move")
+				continue
+			}
+			if meta.URL == "" {
+				continue // folder
+			}
+			if !matchesFeedURL(meta.URL, req.URL) {
+				continue
+			}
+			candidates = append(candidates, name)
+		}
+
+		switch {
+		case len(candidates) == 1:
+			newFeedName = candidates[0]
+		case len(candidates) > 1:
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("url", req.URL).
+				Strs("candidates", candidates).
+				Msg("multiple RSS feeds matched URL; cannot safely move")
 		}
 
 		if newFeedName != "" {
@@ -258,7 +312,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			// Couldn't find the newly added feed to move it
-			log.Warn().Int("instanceID", instanceID).Str("url", req.URL).Msg("could not identify newly added feed to move to folder")
+			log.Warn().Int("instanceID", instanceID).Str("url", req.URL).Msg("could not identify RSS feed to move to folder")
 			RespondJSON(w, http.StatusCreated, WarningResponse{
 				Warning: "Feed added to root - could not identify feed to move",
 			})
