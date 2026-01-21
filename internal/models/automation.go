@@ -246,6 +246,9 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
+	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid external program action: %w", err)
+	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
@@ -301,6 +304,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	}
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
+	}
+	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid external program action: %w", err)
 	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
@@ -429,8 +435,8 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate        ConditionField = "PRIVATE"
-	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldPrivate         ConditionField = "PRIVATE"
+	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields

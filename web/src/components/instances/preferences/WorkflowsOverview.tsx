@@ -236,6 +236,11 @@ function formatMovedSummary(details: AutomationActivity["details"], outcome?: Au
   return `${count} torrent${count !== 1 ? "s" : ""} moved`
 }
 
+function formatExternalProgramSummary(details: AutomationActivity["details"], failed: boolean): string {
+  const programName = details?.programName ?? "External program"
+  return failed ? `${programName} failed` : `${programName} executed`
+}
+
 interface WorkflowsOverviewProps {
   expandedInstances?: string[]
   onExpandedInstancesChange?: (values: string[]) => void
@@ -1706,7 +1711,7 @@ function RulePreview({
           </Badge>
         )}
         {rule.conditions?.externalProgram?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-teal-600 border-teal-600/50">
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Terminal className="h-3 w-3" />
             Program
           </Badge>

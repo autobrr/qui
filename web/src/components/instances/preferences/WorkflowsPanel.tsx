@@ -411,7 +411,13 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "Delete with files (preserve cross-seeds)": conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "Delete with files (include cross-seeds)": conditions.delete.mode === "deleteWithFiles"? "Delete with files": "Delete (keep files)"}</p>
+            <p>{
+              {
+                deleteWithFilesPreserveCrossSeeds: "Delete with files (preserve cross-seeds)",
+                deleteWithFilesIncludeCrossSeeds: "Delete with files (include cross-seeds)",
+                deleteWithFiles: "Delete with files",
+              }[conditions.delete.mode as string] ?? "Delete (keep files)"
+            }</p>
           </TooltipContent>
         </Tooltip>
       )}
@@ -451,10 +457,17 @@ function RuleSummary({ rule }: { rule: Automation }) {
 
       {/* External Program */}
       {conditions?.externalProgram?.enabled && (
-        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-teal-600 border-teal-600/50 cursor-default">
-          <Terminal className="h-3 w-3" />
-          External program
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-teal-600 border-teal-600/50 cursor-help">
+              <Terminal className="h-3 w-3" />
+              External program
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Program ID: {conditions.externalProgram.programId}</p>
+          </TooltipContent>
+        </Tooltip>
       )}
     </div>
   )

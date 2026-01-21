@@ -7,6 +7,7 @@ package externalprograms
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -207,16 +208,16 @@ func (s *Service) executeAsync(
 		// The 'start' command will spawn the process and cmd.exe will exit quickly
 		execErr := cmd.Run()
 		if execErr != nil {
-			log.Warn().
+			log.Error().
 				Err(execErr).
 				Str("program", program.Name).
 				Str("hash", req.Torrent.Hash).
 				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("cmd.exe exited with error (may be normal for 'start' command)")
-			// Note: On Windows with 'start', non-zero exit doesn't necessarily mean failure
-			// The actual program was likely spawned successfully
+				Msg("external program failed to start")
+			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed to start: %v", execErr))
+			return
 		}
-		// Log success - on Windows, Run() completing means the 'start' command executed
+		// Log success - on Windows, Run() completing without error means the program started
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 	} else {
 		// Unix/Linux: Start the terminal emulator or direct process
@@ -417,6 +418,10 @@ func (s *Service) logActivity(
 		outcome = models.ActivityOutcomeFailed
 	}
 
+	details, _ := json.Marshal(map[string]string{
+		"programName": program.Name,
+	})
+
 	activity := &models.AutomationActivity{
 		InstanceID:  instanceID,
 		Hash:        torrent.Hash,
@@ -426,6 +431,7 @@ func (s *Service) logActivity(
 		RuleName:    ruleName,
 		Outcome:     outcome,
 		Reason:      fmt.Sprintf("%s: %s", program.Name, reason),
+		Details:     details,
 	}
 
 	if err := s.activityStore.Create(ctx, activity); err != nil {

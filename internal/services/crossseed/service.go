@@ -8409,7 +8409,8 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 			Msg("Executing external program for cross-seed injection")
 
 		// Execute using the shared external programs service
-		result := s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+		execCtx := context.WithoutCancel(ctx)
+		result := s.externalProgramService.Execute(execCtx, externalprograms.ExecuteRequest{
 			ProgramID:  programID,
 			Torrent:    targetTorrent,
 			InstanceID: instanceID,

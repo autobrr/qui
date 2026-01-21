@@ -350,6 +350,11 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return status, msg, err
 	}
 
+	// Validate ExternalProgram action has a valid programId when enabled
+	if err := payload.Conditions.ExternalProgram.Validate(); err != nil {
+		return http.StatusBadRequest, "External program action requires a valid program selection", err
+	}
+
 	return 0, "", nil
 }
 
