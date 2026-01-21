@@ -236,6 +236,39 @@ function setActionEnabled(action: ActionType, enabled: boolean): Partial<FormSta
   return { [key]: enabled }
 }
 
+// Hydration helpers for converting stored values to form state
+type SpeedLimitHydration = {
+  mode: SpeedLimitMode
+  value?: number
+  inferredUnit: number
+}
+
+function hydrateSpeedLimit(storedValue: number | undefined): SpeedLimitHydration {
+  if (storedValue === undefined) {
+    return { mode: "no_change", inferredUnit: 1024 }
+  }
+  if (storedValue === 0) {
+    return { mode: "unlimited", inferredUnit: 1024 }
+  }
+  return {
+    mode: "custom",
+    value: storedValue,
+    inferredUnit: storedValue % 1024 === 0 ? 1024 : 1,
+  }
+}
+
+type ShareLimitHydration = {
+  mode: "no_change" | "global" | "unlimited" | "custom"
+  value?: number
+}
+
+function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration {
+  if (storedValue === undefined) return { mode: "no_change" }
+  if (storedValue === -2) return { mode: "global" }
+  if (storedValue === -1) return { mode: "unlimited" }
+  return { mode: "custom", value: storedValue }
+}
+
 
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const queryClient = useQueryClient()
@@ -497,56 +530,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
           if (conditions.speedLimits?.enabled) {
             speedLimitsEnabled = true
-            // Map upload value to mode
-            const uploadKiB = conditions.speedLimits.uploadKiB
-            if (uploadKiB === undefined) {
-              exprUploadMode = "no_change"
-            } else if (uploadKiB === 0) {
-              exprUploadMode = "unlimited"
-            } else {
-              exprUploadMode = "custom"
-              exprUploadValue = uploadKiB
-              // Infer units from existing value - use MiB/s if divisible by 1024
-              setUploadSpeedUnit(uploadKiB % 1024 === 0 ? 1024 : 1)
-            }
-            // Map download value to mode
-            const downloadKiB = conditions.speedLimits.downloadKiB
-            if (downloadKiB === undefined) {
-              exprDownloadMode = "no_change"
-            } else if (downloadKiB === 0) {
-              exprDownloadMode = "unlimited"
-            } else {
-              exprDownloadMode = "custom"
-              exprDownloadValue = downloadKiB
-              // Infer units from existing value - use MiB/s if divisible by 1024
-              setDownloadSpeedUnit(downloadKiB % 1024 === 0 ? 1024 : 1)
-            }
+            const upload = hydrateSpeedLimit(conditions.speedLimits.uploadKiB)
+            exprUploadMode = upload.mode
+            exprUploadValue = upload.value
+            if (upload.mode === "custom") setUploadSpeedUnit(upload.inferredUnit)
+
+            const download = hydrateSpeedLimit(conditions.speedLimits.downloadKiB)
+            exprDownloadMode = download.mode
+            exprDownloadValue = download.value
+            if (download.mode === "custom") setDownloadSpeedUnit(download.inferredUnit)
           }
           if (conditions.shareLimits?.enabled) {
             shareLimitsEnabled = true
-            // Convert stored values to mode/value format
-            const ratio = conditions.shareLimits.ratioLimit
-            if (ratio === undefined) {
-              exprRatioLimitMode = "no_change"
-            } else if (ratio === -2) {
-              exprRatioLimitMode = "global"
-            } else if (ratio === -1) {
-              exprRatioLimitMode = "unlimited"
-            } else {
-              exprRatioLimitMode = "custom"
-              exprRatioLimitValue = ratio
-            }
-            const seedTime = conditions.shareLimits.seedingTimeMinutes
-            if (seedTime === undefined) {
-              exprSeedingTimeMode = "no_change"
-            } else if (seedTime === -2) {
-              exprSeedingTimeMode = "global"
-            } else if (seedTime === -1) {
-              exprSeedingTimeMode = "unlimited"
-            } else {
-              exprSeedingTimeMode = "custom"
-              exprSeedingTimeValue = seedTime
-            }
+            const ratio = hydrateShareLimit(conditions.shareLimits.ratioLimit)
+            exprRatioLimitMode = ratio.mode
+            exprRatioLimitValue = ratio.value
+
+            const seedTime = hydrateShareLimit(conditions.shareLimits.seedingTimeMinutes)
+            exprSeedingTimeMode = seedTime.mode
+            exprSeedingTimeValue = seedTime.value
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true

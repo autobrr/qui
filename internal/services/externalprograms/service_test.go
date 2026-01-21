@@ -74,6 +74,7 @@ func TestService_Execute_NilService(t *testing.T) {
 
 	result := s.Execute(context.Background(), ExecuteRequest{
 		ProgramID:  1,
+		Torrent:    &qbt.Torrent{Hash: "abc123"},
 		InstanceID: 1,
 	})
 
@@ -89,6 +90,7 @@ func TestService_Execute_NilProgramStore(t *testing.T) {
 
 	result := s.Execute(context.Background(), ExecuteRequest{
 		ProgramID:  1,
+		Torrent:    &qbt.Torrent{Hash: "abc123"},
 		InstanceID: 1,
 	})
 
@@ -131,7 +133,7 @@ func TestService_Execute_NilTorrent(t *testing.T) {
 
 	assert.False(t, result.Success)
 	assert.Error(t, result.Error)
-	assert.Contains(t, result.Error.Error(), "torrent is nil")
+	assert.Contains(t, result.Error.Error(), "torrent is required")
 }
 
 func TestService_Execute_DisabledProgram(t *testing.T) {
@@ -318,6 +320,141 @@ func TestBuildTorrentData_NoPathMappings(t *testing.T) {
 
 	assert.Equal(t, "/original/path", data["save_path"])
 	assert.Equal(t, "/original/path/file", data["content_path"])
+}
+
+func TestBuildTorrentData_SpecialCharacters(t *testing.T) {
+	// Test that special characters in torrent data are handled safely
+	// These characters could potentially be used for shell injection attacks
+	tests := []struct {
+		name     string
+		torrent  *qbt.Torrent
+		checkKey string
+	}{
+		{
+			name: "shell command injection attempt in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: "Movie; rm -rf /",
+			},
+			checkKey: "name",
+		},
+		{
+			name: "backtick command substitution in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: "Movie `whoami`",
+			},
+			checkKey: "name",
+		},
+		{
+			name: "dollar command substitution in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: "Movie $(whoami)",
+			},
+			checkKey: "name",
+		},
+		{
+			name: "pipe command in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: "Movie | cat /etc/passwd",
+			},
+			checkKey: "name",
+		},
+		{
+			name: "ampersand background in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: "Movie & rm -rf /",
+			},
+			checkKey: "name",
+		},
+		{
+			name: "quotes in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: `Movie "with" 'quotes'`,
+			},
+			checkKey: "name",
+		},
+		{
+			name: "newline injection in name",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Name: "Movie\nrm -rf /",
+			},
+			checkKey: "name",
+		},
+		{
+			name: "special chars in save_path",
+			torrent: &qbt.Torrent{
+				Hash:     "abc123",
+				SavePath: "/path/with spaces; rm -rf /",
+			},
+			checkKey: "save_path",
+		},
+		{
+			name: "special chars in category",
+			torrent: &qbt.Torrent{
+				Hash:     "abc123",
+				Category: "movies; rm -rf /",
+			},
+			checkKey: "category",
+		},
+		{
+			name: "special chars in tags",
+			torrent: &qbt.Torrent{
+				Hash: "abc123",
+				Tags: "tag1,tag2; rm -rf /",
+			},
+			checkKey: "tags",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := buildTorrentData(tt.torrent, nil)
+
+			// Verify the data is stored as-is (not executed or interpreted)
+			// The actual shell escaping happens in shellquote.Join when building commands
+			assert.NotEmpty(t, data[tt.checkKey])
+
+			// For name-based tests, verify the exact value is preserved
+			if tt.checkKey == "name" {
+				assert.Equal(t, tt.torrent.Name, data["name"])
+			}
+		})
+	}
+}
+
+func TestBuildTorrentData_EmptyFields(t *testing.T) {
+	// Test handling of empty and zero values
+	torrent := &qbt.Torrent{
+		Hash:        "",
+		Name:        "",
+		SavePath:    "",
+		Category:    "",
+		Tags:        "",
+		State:       "",
+		Size:        0,
+		Progress:    0,
+		ContentPath: "",
+		Comment:     "",
+	}
+
+	data := buildTorrentData(torrent, nil)
+
+	assert.Equal(t, "", data["hash"])
+	assert.Equal(t, "", data["name"])
+	assert.Equal(t, "", data["save_path"])
+	assert.Equal(t, "", data["category"])
+	assert.Equal(t, "", data["tags"])
+	assert.Equal(t, "", data["state"])
+	assert.Equal(t, "0", data["size"])
+	assert.Equal(t, "0.00", data["progress"])
+	assert.Equal(t, "", data["content_path"])
+	assert.Equal(t, "", data["comment"])
 }
 
 func TestExecuteRequest_Validate(t *testing.T) {

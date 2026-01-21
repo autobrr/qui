@@ -110,6 +110,11 @@ func FailureResultWithMessage(err error, message string) ExecuteResult {
 //   - By ID: Set ProgramID to fetch the program from the store
 //   - Directly: Set Program to use a pre-loaded program configuration
 func (s *Service) Execute(ctx context.Context, req ExecuteRequest) ExecuteResult {
+	// Validate request first
+	if err := req.Validate(); err != nil {
+		return FailureResult(err)
+	}
+
 	program := req.Program
 
 	// If no pre-loaded program, fetch by ID
@@ -175,59 +180,68 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 		Msg("executing external program")
 
 	// Execute in goroutine (fire-and-forget)
-	go s.executeAsync(cmd, program, req.Torrent)
+	// Activity logging happens inside executeAsync after cmd.Start() succeeds
+	go s.executeAsync(cmd, program, req)
 
-	// Log success activity immediately (we've launched the program)
-	s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program launched")
-
-	message := "Program started successfully"
+	message := "Program execution initiated"
 	if program.UseTerminal {
-		message = "Terminal window opened successfully"
+		message = "Terminal window execution initiated"
 	}
 
 	return SuccessResult(message)
 }
 
 // executeAsync runs the command in a goroutine and handles process lifecycle.
+// Activity logging happens here after the command actually starts successfully.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
 	program *models.ExternalProgram,
-	torrent *qbt.Torrent,
+	req ExecuteRequest,
 ) {
-	var execErr error
+	// Use background context for activity logging since parent context may be cancelled
+	ctx := context.Background()
 
 	if runtime.GOOS == "windows" {
 		// Windows: Use Run() which waits for cmd.exe to complete
 		// The 'start' command will spawn the process and cmd.exe will exit quickly
-		execErr = cmd.Run()
+		execErr := cmd.Run()
 		if execErr != nil {
-			log.Debug().
+			log.Warn().
 				Err(execErr).
 				Str("program", program.Name).
-				Str("hash", torrent.Hash).
+				Str("hash", req.Torrent.Hash).
 				Str("command", fmt.Sprintf("%v", cmd.Args)).
 				Msg("cmd.exe exited with error (may be normal for 'start' command)")
+			// Note: On Windows with 'start', non-zero exit doesn't necessarily mean failure
+			// The actual program was likely spawned successfully
 		}
+		// Log success - on Windows, Run() completing means the 'start' command executed
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 	} else {
 		// Unix/Linux: Start the terminal emulator or direct process
-		execErr = cmd.Start()
+		execErr := cmd.Start()
 		if execErr != nil {
 			log.Error().
 				Err(execErr).
 				Str("program", program.Name).
-				Str("hash", torrent.Hash).
+				Str("hash", req.Torrent.Hash).
 				Str("command", fmt.Sprintf("%v", cmd.Args)).
 				Msg("external program failed to start")
+			// Log failure activity
+			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
 			return
 		}
+
+		// Log success - the program has actually started
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 
 		// Wait for the process to prevent zombie processes
 		waitErr := cmd.Wait()
 		if waitErr != nil {
-			log.Debug().
+			log.Warn().
 				Err(waitErr).
 				Str("program", program.Name).
-				Str("hash", torrent.Hash).
+				Str("hash", req.Torrent.Hash).
 				Str("command", fmt.Sprintf("%v", cmd.Args)).
 				Msg("process exited with error (may be normal for terminal emulators)")
 		}
@@ -235,7 +249,7 @@ func (s *Service) executeAsync(
 
 	log.Info().
 		Str("program", program.Name).
-		Str("hash", torrent.Hash).
+		Str("hash", req.Torrent.Hash).
 		Bool("useTerminal", program.UseTerminal).
 		Msg("external program execution completed")
 }

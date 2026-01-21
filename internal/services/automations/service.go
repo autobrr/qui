@@ -2583,7 +2583,15 @@ type pendingProgramExec struct {
 // executeExternalProgramsFromAutomation executes external programs for matching torrents.
 // Programs are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
 func (s *Service) executeExternalProgramsFromAutomation(ctx context.Context, instanceID int, executions []pendingProgramExec) {
-	if s.externalProgramService == nil || len(executions) == 0 {
+	if len(executions) == 0 {
+		return
+	}
+
+	if s.externalProgramService == nil {
+		log.Error().
+			Int("instanceID", instanceID).
+			Int("pendingExecutions", len(executions)).
+			Msg("external program service not initialized, skipping executions")
 		return
 	}
 
@@ -2607,8 +2615,9 @@ func (s *Service) executeExternalProgramsFromAutomation(ctx context.Context, ins
 		ruleName := exec.ruleName
 
 		// Execute asynchronously - the service handles its own activity logging
+		// Use context.Background() since parent context may be cancelled before execution completes
 		go func() {
-			result := s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+			result := s.externalProgramService.Execute(context.Background(), externalprograms.ExecuteRequest{
 				ProgramID:  programID,
 				Torrent:    &torrent,
 				InstanceID: instanceID,

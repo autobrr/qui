@@ -581,6 +581,17 @@ type ExternalProgramAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
+// Validate checks that the ExternalProgramAction has valid configuration.
+func (a *ExternalProgramAction) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if a.Enabled && a.ProgramID <= 0 {
+		return errors.New("enabled external program action requires valid programId")
+	}
+	return nil
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {

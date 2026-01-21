@@ -37,6 +37,26 @@ func NewExternalProgramsHandler(
 	}
 }
 
+// validateProgramInput validates name and path for external program create/update operations.
+// Returns an error message and HTTP status code if validation fails.
+func (h *ExternalProgramsHandler) validateProgramInput(name, path string) (string, int, bool) {
+	if name == "" {
+		return "Name is required", http.StatusBadRequest, false
+	}
+
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "Path is required", http.StatusBadRequest, false
+	}
+
+	// Validate path against allowlist using the shared service (fail closed if service is nil)
+	if h.externalProgramService == nil || !h.externalProgramService.IsPathAllowed(path) {
+		return "Program path is not allowed", http.StatusForbidden, false
+	}
+
+	return "", 0, true
+}
+
 // ListExternalPrograms handles GET /api/external-programs
 func (h *ExternalProgramsHandler) ListExternalPrograms(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -63,21 +83,10 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 		return
 	}
 
-	// Validate required fields
-	if req.Name == "" {
-		http.Error(w, "Name is required", http.StatusBadRequest)
-		return
-	}
-
+	// Validate and normalize input
 	req.Path = strings.TrimSpace(req.Path)
-	if req.Path == "" {
-		http.Error(w, "Path is required", http.StatusBadRequest)
-		return
-	}
-
-	// Validate path against allowlist using the shared service
-	if h.externalProgramService != nil && !h.externalProgramService.IsPathAllowed(req.Path) {
-		http.Error(w, "Program path is not allowed", http.StatusForbidden)
+	if errMsg, status, ok := h.validateProgramInput(req.Name, req.Path); !ok {
+		http.Error(w, errMsg, status)
 		return
 	}
 
@@ -121,21 +130,10 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 		return
 	}
 
-	// Validate required fields
-	if req.Name == "" {
-		http.Error(w, "Name is required", http.StatusBadRequest)
-		return
-	}
-
+	// Validate and normalize input
 	req.Path = strings.TrimSpace(req.Path)
-	if req.Path == "" {
-		http.Error(w, "Path is required", http.StatusBadRequest)
-		return
-	}
-
-	// Validate path against allowlist using the shared service
-	if h.externalProgramService != nil && !h.externalProgramService.IsPathAllowed(req.Path) {
-		http.Error(w, "Program path is not allowed", http.StatusForbidden)
+	if errMsg, status, ok := h.validateProgramInput(req.Name, req.Path); !ok {
+		http.Error(w, errMsg, status)
 		return
 	}
 
