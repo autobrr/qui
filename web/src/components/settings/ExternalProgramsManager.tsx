@@ -100,8 +100,8 @@ export function ExternalProgramsManager() {
     },
     onError: (error: any) => {
       // Check if this is a 409 conflict with automation references
-      if (error.status === 409 && error.automations) {
-        setDeleteConflict(error.automations)
+      if (error.status === 409 && error.data?.automations) {
+        setDeleteConflict(error.data.automations)
         return
       }
       toast.error(`Failed to delete external program: ${error.message || "Unknown error"}`)

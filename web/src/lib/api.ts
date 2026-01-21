@@ -573,9 +573,9 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const errorMessage = await this.extractErrorMessage(response)
-      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
-      throw new Error(errorMessage)
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, message)
+      throw new Error(message)
     }
 
     return response.json()
@@ -1378,9 +1378,9 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const errorMessage = await this.extractErrorMessage(response)
-      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, errorMessage)
-      throw new Error(errorMessage)
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, message)
+      throw new Error(message)
     }
 
     const blob = await response.blob()
