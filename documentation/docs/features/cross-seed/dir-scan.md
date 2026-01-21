@@ -162,10 +162,22 @@ Open **Dir Scan > Settings**:
 | Match Mode | `Strict` matches by filename + size. `Flexible` matches by size only. |
 | Size Tolerance (%) | Allows small size differences when matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
+| Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
+
+### "Max searchees per run" explained
+
+This setting limits how many **top-level folders/files** Dir Scan will process in a single run.
+
+- If your directory is a TV root like `/mnt/storage/media/tv`, then each **show folder** is one searchee (for example `Show.Name/`, `Another.Show/`).
+- If your directory is a movies root like `/mnt/storage/media/movies`, then each **movie folder** is one searchee (for example `Movie.Title (2024)/`, `Another.Movie (2023)/`).
+
+So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run (so already-final files won't be reprocessed). See [Incremental progress and resets](#incremental-progress-and-resets).
+
+This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
 
 ## Directories
 
@@ -186,6 +198,12 @@ Each scan directory has its own configuration:
 ### Concurrent scans
 
 Only one scan runs per directory at a time. If a scheduled scan triggers while another scan is running, it will not start a second run for that directory.
+
+### Incremental progress and resets
+
+Dir Scan persists per-file progress and skips unchanged searchees whose files are already in a final state (matched/no match/already seeding/in qBittorrent). This makes scans resumable across restarts.
+
+If you want to force a directory to be re-processed from scratch, use **Reset Scan Progress** for that directory in the UI. This clears the tracked file state for that directory.
 
 ### Scheduled vs manual scans
 
