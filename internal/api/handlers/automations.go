@@ -22,18 +22,20 @@ import (
 )
 
 type AutomationHandler struct {
-	store         *models.AutomationStore
-	activityStore *models.AutomationActivityStore
-	instanceStore *models.InstanceStore
-	service       *automations.Service
+	store                *models.AutomationStore
+	activityStore        *models.AutomationActivityStore
+	instanceStore        *models.InstanceStore
+	externalProgramStore *models.ExternalProgramStore
+	service              *automations.Service
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
 	return &AutomationHandler{
-		store:         store,
-		activityStore: activityStore,
-		instanceStore: instanceStore,
-		service:       service,
+		store:                store,
+		activityStore:        activityStore,
+		instanceStore:        instanceStore,
+		externalProgramStore: externalProgramStore,
+		service:              service,
 	}
 }
 
@@ -353,6 +355,21 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	// Validate ExternalProgram action has a valid programId when enabled
 	if err := payload.Conditions.ExternalProgram.Validate(); err != nil {
 		return http.StatusBadRequest, "External program action requires a valid program selection", err
+	}
+
+	// Verify the referenced external program exists
+	if payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled && payload.Conditions.ExternalProgram.ProgramID > 0 {
+		if h.externalProgramStore == nil {
+			log.Warn().Msg("automations: external program store is nil, skipping program existence check")
+			return http.StatusServiceUnavailable, "External program service not available", errors.New("external program store is nil")
+		}
+		_, err := h.externalProgramStore.GetByID(ctx, payload.Conditions.ExternalProgram.ProgramID)
+		if err != nil {
+			if errors.Is(err, models.ErrExternalProgramNotFound) {
+				return http.StatusBadRequest, "Referenced external program does not exist", err
+			}
+			return http.StatusInternalServerError, "Failed to verify external program", err
+		}
 	}
 
 	return 0, "", nil

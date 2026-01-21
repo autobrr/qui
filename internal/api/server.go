@@ -248,7 +248,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// Global middleware
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
-	//r.Use(middleware.Logger(s.logger))
+	// r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 
@@ -298,7 +298,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
-	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.automationService)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
@@ -581,7 +581,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Route("/torrents", func(r chi.Router) {
 				r.Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
 			})
-
 		})
 	})
 

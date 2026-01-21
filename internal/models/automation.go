@@ -385,12 +385,12 @@ type AutomationReference struct {
 
 // FindByExternalProgramID returns automations that reference the given external program ID.
 // Uses SQLite's json_extract to query the conditions JSON column.
+// Returns all automations referencing the program, regardless of whether the action is enabled.
 func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID int) ([]*AutomationReference, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, name
 		FROM automations
-		WHERE json_extract(conditions, '$.externalProgram.enabled') = 1
-		  AND json_extract(conditions, '$.externalProgram.programId') = ?
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
 	`, programID)
 	if err != nil {
 		return nil, err
