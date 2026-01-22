@@ -411,7 +411,7 @@ export function useCrossSeedSearch(instanceId: number) {
         const instanceResults = result.instanceResults ?? []
         if (instanceResults.length > 0) {
           for (const ir of instanceResults) {
-            if (ir.status === "added") {
+            if (ir.status === "added" || ir.status === "added_hardlink" || ir.status === "added_reflink") {
               addedCount++
             } else if (!ir.success) {
               failedCount++
