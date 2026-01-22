@@ -224,3 +224,186 @@ func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
 	require.True(t, selectedCalled.Load(), "expected instance transport to be used")
 	require.NoError(t, resp.Body.Close())
 }
+
+func TestInjectBaseTag(t *testing.T) {
+	tests := []struct {
+		name     string
+		html     string
+		baseURL  string
+		expected string
+	}{
+		{
+			name:     "basic HTML with head tag",
+			html:     "<html><head><title>Test</title></head><body></body></html>",
+			baseURL:  "/proxy/abc123/",
+			expected: "<html><head><base href=\"/proxy/abc123/\"><title>Test</title></head><body></body></html>",
+		},
+		{
+			name:     "HTML with existing base tag",
+			html:     "<html><head><base href=\"/other/\"><title>Test</title></head><body></body></html>",
+			baseURL:  "/proxy/abc123/",
+			expected: "<html><head><base href=\"/other/\"><title>Test</title></head><body></body></html>", // Should not inject
+		},
+		{
+			name:     "HTML without head tag",
+			html:     "<html><body>No head tag</body></html>",
+			baseURL:  "/proxy/abc123/",
+			expected: "<html><body>No head tag</body></html>", // Should not inject
+		},
+		{
+			name:     "HTML with head attributes",
+			html:     "<html><head lang=\"en\"><title>Test</title></head><body></body></html>",
+			baseURL:  "/proxy/def456/",
+			expected: "<html><head lang=\"en\"><base href=\"/proxy/def456/\"><title>Test</title></head><body></body></html>",
+		},
+		{
+			name:     "HTML with uppercase HEAD tag",
+			html:     "<html><HEAD><title>Test</title></HEAD><body></body></html>",
+			baseURL:  "/proxy/xyz789/",
+			expected: "<html><HEAD><base href=\"/proxy/xyz789/\"><title>Test</title></HEAD><body></body></html>",
+		},
+		{
+			name:     "HTML with mixed case head tag",
+			html:     "<html><Head><title>Test</title></Head><body></body></html>",
+			baseURL:  "/qui/proxy/test123/",
+			expected: "<html><Head><base href=\"/qui/proxy/test123/\"><title>Test</title></Head><body></body></html>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := injectBaseTag([]byte(tt.html), tt.baseURL)
+			require.Equal(t, tt.expected, string(result))
+		})
+	}
+}
+
+func TestModifyResponse_HTMLContent(t *testing.T) {
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	require.NotNil(t, handler)
+
+	tests := []struct {
+		name            string
+		contentType     string
+		body            string
+		apiKey          string
+		expectModified  bool
+		expectedBaseURL string
+	}{
+		{
+			name:            "HTML response with text/html content type",
+			contentType:     "text/html",
+			body:            "<html><head><title>Test</title></head><body></body></html>",
+			apiKey:          "abc123",
+			expectModified:  true,
+			expectedBaseURL: "/proxy/abc123/",
+		},
+		{
+			name:            "HTML response with text/html; charset=utf-8",
+			contentType:     "text/html; charset=utf-8",
+			body:            "<html><head><title>Test</title></head><body></body></html>",
+			apiKey:          "def456",
+			expectModified:  true,
+			expectedBaseURL: "/proxy/def456/",
+		},
+		{
+			name:           "JSON response should not be modified",
+			contentType:    "application/json",
+			body:           `{"status":"ok"}`,
+			apiKey:         "abc123",
+			expectModified: false,
+		},
+		{
+			name:           "JavaScript response should not be modified",
+			contentType:    "application/javascript",
+			body:           "console.log('test');",
+			apiKey:         "abc123",
+			expectModified: false,
+		},
+		{
+			name:           "CSS response should not be modified",
+			contentType:    "text/css",
+			body:           "body { margin: 0; }",
+			apiKey:         "abc123",
+			expectModified: false,
+		},
+		{
+			name:           "Image response should not be modified",
+			contentType:    "image/png",
+			body:           "binary data",
+			apiKey:         "abc123",
+			expectModified: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock response
+			resp := &http.Response{
+				StatusCode:    http.StatusOK,
+				Body:          io.NopCloser(strings.NewReader(tt.body)),
+				Header:        make(http.Header),
+				ContentLength: int64(len(tt.body)),
+			}
+			resp.Header.Set("Content-Type", tt.contentType)
+
+			// Create a mock request with API key in route context
+			req := httptest.NewRequest("GET", "/proxy/"+tt.apiKey+"/", nil)
+			routeCtx := chi.NewRouteContext()
+			routeCtx.URLParams.Add("api-key", tt.apiKey)
+			ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)
+			req = req.WithContext(ctx)
+			resp.Request = req
+
+			// Modify the response
+			err := handler.modifyResponse(resp)
+			require.NoError(t, err)
+
+			// Read the modified body
+			bodyBytes, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			if tt.expectModified {
+				// Should contain the base tag
+				require.Contains(t, string(bodyBytes), "<base href=\""+tt.expectedBaseURL+"\">")
+			} else {
+				// Should be unchanged
+				require.Equal(t, tt.body, string(bodyBytes))
+			}
+		})
+	}
+}
+
+func TestModifyResponse_WithCustomBasePath(t *testing.T) {
+	// Test with a custom base path like /qui/
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/qui/")
+	require.NotNil(t, handler)
+
+	body := "<html><head><title>Test</title></head><body></body></html>"
+	apiKey := "test123"
+
+	resp := &http.Response{
+		StatusCode:    http.StatusOK,
+		Body:          io.NopCloser(strings.NewReader(body)),
+		Header:        make(http.Header),
+		ContentLength: int64(len(body)),
+	}
+	resp.Header.Set("Content-Type", "text/html")
+
+	req := httptest.NewRequest("GET", "/qui/proxy/"+apiKey+"/", nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("api-key", apiKey)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)
+	req = req.WithContext(ctx)
+	resp.Request = req
+
+	err := handler.modifyResponse(resp)
+	require.NoError(t, err)
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	// Should contain the base tag with the custom base path
+	require.Contains(t, string(bodyBytes), "<base href=\"/qui/proxy/test123/\">")
+}
+
