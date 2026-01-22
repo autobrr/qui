@@ -740,6 +740,29 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	if req.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(req.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		// No double slashes allowed
+		if strings.Contains(req.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if req.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if req.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
 	// Validate mutual exclusivity: category modes are mutually exclusive
 	enabledModes := 0
 	if req.UseCategoryFromIndexer {
@@ -843,6 +866,29 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
+
+	if merged.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(merged.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		// No double slashes allowed
+		if strings.Contains(merged.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if merged.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if merged.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
 
 	// Validate mutual exclusivity: category modes are mutually exclusive
 	enabledModes := 0
