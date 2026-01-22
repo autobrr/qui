@@ -258,7 +258,7 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 		settings.CategoryAffixMode = *patch.CategoryAffixMode
 	}
 	if patch.CategoryAffix != nil {
-		settings.CategoryAffix = *patch.CategoryAffix
+		settings.CategoryAffix = strings.TrimSpace(*patch.CategoryAffix)
 	}
 	if patch.UseCustomCategory != nil {
 		settings.UseCustomCategory = *patch.UseCustomCategory
@@ -739,6 +739,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
 		return
 	}
+
+	req.CategoryAffix = strings.TrimSpace(req.CategoryAffix)
 
 	if req.CategoryAffix != "" {
 		// No backslashes allowed
