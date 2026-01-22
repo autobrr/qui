@@ -255,3 +255,35 @@ export const SPEED_UNITS = [
   { value: 1024, label: "KiB/s" },
   { value: 1024 * 1024, label: "MiB/s" },
 ];
+
+// Capability types for disabling fields/states in query builder
+export type CapabilityKey = "trackerHealth" | "localFilesystemAccess"
+
+export type Capabilities = Record<CapabilityKey, boolean>
+
+export interface DisabledField {
+  field: string
+  reason: string
+}
+
+export interface DisabledStateValue {
+  value: string
+  reason: string
+}
+
+// Capability requirements for disabling fields/states in query builder
+export const CAPABILITY_REASONS = {
+  trackerHealth: "Requires qBittorrent 5.1+",
+  localFilesystemAccess: "Requires Local Filesystem Access",
+} as const;
+
+export const FIELD_REQUIREMENTS = {
+  IS_UNREGISTERED: "trackerHealth",
+  HAS_MISSING_FILES: "localFilesystemAccess",
+  HARDLINK_SCOPE: "localFilesystemAccess",
+} as const;
+
+export const STATE_VALUE_REQUIREMENTS = {
+  tracker_down: "trackerHealth",
+} as const;
+
