@@ -735,8 +735,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	}
 
 	// Validate categoryAffixMode if provided OR if UseCrossCategoryAffix is enabled
-	if (req.CategoryAffixMode != "" || req.UseCrossCategoryAffix) {
-		if (req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix) {
+	if req.CategoryAffixMode != "" || req.UseCrossCategoryAffix {
+		if req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
 			RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
 			return
 		}
