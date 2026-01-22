@@ -59,6 +59,7 @@ docs/*
 .mcp_unused.json
 config.toml
 .env
+.envrc
 .mcp.json
 components.json
 .cache/
@@ -70,3 +71,7 @@ backups/*
 .golangci-cache/*
 torrentfiles/*
 analyses/*
+
+# Local reference dumps
+dodopayments.txt
+polar.txt

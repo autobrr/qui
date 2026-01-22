@@ -27,13 +27,15 @@ func NewLicenseRepo(db *DB) *LicenseRepo {
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name,  status, activated_at, expires_at, 
-		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
+		       last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
 		FROM licenses 
 		WHERE license_key = ?
 	`
 
 	license := &models.ProductLicense{}
 	var activationId sql.Null[string]
+	var provider sql.Null[string]
+	var dodoInstanceID sql.Null[string]
 
 	err := r.db.QueryRowContext(ctx, query, licenseKey).Scan(
 		&license.ID,
@@ -43,6 +45,8 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 		&license.ActivatedAt,
 		&license.ExpiresAt,
 		&license.LastValidated,
+		&provider,
+		&dodoInstanceID,
 		&license.PolarCustomerID,
 		&license.PolarProductID,
 		&activationId,
@@ -58,6 +62,8 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 		return nil, err
 	}
 
+	license.Provider = provider.V
+	license.DodoInstanceID = dodoInstanceID.V
 	license.PolarActivationID = activationId.V
 
 	return license, nil
@@ -67,7 +73,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name, status, activated_at, expires_at, 
-		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
+		       last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
 		FROM licenses 
 		ORDER BY created_at DESC
 	`
@@ -83,6 +89,8 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 		license := &models.ProductLicense{}
 
 		var activationId sql.Null[string]
+		var provider sql.Null[string]
+		var dodoInstanceID sql.Null[string]
 
 		err := rows.Scan(
 			&license.ID,
@@ -92,6 +100,8 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 			&license.ActivatedAt,
 			&license.ExpiresAt,
 			&license.LastValidated,
+			&provider,
+			&dodoInstanceID,
 			&license.PolarCustomerID,
 			&license.PolarProductID,
 			&activationId,
@@ -103,6 +113,8 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 			return nil, err
 		}
 
+		license.Provider = provider.V
+		license.DodoInstanceID = dodoInstanceID.V
 		license.PolarActivationID = activationId.V
 
 		licenses = append(licenses, license)
@@ -178,8 +190,8 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 
 	query := `
 		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at, 
-		                           last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                           last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = tx.ExecContext(ctx, query,
@@ -189,6 +201,8 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 		license.ActivatedAt,
 		timeToNullTime(license.ExpiresAt),
 		license.LastValidated,
+		stringToNullString(license.Provider),
+		stringToNullString(license.DodoInstanceID),
 		license.PolarCustomerID,
 		license.PolarProductID,
 		license.PolarActivationID,
@@ -268,12 +282,14 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 
 	query := `
 		UPDATE licenses
-		SET polar_activation_id = ?, polar_customer_id = ?, polar_product_id = ?,
+		SET provider = ?, dodo_instance_id = ?, polar_activation_id = ?, polar_customer_id = ?, polar_product_id = ?,
 		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?
 		WHERE id = ?
 	`
 
 	_, err = tx.ExecContext(ctx, query,
+		stringToNullString(license.Provider),
+		stringToNullString(license.DodoInstanceID),
 		license.PolarActivationID,
 		license.PolarCustomerID,
 		license.PolarProductID,
@@ -296,11 +312,48 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 	return nil
 }
 
+func (r *LicenseRepo) UpdateLicenseProvider(ctx context.Context, licenseID int, provider, dodoInstanceID string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := `
+		UPDATE licenses
+		SET provider = ?, dodo_instance_id = ?, updated_at = ?
+		WHERE id = ?
+	`
+
+	_, err = tx.ExecContext(ctx, query,
+		stringToNullString(provider),
+		stringToNullString(dodoInstanceID),
+		time.Now(),
+		licenseID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 func timeToNullTime(t *time.Time) sql.NullTime {
 	if t == nil {
 		return sql.NullTime{Valid: false}
 	}
 	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func stringToNullString(value string) sql.Null[string] {
+	if value == "" {
+		return sql.Null[string]{Valid: false}
+	}
+	return sql.Null[string]{V: value, Valid: true}
 }
 
 // Helper function to mask license keys in logs

@@ -5,7 +5,6 @@
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -24,15 +23,14 @@ import {
   useLicenseDetails
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
-import { PGP_KEYS } from "@/lib/pgp-keys"
-import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
-import { QUI_DISCORD_URL, SUPPORT_CRYPTOCURRENCY_URL, SUPPORT_DEVELOPMENT_URL } from "@/lib/support-constants"
+import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
-import { DiscordIcon, PolarIcon } from "@/components/icons"
-import { AlertTriangle, Bitcoin, ChevronDown, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { DODO_CHECKOUT_URL, DODO_PORTAL_URL } from "@/lib/dodo-constants"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -53,6 +51,10 @@ export function LicenseManager() {
   const activateLicense = useActivateLicense()
   // const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteLicense()
+  const primaryLicense = licenses?.[0]
+  const provider = primaryLicense?.provider ?? "dodo"
+  const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
+  const portalLabel = provider === "polar" ? "Polar portal" : "Dodo portal"
 
   // Check if we have an invalid license (exists but not active)
   const hasInvalidLicense = licenses && licenses.length > 0 && licenses[0].status !== "active"
@@ -145,16 +147,16 @@ export function LicenseManager() {
                   </p>
                   {!hasPremiumAccess && !hasInvalidLicense && (
                     <p className="text-xs text-muted-foreground">
-                      Pay via any method, then DM soup/ze0s on{" "}
+                      Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the{" "}
                       <a
-                        href={QUI_DISCORD_URL}
+                        href={DODO_PORTAL_URL}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline hover:no-underline"
                       >
-                        Discord
-                      </a>{" "}
-                      to receive a 100% discount code. Redeem it as a free order on Polar and enter your license key here.
+                        Dodo portal
+                      </a>
+                      .
                     </p>
                   )}
 
@@ -171,17 +173,23 @@ export function LicenseManager() {
                         <div className="space-y-2">
                           <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
                             <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                            <span>License validation failed. This may occur if the license was activated on another machine or if the database was copied. To deactivate on another machine, visit{" "}
-                              <a
-                                href={POLAR_PORTAL_URL}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline hover:no-underline inline-flex items-center gap-0.5"
-                              >
-                                {POLAR_PORTAL_URL.replace("https://", "")}
-                                <ExternalLink className="h-2.5 w-2.5" />
-                              </a>
-                            </span>
+                            {provider === "polar" ? (
+                              <span>
+                                This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via{" "}
+                                <a
+                                  href={portalUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline hover:no-underline inline-flex items-center gap-0.5"
+                                >
+                                  {portalUrl.replace("https://", "")}
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                                .
+                              </span>
+                            ) : (
+                              <span>This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active.</span>
+                            )}
                           </div>
                           <Button
                             size="sm"
@@ -207,15 +215,17 @@ export function LicenseManager() {
 
               <div className="flex gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
                 {licenses && licenses.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteLicense(licenses[0].licenseKey)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Remove
-                  </Button>
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteLicense(licenses[0].licenseKey)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Remove
+                    </Button>
+                  </>
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
@@ -234,16 +244,16 @@ export function LicenseManager() {
       <Dialog open={!!selectedLicenseKey} onOpenChange={(open) => !open && setSelectedLicenseKey(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Release License Key</DialogTitle>
+            <DialogTitle>Remove license?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove this license? You will lose access to all premium themes and the license can be used elsewhere.
+              Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.
             </DialogDescription>
           </DialogHeader>
 
           {selectedLicenseKey && (
             <div className="my-4 space-y-3">
               <div>
-                <Label className="text-sm font-medium">License Key to Release:</Label>
+                <Label className="text-sm font-medium">License Key to Remove:</Label>
                 <div className="mt-2 p-3 bg-muted rounded-lg font-mono text-sm break-all">
                   {selectedLicenseKey}
                 </div>
@@ -269,12 +279,12 @@ export function LicenseManager() {
               <div className="text-sm text-muted-foreground">
                 If needed, you can recover it later from your{" "}
                 <a
-                  href={POLAR_PORTAL_URL}
+                  href={portalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
                 >
-                  Polar portal
+                  {portalLabel}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
@@ -290,7 +300,7 @@ export function LicenseManager() {
               onClick={confirmDeleteLicense}
               disabled={deleteLicense.isPending}
             >
-              {deleteLicense.isPending ? "Releasing..." : "Release License"}
+              {deleteLicense.isPending ? "Removing..." : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -346,10 +356,18 @@ export function LicenseManager() {
 
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
-                <a href={POLAR_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                   Recover key?
                 </a>
               </Button>
+              <a
+                href={POLAR_PORTAL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground hover:underline sm:mr-auto"
+              >
+                Legacy Polar portal
+              </a>
 
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button
@@ -393,23 +411,23 @@ export function LicenseManager() {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Step 1: Payment Methods */}
+            {/* Step 1: Checkout */}
             <div className="rounded-lg border bg-background p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</div>
-                <p className="text-sm font-semibold">Choose a payment method</p>
+                <p className="text-sm font-semibold">Complete checkout</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-8">
                 <a
-                  href={SUPPORT_DEVELOPMENT_URL}
+                  href={DODO_CHECKOUT_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
-                  <Heart className="h-5 w-5 text-pink-500" />
+                  <Sparkles className="h-5 w-5 text-primary" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">GitHub Sponsors & BMAC</p>
-                    <p className="text-xs text-muted-foreground">Card payments</p>
+                    <p className="text-sm font-medium">DodoPayments checkout</p>
+                    <p className="text-xs text-muted-foreground">Card & local methods</p>
                   </div>
                   <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
@@ -422,68 +440,36 @@ export function LicenseManager() {
                   <Bitcoin className="h-5 w-5 text-orange-500" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Cryptocurrency</p>
-                    <p className="text-xs text-muted-foreground">BTC, ETH, XMR, and more</p>
+                    <p className="text-xs text-muted-foreground">BTC, ETH, XMR, and more (manual)</p>
                   </div>
                   <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
               </div>
             </div>
 
-            {/* Step 2: Discord DM */}
+            {/* Step 2: Find license key */}
             <div className="rounded-lg border bg-background p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">2</div>
-                <p className="text-sm font-semibold">Get your discount code</p>
+                <p className="text-sm font-semibold">Find your license key</p>
               </div>
               <div className="pl-8 space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  DM <span className="font-medium text-foreground">soup</span> or <span className="font-medium text-foreground">ze0s</span> on Discord (depending on who you paid) with your transaction hash or receipt.
+                  Your license key is shown after checkout. You can also recover it later from the Dodo customer portal.
                 </p>
-                <Collapsible>
-                  <p className="text-sm text-muted-foreground">
-                    Alternatively, email <a href="mailto:s0up4200@pm.me" className="font-medium text-foreground hover:underline">s0up4200@pm.me</a>
-                    <CollapsibleTrigger className="ml-1 inline-flex items-center text-xs text-muted-foreground hover:text-foreground">
-                      (PGP key <ChevronDown className="h-3 w-3" />)
-                    </CollapsibleTrigger>
-                  </p>
-                  <CollapsibleContent>
-                    <pre className="mt-2 p-2 bg-muted rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all font-mono">
-                      {PGP_KEYS.soup}
-                    </pre>
-                  </CollapsibleContent>
-                </Collapsible>
                 <Button size="sm" variant="outline" asChild>
-                  <a href={QUI_DISCORD_URL} target="_blank" rel="noopener noreferrer">
-                    <DiscordIcon className="h-4 w-4 mr-2" />
-                    Join Discord
+                  <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open Dodo portal
                   </a>
                 </Button>
               </div>
             </div>
 
-            {/* Step 3: Redeem on Polar */}
-            <div className="rounded-lg border bg-background p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>
-                <p className="text-sm font-semibold">Redeem your code</p>
-              </div>
-              <div className="pl-8 space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Use your 100% discount code on Polar to complete a free order and receive your license key.
-                </p>
-                <Button size="sm" variant="outline" asChild>
-                  <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
-                    <PolarIcon className="h-4 w-4 mr-2" />
-                    Redeem on Polar
-                  </a>
-                </Button>
-              </div>
-            </div>
-
-            {/* Step 4: Enter License */}
+            {/* Step 3: Enter License */}
             <div className="rounded-lg border bg-background p-4">
               <div className="flex items-center gap-2">
-                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">4</div>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>
                 <p className="text-sm font-semibold">Activate your license</p>
               </div>
               <p className="text-sm text-muted-foreground pl-8 mt-2">

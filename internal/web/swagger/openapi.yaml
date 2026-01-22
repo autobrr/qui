@@ -2448,6 +2448,8 @@ paths:
                       type: string
                     status:
                       type: string
+                    provider:
+                      type: string
                     createdAt:
                       type: string
                       format: date-time
