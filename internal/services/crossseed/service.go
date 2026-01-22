@@ -4066,12 +4066,12 @@ func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
 		return 3
-	case "partial-in-pack":
+	case "partial-in-pack", "partial-contains":
 		return 2
 	case "size":
 		return 1
 	default:
-		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
+		// Unknown/unsupported match types (e.g. "release-match")
 		// intentionally receive priority 0 so callers treat them as unusable unless
 		// explicitly handled above. Add new match types here when they become valid.
 		return 0
