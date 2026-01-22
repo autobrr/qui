@@ -21,6 +21,12 @@ Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy
 - Hardlink base directory must be on the **same filesystem/volume** as the instance's download paths (hardlinks can't cross filesystems).
 - qui must be able to read the instance's content paths and write to the hardlink base directory.
 
+:::tip Multi-filesystem setups
+If your downloads span multiple filesystems (e.g., `/mnt/disk1`, `/mnt/disk2`), you can specify **multiple base directories** separated by commas. qui will automatically select the first directory that's on the same filesystem as the source files.
+
+Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
+:::
+
 <LocalFilesystemDocker />
 
 ## Behavior
@@ -34,7 +40,7 @@ Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy
 
 Configure in Cross-Seed → Hardlink Mode → (select instance):
 
-- **Hardlink base directory**: path on the qui host where hardlink trees are created.
+- **Hardlink base directory**: Path(s) on the qui host where hardlink trees are created. For multi-filesystem setups, specify multiple paths separated by commas (e.g., `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
 - **Directory preset**:
   - `flat`: `base/TorrentName--shortHash/...`
   - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
@@ -56,7 +62,9 @@ For the `flat` preset, an isolation folder is always used to keep each torrent's
 1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
 2. In Cross-Seed → Hardlink Mode, expand the instance you want to configure.
 3. Enable "Hardlink mode" for that instance.
-4. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
+4. Set "Hardlink base directory":
+   - Single filesystem: `/mnt/data/cross-seed`
+   - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
 6. Optionally enable "Fallback to regular mode" if you want failed hardlinks to use regular cross-seed mode instead of failing.
 
@@ -85,7 +93,7 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
 ### Reflink Requirements
 
 - **Local filesystem access** must be enabled on the target qBittorrent instance.
-- The base directory must be on the **same filesystem/volume** as the instance's download paths.
+- The base directory must be on the **same filesystem/volume** as the instance's download paths. For multi-filesystem setups, specify multiple paths separated by commas.
 - The base directory must be a **real filesystem mount**, not a pooled/virtual mount (common examples: `mergerfs`, other FUSE mounts, `overlayfs`).
 - The filesystem must support reflinks:
   - **Linux**: BTRFS, XFS (with reflink=1), and similar CoW filesystems
@@ -116,7 +124,9 @@ Reflinks use copy-on-write semantics:
 1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
 2. In Cross-Seed > Hardlink / Reflink Mode, expand the instance you want to configure.
 3. Enable "Reflink mode" for that instance.
-4. Set "Base directory" to a path on the same filesystem as your downloads.
+4. Set "Base directory":
+   - Single filesystem: `/mnt/data/cross-seed`
+   - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`
 5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
 6. Optionally enable "Fallback to regular mode" if you want failed reflinks to use regular cross-seed mode instead of failing.
 
