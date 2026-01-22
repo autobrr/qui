@@ -71,11 +71,14 @@ export function useInstancePreferences(instanceId: number | undefined, options: 
     },
   })
 
+  type UpdatePreferencesOptions = Parameters<typeof updateMutation.mutate>[1]
+
   return {
     preferences,
     isLoading,
     error,
-    updatePreferences: updateMutation.mutate,
+    updatePreferences: (updatedPreferences: Partial<AppPreferences>, options?: UpdatePreferencesOptions) =>
+      updateMutation.mutate(updatedPreferences, options),
     isUpdating: updateMutation.isPending,
   }
 }

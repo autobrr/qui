@@ -17,6 +17,7 @@ import {
   Pause,
   Play,
   Plus,
+  RotateCcw,
   Settings2,
   Trash2,
   XCircle
@@ -85,6 +86,7 @@ import {
   useDirScanRuns,
   useDirScanSettings,
   useDirScanStatus,
+  useResetDirScanFiles,
   useTriggerDirScan,
   useUpdateDirScanDirectory,
   useUpdateDirScanSettings
@@ -613,7 +615,21 @@ function RunRow({
 
 function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: DirectoryDetailsProps) {
   const { data: runs = [], isLoading } = useDirScanRuns(directoryId, { limit: 10 })
+  const resetFiles = useResetDirScanFiles(directoryId)
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null)
+  const [showResetDialog, setShowResetDialog] = useState(false)
+
+  const handleReset = useCallback(() => {
+    resetFiles.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("Scan progress reset")
+        setShowResetDialog(false)
+      },
+      onError: (error) => {
+        toast.error(`Failed to reset scan progress: ${error.message}`)
+      },
+    })
+  }, [resetFiles])
 
   if (isLoading) {
     return (
@@ -627,9 +643,24 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Recent Scan Runs</CardTitle>
-        <CardDescription>History of recent scans for this directory.</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div>
+          <CardTitle>Recent Scan Runs</CardTitle>
+          <CardDescription>History of recent scans for this directory.</CardDescription>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowResetDialog(true)}
+          disabled={resetFiles.isPending}
+        >
+          {resetFiles.isPending ? (
+            <Loader2 className="size-4 mr-2 animate-spin" />
+          ) : (
+            <RotateCcw className="size-4 mr-2" />
+          )}
+          Reset Scan Progress
+        </Button>
       </CardHeader>
       <CardContent>
         {runs.length === 0 ? (
@@ -664,6 +695,35 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
           </Table>
         )}
       </CardContent>
+
+      <AlertDialog
+        open={showResetDialog}
+        onOpenChange={(open) => {
+          if (resetFiles.isPending) return
+          setShowResetDialog(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset scan progress?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes tracked dir-scan file state for this directory. The next scan will
+              re-process searchees from the beginning.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetFiles.isPending}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={handleReset}
+              disabled={resetFiles.isPending}
+            >
+              {resetFiles.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
+              Reset
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }
@@ -681,6 +741,7 @@ function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
     matchMode: (settings?.matchMode ?? "strict") as DirScanMatchMode,
     sizeTolerancePercent: settings?.sizeTolerancePercent ?? 2,
     minPieceRatio: settings?.minPieceRatio ?? 98,
+    maxSearcheesPerRun: settings?.maxSearcheesPerRun ?? 0,
     allowPartial: settings?.allowPartial ?? false,
     skipPieceBoundarySafetyCheck: settings?.skipPieceBoundarySafetyCheck ?? true,
     startPaused: settings?.startPaused ?? false,
@@ -853,6 +914,29 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
             />
             <p className="text-xs text-muted-foreground">
               Only used for partial matches. Requires at least this % of the torrent’s data to already be on disk.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="max-searchees-per-run">Max searchees per run</Label>
+            <Input
+              id="max-searchees-per-run"
+              type="number"
+              min={0}
+              step={1}
+              value={form.maxSearcheesPerRun}
+              onChange={(e) =>
+                setForm((prev) => {
+                  const parsed = Number.parseInt(e.target.value, 10)
+                  return {
+                    ...prev,
+                    maxSearcheesPerRun: Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
+                  }
+                })
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              0 = unlimited. Useful for making progress across restarts.
             </p>
           </div>
 

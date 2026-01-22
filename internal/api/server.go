@@ -301,6 +301,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
 	}
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
+	rssHandler := handlers.NewRSSHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
@@ -497,6 +499,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						})
 					})
 
+					// RSS management
+					r.Route("/rss", func(r chi.Router) {
+						rssHandler.Routes(r)
+						r.Get("/events", rssSSEHandler.HandleSSE)
+					})
+
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
@@ -553,6 +561,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Get("/", dirScanHandler.GetDirectory)
 							r.Patch("/", dirScanHandler.UpdateDirectory)
 							r.Delete("/", dirScanHandler.DeleteDirectory)
+							r.Post("/reset-files", dirScanHandler.ResetFiles)
 							r.Post("/scan", dirScanHandler.TriggerScan)
 							r.Delete("/scan", dirScanHandler.CancelScan)
 							r.Get("/status", dirScanHandler.GetStatus)

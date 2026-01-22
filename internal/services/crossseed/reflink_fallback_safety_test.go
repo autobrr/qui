@@ -185,7 +185,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 		SizeMismatchTolerancePercent: 5.0, // allow the initial "size match" candidate selection
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "rejected", result.Status)
 	require.Contains(t, result.Message, "Content file sizes do not match")
