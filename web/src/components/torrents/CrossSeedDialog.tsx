@@ -545,6 +545,10 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
   switch (status) {
     case "added":
       return { text: "Added", variant: "success" }
+    case "added_hardlink":
+      return { text: "Added (hardlink)", variant: "success" }
+    case "added_reflink":
+      return { text: "Added (reflink)", variant: "success" }
     case "exists":
       return { text: "Already exists", variant: "warning" }
     case "no_match":
