@@ -13,7 +13,7 @@ import { DEFAULT_REANNOUNCE_SETTINGS, instanceUrlSchema } from "@/lib/instance-v
 import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 interface InstanceSettingsPanelProps {
@@ -98,6 +98,27 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
       handleSubmit(value)
     },
   })
+
+  // Reset form when instance changes
+  const prevInstanceId = useRef(instance?.id)
+  useEffect(() => {
+    if (prevInstanceId.current !== instance?.id) {
+      prevInstanceId.current = instance?.id
+      form.reset({
+        name: instance?.name ?? "",
+        host: instance?.host ?? "http://localhost:8080",
+        username: instance?.username ?? "",
+        password: "",
+        basicUsername: instance?.basicUsername ?? "",
+        basicPassword: instance?.basicUsername ? "<redacted>" : "",
+        tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+        hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
+        reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
+      })
+      setShowBasicAuth(!!instance?.basicUsername)
+      setUseCredentials(instance?.username !== "")
+    }
+  }, [instance, form])
 
   return (
     <div className="space-y-6">

@@ -442,6 +442,13 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const editingInstance = instances?.find(instance => instance.id === editingInstanceId)
 
+  // Close edit dialog if instance was deleted
+  useEffect(() => {
+    if (editingInstanceId !== null && !editingInstance && !isLoading) {
+      setEditingInstanceId(null)
+    }
+  }, [editingInstanceId, editingInstance, isLoading])
+
   const handleOpenAddDialog = () => {
     onSearchChange({ ...search, tab: "instances", modal: "add-instance" })
   }

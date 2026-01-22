@@ -12,8 +12,6 @@ import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
 
-let switchIdCounter = 0
-
 function SwitchSetting({
   label,
   checked,
@@ -25,7 +23,7 @@ function SwitchSetting({
   onCheckedChange: (checked: boolean) => void
   description?: string
 }) {
-  const [switchId] = React.useState(() => `queue-switch-${++switchIdCounter}`)
+  const switchId = React.useId()
   const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
@@ -87,10 +85,18 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
     }
   }, [preferences, form])
 
-  if (isLoading || !preferences) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading queue settings...</p>
+      </div>
+    )
+  }
+
+  if (!preferences) {
+    return (
+      <div className="flex items-center justify-center py-8" role="alert">
+        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
   }

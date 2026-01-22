@@ -26,8 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useInstances } from "@/hooks/useInstances"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { Instance } from "@/types"
-import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
-import { lazy, Suspense, useState } from "react"
+import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, RefreshCw, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
+import { Component, lazy, Suspense, useState, type ErrorInfo, type ReactNode } from "react"
 
 import { toast } from "sonner"
 
@@ -49,6 +49,55 @@ function TabLoadingFallback() {
       <div className="text-sm text-muted-foreground">Loading...</div>
     </div>
   )
+}
+
+/** Error fallback for lazy-loaded tab content */
+function TabErrorFallback({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 gap-4" role="alert">
+      <p className="text-sm text-muted-foreground">Failed to load settings. Please try again.</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RefreshCw className="mr-2 h-4 w-4" />
+        Retry
+      </Button>
+    </div>
+  )
+}
+
+/** Error boundary for lazy-loaded tab content */
+interface TabErrorBoundaryProps {
+  children: ReactNode
+}
+
+interface TabErrorBoundaryState {
+  hasError: boolean
+}
+
+class TabErrorBoundary extends Component<TabErrorBoundaryProps, TabErrorBoundaryState> {
+  constructor(props: TabErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(): TabErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Tab content failed to load:", error, errorInfo)
+  }
+
+  handleRetry = () => {
+    this.setState({ hasError: false })
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <TabErrorFallback onRetry={this.handleRetry} />
+    }
+
+    return this.props.children
+  }
 }
 
 interface InstancePreferencesDialogProps {
@@ -241,9 +290,11 @@ export function InstancePreferencesDialog({
                   Configure download and upload speed limits
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
             <TabsContent value="queue" className="mt-6">
@@ -253,9 +304,11 @@ export function InstancePreferencesDialog({
                   Configure torrent queue settings and active torrent limits
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
             <TabsContent value="files" className="mt-6">
@@ -265,9 +318,11 @@ export function InstancePreferencesDialog({
                   Configure file paths and torrent management settings
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
             <TabsContent value="seeding" className="mt-6">
@@ -277,9 +332,11 @@ export function InstancePreferencesDialog({
                   Configure share ratio and seeding time limits
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
             <TabsContent value="connection" className="mt-6">
@@ -289,9 +346,11 @@ export function InstancePreferencesDialog({
                   Configure listening port, protocol settings, and connection limits
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
             <TabsContent value="discovery" className="mt-6">
@@ -301,9 +360,11 @@ export function InstancePreferencesDialog({
                   Configure peer discovery protocols and tracker settings
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-6">
@@ -313,9 +374,11 @@ export function InstancePreferencesDialog({
                   Performance tuning, disk I/O, peer management, and security settings
                 </p>
               </div>
-              <Suspense fallback={<TabLoadingFallback />}>
-                <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
-              </Suspense>
+              <TabErrorBoundary>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
 
           </Tabs>

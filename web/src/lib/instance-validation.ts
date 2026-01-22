@@ -45,7 +45,8 @@ export const instanceUrlSchema = z
     const parsed = new URL(url)
     const hostname = parsed.hostname
 
-    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    // Validate each octet is 0-255
+    const isIPv4 = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/.test(hostname)
     // new URL() returns unbracketed IPv6 addresses (e.g., "::1" not "[::1]")
     const isIPv6 = hostname.includes(":") && !isIPv4
 

@@ -47,8 +47,6 @@ interface ConnectionSettingsFormProps {
   onSuccess?: () => void
 }
 
-let switchIdCounter = 0
-
 function SwitchSetting({
   label,
   description,
@@ -60,7 +58,7 @@ function SwitchSetting({
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
-  const [switchId] = React.useState(() => `switch-setting-${++switchIdCounter}`)
+  const switchId = React.useId()
   const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
@@ -84,8 +82,6 @@ function SwitchSetting({
   )
 }
 
-let numberInputIdCounter = 0
-
 function NumberInput({
   label,
   value,
@@ -103,7 +99,7 @@ function NumberInput({
   description?: string
   placeholder?: string
 }) {
-  const [inputId] = React.useState(() => `number-input-${++numberInputIdCounter}`)
+  const inputId = React.useId()
   const descriptionId = description ? `${inputId}-desc` : undefined
 
   return (
@@ -159,7 +155,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        await updatePreferences(value)
         toast.success("Connection settings updated successfully")
         onSuccess?.()
       } catch (error) {
@@ -192,12 +188,13 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       form.setFieldValue("ip_filter_trackers", preferences.ip_filter_trackers)
       form.setFieldValue("banned_IPs", preferences.banned_IPs)
     }
-  }, [preferences, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [preferences])
 
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        Loading connection settings...
+        <p className="text-sm text-muted-foreground">Loading connection settings...</p>
       </div>
     )
   }

@@ -16,7 +16,7 @@ Add and configure qBittorrent instances that qui connects to. Each instance repr
 
 ## Instance Configuration
 
-Click the gear icon next to an instance name, or go to **Settings → Instances** and click **Edit**.
+On the Dashboard, click the gear icon next to an instance name. In **Settings → Instances**, click the three-dot menu and select **Edit**.
 
 ### Connection Settings
 

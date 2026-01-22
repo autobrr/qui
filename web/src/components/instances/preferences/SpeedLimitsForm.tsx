@@ -38,8 +38,6 @@ const dayOptions = [
   { value: 9, label: "Sunday" },
 ]
 
-let speedInputIdCounter = 0
-
 function SpeedLimitInput({
   label,
   value,
@@ -51,7 +49,7 @@ function SpeedLimitInput({
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
 }) {
-  const [inputId] = React.useState(() => `speed-input-${++speedInputIdCounter}`)
+  const inputId = React.useId()
   const [localValue, setLocalValue] = React.useState("")
   const [isFocused, setIsFocused] = React.useState(false)
 
@@ -204,7 +202,8 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       form.setFieldValue("schedule_to_min", memoizedPreferences.schedule_to_min)
       form.setFieldValue("scheduler_days", memoizedPreferences.scheduler_days)
     }
-  }, [memoizedPreferences, form, isFormDirty])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [memoizedPreferences, isFormDirty])
 
   if (isLoading) {
     return (
@@ -231,15 +230,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       className="space-y-6"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <form.Field 
+        <form.Field
           name="dl_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Global download rate limit must be greater than 0 or disabled'
+                return "Global download rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -260,15 +259,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="up_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Global upload rate limit must be greater than 0 or disabled'
+                return "Global upload rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -289,15 +288,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="alt_dl_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Alternative download rate limit must be greater than 0 or disabled'
+                return "Alternative download rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -318,15 +317,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="alt_up_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Alternative upload rate limit must be greater than 0 or disabled'
+                return "Alternative upload rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (

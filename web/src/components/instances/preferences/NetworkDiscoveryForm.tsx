@@ -18,8 +18,6 @@ interface NetworkDiscoveryFormProps {
   onSuccess?: () => void
 }
 
-let switchIdCounter = 0
-
 function SwitchSetting({
   label,
   description,
@@ -31,7 +29,7 @@ function SwitchSetting({
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
-  const [switchId] = React.useState(() => `discovery-switch-${++switchIdCounter}`)
+  const switchId = React.useId()
   const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
@@ -92,12 +90,13 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
       form.setFieldValue("announce_to_all_trackers", preferences.announce_to_all_trackers)
       form.setFieldValue("resolve_peer_countries", preferences.resolve_peer_countries)
     }
-  }, [preferences, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [preferences])
 
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        Loading network discovery settings...
+        <p className="text-sm text-muted-foreground">Loading network discovery settings...</p>
       </div>
     )
   }
