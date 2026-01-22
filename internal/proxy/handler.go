@@ -265,8 +265,9 @@ func injectBaseTag(html []byte, baseURL string) []byte {
 	htmlStr := string(html)
 	htmlLower := strings.ToLower(htmlStr)
 
-	// Check if a base tag already exists
-	if strings.Contains(htmlLower, "<base") {
+	// Check if a base tag already exists (more specific pattern to avoid false positives)
+	// Match <base followed by whitespace or > to avoid matching words like "database"
+	if strings.Contains(htmlLower, "<base ") || strings.Contains(htmlLower, "<base>") {
 		log.Debug().Msg("Base tag already exists, skipping injection")
 		return html
 	}
@@ -284,6 +285,15 @@ func injectBaseTag(html []byte, baseURL string) []byte {
 		log.Debug().Msg("Malformed <head> tag, skipping base tag injection")
 		return html
 	}
+
+	// Check if this is a self-closing tag (e.g., <head/>)
+	// Look backwards from the > to see if there's a / before it
+	headTagContent := htmlStr[headStart : headStart+headEnd]
+	if strings.HasSuffix(strings.TrimSpace(headTagContent), "/") {
+		log.Debug().Msg("Self-closing <head/> tag found, skipping base tag injection")
+		return html
+	}
+
 	insertPos := headStart + headEnd + 1
 
 	// Construct the base tag

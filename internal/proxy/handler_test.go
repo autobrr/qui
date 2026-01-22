@@ -268,6 +268,18 @@ func TestInjectBaseTag(t *testing.T) {
 			baseURL:  "/qui/proxy/test123/",
 			expected: "<html><Head><base href=\"/qui/proxy/test123/\"><title>Test</title></Head><body></body></html>",
 		},
+		{
+			name:     "HTML with self-closing head tag",
+			html:     "<html><head/><body></body></html>",
+			baseURL:  "/proxy/abc123/",
+			expected: "<html><head/><body></body></html>", // Should not inject
+		},
+		{
+			name:     "HTML with word containing 'base' should not be detected",
+			html:     "<html><head><title>Database Test</title></head><body></body></html>",
+			baseURL:  "/proxy/abc123/",
+			expected: "<html><head><base href=\"/proxy/abc123/\"><title>Database Test</title></head><body></body></html>",
+		},
 	}
 
 	for _, tt := range tests {
@@ -406,4 +418,3 @@ func TestModifyResponse_WithCustomBasePath(t *testing.T) {
 	// Should contain the base tag with the custom base path
 	require.Contains(t, string(bodyBytes), "<base href=\"/qui/proxy/test123/\">")
 }
-
