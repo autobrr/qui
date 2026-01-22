@@ -50,7 +50,9 @@ export function DisabledOption({ children, reason, className }: DisabledOptionPr
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {child}
+         <div>
+           {child}
+         </div>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[200px]">
         {reason}
