@@ -20,6 +20,7 @@ import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -33,6 +34,8 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
+  const defaultTitleRef = useRef<string | null>(null)
+  const [speedUnit] = useSpeedUnits()
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("normal")
@@ -47,6 +50,33 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     setServerState(state)
     setListenPort(port ?? null)
   }, [])
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    if (defaultTitleRef.current === null) {
+      defaultTitleRef.current = document.title
+    }
+
+    if (!serverState) {
+      document.title = defaultTitleRef.current ?? ""
+      return
+    }
+
+    const downloadSpeed = serverState.dl_info_speed ?? 0
+    const uploadSpeed = serverState.up_info_speed ?? 0
+
+    const speedTitle = `D: ${formatSpeedWithUnit(downloadSpeed, speedUnit)} U: ${formatSpeedWithUnit(uploadSpeed, speedUnit)}`
+    const instanceTitle = instance?.name ? ` | ${instance.name}` : ""
+
+    document.title = `${speedTitle}${instanceTitle}`
+
+    return () => {
+      document.title = defaultTitleRef.current ?? ""
+    }
+  }, [instance?.name, serverState, speedUnit])
 
   // Selection info for global status bar
   const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null)
