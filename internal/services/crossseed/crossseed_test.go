@@ -1304,7 +1304,7 @@ func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
 		{Name: "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP/a.Real.file.that.exists.1998.s11e11.1080p.web.h264-somegroup.srr", Size: 4956},
 	}
 
-	sourceRelease := svc.releaseCache.Parse("What.Would.You.Do.2008.S17E17.1080p.WEB.h264-EDITH")
+	sourceRelease := svc.releaseCache.Parse("A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP")
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   1,
