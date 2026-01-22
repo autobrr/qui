@@ -22,8 +22,11 @@ import {
   getFieldType,
   getOperatorsForField,
   HARDLINK_SCOPE_VALUES,
-  TORRENT_STATES
+  TORRENT_STATES,
+  type DisabledField,
+  type DisabledStateValue
 } from "./constants";
+import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
 
 const DURATION_INPUT_UNITS = [
@@ -98,10 +101,10 @@ interface LeafConditionProps {
   isOnly?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to hide from the selector */
-  hiddenFields?: string[];
-  /** Optional list of "state" option values to hide */
-  hiddenStateValues?: string[];
+  /** Optional list of fields to disable with reasons */
+  disabledFields?: DisabledField[];
+  /** Optional list of "state" option values to disable with reasons */
+  disabledStateValues?: DisabledStateValue[];
 }
 
 export function LeafCondition({
@@ -111,8 +114,8 @@ export function LeafCondition({
   onRemove,
   isOnly,
   categoryOptions,
-  hiddenFields,
-  hiddenStateValues,
+  disabledFields,
+  disabledStateValues,
 }: LeafConditionProps) {
   const {
     attributes,
@@ -417,7 +420,7 @@ export function LeafCondition({
       </Tooltip>
 
       {/* Field selector */}
-      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} hiddenFields={hiddenFields} />
+      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} disabledFields={disabledFields} />
 
       {/* Operator selector */}
       <Select
@@ -553,11 +556,24 @@ export function LeafCondition({
             <SelectValue placeholder="Select state" />
           </SelectTrigger>
           <SelectContent>
-            {TORRENT_STATES.filter(state => !hiddenStateValues?.includes(state.value)).map((state) => (
-              <SelectItem key={state.value} value={state.value}>
-                {state.label}
-              </SelectItem>
-            ))}
+            {TORRENT_STATES.map((state) => {
+              const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
+              const isDisabled = disabledInfo !== undefined;
+
+              if (isDisabled) {
+                return (
+                  <DisabledOption key={state.value} reason={disabledInfo.reason}>
+                    <SelectItem value={state.value}>{state.label}</SelectItem>
+                  </DisabledOption>
+                );
+              }
+
+              return (
+                <SelectItem key={state.value} value={state.value}>
+                  {state.label}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       ) : fieldType === "hardlinkScope" ? (

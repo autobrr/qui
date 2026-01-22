@@ -7,6 +7,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus, X } from "lucide-react";
 import { useCallback } from "react";
+import type { DisabledField, DisabledStateValue } from "./constants";
 import { LeafCondition } from "./LeafCondition";
 
 interface ConditionGroupProps {
@@ -18,10 +19,10 @@ interface ConditionGroupProps {
   isRoot?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to hide from the selector */
-  hiddenFields?: string[];
-  /** Optional list of "state" option values to hide */
-  hiddenStateValues?: string[];
+  /** Optional list of fields to disable with reasons */
+  disabledFields?: DisabledField[];
+  /** Optional list of "state" option values to disable with reasons */
+  disabledStateValues?: DisabledStateValue[];
 }
 
 const MAX_DEPTH = 5;
@@ -34,8 +35,8 @@ export function ConditionGroup({
   depth = 0,
   isRoot = false,
   categoryOptions,
-  hiddenFields,
-  hiddenStateValues,
+  disabledFields,
+  disabledStateValues,
 }: ConditionGroupProps) {
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
   const children = condition.conditions ?? [];
@@ -126,8 +127,8 @@ export function ConditionGroup({
         onChange={onChange}
         onRemove={onRemove ?? (() => {})}
         categoryOptions={categoryOptions}
-        hiddenFields={hiddenFields}
-        hiddenStateValues={hiddenStateValues}
+        disabledFields={disabledFields}
+        disabledStateValues={disabledStateValues}
       />
     );
   }
@@ -195,8 +196,8 @@ export function ConditionGroup({
                   onRemove={() => removeChild(index)}
                   depth={depth + 1}
                   categoryOptions={categoryOptions}
-                  hiddenFields={hiddenFields}
-                  hiddenStateValues={hiddenStateValues}
+                  disabledFields={disabledFields}
+                  disabledStateValues={disabledStateValues}
                 />
               );
             }
@@ -210,8 +211,8 @@ export function ConditionGroup({
                 onRemove={() => removeChild(index)}
                 isOnly={children.length === 1 && isRoot && !onRemove}
                 categoryOptions={categoryOptions}
-                hiddenFields={hiddenFields}
-                hiddenStateValues={hiddenStateValues}
+                disabledFields={disabledFields}
+                disabledStateValues={disabledStateValues}
               />
             );
           })}
