@@ -734,10 +734,12 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
-	// Validate categoryAffixMode if provided
-	if req.CategoryAffixMode != "" && req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
-		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
-		return
+	// Validate categoryAffixMode if provided OR if UseCrossCategoryAffix is enabled
+	if (req.CategoryAffixMode != "" || req.UseCrossCategoryAffix) {
+		if (req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix) {
+			RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+			return
+		}
 	}
 
 	req.CategoryAffix = strings.TrimSpace(req.CategoryAffix)
@@ -890,6 +892,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
 			return
 		}
+	}
+
+	// Validate categoryAffixMode if UseCrossCategoryAffix is enabled
+	if merged.UseCrossCategoryAffix && merged.CategoryAffixMode != models.CategoryAffixModePrefix && merged.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
 	}
 
 	// Validate mutual exclusivity: category modes are mutually exclusive
