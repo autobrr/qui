@@ -7872,16 +7872,28 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 	return contentPath
 }
 
-// appendCrossSuffix adds the .cross suffix to a category name.
-// Returns empty string for empty input, and avoids double-suffixing.
-func appendCrossSuffix(category string) string {
-	if category == "" {
-		return ""
-	}
-	if strings.HasSuffix(category, ".cross") {
+// applyCategoryAffix applies a prefix or suffix to a category based on the affix mode.
+// Returns the category unchanged if affixMode is empty or affix is empty.
+func applyCategoryAffix(category, affixMode, affix string) string {
+	if category == "" || affix == "" || affixMode == "" {
 		return category
 	}
-	return category + ".cross"
+	switch affixMode {
+	case models.CategoryAffixModePrefix:
+		// Avoid double-prefixing
+		if strings.HasPrefix(category, affix) {
+			return category
+		}
+		return affix + category
+	case models.CategoryAffixModeSuffix:
+		// Avoid double-suffixing
+		if strings.HasSuffix(category, affix) {
+			return category
+		}
+		return category + affix
+	default:
+		return category
+	}
 }
 
 // ensureCrossCategory ensures a .cross suffixed category exists with the correct save_path.
@@ -7964,32 +7976,32 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 		settings, _ = s.GetAutomationSettings(ctx)
 	}
 
-	// Custom category takes priority - use exact category without any suffix
+	// Custom category takes priority - use exact category without any affix
 	if settings != nil && settings.UseCustomCategory && settings.CustomCategory != "" {
 		return settings.CustomCategory, settings.CustomCategory
 	}
 
-	// Helper to apply .cross suffix only if enabled in settings
-	applySuffix := func(cat string) string {
-		if settings != nil && !settings.UseCrossCategorySuffix {
-			return cat
+	// Helper to apply category affix (prefix or suffix) based on settings
+	applyAffix := func(cat string) string {
+		if settings != nil && settings.UseCrossCategoryAffix && settings.CategoryAffixMode != "" && settings.CategoryAffix != "" {
+			return applyCategoryAffix(cat, settings.CategoryAffixMode, settings.CategoryAffix)
 		}
-		return appendCrossSuffix(cat)
+		return cat
 	}
 
 	if req == nil {
-		return matchedCategory, applySuffix(matchedCategory)
+		return matchedCategory, applyAffix(matchedCategory)
 	}
 
 	if req.Category != "" {
-		return req.Category, applySuffix(req.Category)
+		return req.Category, applyAffix(req.Category)
 	}
 
 	if req.IndexerName != "" && settings != nil && settings.UseCategoryFromIndexer {
-		return req.IndexerName, applySuffix(req.IndexerName)
+		return req.IndexerName, applyAffix(req.IndexerName)
 	}
 
-	return matchedCategory, applySuffix(matchedCategory)
+	return matchedCategory, applyAffix(matchedCategory)
 }
 
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
