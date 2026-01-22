@@ -69,6 +69,11 @@ const (
 	FieldNumIncomplete = models.FieldNumIncomplete
 	FieldTrackersCount = models.FieldTrackersCount
 
+	// Cross-seed count fields
+	FieldSameContentCount             = models.FieldSameContentCount
+	FieldUnregisteredSameContentCount = models.FieldUnregisteredSameContentCount
+	FieldRegisteredSameContentCount   = models.FieldRegisteredSameContentCount
+
 	// Boolean fields
 	FieldPrivate        = models.FieldPrivate
 	FieldIsUnregistered = models.FieldIsUnregistered
@@ -104,6 +109,12 @@ const (
 	OperatorLessThanOrEqual    = models.OperatorLessThanOrEqual
 	OperatorBetween            = models.OperatorBetween
 	OperatorMatches            = models.OperatorMatches
+
+	// Percentage operators (for content count fields)
+	OperatorGreaterThanPercent        = models.OperatorGreaterThanPercent
+	OperatorGreaterThanOrEqualPercent = models.OperatorGreaterThanOrEqualPercent
+	OperatorLessThanPercent           = models.OperatorLessThanPercent
+	OperatorLessThanOrEqualPercent    = models.OperatorLessThanOrEqualPercent
 
 	// Cross-category lookup operators (NAME field only)
 	OperatorExistsIn   = models.OperatorExistsIn

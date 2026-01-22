@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import type { ConditionField, ConditionOperator, RuleCondition } from "@/types";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { GitMerge, GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import {
   getFieldType,
@@ -214,6 +214,10 @@ export function LeafCondition({
 
   const toggleRegex = () => {
     onChange({ ...condition, regex: !condition.regex });
+  };
+
+  const toggleIncludeCrossSeeds = () => {
+    onChange({ ...condition, includeCrossSeeds: !condition.includeCrossSeeds });
   };
 
   // Duration handling - parse seconds to display value using tracked unit
@@ -705,12 +709,16 @@ export function LeafCondition({
       ) : (
         <div className="flex items-center gap-1">
           <Input
-            type={isNumericType(fieldType) ? "number" : "text"}
+            type={isNumericType(fieldType) || isPercentOperator(condition.operator) ? "number" : "text"}
             className="h-8 w-32 flex-1"
             value={condition.value ?? ""}
             onChange={(e) => handleValueChange(e.target.value)}
-            placeholder={getPlaceholder(fieldType)}
+            placeholder={isPercentOperator(condition.operator) ? "0-100" : getPlaceholder(fieldType)}
           />
+          {/* Show % indicator for percentage operators */}
+          {isPercentOperator(condition.operator) && (
+            <span className="text-muted-foreground text-sm">%</span>
+          )}
           {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
           {fieldType === "string" &&
             condition.operator !== "MATCHES" &&
@@ -744,6 +752,33 @@ export function LeafCondition({
         </div>
       )}
 
+      {/* Include cross-seeds toggle (for content count fields) */}
+      {(condition.field === "SAME_CONTENT_COUNT" ||
+        condition.field === "UNREGISTERED_SAME_CONTENT_COUNT" ||
+        condition.field === "REGISTERED_SAME_CONTENT_COUNT") && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 px-2",
+                condition.includeCrossSeeds && "bg-primary/10 text-primary"
+              )}
+              onClick={toggleIncludeCrossSeeds}
+            >
+              <GitMerge className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {condition.includeCrossSeeds
+              ? "Cross-seeds included (matching by content folder name)"
+              : "Click to include cross-seeds with same folder name"}
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       {/* Remove button */}
       <Button
         type="button"
@@ -761,6 +796,10 @@ export function LeafCondition({
 
 function isNumericType(type: string): boolean {
   return ["bytes", "duration", "float", "percentage", "speed", "integer"].includes(type);
+}
+
+function isPercentOperator(operator: string | undefined): boolean {
+  return operator?.includes("PERCENT") ?? false;
 }
 
 function getPlaceholder(type: string): string {
