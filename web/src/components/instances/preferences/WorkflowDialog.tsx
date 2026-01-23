@@ -4,6 +4,14 @@
  */
 
 import { QueryBuilder } from "@/components/query-builder"
+import {
+  CAPABILITY_REASONS,
+  FIELD_REQUIREMENTS,
+  STATE_VALUE_REQUIREMENTS,
+  type Capabilities,
+  type DisabledField,
+  type DisabledStateValue,
+} from "@/components/query-builder/constants"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -85,6 +93,18 @@ const ACTION_LABELS: Record<ActionType, string> = {
   tag: "Tag",
   category: "Category",
   move: "Move",
+}
+
+function getDisabledFields(capabilities: Capabilities): DisabledField[] {
+  return Object.entries(FIELD_REQUIREMENTS)
+    .filter(([_, capability]) => !capabilities[capability as keyof Capabilities])
+    .map(([field, capability]) => ({ field, reason: CAPABILITY_REASONS[capability] }))
+}
+
+function getDisabledStateValues(capabilities: Capabilities): DisabledStateValue[] {
+  return Object.entries(STATE_VALUE_REQUIREMENTS)
+    .filter(([_, capability]) => !capabilities[capability as keyof Capabilities])
+    .map(([value, capability]) => ({ value, reason: CAPABILITY_REASONS[capability] }))
 }
 
 /**
@@ -250,6 +270,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const hasLocalFilesystemAccess = useMemo(
     () => instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false,
     [instances, instanceId]
+  )
+
+  const fieldCapabilities = useMemo<Capabilities>(
+    () => ({
+      trackerHealth: supportsTrackerHealth,
+      localFilesystemAccess: hasLocalFilesystemAccess,
+    }),
+    [supportsTrackerHealth, hasLocalFilesystemAccess]
   )
 
   // Callback for path autocomplete suggestion selection
@@ -1172,8 +1200,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     }}
                     allowEmpty
                     categoryOptions={categoryOptions}
-                    hiddenFields={supportsTrackerHealth ? [] : ["IS_UNREGISTERED"]}
-                    hiddenStateValues={supportsTrackerHealth ? [] : ["tracker_down"]}
+                    disabledFields={getDisabledFields(fieldCapabilities)}
+                    disabledStateValues={getDisabledStateValues(fieldCapabilities)}
                   />
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
