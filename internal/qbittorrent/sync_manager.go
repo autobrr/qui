@@ -456,6 +456,13 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	sm.setValidatedTrackerMapping(instanceID, mapping)
 
+	// Queue icon fetches for discovered tracker domains. We do this here (in the
+	// background refresh) so icons get fetched even when API requests use the
+	// validated mapping path (which doesn't walk MainData.Trackers).
+	for domain := range mapping.DomainToHashes {
+		trackericons.QueueFetch(domain, "")
+	}
+
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("unregistered", counts.Unregistered).

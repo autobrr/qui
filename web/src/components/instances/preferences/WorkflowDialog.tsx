@@ -47,6 +47,7 @@ import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
@@ -350,11 +351,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         seenDisplayNames.add(displayKey)
         seenValues.add(mergedValue)
 
-        const primaryDomain = customization.domains[0]
+        const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
           label: customization.displayName,
           value: mergedValue,
-          icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
+          icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
         })
       } else {
         if (seenDisplayNames.has(lowerTracker) || seenValues.has(tracker)) return

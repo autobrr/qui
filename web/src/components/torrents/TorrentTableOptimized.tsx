@@ -20,6 +20,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import {
   DndContext,
@@ -383,8 +384,7 @@ const CompactRow = memo(({
     [trackerHost, trackerCustomizationLookup]
   )
   const trackerLabel = trackerDisplayInfo.displayName || ""
-  const trackerIconKey = trackerDisplayInfo.primaryDomain || trackerHost
-  const trackerIconSrc = trackerIconKey ? trackerIcons?.[trackerIconKey] ?? null : null
+  const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, trackerDisplayInfo.primaryDomain, trackerHost)
   const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayInfo.displayName} (${trackerHost})` : trackerHost
 
   // Compact view

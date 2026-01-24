@@ -70,3 +70,4 @@ backups/*
 .golangci-cache/*
 torrentfiles/*
 analyses/*
+.envrc
