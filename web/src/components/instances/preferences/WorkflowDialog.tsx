@@ -1228,8 +1228,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>Action</Label>
-                    {/* Add action dropdown - only show if Delete is not enabled and there are available actions */}
-                    {!formState.deleteEnabled && (() => {
+                    {/* Add action dropdown - only show if Delete is not enabled, at least one action exists, and there are available actions to add */}
+                    {!formState.deleteEnabled && enabledActionsCount > 0 && (() => {
                       const enabledActions = getEnabledActions(formState)
                       const availableActions = COMBINABLE_ACTIONS.filter(a => !enabledActions.includes(a))
                       if (availableActions.length === 0) return null
