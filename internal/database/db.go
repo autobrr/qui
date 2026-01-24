@@ -277,9 +277,7 @@ func (t *Tx) promoteStatementsToCache() {
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
-			// Log but don't fail - caching is an optimization
-			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
-			continue
+			continue // silently skip - caching is best-effort
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
