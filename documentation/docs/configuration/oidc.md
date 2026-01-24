@@ -1,6 +1,7 @@
 ---
 sidebar_position: 3
 title: OIDC
+description: Authenticate qui users through an OpenID Connect identity provider.
 ---
 
 # OpenID Connect (OIDC)

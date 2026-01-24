@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: Metrics
+description: Expose Prometheus metrics for monitoring qBittorrent instances.
 ---
 
 # Prometheus Metrics

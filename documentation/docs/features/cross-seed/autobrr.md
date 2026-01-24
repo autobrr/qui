@@ -1,6 +1,7 @@
 ---
 sidebar_position: 6
 title: autobrr Integration
+description: Trigger cross-seed detection in real time via autobrr webhooks.
 ---
 
 # autobrr Integration

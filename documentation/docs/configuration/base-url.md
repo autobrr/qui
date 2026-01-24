@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: Base URL
+description: Serve qui from a subdirectory behind a reverse proxy.
 ---
 
 # Base URL Configuration

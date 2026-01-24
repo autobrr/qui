@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: API
+description: REST API reference with interactive Swagger UI documentation.
 ---
 
 # API Overview

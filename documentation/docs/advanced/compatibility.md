@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: Compatibility
+description: qBittorrent version requirements and feature compatibility matrix.
 ---
 
 # qBittorrent Version Compatibility

@@ -45,6 +45,7 @@ const config: Config = {
 
   url: "https://getqui.com",
   baseUrl: "/",
+  trailingSlash: false,
 
   organizationName: "autobrr",
   projectName: "qui",
@@ -56,6 +57,35 @@ const config: Config = {
       onBrokenMarkdownLinks: "warn",
     },
   },
+
+  headTags: [
+    {
+      tagName: "script",
+      attributes: {
+        type: "application/ld+json",
+      },
+      innerHTML: JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "qui",
+        description: "Modern web interface for managing multiple qBittorrent instances with cross-seeding, automations, and backups.",
+        url: "https://getqui.com",
+        applicationCategory: "UtilitiesApplication",
+        operatingSystem: "Linux, macOS, Windows",
+        license: "https://opensource.org/licenses/GPL-2.0",
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "USD",
+        },
+        sourceOrganization: {
+          "@type": "Organization",
+          name: "autobrr",
+          url: "https://github.com/autobrr",
+        },
+      }),
+    },
+  ],
 
   i18n: {
     defaultLocale: "en",
@@ -86,6 +116,10 @@ const config: Config = {
           routeBasePath: "docs",
         },
         blog: false,
+        sitemap: {
+          changefreq: "weekly" as const,
+          priority: 0.5,
+        },
         theme: {
           customCss: "./src/css/custom.css",
         },
@@ -94,7 +128,13 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: "img/qui-hero.png",
+    image: "https://getqui.com/img/qui-hero.png",
+    metadata: [
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:site", content: "@s0up4200" },
+      { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "qui" },
+    ],
     colorMode: {
       defaultMode: "dark",
       respectPrefersColorScheme: true,

@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: Rules
+description: Configure cross-seed matching behavior, size tolerance, and tracker filters.
 ---
 
 # Cross-Seed Rules

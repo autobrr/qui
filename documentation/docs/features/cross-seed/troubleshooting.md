@@ -1,6 +1,7 @@
 ---
 sidebar_position: 7
 title: Troubleshooting
+description: Fix common cross-seed issues like rate limiting, missing matches, and recheck failures.
 ---
 
 # Cross-Seed Troubleshooting

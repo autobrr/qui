@@ -1,6 +1,7 @@
 ---
 sidebar_position: 100
 title: Support Development
+description: Help fund qui development through donations and sponsorships.
 ---
 
 import CopyAddress from '@site/src/components/CopyAddress';

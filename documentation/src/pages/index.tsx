@@ -111,8 +111,8 @@ export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext();
   return (
     <Layout
-      title={siteConfig.title}
-      description={siteConfig.tagline}
+      title="Modern Web Interface for qBittorrent"
+      description="Manage multiple qBittorrent instances from one interface. Cross-seeding, automations, backups, and more."
     >
       <main className={styles.main}>
         <HeroSection />

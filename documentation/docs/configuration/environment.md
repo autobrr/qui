@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: Environment Variables
+description: Configure qui with environment variables and config.toml settings.
 ---
 
 # Environment Variables

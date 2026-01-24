@@ -1,6 +1,7 @@
 ---
 sidebar_position: 4
 title: CLI Commands
+description: Generate config, create users, and manage qui from the command line.
 ---
 
 # CLI Commands
