@@ -139,7 +139,7 @@ export function ConditionGroup({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3",
+        "rounded-lg border p-2 sm:p-3",
         depth === 0 && "border-border bg-card",
         depth > 0 && "border-border/50 bg-muted/30",
         depth > 1 && "border-dashed"
