@@ -49,6 +49,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
@@ -349,7 +350,7 @@ export function WorkflowsOverview({
     if (customization) {
       return {
         displayName: customization.displayName,
-        iconDomain: customization.domains[0],
+        iconDomain: pickTrackerIconDomain(trackerIcons, customization.domains, domain),
         isCustomized: true,
       }
     }
@@ -358,7 +359,7 @@ export function WorkflowsOverview({
       iconDomain: domain,
       isCustomized: false,
     }
-  }, [domainToCustomization])
+  }, [domainToCustomization, trackerIcons])
 
   const deleteRule = useMutation({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
