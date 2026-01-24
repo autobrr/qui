@@ -1132,7 +1132,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-4xl lg:max-w-5xl max-h-[90dvh] flex flex-col">
+        <DialogContent className="sm:max-w-4xl lg:max-w-5xl max-h-[90dvh] flex flex-col p-2 sm:p-6">
           {/* Container for portaled dropdowns - outside scroll area but inside dialog */}
           <div ref={dropdownContainerRef} className="absolute inset-0 pointer-events-none overflow-visible" style={{ zIndex: 100 }}>
             {/* Dropdown portals render here */}
@@ -1141,7 +1141,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             <DialogTitle>{rule ? "Edit Workflow" : "Add Workflow"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-3 sm:pr-1">
               {/* Header row: Name + All Trackers toggle */}
               <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
                 <div className="space-y-1.5">
@@ -1598,7 +1598,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-[1fr_auto] gap-3 items-start">
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
                           {formState.exprUseTrackerAsTag ? (
                             <div className="space-y-1">
                               <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
@@ -1635,7 +1635,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </Select>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                           <div className="flex items-center gap-2">
                             <Switch
                               id="use-tracker-tag"
@@ -1850,36 +1850,39 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             placeholder="e.g., /data/torrents"
                           />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-start gap-2">
                           <Switch
                             id="block-if-cross-seed"
+                            className="mt-0.5 shrink-0"
                             checked={formState.exprMoveBlockIfCrossSeed}
                             onCheckedChange={(checked) => setFormState(prev => ({
                               ...prev,
                               exprMoveBlockIfCrossSeed: checked,
                             }))}
                           />
-                          <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer whitespace-nowrap">
-                            Skip if cross-seeds don't match the rule's conditions
-                          </Label>
-                          <TooltipProvider delayDuration={150}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                                  aria-label="About skipping move if cross-seeds exist"
-                                >
-                                  <Info className="h-3.5 w-3.5" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-[320px]">
-                                <p>
-                                  Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer">
+                              Skip if cross-seeds don't match the rule's conditions
+                            </Label>
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
+                                    aria-label="About skipping move if cross-seeds exist"
+                                  >
+                                    <Info className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[320px]">
+                                  <p>
+                                    Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2046,8 +2049,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t mt-3">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t mt-3">
+              <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
                   <Switch
                     id="rule-enabled"
@@ -2135,11 +2138,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" onClick={() => onOpenChange(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" disabled={createOrUpdate.isPending || previewMutation.isPending}>
+                <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {rule ? "Save" : "Create"}
                 </Button>
