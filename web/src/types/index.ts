@@ -1722,7 +1722,9 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
-  useCrossCategorySuffix: boolean
+  useCrossCategoryAffix: boolean
+  categoryAffixMode: "prefix" | "suffix"
+  categoryAffix: string
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
@@ -1767,7 +1769,9 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
-  useCrossCategorySuffix?: boolean
+  useCrossCategoryAffix?: boolean
+  categoryAffixMode?: "prefix" | "suffix"
+  categoryAffix?: string
   useCustomCategory?: boolean
   customCategory?: string
   runExternalProgramId?: number | null
