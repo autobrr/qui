@@ -4,6 +4,7 @@
  */
 
 import { memo, useEffect, useState } from "react"
+import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 
 interface TrackerIconImageProps {
   tracker: string
@@ -19,7 +20,7 @@ export const TrackerIconImage = memo(({ tracker, trackerIcons }: TrackerIconImag
 
   const trimmed = tracker.trim()
   const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-  const src = trackerIcons?.[trimmed] ?? null
+  const src = resolveTrackerIconSrc(trackerIcons, trimmed)
 
   return (
     <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none shrink-0">
