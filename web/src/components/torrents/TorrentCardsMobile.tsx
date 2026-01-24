@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -36,6 +36,7 @@ import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -592,7 +593,7 @@ function SwipeableCard({
   }, [trackerMeta.host, trackerCustomizationLookup])
   // Use primary domain for icon lookup (so merged trackers share icons)
   const iconDomain = trackerDisplayInfo.primaryDomain || trackerMeta.host
-  const trackerIconSrc = iconDomain ? trackerIcons?.[iconDomain] ?? null : null
+  const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, trackerMeta.host)
   // Display name is either custom name or hostname
   const trackerDisplayName = trackerDisplayInfo.displayName || trackerMeta.title
 

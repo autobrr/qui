@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -1722,7 +1722,9 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
-  useCrossCategorySuffix: boolean
+  useCrossCategoryAffix: boolean
+  categoryAffixMode: "prefix" | "suffix"
+  categoryAffix: string
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
@@ -1767,7 +1769,9 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
-  useCrossCategorySuffix?: boolean
+  useCrossCategoryAffix?: boolean
+  categoryAffixMode?: "prefix" | "suffix"
+  categoryAffix?: string
   useCustomCategory?: boolean
   customCategory?: string
   runExternalProgramId?: number | null

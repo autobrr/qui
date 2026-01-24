@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -40,7 +40,9 @@ type automationSettingsRequest struct {
 	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`
 	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`
-	UseCrossCategorySuffix       bool    `json:"useCrossCategorySuffix"`
+	UseCrossCategoryAffix        bool    `json:"useCrossCategoryAffix"`
+	CategoryAffixMode            string  `json:"categoryAffixMode"`
+	CategoryAffix                string  `json:"categoryAffix"`
 	UseCustomCategory            bool    `json:"useCustomCategory"`
 	CustomCategory               string  `json:"customCategory"`
 	RunExternalProgramID         *int    `json:"runExternalProgramId"`
@@ -68,7 +70,9 @@ type automationSettingsPatchRequest struct {
 	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	UseCrossCategoryAffix          *bool       `json:"useCrossCategoryAffix,omitempty"`
+	CategoryAffixMode              *string     `json:"categoryAffixMode,omitempty"`
+	CategoryAffix                  *string     `json:"categoryAffix,omitempty"`
 	UseCustomCategory              *bool       `json:"useCustomCategory,omitempty"`
 	CustomCategory                 *string     `json:"customCategory,omitempty"`
 	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
@@ -162,7 +166,9 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
-		r.UseCrossCategorySuffix == nil &&
+		r.UseCrossCategoryAffix == nil &&
+		r.CategoryAffixMode == nil &&
+		r.CategoryAffix == nil &&
 		r.UseCustomCategory == nil &&
 		r.CustomCategory == nil &&
 		!r.RunExternalProgramID.Set &&
@@ -245,8 +251,14 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
 	}
-	if patch.UseCrossCategorySuffix != nil {
-		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
+	if patch.UseCrossCategoryAffix != nil {
+		settings.UseCrossCategoryAffix = *patch.UseCrossCategoryAffix
+	}
+	if patch.CategoryAffixMode != nil {
+		settings.CategoryAffixMode = *patch.CategoryAffixMode
+	}
+	if patch.CategoryAffix != nil {
+		settings.CategoryAffix = strings.TrimSpace(*patch.CategoryAffix)
 	}
 	if patch.UseCustomCategory != nil {
 		settings.UseCustomCategory = *patch.UseCustomCategory
@@ -722,19 +734,52 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
+	// Validate categoryAffixMode if provided OR if UseCrossCategoryAffix is enabled
+	if req.CategoryAffixMode != "" || req.UseCrossCategoryAffix {
+		if req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+			RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+			return
+		}
+	}
+
+	req.CategoryAffix = strings.TrimSpace(req.CategoryAffix)
+
+	if req.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(req.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		// No double slashes allowed
+		if strings.Contains(req.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if req.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if req.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
 	// Validate mutual exclusivity: category modes are mutually exclusive
 	enabledModes := 0
 	if req.UseCategoryFromIndexer {
 		enabledModes++
 	}
-	if req.UseCrossCategorySuffix {
+	if req.UseCrossCategoryAffix {
 		enabledModes++
 	}
 	if req.UseCustomCategory {
 		enabledModes++
 	}
 	if enabledModes > 1 {
-		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
 		return
 	}
 
@@ -749,7 +794,9 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
-		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
+		UseCrossCategoryAffix:        req.UseCrossCategoryAffix,
+		CategoryAffixMode:            req.CategoryAffixMode,
+		CategoryAffix:                req.CategoryAffix,
 		UseCustomCategory:            req.UseCustomCategory,
 		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
@@ -808,6 +855,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 			Msg("[API] Received source filter patch request")
 	}
 
+	// Validate categoryAffixMode if provided
+	if req.CategoryAffixMode != nil && *req.CategoryAffixMode != "" && *req.CategoryAffixMode != models.CategoryAffixModePrefix && *req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
+	}
+
 	current, err := h.service.GetAutomationSettings(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load cross-seed automation settings for patch")
@@ -818,19 +871,48 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
 
+	if merged.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(merged.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		// No double slashes allowed
+		if strings.Contains(merged.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if merged.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if merged.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
+	// Validate categoryAffixMode if UseCrossCategoryAffix is enabled
+	if merged.UseCrossCategoryAffix && merged.CategoryAffixMode != models.CategoryAffixModePrefix && merged.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
+	}
+
 	// Validate mutual exclusivity: category modes are mutually exclusive
 	enabledModes := 0
 	if merged.UseCategoryFromIndexer {
 		enabledModes++
 	}
-	if merged.UseCrossCategorySuffix {
+	if merged.UseCrossCategoryAffix {
 		enabledModes++
 	}
 	if merged.UseCustomCategory {
 		enabledModes++
 	}
 	if enabledModes > 1 {
-		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
 		return
 	}
 

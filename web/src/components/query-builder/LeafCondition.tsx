@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,8 +27,11 @@ import {
   getFieldType,
   getOperatorsForField,
   HARDLINK_SCOPE_VALUES,
-  TORRENT_STATES
+  TORRENT_STATES,
+  type DisabledField,
+  type DisabledStateValue
 } from "./constants";
+import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
 
 const DURATION_INPUT_UNITS = [
@@ -98,10 +106,10 @@ interface LeafConditionProps {
   isOnly?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to hide from the selector */
-  hiddenFields?: string[];
-  /** Optional list of "state" option values to hide */
-  hiddenStateValues?: string[];
+  /** Optional list of fields to disable with reasons */
+  disabledFields?: DisabledField[];
+  /** Optional list of "state" option values to disable with reasons */
+  disabledStateValues?: DisabledStateValue[];
 }
 
 export function LeafCondition({
@@ -111,8 +119,8 @@ export function LeafCondition({
   onRemove,
   isOnly,
   categoryOptions,
-  hiddenFields,
-  hiddenStateValues,
+  disabledFields,
+  disabledStateValues,
 }: LeafConditionProps) {
   const {
     attributes,
@@ -380,7 +388,7 @@ export function LeafCondition({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-md border bg-card p-2",
+        "flex flex-wrap items-center gap-2 rounded-md border bg-card p-1.5 sm:p-2",
         isDragging && "opacity-50",
         condition.negate && "border-destructive/50"
       )}
@@ -392,7 +400,7 @@ export function LeafCondition({
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-4" />
+        <GripVertical className="size-5 sm:size-4" />
       </button>
 
       {/* Negate toggle */}
@@ -417,27 +425,30 @@ export function LeafCondition({
       </Tooltip>
 
       {/* Field selector */}
-      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} hiddenFields={hiddenFields} />
+      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} disabledFields={disabledFields} />
 
       {/* Operator selector */}
-      <Select
-        value={condition.operator ?? ""}
-        onValueChange={handleOperatorChange}
-        disabled={!condition.field}
-      >
-        <SelectTrigger className="h-8 w-fit min-w-[80px]">
-          <SelectValue placeholder="Operator" />
-        </SelectTrigger>
-        <SelectContent>
-          {operators.map((op) => (
-            <SelectItem key={op.value} value={op.value}>
-              {op.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="order-2 sm:order-none w-full sm:w-auto">
+        <Select
+          value={condition.operator ?? ""}
+          onValueChange={handleOperatorChange}
+          disabled={!condition.field}
+        >
+          <SelectTrigger className="h-8 w-full sm:w-fit min-w-[80px]">
+            <SelectValue placeholder="Operator" />
+          </SelectTrigger>
+          <SelectContent>
+            {operators.map((op) => (
+              <SelectItem key={op.value} value={op.value}>
+                {op.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Value input - varies by field type */}
+      <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
       {condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
         <div className="flex items-center gap-1">
           <Input
@@ -549,20 +560,33 @@ export function LeafCondition({
         </div>
       ) : fieldType === "state" ? (
         <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 w-[160px]">
+          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
             <SelectValue placeholder="Select state" />
           </SelectTrigger>
           <SelectContent>
-            {TORRENT_STATES.filter(state => !hiddenStateValues?.includes(state.value)).map((state) => (
-              <SelectItem key={state.value} value={state.value}>
-                {state.label}
-              </SelectItem>
-            ))}
+            {TORRENT_STATES.map((state) => {
+              const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
+              const isDisabled = disabledInfo !== undefined;
+
+              if (isDisabled) {
+                return (
+                  <DisabledOption key={state.value} reason={disabledInfo.reason}>
+                    <SelectItem value={state.value}>{state.label}</SelectItem>
+                  </DisabledOption>
+                );
+              }
+
+              return (
+                <SelectItem key={state.value} value={state.value}>
+                  {state.label}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       ) : fieldType === "hardlinkScope" ? (
         <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 w-[240px]">
+          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
             <SelectValue placeholder="Select scope" />
           </SelectTrigger>
           <SelectContent>
@@ -575,7 +599,7 @@ export function LeafCondition({
         </Select>
       ) : fieldType === "boolean" ? (
         <Select value={condition.value ?? "true"} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 w-[100px]">
+          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[100px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -659,10 +683,10 @@ export function LeafCondition({
           </Select>
         </div>
       ) : fieldType === "percentage" ? (
-        <div className="flex items-center gap-1">
+        <div className="flex-1 flex items-center gap-1">
           <Input
             type="number"
-            className="h-8 w-20"
+            className="h-8 min-w-20 flex-1 sm:flex-none sm:w-20"
             value={getPercentageDisplay()}
             onChange={(e) => handlePercentageChange(e.target.value)}
             min={0}
@@ -675,7 +699,7 @@ export function LeafCondition({
       ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
         // Category selector for category-related conditions when categories available
         <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 w-[160px]">
+          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
           <SelectContent>
@@ -687,10 +711,10 @@ export function LeafCondition({
           </SelectContent>
         </Select>
       ) : (
-        <div className="flex items-center gap-1">
+        <div className="flex-1 flex items-center gap-1">
           <Input
             type={isNumericType(fieldType) ? "number" : "text"}
-            className="h-8 w-32 flex-1"
+            className="h-8 min-w-0 flex-1"
             value={condition.value ?? ""}
             onChange={(e) => handleValueChange(e.target.value)}
             placeholder={getPlaceholder(fieldType)}
@@ -727,13 +751,14 @@ export function LeafCondition({
           )}
         </div>
       )}
+      </div>
 
       {/* Remove button */}
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+        className="order-1 sm:order-last ml-auto sm:ml-0 h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
         onClick={onRemove}
         disabled={isOnly}
       >

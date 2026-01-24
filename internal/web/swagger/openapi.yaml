@@ -5407,9 +5407,16 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
-        useCrossCategorySuffix:
+        useCrossCategoryAffix:
           type: boolean
-          description: Add .cross suffix to cross-seeded torrent categories
+          description: Enable category affix (prefix or suffix) for cross-seeded torrents
+        categoryAffixMode:
+          type: string
+          enum: [prefix, suffix]
+          description: Whether to add the affix as a prefix or suffix to the category
+        categoryAffix:
+          type: string
+          description: The affix value to add (default ".cross")
         useCustomCategory:
           type: boolean
           description: Use a custom category for all cross-seeds
@@ -5488,9 +5495,16 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
-        useCrossCategorySuffix:
+        useCrossCategoryAffix:
           type: boolean
-          description: Add .cross suffix to cross-seeded torrent categories
+          description: Enable category affix (prefix or suffix) for cross-seeded torrents
+        categoryAffixMode:
+          type: string
+          enum: [prefix, suffix]
+          description: Whether to add the affix as a prefix or suffix to the category
+        categoryAffix:
+          type: string
+          description: The affix value to add (default ".cross")
         useCustomCategory:
           type: boolean
           description: Use a custom category for all cross-seeds
