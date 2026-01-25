@@ -247,7 +247,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         </div>
 
         {/* Authentication */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <label htmlFor="credentials-toggle" className="flex items-center justify-between cursor-pointer">
               <div className="space-y-0.5">
