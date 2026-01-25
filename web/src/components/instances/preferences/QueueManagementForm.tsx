@@ -129,7 +129,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   label="Max Active Downloads"
                   value={(field.state.value as number) ?? 3}
                   onChange={field.handleChange}
-                  max={999}
+                  max={99999}
                   description="Maximum number of downloading torrents"
                   allowUnlimited={true}
                 />
@@ -157,7 +157,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   label="Max Active Uploads"
                   value={(field.state.value as number) ?? 3}
                   onChange={field.handleChange}
-                  max={999}
+                  max={99999}
                   description="Maximum number of uploading torrents"
                   allowUnlimited={true}
                 />
@@ -185,7 +185,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   label="Max Active Torrents"
                   value={(field.state.value as number) ?? 5}
                   onChange={field.handleChange}
-                  max={999}
+                  max={99999}
                   description="Total maximum active torrents"
                   allowUnlimited={true}
                 />
@@ -202,7 +202,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                 label="Max Checking Torrents"
                 value={(field.state.value as number) ?? 1}
                 onChange={field.handleChange}
-                max={999}
+                max={99999}
                 description="Maximum torrents checking simultaneously"
                 allowUnlimited={true}
               />
