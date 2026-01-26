@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -249,7 +249,21 @@ export function ReannounceOverview({
                         className="scale-90"
                       />
                     </div>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const itemValue = String(instance.id)
+                        if (expandedInstances.includes(itemValue)) {
+                          setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                        } else {
+                          setExpandedInstances([...expandedInstances, itemValue])
+                        }
+                      }}
+                      aria-expanded={expandedInstances.includes(String(instance.id))}
+                      aria-label={expandedInstances.includes(String(instance.id)) ? "Collapse" : "Expand"}
+                    >
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+                    </button>
                   </div>
                 </div>
 

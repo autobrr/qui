@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -144,7 +147,7 @@ func TestIsDiscLayoutTorrent(t *testing.T) {
 }
 
 func TestPolicyForSourceFiles(t *testing.T) {
-	t.Run("disc layout sets all flags", func(t *testing.T) {
+	t.Run("disc layout forces paused", func(t *testing.T) {
 		files := qbt.TorrentFiles{
 			{Name: "Movie/BDMV/index.bdmv"},
 		}
@@ -152,7 +155,7 @@ func TestPolicyForSourceFiles(t *testing.T) {
 
 		assert.True(t, policy.DiscLayout)
 		assert.True(t, policy.ForcePaused)
-		assert.True(t, policy.ForceSkipAutoResume)
+		assert.False(t, policy.ForceSkipAutoResume)
 		assert.Equal(t, "BDMV", policy.DiscMarker)
 	})
 
@@ -218,7 +221,7 @@ func TestAddPolicy_StatusSuffix(t *testing.T) {
 		suffix := policy.StatusSuffix()
 		assert.Contains(t, suffix, "disc layout")
 		assert.Contains(t, suffix, "BDMV")
-		assert.Contains(t, suffix, "paused")
+		assert.Contains(t, suffix, "recheck")
 	})
 
 	t.Run("non-disc layout returns empty", func(t *testing.T) {
@@ -248,7 +251,7 @@ func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
 			initialOpts:  map[string]string{"paused": "false", "stopped": "false"},
 			wantPaused:   "true",
 			wantStopped:  "true",
-			wantSkipAuto: true,
+			wantSkipAuto: false,
 		},
 		{
 			name: "VIDEO_TS disc overrides paused=false",
@@ -258,7 +261,7 @@ func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
 			initialOpts:  map[string]string{"paused": "false", "stopped": "false"},
 			wantPaused:   "true",
 			wantStopped:  "true",
-			wantSkipAuto: true,
+			wantSkipAuto: false,
 		},
 		{
 			name: "non-disc preserves paused=false",

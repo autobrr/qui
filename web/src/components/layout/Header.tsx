@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -537,6 +537,15 @@ export function Header({
                 >
                   <Archive className="mr-2 h-4 w-4" />
                   Backups
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/rss"
+                  className="flex cursor-pointer"
+                >
+                  <Rss className="mr-2 h-4 w-4" />
+                  RSS
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package hardlinktree provides utilities for creating hardlink trees
@@ -234,6 +234,12 @@ func computeTargetPath(candidatePath string, layout ContentLayout, torrentName, 
 func validateCandidatePath(path string) error {
 	if path == "" {
 		return errors.New("empty file path in torrent")
+	}
+
+	// Reject Unix-style absolute paths on all platforms.
+	// (On Windows, filepath.IsAbs("/etc/passwd") is false.)
+	if strings.HasPrefix(path, "/") {
+		return errors.New("absolute path not allowed in torrent: " + path)
 	}
 
 	// Normalize path

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package filesmanager
@@ -294,7 +294,7 @@ func (s *Service) StartOrphanCleanup(ctx context.Context, instances InstanceList
 func (s *Service) runOrphanCleanup(ctx context.Context, instances InstanceLister, hashes TorrentHashProvider) {
 	instanceIDs, err := instances.ListInstanceIDs(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("filesmanager: failed to list instances for orphan cleanup")
+		log.Warn().Err(err).Msg("filesmanager: cache maintenance skipped, failed to list instances")
 		return
 	}
 
@@ -303,21 +303,21 @@ func (s *Service) runOrphanCleanup(ctx context.Context, instances InstanceLister
 		currentHashes, err := hashes.GetAllTorrentHashes(ctx, instanceID)
 		if err != nil {
 			log.Debug().Err(err).Int("instanceID", instanceID).
-				Msg("filesmanager: failed to get torrent hashes for orphan cleanup")
+				Msg("filesmanager: cache maintenance skipped for instance")
 			continue
 		}
 
 		deleted, err := s.CleanupRemovedTorrentsCache(ctx, instanceID, currentHashes)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).
-				Msg("filesmanager: failed to cleanup orphaned cache entries")
+				Msg("filesmanager: cache maintenance failed for instance")
 			continue
 		}
 		totalDeleted += deleted
 	}
 
 	if totalDeleted > 0 {
-		log.Info().Int("totalDeleted", totalDeleted).Msg("filesmanager: orphan cleanup completed")
+		log.Info().Int("totalDeleted", totalDeleted).Msg("filesmanager: pruned stale cache entries")
 	}
 }
 

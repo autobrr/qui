@@ -1,9 +1,10 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
+import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -26,6 +27,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -82,7 +84,9 @@ interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
-  useCrossCategorySuffix: boolean
+  useCrossCategoryAffix: boolean
+  categoryAffixMode: "prefix" | "suffix"
+  categoryAffix: string
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
@@ -108,7 +112,7 @@ interface GlobalCrossSeedSettings {
 }
 
 // Category mode type for type-safe radio group
-type CategoryMode = "suffix" | "indexer" | "custom"
+type CategoryMode = "reuse" | "affix" | "indexer" | "custom"
 
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
@@ -132,7 +136,9 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
-  useCrossCategorySuffix: true,
+  useCrossCategoryAffix: true,
+  categoryAffixMode: "suffix",
+  categoryAffix: ".cross",
   useCustomCategory: false,
   customCategory: "",
   runExternalProgramId: null,
@@ -209,8 +215,8 @@ function aggregateInstanceMetadata(
 }
 
 interface CrossSeedPageProps {
-  activeTab: "auto" | "scan" | "rules"
-  onTabChange: (tab: "auto" | "scan" | "rules") => void
+  activeTab: "auto" | "scan" | "dir-scan" | "rules"
+  onTabChange: (tab: "auto" | "scan" | "dir-scan" | "rules") => void
 }
 
 interface RSSRunItemProps {
@@ -294,6 +300,7 @@ function HardlinkModeSettings() {
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+    fallbackToRegularMode: boolean
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
@@ -317,6 +324,7 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
 
@@ -382,6 +390,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
       onSuccess: () => {
@@ -550,6 +559,24 @@ function HardlinkModeSettings() {
                                   <SelectItem value="by-instance">By Instance</SelectItem>
                                 </SelectContent>
                               </Select>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`fallback-${instance.id}`}
+                                checked={form.fallbackToRegularMode}
+                                onCheckedChange={(checked) =>
+                                  handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
+                                }
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                  Fallback to regular mode on error
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode using existing files.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </>
@@ -781,17 +808,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   useEffect(() => {
     if (settings && !globalSettingsInitialized) {
-      // If all three category modes are false, default to suffix mode
-      // This handles legacy databases where none were explicitly set
-      const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
-      const useCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+      // Normalize category flags: ensure exactly one mode is active (priority: custom > indexer > affix > reuse)
+      const useCustomCategory = settings.useCustomCategory ?? false
+      const useCategoryFromIndexer = !useCustomCategory && (settings.useCategoryFromIndexer ?? false)
+      const useCrossCategoryAffix = !useCustomCategory && !useCategoryFromIndexer && (settings.useCrossCategoryAffix ?? true)
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
-        useCrossCategorySuffix,
-        useCustomCategory: settings.useCustomCategory ?? false,
+        useCategoryFromIndexer,
+        useCrossCategoryAffix,
+        categoryAffixMode: settings.categoryAffixMode ?? "suffix",
+        categoryAffix: settings.categoryAffix ?? ".cross",
+        useCustomCategory,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         // Source-specific tagging
@@ -868,18 +897,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    // If all three category modes are false, default to suffix mode
-    const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
-    const defaultCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+    // Normalize category flags for fallback path (same priority as init: custom > indexer > affix > reuse)
+    const fallbackCustom = settings.useCustomCategory ?? false
+    const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
+    const fallbackAffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategoryAffix ?? true)
 
     const globalSource = globalSettingsInitialized
       ? globalSettings
       : {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer,
-        useCrossCategorySuffix: defaultCrossCategorySuffix,
-        useCustomCategory: settings.useCustomCategory ?? false,
+        useCategoryFromIndexer: fallbackIndexer,
+        useCrossCategoryAffix: fallbackAffix,
+        categoryAffixMode: settings.categoryAffixMode ?? "suffix",
+        categoryAffix: settings.categoryAffix ?? ".cross",
+        useCustomCategory: fallbackCustom,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -904,7 +936,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
-      useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
+      useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
+      categoryAffixMode: globalSource.categoryAffixMode,
+      categoryAffix: globalSource.categoryAffix,
       useCustomCategory: globalSource.useCustomCategory,
       customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
@@ -1023,6 +1057,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
+    // Clear prior validation errors
+    setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+
+    // Validate custom category mode has a category specified
+    if (globalSettings.useCustomCategory && !globalSettings.customCategory.trim()) {
+      setValidationErrors(prev => ({ ...prev, customCategory: "Custom category mode requires a category name" }))
+      return
+    }
+
     const payload = buildGlobalPatch()
     if (!payload) return
 
@@ -1205,14 +1248,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const getCategoryMode = (): CategoryMode => {
     if (globalSettings.useCustomCategory) return "custom"
     if (globalSettings.useCategoryFromIndexer) return "indexer"
-    return "suffix"
+    if (globalSettings.useCrossCategoryAffix) return "affix"
+    return "reuse"
   }
 
   // Helper to set category mode (updates all three boolean flags)
   const setCategoryMode = (mode: CategoryMode) => {
     setGlobalSettings(prev => ({
       ...prev,
-      useCrossCategorySuffix: mode === "suffix",
+      useCrossCategoryAffix: mode === "affix",
       useCategoryFromIndexer: mode === "indexer",
       useCustomCategory: mode === "custom",
     }))
@@ -1444,9 +1488,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
+        <TabsList className="grid w-full grid-cols-4 gap-2 md:w-auto">
           <TabsTrigger value="auto">Auto</TabsTrigger>
           <TabsTrigger value="scan">Scan</TabsTrigger>
+          <TabsTrigger value="dir-scan">Dir Scan</TabsTrigger>
           <TabsTrigger value="rules">Rules</TabsTrigger>
         </TabsList>
 
@@ -2286,7 +2331,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">Skip recheck-required matches</Label>
-                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment or extra files</p>
+                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.</p>
                   </div>
                   <Switch
                     id="skip-recheck"
@@ -2328,22 +2373,67 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   className="space-y-3"
                 >
                   <div className="flex items-start gap-3">
-                    <RadioGroupItem value="suffix" id="category-suffix" className="mt-0.5" />
+                    <RadioGroupItem value="reuse" id="category-reuse" className="mt-0.5" />
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <Label htmlFor="category-suffix" className="font-medium cursor-pointer">Add .cross category suffix</Label>
+                        <Label htmlFor="category-reuse" className="font-medium cursor-pointer">Reuse matched torrent category</Label>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Reuse category help">
                               <Info className="h-3.5 w-3.5" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent align="start" className="max-w-xs text-xs">
-                            Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                            Cross-seeds use the exact same category as the matched torrent. If the matched torrent uses AutoTMM, cross-seeds will too; otherwise the save path is set to match the original.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keep the matched torrent's category unchanged (no .cross suffix).</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="affix" id="category-affix" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-affix" className="font-medium cursor-pointer">Category affix</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category affix help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates isolated categories (e.g., cross-seed/movie or tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
                           </TooltipContent>
                         </Tooltip>
                       </div>
                       <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
+                      {getCategoryMode() === "affix" && (
+                        <div className="flex flex-wrap items-center gap-3 mt-2">
+                          <div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+                            <button
+                              type="button"
+                              onClick={() => setGlobalSettings(prev => ({ ...prev, categoryAffixMode: "prefix" }))}
+                              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${globalSettings.categoryAffixMode === "prefix" ? "bg-background text-primary shadow-sm" : "hover:bg-background/50 hover:text-foreground"}`}
+                            >
+                              Prefix
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGlobalSettings(prev => ({ ...prev, categoryAffixMode: "suffix" }))}
+                              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${globalSettings.categoryAffixMode === "suffix" ? "bg-background text-primary shadow-sm" : "hover:bg-background/50 hover:text-foreground"}`}
+                            >
+                              Suffix
+                            </button>
+                          </div>
+                          <Input
+                            value={globalSettings.categoryAffix}
+                            onChange={e => setGlobalSettings(prev => ({ ...prev, categoryAffix: e.target.value }))}
+                            placeholder={globalSettings.categoryAffixMode === "prefix" ? "cross-seed/" : ".cross"}
+                            className="max-w-[140px] h-9"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -2383,15 +2473,26 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       </div>
                       <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
                       {globalSettings.useCustomCategory && (
-                        <MultiSelect
-                          options={customCategorySelectOptions}
-                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
-                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
-                          placeholder="Select or type a category..."
-                          className="mt-2 max-w-xs"
-                          creatable
-                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
-                        />
+                        <>
+                          <MultiSelect
+                            options={customCategorySelectOptions}
+                            selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                            onChange={values => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                            placeholder="Select or type a category..."
+                            className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
+                            creatable
+                            onCreateOption={value => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: value }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                          />
+                          {validationErrors.customCategory && (
+                            <p className="text-sm text-destructive">{validationErrors.customCategory}</p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -2611,6 +2712,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             </CardFooter>
           </Card>
 
+        </TabsContent>
+
+        <TabsContent value="dir-scan" className="space-y-6">
+          <DirScanTab instances={instances ?? []} />
         </TabsContent>
       </Tabs>
 

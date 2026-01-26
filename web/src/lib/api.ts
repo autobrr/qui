@@ -1,9 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import type {
+  AddRSSFeedRequest,
+  AddRSSFolderRequest,
   AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
@@ -34,6 +36,14 @@ import type {
   CrossSeedTorrentSearchSelection,
   DashboardSettings,
   DashboardSettingsInput,
+  DirScanDirectory,
+  DirScanDirectoryCreate,
+  DirScanDirectoryUpdate,
+  DirScanFile,
+  DirScanRun,
+  DirScanRunInjection,
+  DirScanSettings,
+  DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
@@ -46,24 +56,34 @@ import type {
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
   InstanceFormData,
-  LocalCrossSeedMatch,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  LocalCrossSeedMatch,
   LogExclusions,
   LogExclusionsInput,
   LogSettings,
   LogSettingsUpdate,
+  MarkRSSAsReadRequest,
+  MoveRSSItemRequest,
   OrphanScanRun,
   OrphanScanRunWithFiles,
   OrphanScanSettings,
   OrphanScanSettingsUpdate,
   QBittorrentAppInfo,
+  RefreshRSSItemRequest,
   RegexValidationResult,
+  RemoveRSSItemRequest,
+  RenameRSSRuleRequest,
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  RSSItems,
+  RSSMatchingArticles,
+  RSSRules,
   SearchHistoryResponse,
+  SetRSSFeedURLRequest,
+  SetRSSRuleRequest,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -87,7 +107,8 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   User,
-  WebSeed
+  WarningResponse,
+  WebSeed,
 } from "@/types"
 import type {
   ArrInstance,
@@ -124,18 +145,125 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
+// Session storage key used to guard against reload loops when backend is truly down.
+const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
+
+/**
+ * Detect network errors that indicate an SSO redirect was blocked by CORS.
+ * When an upstream SSO proxy session expires, it often returns a cross-origin
+ * redirect that fetch() cannot follow, resulting in a TypeError.
+ *
+ * This check is intentionally broad because browsers hide redirect details for
+ * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
+ * network failures at this level. The sessionStorage reload guard in
+ * attemptSSORecoveryReload() prevents infinite loops if this misclassifies a
+ * genuine network outage.
+ */
+function isSSOBlockedNetworkError(error: unknown): boolean {
+  if (!(error instanceof TypeError)) {
+    return false
+  }
+  const msg = error.message.toLowerCase()
+  return msg.includes("networkerror") || msg.includes("failed to fetch")
+}
+
+/**
+ * Check if a response appears to be an SSO login/error page rather than a JSON API response.
+ * SSO proxies typically return HTML with these status codes:
+ * - 200 OK with HTML login page (some Pangolin setups)
+ * - 401/403 with HTML error page (Cloudflare Access)
+ *
+ * We explicitly exclude 5xx errors to avoid triggering reload on legitimate
+ * reverse proxy error pages (e.g., nginx 502 Bad Gateway).
+ */
+function isSSOHTMLResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type") || ""
+  if (!contentType.includes("text/html")) {
+    return false
+  }
+  // Only treat as SSO if it's a 2xx/4xx response with HTML.
+  // 5xx with HTML is likely a reverse proxy error page, not SSO.
+  const status = response.status
+  return status < 500
+}
+
+/**
+ * Attempt a single hard page reload to let the browser follow the SSO redirect
+ * at the top level. Uses sessionStorage to prevent infinite reload loops.
+ * Skips reload when offline or in background tabs to avoid pointless refreshes.
+ */
+function attemptSSORecoveryReload(): void {
+  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+    return
+  }
+  // Don't reload if we're offline - it's not an SSO issue
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return
+  }
+  // Don't reload from background tabs - wait for user to return
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return
+  }
+  if (sessionStorage.getItem(SSO_RELOAD_GUARD_KEY)) {
+    // Already tried once this session; don't loop.
+    return
+  }
+  sessionStorage.setItem(SSO_RELOAD_GUARD_KEY, "1")
+  window.location.reload()
+}
+
+/** Clear the SSO reload guard after a successful request. */
+function clearSSOReloadGuard(): void {
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem(SSO_RELOAD_GUARD_KEY)
+  }
+}
+
+/**
+ * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
+ * an expired SSO session by triggering a page reload.
+ */
+async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        ...options.headers,
+      },
+      credentials: "include",
+    })
+  } catch (error) {
+    // Only attempt SSO recovery for API endpoints (not other fetches)
+    if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
+      attemptSSORecoveryReload()
+    }
+    throw error
+  }
+
+  // If we got an HTML response on an API endpoint, it's likely an SSO login page.
+  // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
+  if (isSSOHTMLResponse(response)) {
+    attemptSSORecoveryReload()
+    throw new Error("Received HTML instead of JSON - SSO session may have expired")
+  }
+
+  clearSSOReloadGuard()
+  return response
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
         ...options?.headers,
       },
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -156,11 +284,14 @@ class ApiClient {
     const fallbackMessage = `HTTP error! status: ${response.status}`
 
     try {
+      const contentType = response.headers.get("content-type") || ""
       const rawBody = await response.text()
+
       if (!rawBody) {
         return fallbackMessage
       }
 
+      // Try to parse as JSON first
       try {
         const errorData = JSON.parse(rawBody) as { error?: string; message?: string }
         const parsedMessage = errorData?.error ?? errorData?.message
@@ -168,8 +299,15 @@ class ApiClient {
           return parsedMessage
         }
       } catch {
+        // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
+        if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
+          // Don't show raw HTML to user, provide a readable message
+          return `${fallbackMessage} (server returned HTML error page)`
+        }
+
+        // Plain text error
         const trimmed = rawBody.trim()
-        if (trimmed.length > 0) {
+        if (trimmed.length > 0 && trimmed.length < 500) {
           return trimmed
         }
       }
@@ -226,13 +364,13 @@ class ApiClient {
 
   async checkSetupRequired(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE}/auth/check-setup`, {
+      const response = await ssoSafeFetch(`${API_BASE}/auth/check-setup`, {
         method: "GET",
-        credentials: "include",
       })
       const data = await response.json()
       return data.setupRequired || false
     } catch {
+      // ssoSafeFetch handles SSO recovery internally
       return false
     }
   }
@@ -409,10 +547,9 @@ class ApiClient {
     const formData = new FormData()
     formData.append("archive", manifestFile)
 
-    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
       method: "POST",
       body: formData,
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -623,10 +760,9 @@ class ApiClient {
     if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
     if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
-    const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
       body: formData,
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -705,6 +841,8 @@ class ApiClient {
       search_type?: string
       search_categories?: number[]
       required_caps?: string[]
+      disc_layout?: boolean
+      disc_marker?: string
       available_indexers?: number[]
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
@@ -732,6 +870,8 @@ class ApiClient {
       searchType: raw.search_type,
       searchCategories: raw.search_categories,
       requiredCaps: raw.required_caps,
+      discLayout: raw.disc_layout,
+      discMarker: raw.disc_marker,
       availableIndexers: raw.available_indexers,
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
@@ -771,10 +911,13 @@ class ApiClient {
   /**
    * Get local cross-seed matches for a torrent across all instances.
    * Uses proper release metadata parsing (rls library), not fuzzy string matching.
+   *
+   * @param strict - When true, fail if file overlap checks can't complete (use for delete dialogs)
    */
   async getLocalCrossSeedMatches(
     instanceId: number,
-    hash: string
+    hash: string,
+    strict = false
   ): Promise<LocalCrossSeedMatch[]> {
     type RawLocalMatch = {
       instance_id: number
@@ -797,8 +940,9 @@ class ApiClient {
       matches: RawLocalMatch[]
     }
 
+    const params = strict ? "?strict=true" : ""
     const raw = await this.request<RawResponse>(
-      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches${params}`,
       { method: "GET" }
     )
 
@@ -864,6 +1008,8 @@ class ApiClient {
       search_type?: string
       search_categories?: number[]
       required_caps?: string[]
+      disc_layout?: boolean
+      disc_marker?: string
       available_indexers?: number[]
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
@@ -917,6 +1063,8 @@ class ApiClient {
       searchType: torrent?.search_type ?? undefined,
       searchCategories: torrent?.search_categories ?? undefined,
       requiredCaps: torrent?.required_caps ?? undefined,
+      discLayout: torrent?.disc_layout ?? undefined,
+      discMarker: torrent?.disc_marker ?? undefined,
       availableIndexers: torrent?.available_indexers ?? undefined,
       filteredIndexers: torrent?.filtered_indexers ?? undefined,
       excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
@@ -1205,9 +1353,8 @@ class ApiClient {
 
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
     const encodedHash = encodeURIComponent(hash)
-    const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
       method: "GET",
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -1229,6 +1376,11 @@ class ApiClient {
 
   async getTorrentWebSeeds(instanceId: number, hash: string): Promise<WebSeed[]> {
     return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
+  }
+
+  // Piece states: 0 = not downloaded, 1 = downloading, 2 = downloaded
+  async getTorrentPieceStates(instanceId: number, hash: string): Promise<number[]> {
+    return this.request<number[]>(`/instances/${instanceId}/torrents/${hash}/pieces`)
   }
 
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
@@ -1264,12 +1416,9 @@ class ApiClient {
   }
 
   async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
-    const response = await fetch(
+    const response = await ssoSafeFetch(
       `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,
-      {
-        method: "GET",
-        credentials: "include",
-      }
+      { method: "GET" }
     )
 
     if (!response.ok) {
@@ -1350,6 +1499,17 @@ class ApiClient {
 
   async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
     return this.request(`/instances/${instanceId}/trackers`)
+  }
+
+  async getDirectoryContent(instanceId: number, dirPath: string, signal?: AbortSignal): Promise<string[]> {
+    const response = await ssoSafeFetch(
+      `${API_BASE}/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(dirPath)}`,
+      { method: "GET", signal }
+    )
+    if (!response.ok) {
+      throw new Error("Failed to fetch directory content")
+    }
+    return response.json()
   }
 
   async listAutomations(instanceId: number): Promise<Automation[]> {
@@ -1956,6 +2116,206 @@ class ApiClient {
   // Get the SSE log stream URL for EventSource
   getLogStreamUrl(limit = 1000): string {
     return `${API_BASE}/logs/stream?limit=${limit}`
+  }
+
+  // Directory Scanner endpoints
+  async getDirScanSettings(): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings")
+  }
+
+  async updateDirScanSettings(data: DirScanSettingsUpdate): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listDirScanDirectories(): Promise<DirScanDirectory[]> {
+    return this.request<DirScanDirectory[]>("/dir-scan/directories")
+  }
+
+  async getDirScanDirectory(directoryId: number): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`)
+  }
+
+  async createDirScanDirectory(data: DirScanDirectoryCreate): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>("/dir-scan/directories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateDirScanDirectory(
+    directoryId: number,
+    data: DirScanDirectoryUpdate
+  ): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteDirScanDirectory(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}`, { method: "DELETE" })
+  }
+
+  async resetDirScanFiles(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
+  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
+      method: "POST",
+    })
+  }
+
+  async cancelDirScan(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
+  }
+
+  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
+    return this.request<DirScanRun | { status: "idle" }>(
+      `/dir-scan/directories/${directoryId}/status`
+    )
+  }
+
+  async listDirScanRuns(
+    directoryId: number,
+    options?: { limit?: number }
+  ): Promise<DirScanRun[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRun[]>(`/dir-scan/directories/${directoryId}/runs${suffix}`)
+  }
+
+  async listDirScanRunInjections(
+    directoryId: number,
+    runId: number,
+    options?: { limit?: number; offset?: number }
+  ): Promise<DirScanRunInjection[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRunInjection[]>(
+      `/dir-scan/directories/${directoryId}/runs/${runId}/injections${suffix}`
+    )
+  }
+
+  async listDirScanFiles(
+    directoryId: number,
+    options?: { limit?: number; offset?: number; status?: string }
+  ): Promise<DirScanFile[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    if (options?.status) {
+      params.set("status", options.status)
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanFile[]>(`/dir-scan/directories/${directoryId}/files${suffix}`)
+  }
+
+  // RSS Feed Management
+
+  async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
+    return this.request<RSSItems>(`/instances/${instanceId}/rss/items?withData=${withData}`)
+  }
+
+  async addRSSFolder(instanceId: number, data: AddRSSFolderRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/folders`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse | undefined> {
+    return this.request<WarningResponse | undefined>(`/instances/${instanceId}/rss/feeds`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async setRSSFeedURL(instanceId: number, data: SetRSSFeedURLRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/feeds/url`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async moveRSSItem(instanceId: number, data: MoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/move`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSItem(instanceId: number, data: RemoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items`, {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async refreshRSSItem(instanceId: number, data: RefreshRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/refresh`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async markRSSAsRead(instanceId: number, data: MarkRSSAsReadRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/articles/read`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // RSS Auto-Download Rules
+
+  async getRSSRules(instanceId: number): Promise<RSSRules> {
+    return this.request<RSSRules>(`/instances/${instanceId}/rss/rules`)
+  }
+
+  async setRSSRule(instanceId: number, data: SetRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async renameRSSRule(instanceId: number, ruleName: string, data: RenameRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/rename`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSRule(instanceId: number, ruleName: string): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getRSSMatchingArticles(instanceId: number, ruleName: string): Promise<RSSMatchingArticles> {
+    return this.request<RSSMatchingArticles>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/preview`)
+  }
+
+  async reprocessRSSRules(instanceId: number): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
+      method: "POST",
+    })
   }
 }
 

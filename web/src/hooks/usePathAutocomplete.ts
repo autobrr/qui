@@ -1,7 +1,10 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
-import { getApiBaseUrl } from "../lib/base-url";
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
 
-const API_BASE = getApiBaseUrl();
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
 
 export function usePathAutocomplete(
   onSuggestionSelect: (path: string) => void,
@@ -53,17 +56,8 @@ export function usePathAutocomplete(
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
       try {
-        const response = await fetch(
-          `${API_BASE}/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`,
-          { signal: controller.signal }
-        );
-
+        const data = await api.getDirectoryContent(instanceId, key, controller.signal);
         clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error("Failed to fetch directory");
-
-        const data: string[] = await response.json();
-
         cache.current.set(key, data);
         return data;
       } catch (err) {
