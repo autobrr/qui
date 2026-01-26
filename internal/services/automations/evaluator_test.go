@@ -117,6 +117,26 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			expected: false,
 		},
 		{
+			name: "category not equals empty - match when categorized",
+			cond: &RuleCondition{
+				Field:    FieldCategory,
+				Operator: OperatorNotEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Category: "movies"},
+			expected: true,
+		},
+		{
+			name: "category not equals empty - no match when uncategorized",
+			cond: &RuleCondition{
+				Field:    FieldCategory,
+				Operator: OperatorNotEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Category: ""},
+			expected: false,
+		},
+		{
 			name: "state equals uploading",
 			cond: &RuleCondition{
 				Field:    FieldState,
