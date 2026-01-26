@@ -9,9 +9,11 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -60,4 +62,32 @@ func TestService_ListIcons_StripsWWWPrefixAlias(t *testing.T) {
 	require.Contains(t, icons, "www.example.org")
 	require.Contains(t, icons, "example.org")
 	require.Equal(t, icons["www.example.org"], icons["example.org"])
+}
+
+type waitForContextDoneTransport struct{}
+
+func (waitForContextDoneTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+func TestService_GetIcon_RecordsFailureWhenContextExpiresDuringFetch(t *testing.T) {
+	dataDir := t.TempDir()
+	svc, err := NewService(dataDir, "qui-test")
+	require.NoError(t, err)
+
+	svc.client.Transport = waitForContextDoneTransport{}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	host := "tracker.example.org"
+	_, _ = svc.GetIcon(ctx, host, "")
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for svc.canAttempt(host) && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	require.False(t, svc.canAttempt(host))
 }
