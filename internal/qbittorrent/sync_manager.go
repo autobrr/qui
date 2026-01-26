@@ -1074,6 +1074,23 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		sm.sortTorrentsByETA(filteredTorrents, order == "desc")
 	}
 
+	// Apply custom sorting for timestamp fields with fallback to state, name, hash
+	if sort == "last_activity" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.LastActivity })
+	}
+
+	if sort == "added_on" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.AddedOn })
+	}
+
+	if sort == "completion_on" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.CompletionOn })
+	}
+
+	if sort == "seen_complete" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.SeenComplete })
+	}
+
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
@@ -4515,6 +4532,46 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 			return 1
 		}
 		return 0
+	})
+}
+
+// compareByStateThenName provides deterministic ordering by state priority, name, then hash.
+func compareByStateThenName(a, b qbt.Torrent, desc bool) int {
+	priorityA := stateSortPriority(a.State)
+	priorityB := stateSortPriority(b.State)
+	if priorityA != priorityB {
+		result := cmp.Compare(priorityA, priorityB)
+		if desc {
+			return -result
+		}
+		return result
+	}
+
+	nameA := strings.ToLower(a.Name)
+	nameB := strings.ToLower(b.Name)
+	if result := strings.Compare(nameA, nameB); result != 0 {
+		if desc {
+			return -result
+		}
+		return result
+	}
+
+	return strings.Compare(a.Hash, b.Hash)
+}
+
+// sortTorrentsByTimestamp sorts torrents by a timestamp field with fallback to state, name, and hash.
+// The getTimestamp function extracts the timestamp value from a torrent.
+// Special values (0 or -1 meaning "never") are treated as infinitely old and sort naturally.
+func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool, getTimestamp func(qbt.Torrent) int64) {
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		tsA, tsB := getTimestamp(a), getTimestamp(b)
+		if tsA != tsB {
+			if desc {
+				return cmp.Compare(tsB, tsA)
+			}
+			return cmp.Compare(tsA, tsB)
+		}
+		return compareByStateThenName(a, b, desc)
 	})
 }
 
