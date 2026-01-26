@@ -73,15 +73,29 @@ function formatEta(seconds: number): string {
 }
 
 function formatReannounce(seconds: number): string {
+  // Negative values mean "never" or "not applicable"
   if (seconds < 0) return "-"
 
+  // Zero means "now" (just announced or about to announce)
+  if (seconds === 0) return "now"
+
   const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
 
   if (minutes < 1) {
     return "< 1m"
   }
 
-  return `${minutes}m`
+  if (hours < 1) {
+    return `${minutes}m`
+  }
+
+  const remainingMinutes = minutes % 60
+  if (remainingMinutes === 0) {
+    return `${hours}h`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
 }
 
 // Calculate minimum column width based on header text
