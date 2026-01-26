@@ -641,3 +641,163 @@ func TestSortCrossInstanceTorrentsByTracker_UnknownTrackersGoToEnd(t *testing.T)
 	require.Equal(t, "hash2", torrents[0].Hash, "valid tracker should come first")
 	require.Equal(t, "hash1", torrents[1].Hash, "unknown tracker should go to end")
 }
+
+func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	// All torrents have same timestamp, should be sorted by state priority, then name, then hash
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Zebra", LastActivity: 1000, State: qbt.TorrentStatePausedUp},
+		{Hash: "hash2", Name: "Apple", LastActivity: 1000, State: qbt.TorrentStateDownloading},
+		{Hash: "hash3", Name: "Mango", LastActivity: 1000, State: qbt.TorrentStateUploading},
+		{Hash: "hash4", Name: "Apple", LastActivity: 1000, State: qbt.TorrentStateDownloading}, // Same name as hash2, different hash
+	}
+
+	// Ascending: state priority (downloading < uploading < paused), then name, then hash
+	sm.sortTorrentsByTimestamp(torrents, false, func(t qbt.Torrent) int64 { return t.LastActivity })
+
+	// Downloading has lower priority than uploading, which has lower than paused
+	// hash2 and hash4 both downloading with name "Apple", sorted by hash
+	require.Equal(t, "hash2", torrents[0].Hash, "first downloading 'Apple' by hash")
+	require.Equal(t, "hash4", torrents[1].Hash, "second downloading 'Apple' by hash")
+	require.Equal(t, "hash3", torrents[2].Hash, "uploading 'Mango'")
+	require.Equal(t, "hash1", torrents[3].Hash, "paused 'Zebra'")
+
+	// Descending: reversed state priority, reversed name, hash stays ascending for stability
+	sm.sortTorrentsByTimestamp(torrents, true, func(t qbt.Torrent) int64 { return t.LastActivity })
+
+	require.Equal(t, "hash1", torrents[0].Hash, "paused 'Zebra' first in desc")
+	require.Equal(t, "hash3", torrents[1].Hash, "uploading 'Mango'")
+	require.Equal(t, "hash2", torrents[2].Hash, "first downloading 'Apple' by hash (hash stays ascending)")
+	require.Equal(t, "hash4", torrents[3].Hash, "second downloading 'Apple' by hash (hash stays ascending)")
+}
+
+func TestSortTorrentsByTimestamp_ZeroSortsNaturally(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Active", LastActivity: 1000, State: qbt.TorrentStateDownloading},
+		{Hash: "hash2", Name: "No Activity", LastActivity: 0, State: qbt.TorrentStateDownloading},
+		{Hash: "hash3", Name: "Recent", LastActivity: 2000, State: qbt.TorrentStateDownloading},
+	}
+
+	// Ascending (oldest first): 0 at start as it's the smallest value
+	sm.sortTorrentsByTimestamp(torrents, false, func(t qbt.Torrent) int64 { return t.LastActivity })
+
+	require.Equal(t, "hash2", torrents[0].Hash, "0 (no activity) should be at start for ascending")
+	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
+	require.Equal(t, "hash3", torrents[2].Hash, "2000 should be last")
+
+	// Descending (newest first): 0 at end as it's the smallest value
+	sm.sortTorrentsByTimestamp(torrents, true, func(t qbt.Torrent) int64 { return t.LastActivity })
+
+	require.Equal(t, "hash3", torrents[0].Hash, "2000 should be first for descending")
+	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
+	require.Equal(t, "hash2", torrents[2].Hash, "0 (no activity) should be at end for descending")
+}
+
+func TestSortTorrentsByTimestamp_NegativeOneSortsNaturally(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Completed Early", CompletionOn: 1000, State: qbt.TorrentStateUploading},
+		{Hash: "hash2", Name: "Never Completed", CompletionOn: -1, State: qbt.TorrentStateDownloading},
+		{Hash: "hash3", Name: "Completed Late", CompletionOn: 2000, State: qbt.TorrentStateUploading},
+	}
+
+	// Ascending: -1 at start as it's the smallest value
+	sm.sortTorrentsByTimestamp(torrents, false, func(t qbt.Torrent) int64 { return t.CompletionOn })
+
+	require.Equal(t, "hash2", torrents[0].Hash, "-1 (never completed) should be at start for ascending")
+	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
+	require.Equal(t, "hash3", torrents[2].Hash, "2000 should be last")
+
+	// Descending: -1 at end as it's the smallest value
+	sm.sortTorrentsByTimestamp(torrents, true, func(t qbt.Torrent) int64 { return t.CompletionOn })
+
+	require.Equal(t, "hash3", torrents[0].Hash, "2000 should be first for descending")
+	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
+	require.Equal(t, "hash2", torrents[2].Hash, "-1 (never completed) should be at end for descending")
+}
+
+func TestCompareByStateThenName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		a        qbt.Torrent
+		b        qbt.Torrent
+		desc     bool
+		expected int
+	}{
+		{
+			name:     "different states ascending - downloading before uploading",
+			a:        qbt.Torrent{Hash: "a", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "b", Name: "Test", State: qbt.TorrentStateUploading},
+			desc:     false,
+			expected: -1,
+		},
+		{
+			name:     "different states descending - uploading before downloading",
+			a:        qbt.Torrent{Hash: "a", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "b", Name: "Test", State: qbt.TorrentStateUploading},
+			desc:     true,
+			expected: 1,
+		},
+		{
+			name:     "same state different names ascending",
+			a:        qbt.Torrent{Hash: "a", Name: "Apple", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "b", Name: "Zebra", State: qbt.TorrentStateDownloading},
+			desc:     false,
+			expected: -1,
+		},
+		{
+			name:     "same state different names descending",
+			a:        qbt.Torrent{Hash: "a", Name: "Apple", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "b", Name: "Zebra", State: qbt.TorrentStateDownloading},
+			desc:     true,
+			expected: 1,
+		},
+		{
+			name:     "same state same name different hash - hash always ascending",
+			a:        qbt.Torrent{Hash: "aaa", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "zzz", Name: "Test", State: qbt.TorrentStateDownloading},
+			desc:     false,
+			expected: -1,
+		},
+		{
+			name:     "same state same name different hash desc - hash still ascending for stability",
+			a:        qbt.Torrent{Hash: "aaa", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "zzz", Name: "Test", State: qbt.TorrentStateDownloading},
+			desc:     true,
+			expected: -1,
+		},
+		{
+			name:     "case insensitive name comparison",
+			a:        qbt.Torrent{Hash: "a", Name: "APPLE", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "b", Name: "apple", State: qbt.TorrentStateDownloading},
+			desc:     false,
+			expected: -1, // same name case-insensitive, fallback to hash
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := compareByStateThenName(tt.a, tt.b, tt.desc)
+			switch {
+			case tt.expected < 0:
+				require.Negative(t, result, "expected negative result")
+			case tt.expected > 0:
+				require.Positive(t, result, "expected positive result")
+			default:
+				require.Zero(t, result, "expected zero result")
+			}
+		})
+	}
+}
