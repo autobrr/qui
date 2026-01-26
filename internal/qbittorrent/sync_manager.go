@@ -1076,7 +1076,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Apply custom sorting for timestamp fields with fallback to state, name, hash
 	if sort == "last_activity" {
-		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.LastActivity })
+		// LastActivity doesn't always update every tick for active torrents, so truncate to 60s to ensure sort stability
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.LastActivity / 60 })
 	}
 
 	if sort == "added_on" {
@@ -4536,23 +4537,16 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 }
 
 // compareByStateThenName provides deterministic ordering by state priority, name, then hash.
-func compareByStateThenName(a, b qbt.Torrent, desc bool) int {
+func compareByStateThenName(a, b qbt.Torrent) int {
 	priorityA := stateSortPriority(a.State)
 	priorityB := stateSortPriority(b.State)
 	if priorityA != priorityB {
-		result := cmp.Compare(priorityA, priorityB)
-		if desc {
-			return -result
-		}
-		return result
+		return cmp.Compare(priorityA, priorityB)
 	}
 
 	nameA := strings.ToLower(a.Name)
 	nameB := strings.ToLower(b.Name)
 	if result := strings.Compare(nameA, nameB); result != 0 {
-		if desc {
-			return -result
-		}
 		return result
 	}
 
@@ -4571,7 +4565,7 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 			}
 			return cmp.Compare(tsA, tsB)
 		}
-		return compareByStateThenName(a, b, desc)
+		return compareByStateThenName(a, b)
 	})
 }
 
