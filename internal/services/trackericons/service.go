@@ -254,10 +254,11 @@ func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string,
 			return "", ErrIconNotFound
 		}
 
+		ctxWasDone := ctx != nil && ctx.Err() != nil
 		err := s.fetchAndStoreIcon(ctx, sanitized, trackerURL)
 		if err != nil {
 			shouldRecordFailure := !errors.Is(err, context.Canceled)
-			if errors.Is(err, context.DeadlineExceeded) && ctx != nil && ctx.Err() == context.DeadlineExceeded {
+			if ctxWasDone && errors.Is(err, context.DeadlineExceeded) {
 				shouldRecordFailure = false
 			}
 			if shouldRecordFailure {

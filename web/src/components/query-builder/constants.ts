@@ -292,3 +292,5 @@ export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
 } as const;
 
+// Uncategorized sentinel (Radix Select requires non-empty values)
+export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
