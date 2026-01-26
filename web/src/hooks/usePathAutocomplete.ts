@@ -14,6 +14,7 @@ export function usePathAutocomplete(
   const [inputValue, setInputValue] = useState("");
   const deferredInput = useDeferredValue(inputValue);
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const [dismissed, setDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const getParentPath = useCallback((path: string) => {
@@ -47,20 +48,24 @@ export function usePathAutocomplete(
 
   const suggestions = useMemo(() => {
     if (!directoryEntries.length) return [];
-    return filterTerm
-      ? directoryEntries.filter((e) => e.toLowerCase().includes(filterTerm))
-      : directoryEntries;
+    if (!filterTerm) return directoryEntries;
+    return directoryEntries.filter((e) => e.toLowerCase().includes(filterTerm));
   }, [directoryEntries, filterTerm]);
 
   // Update highlighted index when suggestions change
   useEffect(() => {
+    if (dismissed) {
+      setHighlightedIndex(-1);
+      return;
+    }
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
-  }, [suggestions]);
+  }, [suggestions, dismissed]);
 
   const selectSuggestion = useCallback(
     (entry: string) => {
       setInputValue(entry);
       onSuggestionSelect(entry);
+      setDismissed(true);
       setHighlightedIndex(-1);
       inputRef.current?.focus();
     },
@@ -70,6 +75,18 @@ export function usePathAutocomplete(
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (!suggestions.length) return;
+
+      if (dismissed) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          setDismissed(false);
+        } else if (e.key === "Escape") {
+          setHighlightedIndex(-1);
+          setDismissed(true);
+          return;
+        } else {
+          return;
+        }
+      }
 
       switch (e.key) {
         case "ArrowDown":
@@ -100,16 +117,18 @@ export function usePathAutocomplete(
           break;
         case "Escape":
           setHighlightedIndex(-1);
+          setDismissed(true);
           break;
         default:
           return;
       }
     },
-    [suggestions, highlightedIndex, selectSuggestion]
+    [suggestions, highlightedIndex, selectSuggestion, dismissed]
   );
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
+    setDismissed(false);
     setHighlightedIndex(-1);
   }, []);
 
@@ -125,6 +144,7 @@ export function usePathAutocomplete(
   // 2. Input ends with "/" and is an exact match to a suggestion (folder fully selected)
   // 3. Input exactly matches the only suggestion
   const showSuggestions =
+    !dismissed &&
     suggestions.length > 0 &&
     !(suggestions.length === 1 && suggestions[0] === inputValue) &&
     !(inputValue.endsWith("/") && suggestions.some((s) => s === inputValue));

@@ -20,13 +20,15 @@ export function useDirectoryContent(
   const { enabled = true, staleTimeMs = 30000 } = options
 
   // Normalize the path for consistent cache keys
-  const normalizedPath = dirPath
-    ? (dirPath.startsWith("/") ? dirPath : `/${dirPath}`).replace(/\/*$/, "/")
-    : ""
+  let normalizedPath = ""
+  if (dirPath) {
+    const withLeadingSlash = dirPath.startsWith("/") ? dirPath : `/${dirPath}`
+    normalizedPath = withLeadingSlash.replace(/\/*$/, "/")
+  }
 
   return useQuery<string[]>({
     queryKey: ["directory-content", instanceId, normalizedPath],
-    queryFn: () => api.getDirectoryContent(instanceId, normalizedPath),
+    queryFn: ({ signal }) => api.getDirectoryContent(instanceId, normalizedPath, signal),
     staleTime: staleTimeMs,
     enabled: Boolean(enabled && instanceId && normalizedPath),
   })
