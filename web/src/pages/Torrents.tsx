@@ -54,8 +54,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     setSelectionInfo(info)
   }, [])
 
-  // Sidebar width: 320px normal, 260px dense
-  const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
+  // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
+  const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
