@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/services/license"
 )
 
@@ -97,8 +98,8 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	username := r.Context().Value("username")
-	if username == "" || username == nil {
+	username, ok := r.Context().Value(ctxkeys.Username).(string)
+	if !ok || username == "" {
 		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
@@ -107,7 +108,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Activate and store license
-	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey, username.(string))
+	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey, username)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -154,8 +155,8 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	username := r.Context().Value("username")
-	if username == "" || username == nil {
+	username, ok := r.Context().Value(ctxkeys.Username).(string)
+	if !ok || username == "" {
 		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
@@ -164,7 +165,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Validate and store license
-	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey, username.(string))
+	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey, username)
 	if err != nil {
 		log.Error().
 			Err(err).
