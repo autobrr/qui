@@ -1345,7 +1345,7 @@ export function TorrentCardsMobile({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 204,
+    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 180,
     overscan: 5,
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
