@@ -24,6 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import {
+  CATEGORY_UNCATEGORIZED_VALUE,
   getFieldType,
   getOperatorsForField,
   HARDLINK_SCOPE_VALUES,
@@ -203,6 +204,33 @@ export function LeafCondition({
 
   const handleValueChange = (value: string) => {
     onChange({ ...condition, value });
+  };
+
+  const isCategoryEqualityOperator =
+    condition.field === "CATEGORY" &&
+    (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL");
+
+  const categorySelectOptions = (() => {
+    if (!categoryOptions) return null;
+    if (!isCategoryEqualityOperator) return categoryOptions;
+    const filtered = categoryOptions.filter((opt) => opt.value !== CATEGORY_UNCATEGORIZED_VALUE);
+    return [
+      { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+      ...filtered,
+    ];
+  })();
+
+  const handleCategoryValueChange = (value: string) => {
+    const actualValue =
+      condition.field === "CATEGORY" && value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value;
+    onChange({ ...condition, value: actualValue });
+  };
+
+  const getCategoryDisplayValue = (): string => {
+    if (condition.field === "CATEGORY" && !condition.value) {
+      return CATEGORY_UNCATEGORIZED_VALUE;
+    }
+    return condition.value ?? "";
   };
 
   const handleMinValueChange = (value: string) => {
@@ -449,308 +477,311 @@ export function LeafCondition({
 
       {/* Value input - varies by field type */}
       <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
-      {condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={betweenDurationDisplay.minValue}
-            onChange={(e) => handleBetweenDurationChange(e.target.value, betweenDurationDisplay.maxValue, betweenDurationDisplay.unit)}
-            placeholder="Min"
-          />
-          <span className="text-muted-foreground">-</span>
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={betweenDurationDisplay.maxValue}
-            onChange={(e) => handleBetweenDurationChange(betweenDurationDisplay.minValue, e.target.value, betweenDurationDisplay.unit)}
-            placeholder="Max"
-          />
-          <Select
-            value={String(betweenDurationDisplay.unit)}
-            onValueChange={(unit) => handleBetweenDurationChange(betweenDurationDisplay.minValue, betweenDurationDisplay.maxValue, parseInt(unit, 10))}
-          >
-            <SelectTrigger className="h-8 w-fit">
-              <SelectValue />
+        {condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={betweenDurationDisplay.minValue}
+              onChange={(e) => handleBetweenDurationChange(e.target.value, betweenDurationDisplay.maxValue, betweenDurationDisplay.unit)}
+              placeholder="Min"
+            />
+            <span className="text-muted-foreground">-</span>
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={betweenDurationDisplay.maxValue}
+              onChange={(e) => handleBetweenDurationChange(betweenDurationDisplay.minValue, e.target.value, betweenDurationDisplay.unit)}
+              placeholder="Max"
+            />
+            <Select
+              value={String(betweenDurationDisplay.unit)}
+              onValueChange={(unit) => handleBetweenDurationChange(betweenDurationDisplay.minValue, betweenDurationDisplay.maxValue, parseInt(unit, 10))}
+            >
+              <SelectTrigger className="h-8 w-fit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DURATION_INPUT_UNITS.map((u) => (
+                  <SelectItem key={u.value} value={String(u.value)}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : condition.operator === "BETWEEN" && fieldType === "bytes" && betweenBytesDisplay ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={betweenBytesDisplay.minValue}
+              onChange={(e) => handleBetweenBytesChange(e.target.value, betweenBytesDisplay.maxValue, betweenBytesDisplay.unit)}
+              placeholder="Min"
+            />
+            <span className="text-muted-foreground">-</span>
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={betweenBytesDisplay.maxValue}
+              onChange={(e) => handleBetweenBytesChange(betweenBytesDisplay.minValue, e.target.value, betweenBytesDisplay.unit)}
+              placeholder="Max"
+            />
+            <Select
+              value={String(betweenBytesDisplay.unit)}
+              onValueChange={(unit) => handleBetweenBytesChange(betweenBytesDisplay.minValue, betweenBytesDisplay.maxValue, parseInt(unit, 10))}
+            >
+              <SelectTrigger className="h-8 w-fit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BYTES_INPUT_UNITS.map((u) => (
+                  <SelectItem key={u.value} value={String(u.value)}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : condition.operator === "BETWEEN" && fieldType === "percentage" && betweenPercentageDisplay ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={betweenPercentageDisplay.minValue}
+              onChange={(e) => handleBetweenPercentageChange(e.target.value, betweenPercentageDisplay.maxValue)}
+              min={0}
+              max={100}
+              step="0.01"
+              placeholder="Min"
+            />
+            <span className="text-muted-foreground">-</span>
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={betweenPercentageDisplay.maxValue}
+              onChange={(e) => handleBetweenPercentageChange(betweenPercentageDisplay.minValue, e.target.value)}
+              min={0}
+              max={100}
+              step="0.01"
+              placeholder="Max"
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+          </div>
+        ) : condition.operator === "BETWEEN" ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={condition.minValue ?? ""}
+              onChange={(e) => handleMinValueChange(e.target.value)}
+              placeholder="Min"
+            />
+            <span className="text-muted-foreground">-</span>
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={condition.maxValue ?? ""}
+              onChange={(e) => handleMaxValueChange(e.target.value)}
+              placeholder="Max"
+            />
+          </div>
+        ) : fieldType === "state" ? (
+          <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
+              <SelectValue placeholder="Select state" />
             </SelectTrigger>
             <SelectContent>
-              {DURATION_INPUT_UNITS.map((u) => (
-                <SelectItem key={u.value} value={String(u.value)}>
-                  {u.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : condition.operator === "BETWEEN" && fieldType === "bytes" && betweenBytesDisplay ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={betweenBytesDisplay.minValue}
-            onChange={(e) => handleBetweenBytesChange(e.target.value, betweenBytesDisplay.maxValue, betweenBytesDisplay.unit)}
-            placeholder="Min"
-          />
-          <span className="text-muted-foreground">-</span>
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={betweenBytesDisplay.maxValue}
-            onChange={(e) => handleBetweenBytesChange(betweenBytesDisplay.minValue, e.target.value, betweenBytesDisplay.unit)}
-            placeholder="Max"
-          />
-          <Select
-            value={String(betweenBytesDisplay.unit)}
-            onValueChange={(unit) => handleBetweenBytesChange(betweenBytesDisplay.minValue, betweenBytesDisplay.maxValue, parseInt(unit, 10))}
-          >
-            <SelectTrigger className="h-8 w-fit">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BYTES_INPUT_UNITS.map((u) => (
-                <SelectItem key={u.value} value={String(u.value)}>
-                  {u.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : condition.operator === "BETWEEN" && fieldType === "percentage" && betweenPercentageDisplay ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={betweenPercentageDisplay.minValue}
-            onChange={(e) => handleBetweenPercentageChange(e.target.value, betweenPercentageDisplay.maxValue)}
-            min={0}
-            max={100}
-            step="0.01"
-            placeholder="Min"
-          />
-          <span className="text-muted-foreground">-</span>
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={betweenPercentageDisplay.maxValue}
-            onChange={(e) => handleBetweenPercentageChange(betweenPercentageDisplay.minValue, e.target.value)}
-            min={0}
-            max={100}
-            step="0.01"
-            placeholder="Max"
-          />
-          <span className="text-sm text-muted-foreground">%</span>
-        </div>
-      ) : condition.operator === "BETWEEN" ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={condition.minValue ?? ""}
-            onChange={(e) => handleMinValueChange(e.target.value)}
-            placeholder="Min"
-          />
-          <span className="text-muted-foreground">-</span>
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={condition.maxValue ?? ""}
-            onChange={(e) => handleMaxValueChange(e.target.value)}
-            placeholder="Max"
-          />
-        </div>
-      ) : fieldType === "state" ? (
-        <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
-            <SelectValue placeholder="Select state" />
-          </SelectTrigger>
-          <SelectContent>
-            {TORRENT_STATES.map((state) => {
-              const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
-              const isDisabled = disabledInfo !== undefined;
+              {TORRENT_STATES.map((state) => {
+                const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
+                const isDisabled = disabledInfo !== undefined;
 
-              if (isDisabled) {
+                if (isDisabled) {
+                  return (
+                    <DisabledOption key={state.value} reason={disabledInfo.reason}>
+                      <SelectItem value={state.value}>{state.label}</SelectItem>
+                    </DisabledOption>
+                  );
+                }
+
                 return (
-                  <DisabledOption key={state.value} reason={disabledInfo.reason}>
-                    <SelectItem value={state.value}>{state.label}</SelectItem>
-                  </DisabledOption>
+                  <SelectItem key={state.value} value={state.value}>
+                    {state.label}
+                  </SelectItem>
                 );
-              }
-
-              return (
-                <SelectItem key={state.value} value={state.value}>
-                  {state.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      ) : fieldType === "hardlinkScope" ? (
-        <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
-            <SelectValue placeholder="Select scope" />
-          </SelectTrigger>
-          <SelectContent>
-            {HARDLINK_SCOPE_VALUES.map((scope) => (
-              <SelectItem key={scope.value} value={scope.value}>
-                {scope.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : fieldType === "boolean" ? (
-        <Select value={condition.value ?? "true"} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[100px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">True</SelectItem>
-            <SelectItem value="false">False</SelectItem>
-          </SelectContent>
-        </Select>
-      ) : fieldType === "duration" && durationDisplay ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={durationDisplay.value}
-            onChange={(e) => handleDurationChange(e.target.value, durationDisplay.unit)}
-            placeholder="0"
-          />
-          <Select
-            value={String(durationDisplay.unit)}
-            onValueChange={(unit) => handleDurationChange(durationDisplay.value, parseInt(unit, 10))}
-          >
-            <SelectTrigger className="h-8 w-[100px]">
-              <SelectValue />
+              })}
+            </SelectContent>
+          </Select>
+        ) : fieldType === "hardlinkScope" ? (
+          <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
+              <SelectValue placeholder="Select scope" />
             </SelectTrigger>
             <SelectContent>
-              {DURATION_INPUT_UNITS.map((u) => (
-                <SelectItem key={u.value} value={String(u.value)}>
-                  {u.label}
+              {HARDLINK_SCOPE_VALUES.map((scope) => (
+                <SelectItem key={scope.value} value={scope.value}>
+                  {scope.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-      ) : fieldType === "speed" && speedDisplay ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={speedDisplay.value}
-            onChange={(e) => handleSpeedChange(e.target.value, speedDisplay.unit)}
-            placeholder="0"
-          />
-          <Select
-            value={String(speedDisplay.unit)}
-            onValueChange={(unit) => handleSpeedChange(speedDisplay.value, parseInt(unit, 10))}
-          >
-            <SelectTrigger className="h-8 w-fit">
+        ) : fieldType === "boolean" ? (
+          <Select value={condition.value ?? "true"} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[100px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SPEED_INPUT_UNITS.map((u) => (
-                <SelectItem key={u.value} value={String(u.value)}>
-                  {u.label}
+              <SelectItem value="true">True</SelectItem>
+              <SelectItem value="false">False</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : fieldType === "duration" && durationDisplay ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={durationDisplay.value}
+              onChange={(e) => handleDurationChange(e.target.value, durationDisplay.unit)}
+              placeholder="0"
+            />
+            <Select
+              value={String(durationDisplay.unit)}
+              onValueChange={(unit) => handleDurationChange(durationDisplay.value, parseInt(unit, 10))}
+            >
+              <SelectTrigger className="h-8 w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DURATION_INPUT_UNITS.map((u) => (
+                  <SelectItem key={u.value} value={String(u.value)}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : fieldType === "speed" && speedDisplay ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={speedDisplay.value}
+              onChange={(e) => handleSpeedChange(e.target.value, speedDisplay.unit)}
+              placeholder="0"
+            />
+            <Select
+              value={String(speedDisplay.unit)}
+              onValueChange={(unit) => handleSpeedChange(speedDisplay.value, parseInt(unit, 10))}
+            >
+              <SelectTrigger className="h-8 w-fit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SPEED_INPUT_UNITS.map((u) => (
+                  <SelectItem key={u.value} value={String(u.value)}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : fieldType === "bytes" && bytesDisplay ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 w-20"
+              value={bytesDisplay.value}
+              onChange={(e) => handleBytesChange(e.target.value, bytesDisplay.unit)}
+              placeholder="0"
+            />
+            <Select
+              value={String(bytesDisplay.unit)}
+              onValueChange={(unit) => handleBytesChange(bytesDisplay.value, parseInt(unit, 10))}
+            >
+              <SelectTrigger className="h-8 w-fit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BYTES_INPUT_UNITS.map((u) => (
+                  <SelectItem key={u.value} value={String(u.value)}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : fieldType === "percentage" ? (
+          <div className="flex-1 flex items-center gap-1">
+            <Input
+              type="number"
+              className="h-8 min-w-20 flex-1 sm:flex-none sm:w-20"
+              value={getPercentageDisplay()}
+              onChange={(e) => handlePercentageChange(e.target.value)}
+              min={0}
+              max={100}
+              step="0.01"
+              placeholder="0-100"
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+          </div>
+        ) : ((condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || isCategoryEqualityOperator) && categorySelectOptions && categorySelectOptions.length > 0) ? (
+          <Select value={getCategoryDisplayValue()} onValueChange={handleCategoryValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {categorySelectOptions!.map((cat) => (
+                <SelectItem key={cat.value} value={cat.value}>
+                  {cat.value === CATEGORY_UNCATEGORIZED_VALUE ? (
+                    <span className="italic text-muted-foreground">{cat.label}</span>
+                  ) : (
+                    cat.label
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-      ) : fieldType === "bytes" && bytesDisplay ? (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 w-20"
-            value={bytesDisplay.value}
-            onChange={(e) => handleBytesChange(e.target.value, bytesDisplay.unit)}
-            placeholder="0"
-          />
-          <Select
-            value={String(bytesDisplay.unit)}
-            onValueChange={(unit) => handleBytesChange(bytesDisplay.value, parseInt(unit, 10))}
-          >
-            <SelectTrigger className="h-8 w-fit">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BYTES_INPUT_UNITS.map((u) => (
-                <SelectItem key={u.value} value={String(u.value)}>
-                  {u.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : fieldType === "percentage" ? (
-        <div className="flex-1 flex items-center gap-1">
-          <Input
-            type="number"
-            className="h-8 min-w-20 flex-1 sm:flex-none sm:w-20"
-            value={getPercentageDisplay()}
-            onChange={(e) => handlePercentageChange(e.target.value)}
-            min={0}
-            max={100}
-            step="0.01"
-            placeholder="0-100"
-          />
-          <span className="text-sm text-muted-foreground">%</span>
-        </div>
-      ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
-        // Category selector for category-related conditions when categories available
-        <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
-          <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
-            <SelectValue placeholder="Select category" />
-          </SelectTrigger>
-          <SelectContent>
-            {categoryOptions.map((cat) => (
-              <SelectItem key={cat.value} value={cat.value}>
-                {cat.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <div className="flex-1 flex items-center gap-1">
-          <Input
-            type={isNumericType(fieldType) ? "number" : "text"}
-            className="h-8 min-w-0 flex-1"
-            value={condition.value ?? ""}
-            onChange={(e) => handleValueChange(e.target.value)}
-            placeholder={getPlaceholder(fieldType)}
-          />
-          {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
-          {fieldType === "string" &&
+        ) : (
+          <div className="flex-1 flex items-center gap-1">
+            <Input
+              type={isNumericType(fieldType) ? "number" : "text"}
+              className="h-8 min-w-0 flex-1"
+              value={condition.value ?? ""}
+              onChange={(e) => handleValueChange(e.target.value)}
+              placeholder={getPlaceholder(fieldType)}
+            />
+            {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
+            {fieldType === "string" &&
             condition.operator !== "MATCHES" &&
             condition.operator !== "EXISTS_IN" &&
             condition.operator !== "CONTAINS_IN" && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-7 px-2",
-                    condition.regex && "bg-primary/10 text-primary"
-                  )}
-                  onClick={toggleRegex}
-                >
-                  {condition.regex ? (
-                    <ToggleRight className="size-4" />
-                  ) : (
-                    <ToggleLeft className="size-4" />
-                  )}
-                  <span className="ml-1 text-xs">.*</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {condition.regex ? "Regex enabled" : "Enable regex"}
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "h-7 px-2",
+                      condition.regex && "bg-primary/10 text-primary"
+                    )}
+                    onClick={toggleRegex}
+                  >
+                    {condition.regex ? (
+                      <ToggleRight className="size-4" />
+                    ) : (
+                      <ToggleLeft className="size-4" />
+                    )}
+                    <span className="ml-1 text-xs">.*</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {condition.regex ? "Regex enabled" : "Enable regex"}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Remove button */}
