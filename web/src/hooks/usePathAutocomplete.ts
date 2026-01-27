@@ -16,6 +16,7 @@ export function usePathAutocomplete(
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
   const [dismissed, setDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const skipHighlightResetRef = useRef(false);
 
   const getParentPath = useCallback((path: string) => {
     if (!path || path.trim() === "/") return "/";
@@ -58,6 +59,10 @@ export function usePathAutocomplete(
       setHighlightedIndex(-1);
       return;
     }
+    if (skipHighlightResetRef.current) {
+      skipHighlightResetRef.current = false;
+      return;
+    }
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
   }, [suggestions, dismissed]);
 
@@ -78,6 +83,7 @@ export function usePathAutocomplete(
 
       if (dismissed) {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          skipHighlightResetRef.current = true;
           setDismissed(false);
         } else if (e.key === "Escape") {
           setHighlightedIndex(-1);
