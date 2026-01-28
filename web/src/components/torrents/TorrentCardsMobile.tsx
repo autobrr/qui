@@ -2510,7 +2510,7 @@ export function TorrentCardsMobile({
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="right-4 z-[60] bottom-[calc(3rem+env(safe-area-inset-bottom))]"
+          className="right-8 z-[60] bottom-[calc(8.5rem+env(safe-area-inset-bottom))]"
         />
       </div>
     </div>
