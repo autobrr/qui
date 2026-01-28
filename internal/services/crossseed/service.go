@@ -4093,10 +4093,14 @@ func matchTypePriority(matchType string) int {
 		return 3
 	case "partial-in-pack":
 		return 2
+	case "partial-contains":
+		// Allows cross-seeding when folder structures differ but content matches
+		// (e.g., /movie1/movie1.mkv vs /movie1.mkv)
+		return 1
 	case "size":
 		return 1
 	default:
-		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
+		// Unknown/unsupported match types (e.g. "release-match")
 		// intentionally receive priority 0 so callers treat them as unusable unless
 		// explicitly handled above. Add new match types here when they become valid.
 		return 0
