@@ -46,7 +46,7 @@ import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, Tor
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import {
@@ -150,6 +150,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       }),
       enabled: true,
       refetchInterval: 5000, // Match TorrentTable polling
+      refetchIntervalInBackground: true,
       staleTime: 2000,
       gcTime: 300000, // Match TorrentTable cache time
       placeholderData: (previousData: TorrentResponse | undefined) => previousData,
@@ -2362,12 +2363,14 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 }
 
 export function Dashboard() {
+  const defaultTitleRef = useRef<string | null>(null)
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
   const activeInstances = allInstances.filter(instance => instance.isActive)
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
+  const [speedUnit] = useSpeedUnits()
 
   // Dashboard settings
   const { data: dashboardSettings } = useDashboardSettings()
@@ -2376,6 +2379,32 @@ export function Dashboard() {
 
   // Use safe hook that always calls the same number of hooks
   const statsData = useAllInstanceStats(activeInstances)
+  const globalStats = useGlobalStats(statsData)
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    if (defaultTitleRef.current === null) {
+      defaultTitleRef.current = document.title
+    }
+
+    if (!hasActiveInstances) {
+      document.title = defaultTitleRef.current ?? ""
+      return
+    }
+
+    const downloadSpeed = globalStats.totalDownload ?? 0
+    const uploadSpeed = globalStats.totalUpload ?? 0
+    const speedTitle = `D: ${formatSpeedWithUnit(downloadSpeed, speedUnit)} U: ${formatSpeedWithUnit(uploadSpeed, speedUnit)}`
+
+    document.title = `${speedTitle} | Dashboard`
+
+    return () => {
+      document.title = defaultTitleRef.current ?? ""
+    }
+  }, [globalStats.totalDownload, globalStats.totalUpload, hasActiveInstances, speedUnit])
 
   // Handler for TrackerBreakdownCard to update settings
   const handleTrackerSettingsChange = (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => {

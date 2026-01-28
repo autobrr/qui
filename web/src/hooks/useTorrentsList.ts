@@ -84,7 +84,7 @@ export function useTorrentsList(
     // Only poll the first page to get fresh data - don't poll pagination pages
     // Reduce polling frequency for cross-instance calls since they're more expensive
     refetchInterval: currentPage === 0 ? (isCrossSeedFiltering ? 10000 : 3000) : false,
-    refetchIntervalInBackground: false, // Don't poll when tab is not active
+    refetchIntervalInBackground: true,
     enabled,
   })
 
