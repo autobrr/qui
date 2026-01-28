@@ -1137,3 +1137,129 @@ func TestDeleteFreesSpace(t *testing.T) {
 		require.True(t, result)
 	})
 }
+
+func TestProcessTorrents_PauseResume(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:  "a",
+			Name:  "test",
+			State: qbt.TorrentStateUploading,
+		},
+	}
+
+	// Two rules: one to pause, one to resume
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{Enabled: true},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				Resume: &models.ResumeAction{Enabled: true},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, &EvalContext{}, sm, nil, nil)
+
+	// Torrent is already running, so resume condition is not met
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.True(t, state.shouldPause)
+	require.False(t, state.shouldResume)
+}
+
+func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Torrent is currently paused
+	torrents := []qbt.Torrent{
+		{
+			Hash:  "a",
+			Name:  "test",
+			State: qbt.TorrentStatePausedDl,
+		},
+	}
+
+	// Two rules: first pauses, second resumes
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{Enabled: true},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				Resume: &models.ResumeAction{Enabled: true},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, nil, sm, nil, nil)
+
+	// Torrent is paused, so:
+	// - Pause rule: torrent already paused, shouldPause not set
+	// - Resume rule: torrent is paused, shouldResume set
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.False(t, state.shouldPause)
+	require.True(t, state.shouldResume)
+}
+
+func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Torrent is currently paused
+	torrents := []qbt.Torrent{
+		{
+			Hash:  "a",
+			Name:  "test",
+			State: qbt.TorrentStateDownloading,
+		},
+	}
+
+	// Two rules: first resumes, second pauses
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				Resume: &models.ResumeAction{Enabled: true},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{Enabled: true},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, nil, sm, nil, nil)
+
+	// Torrent is running, so:
+	// - Resume rule: torrent already running, shouldResume not set
+	// - Pause rule: torrent is running, shouldPause set
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.True(t, state.shouldPause)
+	require.False(t, state.shouldResume)
+}

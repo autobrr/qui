@@ -1249,6 +1249,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	uploadBatches := make(map[int64][]string)
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
+	resumeHashes := make([]string, 0)
 
 	type tagChange struct {
 		current  map[string]struct{}
@@ -1522,6 +1523,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			pauseHashes = append(pauseHashes, hash)
 		}
 
+		// Resume
+		if state.shouldResume {
+			resumeHashes = append(resumeHashes, hash)
+		}
+
 		// Tags
 		if len(state.tagActions) > 0 {
 			var toAdd, toRemove []string
@@ -1665,6 +1671,34 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			Details:    detailsJSON,
 		}); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
+		}
+	}
+
+	// Execute resume actions for expression-based rules
+	resumedCount := 0
+	if len(resumeHashes) > 0 {
+		limited := limitHashBatch(resumeHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "resume"); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resume action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resumed torrents")
+				resumedCount += len(batch)
+			}
+		}
+	}
+
+	// Record aggregated resume activity
+	if s.activityStore != nil && resumedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionResumed,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
 		}
 	}
 

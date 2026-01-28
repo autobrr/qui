@@ -429,8 +429,8 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate        ConditionField = "PRIVATE"
-	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldPrivate         ConditionField = "PRIVATE"
+	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields
@@ -509,6 +509,7 @@ type ActionConditions struct {
 	SpeedLimits   *SpeedLimitAction  `json:"speedLimits,omitempty"`
 	ShareLimits   *ShareLimitsAction `json:"shareLimits,omitempty"`
 	Pause         *PauseAction       `json:"pause,omitempty"`
+	Resume        *ResumeAction      `json:"resume,omitempty"`
 	Delete        *DeleteAction      `json:"delete,omitempty"`
 	Tag           *TagAction         `json:"tag,omitempty"`
 	Category      *CategoryAction    `json:"category,omitempty"`
@@ -533,6 +534,12 @@ type ShareLimitsAction struct {
 
 // PauseAction configures pause action with conditions.
 type PauseAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// ResumeAction configures resume action with conditions.
+type ResumeAction struct {
 	Enabled   bool           `json:"enabled"`
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
@@ -578,5 +585,5 @@ func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Resume == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil
 }
