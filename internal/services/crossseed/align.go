@@ -27,7 +27,8 @@ type fileRenameInstruction struct {
 
 // alignCrossSeedContentPaths renames the incoming cross-seed torrent (display name, folders, files)
 // so that it matches the layout of the already-seeded torrent we're borrowing data from.
-// Returns true if alignment succeeded (or wasn't needed), false if alignment failed.
+// Returns true if alignment succeeded (or wasn't needed), false if alignment failed,
+// along with the active hash that qBittorrent exposes for the torrent.
 func (s *Service) alignCrossSeedContentPaths(
 	ctx context.Context,
 	instanceID int,
@@ -37,7 +38,7 @@ func (s *Service) alignCrossSeedContentPaths(
 	matchedTorrent *qbt.Torrent,
 	expectedSourceFiles qbt.TorrentFiles,
 	candidateFiles qbt.TorrentFiles,
-) bool {
+) (bool, string) {
 	hashes := dedupeHashes(torrentHash, torrentHashV2)
 	hashLabel := ""
 	if len(hashes) > 0 {
@@ -49,7 +50,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Int("instanceID", instanceID).
 			Str("torrentHash", hashLabel).
 			Msg("alignCrossSeedContentPaths called with nil matchedTorrent")
-		return false
+		return false, ""
 	}
 
 	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
@@ -65,7 +66,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("sourceName", sourceTorrentName).
 			Str("matchedName", matchedTorrent.Name).
 			Msg("Skipping alignment: season pack cannot use single-episode files")
-		return false
+		return false, ""
 	}
 
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
@@ -75,7 +76,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Int("expectedSourceFiles", len(expectedSourceFiles)).
 			Int("candidateFiles", len(candidateFiles)).
 			Msg("Empty file list provided to alignment, skipping")
-		return false
+		return false, ""
 	}
 
 	// Wait for torrent to become visible in qBittorrent before attempting renames
@@ -85,7 +86,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Int("instanceID", instanceID).
 			Str("torrentHash", hashLabel).
 			Msg("Cross-seed torrent not visible yet, skipping rename alignment")
-		return false
+		return false, ""
 	}
 
 	canonicalHash := normalizeHash(activeHash)
@@ -132,7 +133,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("sourceName", sourceTorrentName).
 			Str("matchedName", matchedTorrent.Name).
 			Msg("Skipping file alignment for episode matched to season pack")
-		return true // Episode-in-pack uses season pack path directly, no alignment needed
+		return true, activeHash // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
 	// Try to get current files from qBittorrent with a few retries for slow clients.
@@ -234,7 +235,7 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("from", actualOldPath).
 				Str("to", actualNewPath).
 				Msg("Failed to rename cross-seed file after retries, aborting alignment")
-			return false
+			return false, activeHash
 		}
 		renamed++
 	}
@@ -253,7 +254,7 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("from", sourceRoot).
 				Str("to", targetRoot).
 				Msg("Failed to rename cross-seed root folder")
-			return false
+			return false, activeHash
 		}
 		rootRenamed = true
 		log.Debug().
@@ -275,11 +276,11 @@ func (s *Service) alignCrossSeedContentPaths(
 				Strs("unmatchedPaths", unmatched).
 				Msg("Some cross-seed files could not be mapped, recheck will handle verification")
 		}
-		return true // No renames needed - paths already match or recheck will verify
+		return true, activeHash // No renames needed - paths already match or recheck will verify
 	}
 
 	if renamed == 0 && !rootRenamed {
-		return true // No renames performed (paths already match or renames not required)
+		return true, activeHash // No renames performed (paths already match or renames not required)
 	}
 
 	log.Debug().
@@ -297,7 +298,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Msg("Some cross-seed files could not be mapped to existing files and will keep their original names")
 	}
 
-	return true
+	return true, activeHash
 }
 
 func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hashes []string, timeout time.Duration) string {
