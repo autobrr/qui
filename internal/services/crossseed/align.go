@@ -79,9 +79,23 @@ func (s *Service) alignCrossSeedContentPaths(
 		return false, ""
 	}
 
+	expectedSourceRoot := detectCommonRoot(expectedSourceFiles)
+	expectedCandidateRoot := detectCommonRoot(candidateFiles)
+	planPreview, _ := buildFileRenamePlan(expectedSourceFiles, candidateFiles)
+	needsRootRename := expectedSourceRoot != "" && expectedCandidateRoot != "" && expectedSourceRoot != expectedCandidateRoot
+	needsFileRename := len(planPreview) > 0
+	alignmentNeeded := shouldAlignFilesWithCandidate(sourceRelease, matchedRelease) && (needsRootRename || needsFileRename)
+
 	// Wait for torrent to become visible in qBittorrent before attempting renames
 	activeHash := s.waitForTorrentAvailability(ctx, instanceID, hashes, crossSeedRenameWaitTimeout)
 	if activeHash == "" {
+		if !alignmentNeeded {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", hashLabel).
+				Msg("Cross-seed torrent not visible yet, no alignment needed")
+			return true, ""
+		}
 		log.Warn().
 			Int("instanceID", instanceID).
 			Str("torrentHash", hashLabel).
@@ -95,8 +109,6 @@ func (s *Service) alignCrossSeedContentPaths(
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
 
 	// Detect single-file → folder case (using expected files, before any qBittorrent updates)
-	expectedSourceRoot := detectCommonRoot(expectedSourceFiles)
-	expectedCandidateRoot := detectCommonRoot(candidateFiles)
 	isSingleFileToFolder := expectedSourceRoot == "" && expectedCandidateRoot != ""
 
 	// Determine if we should rename the torrent display name.
