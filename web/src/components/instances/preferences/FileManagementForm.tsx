@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useIncognitoMode } from "@/lib/incognito"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { toast } from "sonner"
 
@@ -32,16 +33,27 @@ function SwitchSetting({
   onCheckedChange: (checked: boolean) => void
   description?: string
 }) {
+  const switchId = React.useId()
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
 
@@ -54,6 +66,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const [incognitoMode] = useIncognitoMode()
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
 
   const form = useForm({
@@ -124,7 +137,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
   if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading file management settings...</p>
       </div>
     )
@@ -132,7 +145,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
   if (!preferences) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
@@ -234,6 +247,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 value={field.state.value as string}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="/downloads"
+                className={incognitoMode ? "blur-sm select-none" : ""}
               />
             </div>
           )}
@@ -264,6 +278,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="/temp-downloads"
                     disabled={!tempPathEnabled}
+                    className={incognitoMode ? "blur-sm select-none" : ""}
                   />
                 </div>
               )}

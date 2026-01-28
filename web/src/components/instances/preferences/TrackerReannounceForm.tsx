@@ -609,11 +609,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           </p>
         </div>
       ) : activityQuery.isLoading ? (
-        <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/30">
+        <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/40">
           <p className="text-sm text-muted-foreground">Loading activity...</p>
         </div>
       ) : activityEvents.length === 0 ? (
-        <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-6">
+        <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-6">
           <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
           {activityEnabled && (
             <p className="text-xs text-muted-foreground/60 mt-1">
