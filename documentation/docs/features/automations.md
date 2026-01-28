@@ -184,7 +184,7 @@ If a resume action is also present, last action wins.
 
 Resume matching torrents. Only resumes if not already running.
 
-If a resume action is also present, last action wins.
+If a pause action is also present, last action wins.
 
 ### Delete
 
