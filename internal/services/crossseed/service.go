@@ -4118,7 +4118,7 @@ func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
 		return 3
-	case "partial-in-pack":
+	case "partial-in-pack", "partial-contains":
 		return 2
 	case "partial-contains":
 		// Allows cross-seeding when folder structures differ but content matches
