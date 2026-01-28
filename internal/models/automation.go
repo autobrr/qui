@@ -246,6 +246,9 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
+	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid external program action: %w", err)
+	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
@@ -301,6 +304,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	}
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
+	}
+	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid external program action: %w", err)
 	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
@@ -370,6 +376,54 @@ func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedID
 	return tx.Commit()
 }
 
+// AutomationReference represents a minimal automation reference for cascade delete warnings.
+type AutomationReference struct {
+	ID         int    `json:"id"`
+	InstanceID int    `json:"instanceId"`
+	Name       string `json:"name"`
+}
+
+// FindByExternalProgramID returns automations that reference the given external program ID.
+// Uses SQLite's json_extract to query the conditions JSON column.
+// Returns all automations referencing the program, regardless of whether the action is enabled.
+func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID int) ([]*AutomationReference, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, instance_id, name
+		FROM automations
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
+	`, programID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []*AutomationReference
+	for rows.Next() {
+		var ref AutomationReference
+		if err := rows.Scan(&ref.ID, &ref.InstanceID, &ref.Name); err != nil {
+			return nil, err
+		}
+		refs = append(refs, &ref)
+	}
+	return refs, rows.Err()
+}
+
+// ClearExternalProgramAction removes the external program action from all automations
+// that reference the given program ID. This is used for cascade delete.
+// Clears references regardless of whether the action is enabled or disabled.
+func (s *AutomationStore) ClearExternalProgramAction(ctx context.Context, programID int) (int64, error) {
+	// Set externalProgram to null in the conditions JSON for all matching automations
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE automations
+		SET conditions = json_remove(conditions, '$.externalProgram')
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
+	`, programID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func boolToInt(v bool) int {
 	if v {
 		return 1
@@ -429,8 +483,8 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate        ConditionField = "PRIVATE"
-	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldPrivate         ConditionField = "PRIVATE"
+	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields
@@ -505,14 +559,15 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	SpeedLimits   *SpeedLimitAction  `json:"speedLimits,omitempty"`
-	ShareLimits   *ShareLimitsAction `json:"shareLimits,omitempty"`
-	Pause         *PauseAction       `json:"pause,omitempty"`
-	Delete        *DeleteAction      `json:"delete,omitempty"`
-	Tag           *TagAction         `json:"tag,omitempty"`
-	Category      *CategoryAction    `json:"category,omitempty"`
-	Move          *MoveAction        `json:"move,omitempty"`
+	SchemaVersion   string                 `json:"schemaVersion"`
+	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
+	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
+	Pause           *PauseAction           `json:"pause,omitempty"`
+	Delete          *DeleteAction          `json:"delete,omitempty"`
+	Tag             *TagAction             `json:"tag,omitempty"`
+	Category        *CategoryAction        `json:"category,omitempty"`
+	Move            *MoveAction            `json:"move,omitempty"`
+	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -573,10 +628,28 @@ type MoveAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
+// ExternalProgramAction configures external program execution with optional conditions.
+type ExternalProgramAction struct {
+	Enabled   bool           `json:"enabled"`
+	ProgramID int            `json:"programId"` // FK to external_programs table
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// Validate checks that the ExternalProgramAction has valid configuration.
+func (a *ExternalProgramAction) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if a.Enabled && a.ProgramID <= 0 {
+		return errors.New("enabled external program action requires valid programId")
+	}
+	return nil
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil && ac.ExternalProgram == nil
 }

@@ -22,18 +22,20 @@ import (
 )
 
 type AutomationHandler struct {
-	store         *models.AutomationStore
-	activityStore *models.AutomationActivityStore
-	instanceStore *models.InstanceStore
-	service       *automations.Service
+	store                *models.AutomationStore
+	activityStore        *models.AutomationActivityStore
+	instanceStore        *models.InstanceStore
+	externalProgramStore *models.ExternalProgramStore
+	service              *automations.Service
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
 	return &AutomationHandler{
-		store:         store,
-		activityStore: activityStore,
-		instanceStore: instanceStore,
-		service:       service,
+		store:                store,
+		activityStore:        activityStore,
+		instanceStore:        instanceStore,
+		externalProgramStore: externalProgramStore,
+		service:              service,
 	}
 }
 
@@ -350,6 +352,26 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return status, msg, err
 	}
 
+	// Validate ExternalProgram action has a valid programId when enabled
+	if err := payload.Conditions.ExternalProgram.Validate(); err != nil {
+		return http.StatusBadRequest, "External program action requires a valid program selection", err
+	}
+
+	// Verify the referenced external program exists
+	if payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled && payload.Conditions.ExternalProgram.ProgramID > 0 {
+		if h.externalProgramStore == nil {
+			log.Warn().Msg("automations: external program store is nil, skipping program existence check")
+			return http.StatusServiceUnavailable, "External program service not available", errors.New("external program store is nil")
+		}
+		_, err := h.externalProgramStore.GetByID(ctx, payload.Conditions.ExternalProgram.ProgramID)
+		if err != nil {
+			if errors.Is(err, models.ErrExternalProgramNotFound) {
+				return http.StatusBadRequest, "Referenced external program does not exist", err
+			}
+			return http.StatusInternalServerError, "Failed to verify external program", err
+		}
+	}
+
 	return 0, "", nil
 }
 
@@ -367,7 +389,8 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
 		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
 		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
-		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition))
+		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
+		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
 }
 
 // conditionsRequireLocalAccess checks if any enabled action condition uses fields
@@ -709,6 +732,9 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	}
 	if conditions.Category != nil {
 		validateConditionRegex(conditions.Category.Condition, "/conditions/category/condition", &result)
+	}
+	if conditions.ExternalProgram != nil {
+		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
 	}
 
 	return result
