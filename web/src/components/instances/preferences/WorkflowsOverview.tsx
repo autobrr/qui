@@ -77,11 +77,12 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+import { format } from '../../../lib/workflow-utils';
 
 /**
  * Recursively checks if a condition tree uses a specific field.
@@ -167,6 +168,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Share"
     case "paused":
       return "Pause"
+    case "resumed":
+      return "Resume"
     case "moved":
       return "Move"
     default:
@@ -221,6 +224,11 @@ function formatShareLimitsSummary(details: AutomationActivity["details"]): strin
 function formatPausedSummary(details: AutomationActivity["details"]): string {
   const count = details?.count ?? 0
   return `${count} torrent${count !== 1 ? "s" : ""} paused`
+}
+
+function formatResumedSummary(details: AutomationActivity["details"]): string {
+  const count = details?.count ?? 0
+  return `${count} torrent${count !== 1 ? "s" : ""} resumed`
 }
 
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
@@ -698,6 +706,7 @@ export function WorkflowsOverview({
     speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
   }
 
@@ -737,7 +746,7 @@ export function WorkflowsOverview({
             </TooltipTrigger>
             <TooltipContent className="max-w-[340px]">
               <p>
-                Condition-based automation rules. Actions: speed limits, share limits, pause, delete, tag, and category changes.
+                Condition-based automation rules. Actions: speed limits, share limits, pause, resume, delete, tag, and category changes.
                 Match torrents by tracker, category, tag, ratio, seed time, size, and more.
                 Cross-seed and hardlink aware—safely delete or move without losing shared files.
               </p>
@@ -1087,6 +1096,10 @@ export function WorkflowsOverview({
                                         <span className="font-medium text-sm block">
                                           {formatPausedSummary(event.details)}
                                         </span>
+                                      ) : event.action === "resumed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatResumedSummary(event.details)}
+                                        </span>
                                       ) : event.action === "moved" ? (
                                         <span className="font-medium text-sm block">
                                           {formatMovedSummary(event.details, event.outcome)}
@@ -1107,7 +1120,7 @@ export function WorkflowsOverview({
                                       >
                                         {formatAction(event.action)}
                                       </Badge>
-                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "moved"].includes(event.action) && (
+                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "resumed", "moved"].includes(event.action) && (
                                         <Badge
                                           variant="outline"
                                           className={cn(
@@ -1592,6 +1605,7 @@ function RulePreview({
     (rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.condition) ||
     (rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.condition) ||
     (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
+    (rule.conditions?.resume?.enabled && rule.conditions.resume.condition) ||
     (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
     (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
     (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
@@ -1668,6 +1682,12 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Pause className="h-3 w-3" />
             Pause
+          </Badge>
+        )}
+        {rule.conditions?.resume?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Play className="h-3 w-3" />
+            Resume
           </Badge>
         )}
         {rule.conditions?.delete?.enabled && (

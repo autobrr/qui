@@ -178,6 +178,14 @@ Torrents stop seeding when any enabled limit is reached.
 
 Pause matching torrents. Only pauses if not already stopped.
 
+If a resume action is also present, last action wins.
+
+### Resume
+
+Resume matching torrents. Only resumes if not already running.
+
+If a pause action is also present, last action wins.
+
 ### Delete
 
 Remove torrents from qBittorrent. **Must be standalone** - cannot combine with other actions.
