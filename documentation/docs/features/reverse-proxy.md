@@ -121,3 +121,14 @@ These endpoints proxy to qBittorrent and update qui's local state:
 | `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates file cache |
 
 All other endpoints are forwarded transparently to qBittorrent.
+
+## HTML Resources and Base URL Injection
+
+When accessing the qBittorrent web UI through the client proxy (e.g., opening the proxy URL in a browser), qui automatically injects a `<base>` tag into HTML responses. This ensures that relative resource URLs (like images, scripts, and stylesheets) resolve correctly under the proxy path.
+
+**Example:**
+- Proxy URL: `http://localhost:7476/proxy/abc123/`
+- qui injects: `<base href="/proxy/abc123/">`
+- Relative URLs like `images/qbittorrent32.png` correctly resolve to `/proxy/abc123/images/qbittorrent32.png`
+
+This feature is automatic and requires no configuration. Non-HTML content (JSON API responses, images, scripts, etc.) is proxied without modification.
