@@ -2452,6 +2452,9 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, field) {
 			return true
 		}
+		if ac.Resume != nil && ConditionUsesField(ac.Resume.Condition, field) {
+			return true
+		}
 		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
 			return true
 		}
