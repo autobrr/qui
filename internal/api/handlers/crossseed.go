@@ -1339,6 +1339,7 @@ type instanceCompletionSettingsResponse struct {
 	Tags              []string `json:"tags"`
 	ExcludeCategories []string `json:"excludeCategories"`
 	ExcludeTags       []string `json:"excludeTags"`
+	IndexerIDs        []int    `json:"indexerIds"`
 }
 
 // toInstanceCompletionSettingsResponse converts model to API response.
@@ -1350,6 +1351,7 @@ func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionS
 		Tags:              s.Tags,
 		ExcludeCategories: s.ExcludeCategories,
 		ExcludeTags:       s.ExcludeTags,
+		IndexerIDs:        s.IndexerIDs,
 	}
 }
 
@@ -1360,6 +1362,7 @@ type instanceCompletionSettingsRequest struct {
 	Tags              []string `json:"tags"`
 	ExcludeCategories []string `json:"excludeCategories"`
 	ExcludeTags       []string `json:"excludeTags"`
+	IndexerIDs        []int    `json:"indexerIds"`
 }
 
 // GetInstanceCompletionSettings returns the completion settings for a specific instance.
@@ -1446,6 +1449,7 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		Tags:              req.Tags,
 		ExcludeCategories: req.ExcludeCategories,
 		ExcludeTags:       req.ExcludeTags,
+		IndexerIDs:        req.IndexerIDs,
 	}
 
 	saved, err := h.completionStore.Upsert(r.Context(), settings)

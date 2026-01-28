@@ -1511,7 +1511,10 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return err
 	}
 
-	requestedIndexerIDs := uniquePositiveInts(settings.TargetIndexerIDs)
+	var requestedIndexerIDs []int
+	if completionSettings != nil {
+		requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
+	}
 
 	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
 	var allowedIndexerIDs []int

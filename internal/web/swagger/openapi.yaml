@@ -5343,6 +5343,11 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags
+        indexerIds:
+          type: array
+          items:
+            type: integer
+          description: Limit completion searches to these Torznab indexer IDs (empty means all)
 
     InstanceCrossSeedCompletionSettingsRequest:
       type: object
@@ -5371,6 +5376,11 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags
+        indexerIds:
+          type: array
+          items:
+            type: integer
+          description: Limit completion searches to these Torznab indexer IDs (empty means all)
 
     CrossSeedAutomationSettingsPatch:
       type: object
