@@ -17,11 +17,7 @@ type TorrentCollector struct {
 	syncManager *qbittorrent.SyncManager
 	clientPool  *qbittorrent.ClientPool
 
-	torrentsDownloadingDesc      *prometheus.Desc
-	torrentsSeedingDesc          *prometheus.Desc
-	torrentsPausedDesc           *prometheus.Desc
-	torrentsErrorDesc            *prometheus.Desc
-	torrentsCheckingDesc         *prometheus.Desc
+	torrentsByStatusDesc         *prometheus.Desc
 	sessionDownload              *prometheus.Desc
 	sessionUpload                *prometheus.Desc
 	allTimeDownload              *prometheus.Desc
@@ -35,34 +31,10 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 		syncManager: syncManager,
 		clientPool:  clientPool,
 
-		torrentsDownloadingDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_downloading",
-			"Number of downloading torrents by instance",
-			[]string{"instance_id", "instance_name"},
-			nil,
-		),
-		torrentsSeedingDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_seeding",
-			"Number of seeding torrents by instance",
-			[]string{"instance_id", "instance_name"},
-			nil,
-		),
-		torrentsPausedDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_paused",
-			"Number of paused torrents by instance",
-			[]string{"instance_id", "instance_name"},
-			nil,
-		),
-		torrentsErrorDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_error",
-			"Number of torrents in error state by instance",
-			[]string{"instance_id", "instance_name"},
-			nil,
-		),
-		torrentsCheckingDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_checking",
-			"Number of torrents being checked by instance",
-			[]string{"instance_id", "instance_name"},
+		torrentsByStatusDesc: prometheus.NewDesc(
+			"qbittorrent_torrents",
+			"Number of torrents by status and instance",
+			[]string{"instance_id", "instance_name", "status"},
 			nil,
 		),
 		sessionDownload: prometheus.NewDesc(
@@ -105,11 +77,7 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 }
 
 func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.torrentsDownloadingDesc
-	ch <- c.torrentsSeedingDesc
-	ch <- c.torrentsPausedDesc
-	ch <- c.torrentsErrorDesc
-	ch <- c.torrentsCheckingDesc
+	ch <- c.torrentsByStatusDesc
 	ch <- c.sessionDownload
 	ch <- c.sessionUpload
 	ch <- c.allTimeDownload
@@ -198,59 +166,19 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			c.reportError(ch, instanceIDStr, instanceName, "torrent_counts")
 			continue
 		}
-
 		if response != nil && response.Counts != nil && response.Counts.Status != nil {
 			counts := response.Counts
-			if downloading, ok := counts.Status["downloading"]; ok {
+
+			for status, v := range counts.Status {
 				ch <- prometheus.MustNewConstMetric(
-					c.torrentsDownloadingDesc,
+					c.torrentsByStatusDesc,
 					prometheus.GaugeValue,
-					float64(downloading),
+					float64(v),
 					instanceIDStr,
 					instanceName,
+					status,
 				)
 			}
-
-			if seeding, ok := counts.Status["seeding"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsSeedingDesc,
-					prometheus.GaugeValue,
-					float64(seeding),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if paused, ok := counts.Status["paused"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsPausedDesc,
-					prometheus.GaugeValue,
-					float64(paused),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if errored, ok := counts.Status["errored"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsErrorDesc,
-					prometheus.GaugeValue,
-					float64(errored),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if checking, ok := counts.Status["checking"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsCheckingDesc,
-					prometheus.GaugeValue,
-					float64(checking),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
 		}
 
 		if response != nil && response.ServerState != nil {
