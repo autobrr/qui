@@ -1224,7 +1224,7 @@ func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
-	// Torrent is currently paused
+	// Torrent is currently running (downloading)
 	torrents := []qbt.Torrent{
 		{
 			Hash:  "a",
