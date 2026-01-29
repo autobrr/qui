@@ -973,7 +973,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   } = useTorrentsList(instanceId, {
     enabled: true,
     pollingEnabled: isVisibilitySettled,
-    refetchIntervalInBackground: true,
     search: effectiveSearch,
     filters: {
       status: filters?.status || [],

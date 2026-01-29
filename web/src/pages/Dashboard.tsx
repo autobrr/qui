@@ -153,7 +153,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       }),
       enabled: options.enabled,
       refetchInterval: 5000, // Match TorrentTable polling
-      refetchIntervalInBackground: true,
+      refetchIntervalInBackground: false,
       staleTime: 2000,
       gcTime: 300000, // Match TorrentTable cache time
       placeholderData: (previousData: TorrentResponse | undefined) => previousData,
@@ -627,9 +627,8 @@ function InstanceCard({
   )
 }
 
-function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
+function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useGlobalStats(statsData)
 
   return (
     <Card className="sm:hidden">
@@ -683,9 +682,10 @@ function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStat
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
+type GlobalStats = ReturnType<typeof useGlobalStats>
+
+function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useGlobalStats(statsData)
 
   return (
     <>
@@ -2387,7 +2387,7 @@ export function Dashboard() {
     queries: activeInstances.map(instance => ({
       queryKey: ["transfer-info", instance.id],
       queryFn: () => api.getTransferInfo(instance.id),
-      enabled: isHiddenDelayed,
+      enabled: titleBarSpeedsEnabled && isHiddenDelayed,
       refetchInterval: 3000,
       refetchIntervalInBackground: true,
       staleTime: 0,
@@ -2511,10 +2511,10 @@ export function Dashboard() {
                     return (
                       <div key={sectionId} className="space-y-4">
                         {/* Mobile: Single combined card */}
-                        <MobileGlobalStatsCard statsData={statsData} />
+                        <MobileGlobalStatsCard globalStats={globalStats} />
                         {/* Tablet/Desktop: Separate cards */}
                         <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                          <GlobalStatsCards statsData={statsData} />
+                          <GlobalStatsCards globalStats={globalStats} />
                         </div>
                       </div>
                     )

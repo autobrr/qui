@@ -98,6 +98,7 @@ export function useTorrentsList(
       ? (pollingEnabled ? (isCrossSeedFiltering ? 10000 : 3000) : false)
       : false,
     refetchIntervalInBackground, // Controls background polling behavior
+    refetchOnWindowFocus: currentPage === 0,
     enabled: shouldEnableQuery,
   })
 

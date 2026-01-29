@@ -46,6 +46,13 @@ export function useDelayedVisibility(delayMs: number) {
 
       const hidden = document.hidden
       setIsHidden(hidden)
+
+      if (!hidden) {
+        setIsHiddenDelayed(false)
+        setIsVisibleDelayed(true)
+        return
+      }
+
       setIsHiddenDelayed(false)
       setIsVisibleDelayed(false)
 

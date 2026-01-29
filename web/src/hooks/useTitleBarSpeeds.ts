@@ -4,6 +4,7 @@
  */
 
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
+import { useRouteTitle } from "@/hooks/useRouteTitle"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { useQuery } from "@tanstack/react-query"
@@ -49,32 +50,53 @@ export function useTitleBarSpeeds({
   backgroundSpeeds: backgroundSpeedsOverride,
 }: UseTitleBarSpeedsOptions) {
   const [speedUnit] = useSpeedUnits()
-  const defaultTitleRef = useRef<string | null>(null)
+  const baseTitle = useRouteTitle()
   const lastSpeedTitleRef = useRef<string | null>(null)
-  const { isHiddenDelayed, isVisibleDelayed } = useDelayedVisibility(3000)
+  const lastBackgroundSpeedsRef = useRef<{ dl: number; up: number } | null>(null)
+  const lastHiddenAtRef = useRef(0)
+  const lastForegroundUpdateAtRef = useRef(0)
+  const wasHiddenRef = useRef(false)
+  const { isHidden, isHiddenDelayed, isVisibleDelayed } = useDelayedVisibility(3000)
 
-  const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds)
+  const isForegroundStale = !isHidden && lastHiddenAtRef.current > lastForegroundUpdateAtRef.current
+  const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds || isForegroundStale)
   const backgroundSpeedsQuery = useServerStateSpeeds(
     instanceId,
     shouldPollBackground && !backgroundSpeedsOverride
   )
   const backgroundSpeeds = backgroundSpeedsOverride ?? backgroundSpeedsQuery
-  const effectiveSpeeds = isHiddenDelayed ? backgroundSpeeds : foregroundSpeeds
-  const shouldSetTitle = enabled && (isHiddenDelayed || isVisibleDelayed)
+  const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
+  const effectiveSpeeds = isHiddenDelayed
+    ? (backgroundSpeeds ?? cachedBackgroundSpeeds)
+    : (isForegroundStale
+      ? (cachedBackgroundSpeeds ?? backgroundSpeeds)
+      : (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
+  const shouldSetTitle = enabled && (isHiddenDelayed || isVisibleDelayed || !isHidden)
 
   useEffect(() => {
-    if (typeof document === "undefined") {
-      return
+    if (isHidden && !wasHiddenRef.current) {
+      lastHiddenAtRef.current = Date.now()
     }
+    wasHiddenRef.current = isHidden
+  }, [isHidden])
 
-    if (defaultTitleRef.current === null) {
-      defaultTitleRef.current = document.title
+  useEffect(() => {
+    if (foregroundSpeeds) {
+      lastForegroundUpdateAtRef.current = Date.now()
     }
+  }, [foregroundSpeeds?.dl, foregroundSpeeds?.up])
 
+  useEffect(() => {
+    if (backgroundSpeeds) {
+      lastBackgroundSpeedsRef.current = backgroundSpeeds
+    }
+  }, [backgroundSpeeds])
+
+  useEffect(() => {
     if (!enabled) {
-      document.title = defaultTitleRef.current ?? document.title
+      document.title = baseTitle
       return () => {
-        document.title = defaultTitleRef.current ?? document.title
+        document.title = baseTitle
       }
     }
 
@@ -83,14 +105,14 @@ export function useTitleBarSpeeds({
         document.title = lastSpeedTitleRef.current
       }
       return () => {
-        document.title = defaultTitleRef.current ?? ""
+        document.title = baseTitle
       }
     }
 
     if (!effectiveSpeeds) {
-      document.title = lastSpeedTitleRef.current ?? defaultTitleRef.current ?? ""
+      document.title = lastSpeedTitleRef.current ?? baseTitle
       return () => {
-        document.title = defaultTitleRef.current ?? ""
+        document.title = baseTitle
       }
     }
 
@@ -110,7 +132,7 @@ export function useTitleBarSpeeds({
     }
 
     return () => {
-      document.title = defaultTitleRef.current ?? ""
+      document.title = baseTitle
     }
-  }, [effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
+  }, [baseTitle, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
 }
