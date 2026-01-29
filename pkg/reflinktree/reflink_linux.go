@@ -96,7 +96,7 @@ func cloneFile(src, dst string) (retErr error) {
 	dstFd := int(dstFile.Fd())
 
 	var cloneErr error
-	for attempt := 0; attempt < reflinkCloneRetryAttempts; attempt++ {
+	for attempt := range reflinkCloneRetryAttempts {
 		cloneErr = ioctlFileClone(dstFd, srcFd)
 		if cloneErr == nil {
 			return nil
