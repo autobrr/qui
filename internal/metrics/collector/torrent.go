@@ -349,6 +349,9 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			// Categories -> map[string]int
 			if counts.Categories != nil {
 				for cat, cnt := range counts.Categories {
+					if cat == "" {
+						cat = "_"
+					}
 					ch <- prometheus.MustNewConstMetric(
 						c.torrentsPerCategoryDesc,
 						prometheus.GaugeValue,
@@ -362,6 +365,9 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			// CategorySizes -> map[string]int64
 			if counts.CategorySizes != nil {
 				for cat, sz := range counts.CategorySizes {
+					if cat == "" {
+						cat = "_"
+					}
 					ch <- prometheus.MustNewConstMetric(
 						c.torrentsSizePerCategoryDesc,
 						prometheus.GaugeValue,
