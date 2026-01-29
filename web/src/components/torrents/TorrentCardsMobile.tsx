@@ -1345,7 +1345,7 @@ export function TorrentCardsMobile({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 204,
+    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 180,
     overscan: 5,
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
@@ -2510,7 +2510,7 @@ export function TorrentCardsMobile({
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="right-4 z-[60] bottom-[calc(8rem+env(safe-area-inset-bottom))]"
+          className="right-8 z-[60] bottom-[calc(8.5rem+env(safe-area-inset-bottom))]"
         />
       </div>
     </div>
