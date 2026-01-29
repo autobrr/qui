@@ -12,6 +12,10 @@ type RouteStaticData = {
   title?: string
 }
 
+/**
+ * Resolves the most specific static title from the active route matches.
+ * Falls back to the provided string when no route title is available.
+ */
 export function useRouteTitle(fallback: string = DEFAULT_TITLE) {
   const matches = useRouterState({
     select: (state: { matches: unknown[] }) => state.matches,

@@ -19,6 +19,10 @@ interface UseTitleBarSpeedsOptions {
   backgroundSpeeds?: { dl: number; up: number }
 }
 
+/**
+ * Fetches transfer speeds for an instance with a short polling interval.
+ * Returns undefined when disabled or until server data arrives.
+ */
 export function useServerStateSpeeds(instanceId?: number, enabled = true) {
   const isEnabled = typeof instanceId === "number" && enabled
 
@@ -41,6 +45,10 @@ export function useServerStateSpeeds(instanceId?: number, enabled = true) {
   }
 }
 
+/**
+ * Updates the document title with live transfer speeds based on visibility.
+ * Falls back to the current route title when disabled or data is unavailable.
+ */
 export function useTitleBarSpeeds({
   mode,
   enabled = true,
