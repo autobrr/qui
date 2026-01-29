@@ -55,7 +55,8 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const [searchQuery, setSearchQuery] = useState("")
   // Use deferred value to prevent search from blocking the UI
   const deferredSearchQuery = useDeferredValue(searchQuery)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  // Use state ref so the virtualizer re-initializes
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
 
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
@@ -132,7 +133,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   // Only initialize virtualizer if we need it
   const virtualizer = useVirtualizer({
     count: shouldUseVirtualization ? filteredCategories.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
+    getScrollElement: () => scrollContainer,
     estimateSize: () => 36,
     overscan: 5,
   })
@@ -211,7 +212,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Category list - use virtualization only for large lists */}
         {hasCategories && (
           <div
-            ref={scrollContainerRef}
+            ref={setScrollContainer}
             className="max-h-[300px] overflow-y-auto"
           >
             {hasFilteredCategories ? (
