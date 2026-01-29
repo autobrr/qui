@@ -848,7 +848,7 @@ const FilterSidebarComponent = ({
   }, [incognitoMode, isLoading, torrentCounts])
 
   // Use virtual scrolling for large lists to handle performance efficiently
-  const VIRTUAL_THRESHOLD = 30 // Use virtual scrolling for lists > 30 items
+  const VIRTUAL_THRESHOLD = 250 // Use virtual scrolling for lists > 250 items
 
   // Refs for virtual scrolling
   const categoryListRef = useRef<HTMLDivElement>(null)
