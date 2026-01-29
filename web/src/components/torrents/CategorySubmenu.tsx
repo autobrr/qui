@@ -48,6 +48,10 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   currentCategory,
   useSubcategories = false,
 }: CategorySubmenuProps) {
+  // Store callback in ref so it doesn't trigger re-renders
+  const onSetCategoryRef = useRef(onSetCategory)
+  onSetCategoryRef.current = onSetCategory
+
   const [searchQuery, setSearchQuery] = useState("")
   // Use deferred value to prevent search from blocking the UI
   const deferredSearchQuery = useDeferredValue(searchQuery)
@@ -137,7 +141,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const renderCategoryItem = (category: { name: string; displayName: string; level: number }) => (
     <MenuItem
       key={category.name}
-      onClick={() => onSetCategory(category.name)}
+      onClick={() => onSetCategoryRef.current(category.name)}
       disabled={isPending}
       className={cn(
         "flex items-center gap-2",
@@ -169,7 +173,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
       <SubContent className="p-0 min-w-[240px]">
         {/* Remove Category option */}
         <MenuItem
-          onClick={() => onSetCategory("")}
+          onClick={() => onSetCategoryRef.current("")}
           disabled={isPending}
         >
           <X className="mr-2 h-4 w-4" />
@@ -257,6 +261,16 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Creating new categories from this menu is disabled. */}
       </SubContent>
     </Sub>
+  )
+}, (prevProps, nextProps) => {
+  // Custom comparison that ignores onSetCategory reference changes
+  return (
+    prevProps.type === nextProps.type &&
+    prevProps.hashCount === nextProps.hashCount &&
+    prevProps.availableCategories === nextProps.availableCategories &&
+    prevProps.isPending === nextProps.isPending &&
+    prevProps.currentCategory === nextProps.currentCategory &&
+    prevProps.useSubcategories === nextProps.useSubcategories
   )
 })
 
