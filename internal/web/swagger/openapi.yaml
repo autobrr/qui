@@ -984,6 +984,10 @@ paths:
                 $ref: '#/components/schemas/TransferInfo'
         '400':
           description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get transfer info
         '503':
           description: Instance unavailable
 

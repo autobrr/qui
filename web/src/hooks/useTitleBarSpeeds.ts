@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 
 interface UseTitleBarSpeedsOptions {
   mode: "dashboard" | "instance"
@@ -47,37 +48,17 @@ export function useTitleBarSpeeds({
 }: UseTitleBarSpeedsOptions) {
   const [speedUnit] = useSpeedUnits()
   const defaultTitleRef = useRef<string | null>(null)
-  const [isHidden, setIsHidden] = useState(() => {
-    if (typeof document === "undefined") {
-      return false
-    }
+  const lastSpeedTitleRef = useRef<string | null>(null)
+  const { isHiddenDelayed, isVisibleDelayed } = useDelayedVisibility(3000)
 
-    return document.hidden
-  })
-
-  const shouldPollBackground = isHidden || !foregroundSpeeds
+  const shouldPollBackground = isHiddenDelayed || !foregroundSpeeds
   const backgroundSpeedsQuery = useServerStateSpeeds(
     instanceId,
     shouldPollBackground && !backgroundSpeedsOverride
   )
   const backgroundSpeeds = backgroundSpeedsOverride ?? backgroundSpeedsQuery
-  const effectiveSpeeds = isHidden ? backgroundSpeeds : foregroundSpeeds
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return
-    }
-
-    const handleVisibilityChange = () => {
-      setIsHidden(document.hidden)
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-    }
-  }, [])
+  const effectiveSpeeds = isHiddenDelayed ? backgroundSpeeds : foregroundSpeeds
+  const shouldSetTitle = isHiddenDelayed || isVisibleDelayed
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -88,8 +69,15 @@ export function useTitleBarSpeeds({
       defaultTitleRef.current = document.title
     }
 
+    if (!shouldSetTitle) {
+      if (lastSpeedTitleRef.current) {
+        document.title = lastSpeedTitleRef.current
+      }
+      return
+    }
+
     if (!effectiveSpeeds) {
-      document.title = defaultTitleRef.current ?? ""
+      document.title = lastSpeedTitleRef.current ?? defaultTitleRef.current ?? ""
       return
     }
 
@@ -98,14 +86,18 @@ export function useTitleBarSpeeds({
     const speedTitle = `D: ${formatSpeedWithUnit(downloadSpeed, speedUnit)} U: ${formatSpeedWithUnit(uploadSpeed, speedUnit)}`
 
     if (mode === "dashboard") {
-      document.title = `${speedTitle} | Dashboard`
+      const nextTitle = `${speedTitle} | Dashboard`
+      document.title = nextTitle
+      lastSpeedTitleRef.current = nextTitle
     } else {
       const instanceSuffix = instanceName ? ` | ${instanceName}` : ""
-      document.title = `${speedTitle}${instanceSuffix}`
+      const nextTitle = `${speedTitle}${instanceSuffix}`
+      document.title = nextTitle
+      lastSpeedTitleRef.current = nextTitle
     }
 
     return () => {
       document.title = defaultTitleRef.current ?? ""
     }
-  }, [effectiveSpeeds, instanceName, mode, speedUnit])
+  }, [effectiveSpeeds, instanceName, mode, shouldSetTitle, speedUnit])
 }

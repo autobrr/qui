@@ -37,6 +37,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
@@ -2370,28 +2371,7 @@ export function Dashboard() {
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
-  const [isHidden, setIsHidden] = useState(() => {
-    if (typeof document === "undefined") {
-      return false
-    }
-    return document.hidden
-  })
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return
-    }
-
-    const handleVisibilityChange = () => {
-      setIsHidden(document.hidden)
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-    }
-  }, [])
+  const { isHiddenDelayed } = useDelayedVisibility(3000)
 
   // Dashboard settings
   const { data: dashboardSettings } = useDashboardSettings()
@@ -2399,13 +2379,13 @@ export function Dashboard() {
   const settings = dashboardSettings || DEFAULT_DASHBOARD_SETTINGS
 
   // Use safe hook that always calls the same number of hooks
-  const statsData = useAllInstanceStats(activeInstances, { enabled: !isHidden })
+  const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
   const globalStats = useGlobalStats(statsData)
   const transferInfoQueries = useQueries({
     queries: activeInstances.map(instance => ({
       queryKey: ["transfer-info", instance.id],
       queryFn: () => api.getTransferInfo(instance.id),
-      enabled: isHidden,
+      enabled: isHiddenDelayed,
       refetchInterval: 3000,
       refetchIntervalInBackground: true,
       staleTime: 0,
@@ -2432,7 +2412,7 @@ export function Dashboard() {
           up: globalStats.totalUpload ?? 0,
         }
       : undefined,
-    backgroundSpeeds: isHidden && hasActiveInstances ? backgroundSpeeds : undefined,
+    backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
 
   // Handler for TrackerBreakdownCard to update settings

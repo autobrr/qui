@@ -24,6 +24,7 @@ export function useTorrentsList(
   options: UseTorrentsListOptions = {}
 ) {
   const { enabled = true, search, filters, sort = "added_on", order = "desc" } = options
+  const shouldEnableQuery = enabled
 
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
@@ -85,10 +86,10 @@ export function useTorrentsList(
     // Reduce polling frequency for cross-instance calls since they're more expensive
     refetchInterval: currentPage === 0 ? (isCrossSeedFiltering ? 10000 : 3000) : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
-    enabled,
+    enabled: shouldEnableQuery,
   })
 
-  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled })
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: shouldEnableQuery })
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
