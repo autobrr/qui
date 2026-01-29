@@ -19,6 +19,7 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -41,6 +42,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const { clearSelection } = useTorrentSelection()
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   // Server state for global status bar
   const [serverState, setServerState] = useState<ServerState | null>(null)
@@ -52,6 +54,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
   useTitleBarSpeeds({
     mode: "instance",
+    enabled: titleBarSpeedsEnabled,
     instanceId,
     instanceName: instance?.name,
     foregroundSpeeds: serverState

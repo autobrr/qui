@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react"
 
 interface UseTitleBarSpeedsOptions {
   mode: "dashboard" | "instance"
+  enabled?: boolean
   instanceId?: number
   instanceName?: string
   foregroundSpeeds?: { dl: number; up: number }
@@ -41,6 +42,7 @@ export function useServerStateSpeeds(instanceId?: number, enabled = true) {
 
 export function useTitleBarSpeeds({
   mode,
+  enabled = true,
   instanceId,
   instanceName,
   foregroundSpeeds,
@@ -51,14 +53,14 @@ export function useTitleBarSpeeds({
   const lastSpeedTitleRef = useRef<string | null>(null)
   const { isHiddenDelayed, isVisibleDelayed } = useDelayedVisibility(3000)
 
-  const shouldPollBackground = isHiddenDelayed || !foregroundSpeeds
+  const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds)
   const backgroundSpeedsQuery = useServerStateSpeeds(
     instanceId,
     shouldPollBackground && !backgroundSpeedsOverride
   )
   const backgroundSpeeds = backgroundSpeedsOverride ?? backgroundSpeedsQuery
   const effectiveSpeeds = isHiddenDelayed ? backgroundSpeeds : foregroundSpeeds
-  const shouldSetTitle = isHiddenDelayed || isVisibleDelayed
+  const shouldSetTitle = enabled && (isHiddenDelayed || isVisibleDelayed)
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -69,16 +71,25 @@ export function useTitleBarSpeeds({
       defaultTitleRef.current = document.title
     }
 
+    if (!enabled) {
+      document.title = defaultTitleRef.current ?? document.title
+      return
+    }
+
     if (!shouldSetTitle) {
       if (lastSpeedTitleRef.current) {
         document.title = lastSpeedTitleRef.current
       }
-      return
+      return () => {
+        document.title = defaultTitleRef.current ?? ""
+      }
     }
 
     if (!effectiveSpeeds) {
       document.title = lastSpeedTitleRef.current ?? defaultTitleRef.current ?? ""
-      return
+      return () => {
+        document.title = defaultTitleRef.current ?? ""
+      }
     }
 
     const downloadSpeed = effectiveSpeeds.dl ?? 0
@@ -99,5 +110,5 @@ export function useTitleBarSpeeds({
     return () => {
       document.title = defaultTitleRef.current ?? ""
     }
-  }, [effectiveSpeeds, instanceName, mode, shouldSetTitle, speedUnit])
+  }, [effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
 }

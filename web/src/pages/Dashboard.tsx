@@ -40,6 +40,7 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
@@ -139,7 +140,7 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[],options: { enabled: boolean }): DashboardInstanceStats[] {
+function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
       // Use same query key pattern as useTorrentsList for first page with no filters
@@ -2372,6 +2373,7 @@ export function Dashboard() {
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
   const { isHiddenDelayed } = useDelayedVisibility(3000)
+  const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   // Dashboard settings
   const { data: dashboardSettings } = useDashboardSettings()
@@ -2406,6 +2408,7 @@ export function Dashboard() {
   )
   useTitleBarSpeeds({
     mode: "dashboard",
+    enabled: titleBarSpeedsEnabled,
     foregroundSpeeds: hasActiveInstances
       ? {
           dl: globalStats.totalDownload ?? 0,

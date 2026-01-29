@@ -949,7 +949,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
   const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
 
-  const { isVisibleDelayed: isTabVisibleDelayed } = useDelayedVisibility(3000)
+  const { isHiddenDelayed, isVisibleDelayed } = useDelayedVisibility(3000)
+  const isVisibilitySettled = isHiddenDelayed || isVisibleDelayed
 
   // Fetch torrents data with backend sorting
   const {
@@ -970,7 +971,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     loadMore: backendLoadMore,
     isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
-    enabled: isTabVisibleDelayed,
+    enabled: true,
+    pollingEnabled: isVisibilitySettled,
+    refetchIntervalInBackground: true,
     search: effectiveSearch,
     filters: {
       status: filters?.status || [],
