@@ -106,6 +106,7 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
+  TransferInfo,
   User,
   WarningResponse,
   WebSeed,
@@ -464,6 +465,10 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getTransferInfo(id: number): Promise<TransferInfo> {
+    return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
   }
 
   async getInstanceReannounceActivity(
