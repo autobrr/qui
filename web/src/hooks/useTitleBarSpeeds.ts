@@ -73,7 +73,9 @@ export function useTitleBarSpeeds({
 
     if (!enabled) {
       document.title = defaultTitleRef.current ?? document.title
-      return
+      return () => {
+        document.title = defaultTitleRef.current ?? document.title
+      }
     }
 
     if (!shouldSetTitle) {

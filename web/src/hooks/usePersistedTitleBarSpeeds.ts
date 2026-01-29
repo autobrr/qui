@@ -12,7 +12,10 @@ export function usePersistedTitleBarSpeeds(defaultValue: boolean = false) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored !== null) {
-        return JSON.parse(stored)
+        const parsed = JSON.parse(stored)
+        if (typeof parsed === "boolean") {
+          return parsed
+        }
       }
     } catch (error) {
       console.error("Failed to load title bar speed preference from localStorage:", error)
