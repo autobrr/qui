@@ -1376,8 +1376,8 @@ function RulesTab({
   const rules = Object.entries(rulesData).sort(([a], [b]) => a.localeCompare(b))
 
   return (
-    <>
-      <div className="space-y-1">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1">
         {rules.map(([name, rule]) => (
           <RuleCard
             key={name}
@@ -1411,7 +1411,7 @@ function RulesTab({
         categories={categories}
         tags={tags}
       />
-    </>
+    </div>
   )
 }
 

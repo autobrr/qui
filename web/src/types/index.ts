@@ -95,6 +95,7 @@ export interface InstanceCrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
 }
 
 /**
