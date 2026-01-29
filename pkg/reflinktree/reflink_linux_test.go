@@ -18,7 +18,7 @@ func TestCloneFile_RetriesEAGAIN(t *testing.T) {
 	srcPath := filepath.Join(tmpDir, "src.txt")
 	dstPath := filepath.Join(tmpDir, "dst.txt")
 
-	if err := os.WriteFile(srcPath, []byte("reflink test"), 0o644); err != nil {
+	if err := os.WriteFile(srcPath, []byte("reflink test"), 0o600); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
