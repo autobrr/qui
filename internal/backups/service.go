@@ -622,6 +622,16 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			var tracker string
 			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
 			if err != nil {
+				if isExportMetadataUnavailable(err) {
+					log.Warn().
+						Err(err).
+						Str("hash", torrent.Hash).
+						Str("name", torrent.Name).
+						Int("instanceID", j.instanceID).
+						Msg("Skipping torrent export; metadata not downloaded yet")
+					s.updateProgress(j.runID, idx+1)
+					continue
+				}
 				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
 			}
 			trackerDomain = tracker
@@ -889,6 +899,16 @@ func (s *Service) updateProgress(runID int64, current int) {
 		p.Current = current
 		p.Percentage = float64(current) / float64(p.Total) * 100
 	}
+}
+
+func isExportMetadataUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet) {
+		return true
+	}
+	return strings.Contains(err.Error(), "status code: 409")
 }
 
 func (s *Service) GetProgress(runID int64) *BackupProgress {
