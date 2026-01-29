@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package automations enforces tracker-scoped speed/ratio rules per instance.
@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -23,7 +22,6 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -37,6 +35,14 @@ type Config struct {
 
 // DefaultRuleInterval is the cadence for rules that don't specify their own interval.
 const DefaultRuleInterval = 15 * time.Minute
+
+// freeSpaceDeleteCooldown prevents FREE_SPACE delete rules from running too frequently.
+// After a successful delete-with-files caused by a FREE_SPACE rule, the next run is
+// delayed to allow qBittorrent to refresh its disk free space reading.
+const freeSpaceDeleteCooldown = 5 * time.Minute
+
+// Log messages for delete actions (reduces duplication)
+const logMsgRemoveTorrentWithFiles = "automations: removing torrent with files"
 
 // ruleKey identifies a rule within an instance for per-rule cadence tracking.
 type ruleKey struct {
@@ -64,9 +70,10 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
-	lastApplied map[int]map[string]time.Time // instanceID -> hash -> timestamp
-	lastRuleRun map[ruleKey]time.Time        // per-rule cadence tracking
-	mu          sync.RWMutex
+	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
+	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
+	mu                    sync.RWMutex
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
@@ -91,6 +98,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
+		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
 	}
 }
 
@@ -113,6 +121,13 @@ func (s *Service) cleanupStaleEntries() {
 	for key, ts := range s.lastRuleRun {
 		if ts.Before(ruleCutoff) {
 			delete(s.lastRuleRun, key)
+		}
+	}
+
+	// Clean up FREE_SPACE cooldown entries older than 10 minutes
+	for instanceID, ts := range s.lastFreeSpaceDeleteAt {
+		if ts.Before(cutoff) {
+			delete(s.lastFreeSpaceDeleteAt, instanceID)
 		}
 	}
 }
@@ -210,8 +225,10 @@ type PreviewTorrent struct {
 	AddedOn        int64   `json:"addedOn"`
 	Uploaded       int64   `json:"uploaded"`
 	Downloaded     int64   `json:"downloaded"`
+	ContentPath    string  `json:"contentPath,omitempty"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
-	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"` // For category preview
+	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"`    // For category preview
+	IsHardlinkCopy bool    `json:"isHardlinkCopy,omitempty"` // Included via hardlink expansion (not ContentPath match)
 
 	// Additional fields for dynamic columns based on filter conditions
 	NumSeeds      int64   `json:"numSeeds"`                // Active seeders (connected to)
@@ -228,31 +245,33 @@ type PreviewTorrent struct {
 }
 
 // buildPreviewTorrent creates a PreviewTorrent from a qbt.Torrent with optional context flags.
-func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed bool) PreviewTorrent {
+func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed, isHardlinkCopy bool) PreviewTorrent {
 	pt := PreviewTorrent{
-		Name:          torrent.Name,
-		Hash:          torrent.Hash,
-		Size:          torrent.Size,
-		Ratio:         torrent.Ratio,
-		SeedingTime:   torrent.SeedingTime,
-		Tracker:       tracker,
-		Category:      torrent.Category,
-		Tags:          torrent.Tags,
-		State:         string(torrent.State),
-		AddedOn:       torrent.AddedOn,
-		Uploaded:      torrent.Uploaded,
-		Downloaded:    torrent.Downloaded,
-		IsCrossSeed:   isCrossSeed,
-		NumSeeds:      torrent.NumSeeds,
-		NumComplete:   torrent.NumComplete,
-		NumLeechs:     torrent.NumLeechs,
-		NumIncomplete: torrent.NumIncomplete,
-		Progress:      torrent.Progress,
-		Availability:  torrent.Availability,
-		TimeActive:    torrent.TimeActive,
-		LastActivity:  torrent.LastActivity,
-		CompletionOn:  torrent.CompletionOn,
-		TotalSize:     torrent.TotalSize,
+		Name:           torrent.Name,
+		Hash:           torrent.Hash,
+		Size:           torrent.Size,
+		Ratio:          torrent.Ratio,
+		SeedingTime:    torrent.SeedingTime,
+		Tracker:        tracker,
+		Category:       torrent.Category,
+		Tags:           torrent.Tags,
+		State:          string(torrent.State),
+		AddedOn:        torrent.AddedOn,
+		Uploaded:       torrent.Uploaded,
+		Downloaded:     torrent.Downloaded,
+		ContentPath:    torrent.ContentPath,
+		IsCrossSeed:    isCrossSeed,
+		IsHardlinkCopy: isHardlinkCopy,
+		NumSeeds:       torrent.NumSeeds,
+		NumComplete:    torrent.NumComplete,
+		NumLeechs:      torrent.NumLeechs,
+		NumIncomplete:  torrent.NumIncomplete,
+		Progress:       torrent.Progress,
+		Availability:   torrent.Availability,
+		TimeActive:     torrent.TimeActive,
+		LastActivity:   torrent.LastActivity,
+		CompletionOn:   torrent.CompletionOn,
+		TotalSize:      torrent.TotalSize,
 	}
 
 	if evalCtx != nil {
@@ -267,45 +286,41 @@ func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalConte
 	return pt
 }
 
-// PreviewDeleteRule returns torrents that would be deleted by the given rule.
-// This is used to show users what a rule would affect before saving.
-func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.Automation, limit int, offset int) (*PreviewResult, error) {
-	if s == nil || s.syncManager == nil {
-		return &PreviewResult{}, nil
-	}
+// previewConfig holds common preview configuration.
+type previewConfig struct {
+	limit  int
+	offset int
+}
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
-	if err != nil {
-		return nil, err
+// normalize applies default values to preview config.
+func (c *previewConfig) normalize() {
+	if c.limit <= 0 {
+		c.limit = 25
 	}
+	if c.offset < 0 {
+		c.offset = 0
+	}
+}
 
-	// Stable sort for deterministic pagination: newest first, then by hash
+// sortTorrentsStable sorts torrents by AddedOn (oldest first), then by hash for deterministic pagination.
+func sortTorrentsStable(torrents []qbt.Torrent) {
 	sort.Slice(torrents, func(i, j int) bool {
 		if torrents[i].AddedOn != torrents[j].AddedOn {
-			return torrents[i].AddedOn > torrents[j].AddedOn
+			return torrents[i].AddedOn < torrents[j].AddedOn
 		}
 		return torrents[i].Hash < torrents[j].Hash
 	})
+}
 
-	if limit <= 0 {
-		limit = 25
-	}
-	if offset < 0 {
-		offset = 0
-	}
+// initPreviewEvalContext initializes an EvalContext for preview with common setup.
+func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, torrents []qbt.Torrent) (*EvalContext, *models.Instance) {
+	evalCtx := &EvalContext{}
 
-	result := &PreviewResult{
-		Examples: make([]PreviewTorrent, 0, limit),
-	}
-
-	// Get instance for hardlink context
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without hardlink context")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without instance context")
 	}
 
-	// Initialize evaluation context
-	evalCtx := &EvalContext{}
 	if instance != nil {
 		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
 	}
@@ -313,7 +328,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	// Build category index for EXISTS_IN/CONTAINS_IN operators
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
-	// Get health counts for tracker health conditions (from background cache)
+	// Get health counts from background cache
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		if len(healthCounts.UnregisteredSet) > 0 {
 			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
@@ -323,46 +338,167 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
-	// Check if rule uses hardlink conditions and populate context
-	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Delete != nil {
-		cond := rule.Conditions.Delete.Condition
-		if ConditionUsesField(cond, FieldHardlinkScope) {
-			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
-		}
+	return evalCtx, instance
+}
+
+// setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
+func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rule *models.Automation, evalCtx *EvalContext, instance *models.Instance) error {
+	if instance == nil || !rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
+		return nil
+	}
+
+	freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, rule.FreeSpaceSource)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
+		return fmt.Errorf("failed to get free space: %w", err)
+	}
+	evalCtx.FreeSpace = freeSpace
+	evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
+	return nil
+}
+
+// getTrackerForTorrent returns the first tracker domain for a torrent.
+func getTrackerForTorrent(torrent *qbt.Torrent, sm *qbittorrent.SyncManager) string {
+	if domains := collectTrackerDomains(*torrent, sm); len(domains) > 0 {
+		return domains[0]
+	}
+	return ""
+}
+
+// PreviewDeleteRule returns torrents that would be deleted by the given rule.
+// This is used to show users what a rule would affect before saving.
+// For "include cross-seeds" mode, also shows expanded cross-seeds that would be deleted.
+// previewView controls the view mode:
+//   - "needed" (default): Show minimal deletions needed to reach FREE_SPACE target (stops early)
+//   - "eligible": Show all torrents matching the rule filters (ignores cumulative stop-when-satisfied)
+func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int, previewView string) (*PreviewResult, error) {
+	if s == nil || s.syncManager == nil {
+		return &PreviewResult{}, nil
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+
+	sortTorrentsStable(torrents)
+
+	cfg := previewConfig{limit: limit, offset: offset}
+	cfg.normalize()
+
+	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	s.setupMissingFilesContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+
+	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+		return nil, err
+	}
+
+	deleteMode := getDeleteMode(rule)
+	eligibleMode := previewView == "eligible"
+
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
+		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode)
+	}
+
+	return s.previewDeleteStandard(rule, torrents, evalCtx, deleteMode, eligibleMode, cfg)
+}
+
+// setupDeleteHardlinkContext sets up hardlink index if needed for delete preview.
+func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) *HardlinkIndex {
+	if instance == nil || !instance.HasLocalFilesystemAccess {
+		return nil
+	}
+	if rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return nil
+	}
+
+	cond := rule.Conditions.Delete.Condition
+	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) || rule.Conditions.Delete.IncludeHardlinks
+	if !needsHardlinkScope {
+		return nil
+	}
+
+	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+	if hardlinkIndex != nil {
+		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+	}
+	return hardlinkIndex
+}
+
+// setupMissingFilesContext sets up missing files detection if needed for delete preview.
+func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
+	if instance == nil || !instance.HasLocalFilesystemAccess {
+		return
+	}
+	if rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return
+	}
+
+	cond := rule.Conditions.Delete.Condition
+	if !ConditionUsesField(cond, FieldHasMissingFiles) {
+		return
+	}
+
+	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+}
+
+// getDeleteMode returns the delete mode from rule or default.
+func getDeleteMode(rule *models.Automation) string {
+	if rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Mode != "" {
+		return rule.Conditions.Delete.Mode
+	}
+	return DeleteModeKeepFiles
+}
+
+// shouldDeleteTorrent checks if a torrent matches the delete condition.
+func shouldDeleteTorrent(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
+	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
+		return false
+	}
+	if rule.Conditions.Delete.Condition == nil {
+		return true
+	}
+	return EvaluateConditionWithContext(rule.Conditions.Delete.Condition, *torrent, evalCtx, 0)
+}
+
+// previewDeleteStandard handles standard (non-include-cross-seeds) delete preview.
+func (s *Service) previewDeleteStandard(
+	rule *models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	deleteMode string,
+	eligibleMode bool,
+	cfg previewConfig,
+) (*PreviewResult, error) {
+	result := &PreviewResult{
+		Examples: make([]PreviewTorrent, 0, cfg.limit),
 	}
 
 	matchIndex := 0
-	for _, torrent := range torrents {
-		// Check tracker match
-		trackerDomains := collectTrackerDomains(torrent, s.syncManager)
+	for i := range torrents {
+		torrent := &torrents[i]
+
+		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
 		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 			continue
 		}
 
-		// Check if torrent would be deleted
-		wouldDelete := false
-
-		if rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
-			// Evaluate condition (if no condition, match all)
-			if rule.Conditions.Delete.Condition == nil {
-				wouldDelete = true
-			} else {
-				wouldDelete = EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrent, evalCtx, 0)
-			}
+		if !shouldDeleteTorrent(rule, torrent, evalCtx) {
+			continue
 		}
 
-		if wouldDelete {
-			matchIndex++
-			if matchIndex <= offset {
-				continue
-			}
-			if len(result.Examples) < limit {
-				tracker := ""
-				if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
-					tracker = domains[0]
-				}
-				result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false))
-			}
+		if !eligibleMode {
+			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, torrents)
+		}
+
+		matchIndex++
+		if matchIndex <= cfg.offset {
+			continue
+		}
+		if len(result.Examples) < cfg.limit {
+			tracker := getTrackerForTorrent(torrent, s.syncManager)
+			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false))
 		}
 	}
 
@@ -370,137 +506,152 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	return result, nil
 }
 
-// PreviewCategoryRule returns torrents that would have their category changed by the given rule.
-// If IncludeCrossSeeds is enabled, also includes cross-seeds that share files with matched torrents.
-func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule *models.Automation, limit int, offset int) (*PreviewResult, error) {
-	if s == nil || s.syncManager == nil {
-		return &PreviewResult{}, nil
-	}
+// crossSeedExpansionState tracks state during cross-seed preview expansion.
+type crossSeedExpansionState struct {
+	expandedSet           map[string]struct{}
+	crossSeedSet          map[string]struct{}
+	hardlinkCopySet       map[string]struct{}
+	processedContentPaths map[string]struct{}
+}
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
-	if err != nil {
-		return nil, err
+func newCrossSeedExpansionState() *crossSeedExpansionState {
+	return &crossSeedExpansionState{
+		expandedSet:           make(map[string]struct{}),
+		crossSeedSet:          make(map[string]struct{}),
+		hardlinkCopySet:       make(map[string]struct{}),
+		processedContentPaths: make(map[string]struct{}),
 	}
+}
 
-	// Stable sort for deterministic pagination: newest first, then by hash
-	sort.Slice(torrents, func(i, j int) bool {
-		if torrents[i].AddedOn != torrents[j].AddedOn {
-			return torrents[i].AddedOn > torrents[j].AddedOn
+// isAlreadyExpanded returns true if the torrent hash is already in the expanded set.
+func (s *crossSeedExpansionState) isAlreadyExpanded(hash string) bool {
+	_, included := s.expandedSet[hash]
+	return included
+}
+
+// isContentPathProcessed returns true if the content path was already processed.
+func (s *crossSeedExpansionState) isContentPathProcessed(contentPath string) bool {
+	_, processed := s.processedContentPaths[contentPath]
+	return processed
+}
+
+// markContentPathProcessed marks a content path as processed.
+func (s *crossSeedExpansionState) markContentPathProcessed(contentPath string) {
+	s.processedContentPaths[contentPath] = struct{}{}
+}
+
+// addHardlinkCopies adds hardlink copies to the expanded set.
+func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex, triggerHash string) {
+	if hardlinkIndex == nil {
+		return
+	}
+	for _, hlHash := range hardlinkIndex.GetHardlinkCopies(triggerHash) {
+		if _, exists := s.expandedSet[hlHash]; !exists {
+			s.expandedSet[hlHash] = struct{}{}
+			s.hardlinkCopySet[hlHash] = struct{}{}
 		}
-		return torrents[i].Hash < torrents[j].Hash
-	})
-
-	crossSeedIndex := buildCrossSeedIndex(torrents)
-
-	if limit <= 0 {
-		limit = 25
 	}
-	if offset < 0 {
-		offset = 0
+}
+
+// previewDeleteIncludeCrossSeeds handles preview for "include cross-seeds" delete mode.
+// It evaluates torrents incrementally, expanding with cross-seeds and updating FREE_SPACE
+// projection after each group so that stop-when-satisfied behavior works correctly.
+// When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
+// If IncludeHardlinks is enabled, also expands with hardlink copies (same physical files).
+func (s *Service) previewDeleteIncludeCrossSeeds(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	hardlinkIndex *HardlinkIndex,
+	limit, offset int,
+	eligibleMode bool,
+) (*PreviewResult, error) {
+	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
+		return &PreviewResult{Examples: make([]PreviewTorrent, 0)}, nil
 	}
 
+	state := newCrossSeedExpansionState()
+	deleteCond := rule.Conditions.Delete
+	includeHardlinks := deleteCond.IncludeHardlinks
+
+	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
+
+	for i := range torrents {
+		torrent := &torrents[i]
+		if state.isAlreadyExpanded(torrent.Hash) {
+			continue
+		}
+
+		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx) {
+			continue
+		}
+
+		contentPath := normalizePath(torrent.ContentPath)
+		if state.isContentPathProcessed(contentPath) {
+			continue
+		}
+
+		crossSeedGroup := findCrossSeedGroup(*torrent, torrents)
+		state.markContentPathProcessed(contentPath)
+
+		if !s.expandGroupForPreview(ctx, instanceID, torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet) {
+			continue
+		}
+
+		if includeHardlinks {
+			state.addHardlinkCopies(hardlinkIndex, torrent.Hash)
+		}
+
+		if !eligibleMode {
+			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, torrents)
+		}
+	}
+
+	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset), nil
+}
+
+// setupHardlinkSignatureContext sets up hardlink signature tracking for FREE_SPACE projection.
+func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIndex *HardlinkIndex, cond *RuleCondition, eligibleMode, includeHardlinks bool) {
+	if !includeHardlinks || hardlinkIndex == nil || eligibleMode {
+		return
+	}
+	if !ConditionUsesField(cond, FieldFreeSpace) {
+		return
+	}
+	evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+	evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
+}
+
+// torrentMatchesDeleteRule checks if a torrent matches the tracker pattern and delete condition.
+func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
+	trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
+	if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+		return false
+	}
+
+	cond := rule.Conditions.Delete.Condition
+	return cond == nil || EvaluateConditionWithContext(cond, *torrent, evalCtx, 0)
+}
+
+// buildCrossSeedPreviewResult builds the paginated preview result from expansion state.
+func (s *Service) buildCrossSeedPreviewResult(
+	torrents []qbt.Torrent,
+	state *crossSeedExpansionState,
+	evalCtx *EvalContext,
+	limit, offset int,
+) *PreviewResult {
 	result := &PreviewResult{
-		Examples: make([]PreviewTorrent, 0, limit),
+		TotalMatches:   len(state.expandedSet),
+		CrossSeedCount: len(state.crossSeedSet),
+		Examples:       make([]PreviewTorrent, 0, limit),
 	}
-
-	// Get instance for local access context
-	instance, err := s.instanceStore.Get(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview")
-	}
-
-	// Initialize evaluation context
-	evalCtx := &EvalContext{}
-	if instance != nil {
-		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
-	}
-
-	// Build category index for EXISTS_IN/CONTAINS_IN operators
-	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
-
-	// Get health counts for unregistered condition evaluation
-	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-	}
-
-	// Check if rule uses hardlink conditions
-	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Category != nil {
-		cond := rule.Conditions.Category.Condition
-		if ConditionUsesField(cond, FieldHardlinkScope) {
-			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
-		}
-	}
-
-	targetCategory := ""
-	includeCrossSeeds := false
-	if rule.Conditions != nil && rule.Conditions.Category != nil {
-		targetCategory = rule.Conditions.Category.Category
-		includeCrossSeeds = rule.Conditions.Category.IncludeCrossSeeds
-	}
-
-	// Phase 1: Find direct matches - use SET for membership, iterate slice for stable order
-	directMatchSet := make(map[string]struct{})
-	matchedKeys := make(map[crossSeedKey]struct{}) // for cross-seed lookup
-
-	for _, torrent := range torrents {
-		// Check tracker match
-		trackerDomains := collectTrackerDomains(torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-			continue
-		}
-
-		// Skip if already in target category (no-op - won't "pull" cross-seeds)
-		if torrent.Category == targetCategory {
-			continue
-		}
-
-		// Check if category action applies
-		if rule.Conditions != nil && rule.Conditions.Category != nil && rule.Conditions.Category.Enabled {
-			shouldApply := rule.Conditions.Category.Condition == nil ||
-				EvaluateConditionWithContext(rule.Conditions.Category.Condition, torrent, evalCtx, 0)
-			if shouldApply {
-				if shouldBlockCategoryChangeForCrossSeeds(torrent, rule.Conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
-					continue
-				}
-				directMatchSet[torrent.Hash] = struct{}{}
-				if includeCrossSeeds {
-					if key, ok := makeCrossSeedKey(torrent); ok {
-						matchedKeys[key] = struct{}{}
-					}
-				}
-			}
-		}
-	}
-
-	// Phase 2: Find cross-seeds (if enabled) - require BOTH ContentPath AND SavePath match
-	crossSeedSet := make(map[string]struct{})
-	if includeCrossSeeds && len(matchedKeys) > 0 {
-		for _, torrent := range torrents {
-			if _, isDirectMatch := directMatchSet[torrent.Hash]; isDirectMatch {
-				continue // Skip direct matches
-			}
-			if torrent.Category == targetCategory {
-				continue // Already in target category
-			}
-			if key, ok := makeCrossSeedKey(torrent); ok {
-				if _, matched := matchedKeys[key]; matched {
-					crossSeedSet[torrent.Hash] = struct{}{}
-				}
-			}
-		}
-	}
-
-	// Build result - iterate torrents slice for STABLE pagination order
-	result.TotalMatches = len(directMatchSet) + len(crossSeedSet)
-	result.CrossSeedCount = len(crossSeedSet)
 
 	matchIndex := 0
-	for _, torrent := range torrents {
-		_, isDirectMatch := directMatchSet[torrent.Hash]
-		_, isCrossSeed := crossSeedSet[torrent.Hash]
-
-		if !isDirectMatch && !isCrossSeed {
+	for i := range torrents {
+		torrent := &torrents[i]
+		if !state.isAlreadyExpanded(torrent.Hash) {
 			continue
 		}
 
@@ -512,15 +663,310 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 			break
 		}
 
-		tracker := ""
-		if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
-			tracker = domains[0]
-		}
-
-		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed))
+		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
+		_, isHardlinkCopy := state.hardlinkCopySet[torrent.Hash]
+		tracker := getTrackerForTorrent(torrent, s.syncManager)
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy))
 	}
 
-	return result, nil
+	return result
+}
+
+// verifyGroupForPreview validates an ambiguous cross-seed group for preview.
+// Returns (true, hashes) if all verifications pass, (false, nil) if any fail.
+// Safety: if ANY verification fails, the entire group should be skipped.
+func (s *Service) verifyGroupForPreview(
+	ctx context.Context,
+	instanceID int,
+	trigger *qbt.Torrent,
+	crossSeedGroup []qbt.Torrent,
+	alreadyIncluded map[string]struct{},
+) (ok bool, hashes []string) {
+	verifiedHashes := []string{trigger.Hash}
+	for i := range crossSeedGroup {
+		other := &crossSeedGroup[i]
+		if other.Hash == trigger.Hash {
+			continue
+		}
+		if _, exists := alreadyIncluded[other.Hash]; exists {
+			continue
+		}
+		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, *trigger, *other)
+		if err != nil || !hasOverlap {
+			// Any failure means skip the entire group
+			return false, nil
+		}
+		verifiedHashes = append(verifiedHashes, other.Hash)
+	}
+	return true, verifiedHashes
+}
+
+// expandGroupForPreview expands a trigger torrent with its cross-seed group for preview.
+// Returns true if group was added, false if skipped (e.g., verification failure).
+func (s *Service) expandGroupForPreview(
+	ctx context.Context,
+	instanceID int,
+	trigger *qbt.Torrent,
+	crossSeedGroup []qbt.Torrent,
+	expandedSet, crossSeedSet map[string]struct{},
+) bool {
+	// No cross-seeds, just add the trigger
+	if len(crossSeedGroup) <= 1 {
+		expandedSet[trigger.Hash] = struct{}{}
+		return true
+	}
+
+	// Ambiguous group requires verification
+	if isContentPathAmbiguous(*trigger) {
+		return s.expandAmbiguousGroup(ctx, instanceID, trigger, crossSeedGroup, expandedSet, crossSeedSet)
+	}
+
+	// Unambiguous group - include all cross-seeds
+	expandUnambiguousCrossSeeds(trigger, crossSeedGroup, expandedSet, crossSeedSet)
+	return true
+}
+
+// expandAmbiguousGroup verifies and expands an ambiguous cross-seed group.
+func (s *Service) expandAmbiguousGroup(
+	ctx context.Context,
+	instanceID int,
+	trigger *qbt.Torrent,
+	crossSeedGroup []qbt.Torrent,
+	expandedSet, crossSeedSet map[string]struct{},
+) bool {
+	valid, verifiedHashes := s.verifyGroupForPreview(ctx, instanceID, trigger, crossSeedGroup, expandedSet)
+	if !valid {
+		return false
+	}
+	for _, h := range verifiedHashes {
+		expandedSet[h] = struct{}{}
+		if h != trigger.Hash {
+			crossSeedSet[h] = struct{}{}
+		}
+	}
+	return true
+}
+
+// expandUnambiguousCrossSeeds adds all cross-seeds from an unambiguous group.
+func expandUnambiguousCrossSeeds(trigger *qbt.Torrent, crossSeedGroup []qbt.Torrent, expandedSet, crossSeedSet map[string]struct{}) {
+	expandedSet[trigger.Hash] = struct{}{}
+	for i := range crossSeedGroup {
+		other := &crossSeedGroup[i]
+		if other.Hash == trigger.Hash {
+			continue
+		}
+		if _, exists := expandedSet[other.Hash]; exists {
+			continue
+		}
+		expandedSet[other.Hash] = struct{}{}
+		crossSeedSet[other.Hash] = struct{}{}
+	}
+}
+
+// categoryPreviewState tracks state during category preview processing.
+type categoryPreviewState struct {
+	directMatchSet map[string]struct{}
+	crossSeedSet   map[string]struct{}
+	matchedKeys    map[crossSeedKey]struct{}
+	targetCategory string
+}
+
+func newCategoryPreviewState(targetCategory string) *categoryPreviewState {
+	return &categoryPreviewState{
+		directMatchSet: make(map[string]struct{}),
+		crossSeedSet:   make(map[string]struct{}),
+		matchedKeys:    make(map[crossSeedKey]struct{}),
+		targetCategory: targetCategory,
+	}
+}
+
+// PreviewCategoryRule returns torrents that would have their category changed by the given rule.
+// If IncludeCrossSeeds is enabled, also includes cross-seeds that share files with matched torrents.
+func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
+	if s == nil || s.syncManager == nil {
+		return &PreviewResult{}, nil
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+
+	sortTorrentsStable(torrents)
+	crossSeedIndex := buildCrossSeedIndex(torrents)
+
+	cfg := previewConfig{limit: limit, offset: offset}
+	cfg.normalize()
+
+	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+
+	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+		return nil, err
+	}
+
+	catAction := getCategoryAction(rule)
+	state := newCategoryPreviewState(catAction.targetCategory)
+
+	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeedIndex, catAction, state)
+	s.findCategoryCrossSeeds(torrents, catAction, state)
+
+	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg), nil
+}
+
+// categoryActionConfig holds category action configuration.
+type categoryActionConfig struct {
+	targetCategory    string
+	includeCrossSeeds bool
+	blockCategories   []string
+	condition         *RuleCondition
+	enabled           bool
+}
+
+// getCategoryAction extracts category action configuration from rule.
+func getCategoryAction(rule *models.Automation) categoryActionConfig {
+	if rule.Conditions == nil || rule.Conditions.Category == nil {
+		return categoryActionConfig{}
+	}
+	cat := rule.Conditions.Category
+	return categoryActionConfig{
+		targetCategory:    cat.Category,
+		includeCrossSeeds: cat.IncludeCrossSeeds,
+		blockCategories:   cat.BlockIfCrossSeedInCategories,
+		condition:         cat.Condition,
+		enabled:           cat.Enabled,
+	}
+}
+
+// setupCategoryHardlinkContext sets up hardlink index if needed for category preview.
+func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
+	if instance == nil || !instance.HasLocalFilesystemAccess {
+		return
+	}
+	if rule.Conditions == nil || rule.Conditions.Category == nil {
+		return
+	}
+
+	cond := rule.Conditions.Category.Condition
+	if !ConditionUsesField(cond, FieldHardlinkScope) {
+		return
+	}
+
+	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+	if hardlinkIndex != nil {
+		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+	}
+}
+
+// shouldApplyCategoryAction checks if category action should apply to torrent.
+func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionConfig, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
+	if !catAction.enabled {
+		return false
+	}
+	if catAction.condition != nil && !EvaluateConditionWithContext(catAction.condition, *torrent, evalCtx, 0) {
+		return false
+	}
+	return !shouldBlockCategoryChangeForCrossSeeds(*torrent, catAction.blockCategories, crossSeedIndex)
+}
+
+// findDirectCategoryMatches finds torrents that directly match the category rule.
+func (s *Service) findDirectCategoryMatches(
+	rule *models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	crossSeedIndex map[crossSeedKey][]qbt.Torrent,
+	catAction categoryActionConfig,
+	state *categoryPreviewState,
+) {
+	for i := range torrents {
+		torrent := &torrents[i]
+
+		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
+		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+			continue
+		}
+
+		if torrent.Category == state.targetCategory {
+			continue
+		}
+
+		if !shouldApplyCategoryAction(torrent, catAction, evalCtx, crossSeedIndex) {
+			continue
+		}
+
+		state.directMatchSet[torrent.Hash] = struct{}{}
+		if catAction.includeCrossSeeds {
+			if key, ok := makeCrossSeedKey(*torrent); ok {
+				state.matchedKeys[key] = struct{}{}
+			}
+		}
+	}
+}
+
+// findCategoryCrossSeeds finds cross-seeds for matched torrents.
+func (s *Service) findCategoryCrossSeeds(torrents []qbt.Torrent, catAction categoryActionConfig, state *categoryPreviewState) {
+	if !catAction.includeCrossSeeds || len(state.matchedKeys) == 0 {
+		return
+	}
+
+	for i := range torrents {
+		torrent := &torrents[i]
+		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
+			continue
+		}
+		if torrent.Category == state.targetCategory {
+			continue
+		}
+		if key, ok := makeCrossSeedKey(*torrent); ok {
+			if _, matched := state.matchedKeys[key]; matched {
+				state.crossSeedSet[torrent.Hash] = struct{}{}
+			}
+		}
+	}
+}
+
+// buildCategoryPreviewResult builds the paginated preview result for category preview.
+func (s *Service) buildCategoryPreviewResult(
+	torrents []qbt.Torrent,
+	state *categoryPreviewState,
+	evalCtx *EvalContext,
+	cfg previewConfig,
+) *PreviewResult {
+	allMatches := make(map[string]struct{}, len(state.directMatchSet)+len(state.crossSeedSet))
+	for h := range state.directMatchSet {
+		allMatches[h] = struct{}{}
+	}
+	for h := range state.crossSeedSet {
+		allMatches[h] = struct{}{}
+	}
+
+	result := &PreviewResult{
+		TotalMatches:   len(allMatches),
+		CrossSeedCount: len(state.crossSeedSet),
+		Examples:       make([]PreviewTorrent, 0, cfg.limit),
+	}
+
+	matchIndex := 0
+	for i := range torrents {
+		torrent := &torrents[i]
+		if _, included := allMatches[torrent.Hash]; !included {
+			continue
+		}
+
+		matchIndex++
+		if matchIndex <= cfg.offset {
+			continue
+		}
+		if len(result.Examples) >= cfg.limit {
+			break
+		}
+
+		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
+		tracker := getTrackerForTorrent(torrent, s.syncManager)
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, false))
+	}
+
+	return result
 }
 
 func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
@@ -556,6 +1002,48 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		return nil
 	}
 
+	// Check FREE_SPACE delete cooldown for this instance
+	// This prevents overly aggressive deletion while qBittorrent updates its disk free space reading
+	s.mu.RLock()
+	lastFSDelete := s.lastFreeSpaceDeleteAt[instanceID]
+	s.mu.RUnlock()
+	inFreeSpaceCooldown := !lastFSDelete.IsZero() && now.Sub(lastFSDelete) < freeSpaceDeleteCooldown
+
+	// If in cooldown, filter out delete rules that use FREE_SPACE
+	if inFreeSpaceCooldown {
+		filtered := make([]*models.Automation, 0, len(eligibleRules))
+		for _, rule := range eligibleRules {
+			// Skip delete rules that use FREE_SPACE condition
+			if rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
+				if ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+					log.Debug().
+						Int("instanceID", instanceID).
+						Int("ruleID", rule.ID).
+						Str("ruleName", rule.Name).
+						Dur("cooldownRemaining", freeSpaceDeleteCooldown-now.Sub(lastFSDelete)).
+						Msg("automations: skipping FREE_SPACE delete rule due to cooldown")
+					continue
+				}
+			}
+			filtered = append(filtered, rule)
+		}
+		eligibleRules = filtered
+		if len(eligibleRules) == 0 {
+			return nil
+		}
+	}
+
+	// Build set of rule IDs whose delete action uses FREE_SPACE condition
+	// Used to determine if we should start the cooldown after successful deletions
+	freeSpaceDeleteRuleIDs := make(map[int]struct{})
+	for _, rule := range eligibleRules {
+		if rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
+			if ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+				freeSpaceDeleteRuleIDs[rule.ID] = struct{}{}
+			}
+		}
+	}
+
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: unable to fetch torrents")
@@ -587,19 +1075,70 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
-	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE and instance has local access)
-	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHardlinkScope) {
-		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+	// On-demand hardlink index (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
+	// The cached index provides scope detection AND hardlink grouping in a single build.
+	var hardlinkIndex *HardlinkIndex
+	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
+	if instance.HasLocalFilesystemAccess && needsHardlinkScope {
+		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
+		if hardlinkIndex != nil {
+			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+		}
+	}
+
+	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
+		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
+	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
-		freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
-			return fmt.Errorf("failed to get free space: %w", err)
+		// Initialize per-rule free space states.
+		// Each rule gets its own projection state (keyed by source + rule ID),
+		// ensuring rules with different thresholds on the same disk don't interfere.
+		evalCtx.FreeSpaceStates = make(map[string]*FreeSpaceSourceState)
+
+		// First, cache free space by source key to avoid redundant disk reads
+		freeSpaceBySourceKey := make(map[string]int64)
+		for _, r := range eligibleRules {
+			if !rulesUseCondition([]*models.Automation{r}, FieldFreeSpace) {
+				continue
+			}
+			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
+			if _, cached := freeSpaceBySourceKey[sourceKey]; cached {
+				continue
+			}
+
+			// Get free space for this source
+			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource)
+			if err != nil {
+				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
+				return fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
+			}
+			freeSpaceBySourceKey[sourceKey] = freeSpace
 		}
-		evalCtx.FreeSpace = freeSpace
+
+		// Now create per-rule states using cached free space values
+		for _, r := range eligibleRules {
+			if !rulesUseCondition([]*models.Automation{r}, FieldFreeSpace) {
+				continue
+			}
+			ruleKey := GetFreeSpaceRuleKey(r)
+			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
+			evalCtx.FreeSpaceStates[ruleKey] = &FreeSpaceSourceState{
+				FreeSpace:                 freeSpaceBySourceKey[sourceKey],
+				SpaceToClear:              0,
+				FilesToClear:              make(map[crossSeedKey]struct{}),
+				HardlinkSignaturesToClear: make(map[string]struct{}),
+			}
+		}
+
+		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
+		// Must happen BEFORE processTorrents() so SpaceToClear is correctly deduplicated.
+		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
+			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+		}
 	}
 
 	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName
@@ -679,6 +1218,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
 				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 				Int("deleteNoMatch", stats.DeleteConditionNotMet).
+				Int("moveNoMatch", stats.MoveConditionNotMet).
+				Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
+				Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
 				Msg("automations: rule matched trackers but applied no actions")
 		}
 	}
@@ -716,6 +1258,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
+	moveBatches := make(map[string][]string)     // path -> hashes
 
 	type pendingDeletion struct {
 		hash          string
@@ -730,6 +1273,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	deleteHashesByMode := make(map[string][]string)
 	pendingByHash := make(map[string]pendingDeletion)
 
+	// Track hashes that have been processed for "include cross-seeds" expansion
+	// to avoid double-processing
+	includedCrossSeedHashes := make(map[string]struct{})
+
+	// Track hashes that have been processed for hardlink expansion
+	includedHardlinkHashes := make(map[string]struct{})
+
 	for hash, state := range states {
 		torrent := torrentByHash[hash]
 
@@ -739,60 +1289,182 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			var actualMode string
 			var keepingFiles bool
 			var logMsg string
+			var hashesToDelete []string
 
 			switch deleteMode {
+			case DeleteModeWithFilesIncludeCrossSeeds:
+				// Find all cross-seeds sharing the same ContentPath
+				crossSeedGroup := findCrossSeedGroup(torrent, torrents)
+				if len(crossSeedGroup) <= 1 {
+					// No cross-seeds, just delete this torrent
+					hashesToDelete = []string{hash}
+					actualMode = DeleteModeWithFiles
+					logMsg = logMsgRemoveTorrentWithFiles
+					keepingFiles = false
+				} else if isContentPathAmbiguous(torrent) {
+					// ContentPath is ambiguous (equals SavePath), need to verify file overlap for ALL members.
+					// Safety: if ANY verification fails, skip the entire group to avoid leaving broken torrents.
+					verifiedHashes := []string{hash}
+					skipGroup := false
+					for _, other := range crossSeedGroup {
+						if other.Hash == hash {
+							continue
+						}
+						// Skip if already processed in a previous iteration
+						if _, processed := includedCrossSeedHashes[other.Hash]; processed {
+							continue
+						}
+						hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, other)
+						if err != nil {
+							log.Warn().Err(err).
+								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
+								Str("hash", hash).Str("otherHash", other.Hash).
+								Msg("automations: skipping entire group due to verification error")
+							skipGroup = true
+							break
+						}
+						if !hasOverlap {
+							log.Warn().
+								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
+								Str("hash", hash).Str("otherHash", other.Hash).
+								Msg("automations: skipping entire group due to low file overlap")
+							skipGroup = true
+							break
+						}
+						verifiedHashes = append(verifiedHashes, other.Hash)
+					}
+					if skipGroup {
+						// Skip this torrent entirely - don't delete trigger or cross-seeds
+						continue
+					}
+					// All verified - mark cross-seeds and proceed
+					for _, h := range verifiedHashes {
+						if h != hash {
+							includedCrossSeedHashes[h] = struct{}{}
+						}
+					}
+					hashesToDelete = verifiedHashes
+					actualMode = DeleteModeWithFiles
+					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
+					keepingFiles = false
+				} else {
+					// ContentPath is unambiguous, include all cross-seeds
+					hashesToDelete = make([]string, 0, len(crossSeedGroup))
+					for _, t := range crossSeedGroup {
+						// Skip if already processed in a previous iteration
+						if _, processed := includedCrossSeedHashes[t.Hash]; processed {
+							continue
+						}
+						hashesToDelete = append(hashesToDelete, t.Hash)
+						if t.Hash != hash {
+							includedCrossSeedHashes[t.Hash] = struct{}{}
+						}
+					}
+					actualMode = DeleteModeWithFiles
+					logMsg = "automations: removing torrent with files (include cross-seeds)"
+					keepingFiles = false
+				}
+
+				// Expand with hardlink copies if enabled (O(1) lookup via cached index)
+				if state.deleteIncludeHardlinks && hardlinkIndex != nil {
+					hlCopies := hardlinkIndex.GetHardlinkCopies(hash)
+					if len(hlCopies) > 0 {
+						// Build set from hashesToDelete for O(1) membership check
+						toDeleteSet := make(map[string]struct{}, len(hashesToDelete))
+						for _, h := range hashesToDelete {
+							toDeleteSet[h] = struct{}{}
+						}
+						for _, hlHash := range hlCopies {
+							// Skip if already in hashesToDelete or already processed
+							if _, inDelete := toDeleteSet[hlHash]; inDelete {
+								continue
+							}
+							if _, processed := includedHardlinkHashes[hlHash]; processed {
+								continue
+							}
+							hashesToDelete = append(hashesToDelete, hlHash)
+							includedHardlinkHashes[hlHash] = struct{}{}
+						}
+						logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
+					}
+				}
 			case DeleteModeWithFilesPreserveCrossSeeds:
+				hashesToDelete = []string{hash}
 				if detectCrossSeeds(torrent, torrents) {
 					actualMode = DeleteModeKeepFiles
 					logMsg = "automations: removing torrent (cross-seed detected - keeping files)"
 					keepingFiles = true
 				} else {
 					actualMode = DeleteModeWithFiles
-					logMsg = "automations: removing torrent with files"
+					logMsg = logMsgRemoveTorrentWithFiles
 					keepingFiles = false
 				}
 			case DeleteModeKeepFiles:
+				hashesToDelete = []string{hash}
 				actualMode = DeleteModeKeepFiles
 				logMsg = "automations: removing torrent (keeping files)"
 				keepingFiles = true
 			default:
+				hashesToDelete = []string{hash}
 				actualMode = deleteMode
-				logMsg = "automations: removing torrent with files"
+				logMsg = logMsgRemoveTorrentWithFiles
 				keepingFiles = false
 			}
 
-			log.Info().Str("hash", hash).Str("name", state.name).Str("reason", state.deleteReason).Bool("filesKept", keepingFiles).Msg(logMsg)
-			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], hash)
+			// Add all hashes to delete batch (with deduplication)
+			for _, h := range hashesToDelete {
+				// Skip if already queued for deletion (dedup)
+				if _, alreadyQueued := pendingByHash[h]; alreadyQueued {
+					continue
+				}
 
-			// Determine activity action type
-			action := models.ActivityActionDeletedCondition
-			if state.deleteReason == "unregistered" {
-				action = models.ActivityActionDeletedUnregistered
-			} else if state.deleteReason == "ratio limit reached" {
-				action = models.ActivityActionDeletedRatio
-			} else if state.deleteReason == "seeding time limit reached" || state.deleteReason == "ratio and seeding time limits reached" {
-				action = models.ActivityActionDeletedSeeding
-			}
+				// Look up actual torrent info for proper logging
+				torrentName := state.name
+				trackerDomain := ""
+				if len(state.trackerDomains) > 0 {
+					trackerDomain = state.trackerDomains[0]
+				}
+				if h != hash {
+					// Expanded cross-seed - use its own name/tracker info
+					if t, exists := torrentByHash[h]; exists {
+						torrentName = t.Name
+						if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
+							trackerDomain = domains[0]
+						}
+					}
+				}
 
-			trackerDomain := ""
-			if len(state.trackerDomains) > 0 {
-				trackerDomain = state.trackerDomains[0]
-			}
-			pendingByHash[hash] = pendingDeletion{
-				hash:          hash,
-				torrentName:   state.name,
-				trackerDomain: trackerDomain,
-				action:        action,
-				ruleID:        state.deleteRuleID,
-				ruleName:      state.deleteRuleName,
-				reason:        state.deleteReason,
-				details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode},
-			}
+				// Log with correct name for each hash
+				isTrigger := h == hash
+				log.Info().Str("hash", h).Str("name", torrentName).Bool("isTrigger", isTrigger).Str("reason", state.deleteReason).Bool("filesKept", keepingFiles).Msg(logMsg)
+				deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], h)
 
-			// Mark as processed
-			s.mu.Lock()
-			instLastApplied[hash] = now
-			s.mu.Unlock()
+				// Determine activity action type
+				action := models.ActivityActionDeletedCondition
+				if state.deleteReason == "unregistered" {
+					action = models.ActivityActionDeletedUnregistered
+				} else if state.deleteReason == "ratio limit reached" {
+					action = models.ActivityActionDeletedRatio
+				} else if state.deleteReason == "seeding time limit reached" || state.deleteReason == "ratio and seeding time limits reached" {
+					action = models.ActivityActionDeletedSeeding
+				}
+
+				pendingByHash[h] = pendingDeletion{
+					hash:          h,
+					torrentName:   torrentName,
+					trackerDomain: trackerDomain,
+					action:        action,
+					ruleID:        state.deleteRuleID,
+					ruleName:      state.deleteRuleName,
+					reason:        state.deleteReason,
+					details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode, "isTrigger": isTrigger},
+				}
+
+				// Mark as processed
+				s.mu.Lock()
+				instLastApplied[h] = now
+				s.mu.Unlock()
+			}
 			continue
 		}
 
@@ -881,6 +1553,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			if torrent.Category != *state.category {
 				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
 			}
+		}
+
+		if state.shouldMove {
+			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
 		}
 
 		// Mark as processed
@@ -1216,6 +1892,118 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
+	// Execute moves - sort paths for deterministic processing order
+	sortedPaths := make([]string, 0, len(moveBatches))
+	for path := range moveBatches {
+		sortedPaths = append(sortedPaths, path)
+	}
+	sort.Strings(sortedPaths)
+
+	movedHashes := make(map[string]struct{})
+	successfulMovesByPath := make(map[string]int)
+	failedMovesByPath := make(map[string]int)
+	for _, path := range sortedPaths {
+		hashes := moveBatches[path]
+		successfulMovesForPath := 0
+		failedMovesForPath := 0
+
+		// Before moving, we need to get all of the cross-seeds for each torrent to avoid breaking cross-seeds
+		var expandedHashes []string
+		for _, hash := range hashes {
+			if _, exists := movedHashes[hash]; exists {
+				continue // Already moved
+			}
+			expandedHashes = append(expandedHashes, hash)
+			movedHashes[hash] = struct{}{}
+		}
+
+		keysToExpand := make(map[crossSeedKey]struct{})
+		for _, hash := range hashes {
+			if t, exists := torrentByHash[hash]; exists {
+				if key, ok := makeCrossSeedKey(t); ok {
+					keysToExpand[key] = struct{}{}
+				}
+			}
+		}
+
+		if len(keysToExpand) > 0 {
+			for _, t := range torrents {
+				if normalizePath(t.SavePath) == normalizePath(path) {
+					continue // Already in target path
+				}
+				if _, exists := movedHashes[t.Hash]; exists {
+					continue // Already moved
+				}
+				if key, ok := makeCrossSeedKey(t); ok {
+					if _, matched := keysToExpand[key]; matched {
+						expandedHashes = append(expandedHashes, t.Hash)
+						movedHashes[t.Hash] = struct{}{}
+					}
+				}
+			}
+		}
+
+		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if len(batch) == 0 {
+				continue
+			}
+
+			if err := s.syncManager.SetLocation(ctx, instanceID, batch, path); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: move failed")
+				failedMovesForPath += len(batch)
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: moved torrent")
+				successfulMovesForPath += len(batch)
+			}
+		}
+
+		successfulMovesByPath[path] = successfulMovesForPath
+		failedMovesByPath[path] = failedMovesForPath
+	}
+
+	// Record aggregated move activity
+	if s.activityStore != nil {
+		var hasSuccesses, hasFailures bool
+		for _, count := range successfulMovesByPath {
+			if count > 0 {
+				hasSuccesses = true
+				break
+			}
+		}
+		for _, count := range failedMovesByPath {
+			if count > 0 {
+				hasFailures = true
+				break
+			}
+		}
+
+		if hasSuccesses {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeSuccess,
+				Details:    detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
+		}
+		if hasFailures {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeFailed,
+				Details:    detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
+		}
+	}
+
 	// Execute deletions
 	//
 	// Note on tracker announces: No explicit pause/reannounce step is needed before
@@ -1265,6 +2053,26 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents (files kept)")
 				} else {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents with files")
+
+					// Start FREE_SPACE cooldown if files were deleted by a FREE_SPACE rule
+					// This allows qBittorrent time to refresh its disk free space reading
+					if len(freeSpaceDeleteRuleIDs) > 0 {
+						for _, hash := range batch {
+							if pending, ok := pendingByHash[hash]; ok {
+								if _, isFSRule := freeSpaceDeleteRuleIDs[pending.ruleID]; isFSRule {
+									s.mu.Lock()
+									s.lastFreeSpaceDeleteAt[instanceID] = now
+									s.mu.Unlock()
+									log.Debug().
+										Int("instanceID", instanceID).
+										Int("ruleID", pending.ruleID).
+										Dur("cooldown", freeSpaceDeleteCooldown).
+										Msg("automations: started FREE_SPACE delete cooldown")
+									break // Only need to set once per batch
+								}
+							}
+						}
+					}
 				}
 
 				// Record successful deletion activity
@@ -1463,6 +2271,137 @@ func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
 	return false
 }
 
+// isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
+// files unique to this torrent. This happens when ContentPath == SavePath, meaning
+// the torrent uses the SavePath directly (common for shared download directories).
+func isContentPathAmbiguous(t qbt.Torrent) bool {
+	contentPath := normalizePath(t.ContentPath)
+	savePath := normalizePath(t.SavePath)
+	return contentPath == savePath
+}
+
+// findCrossSeedGroup returns all torrents (including the target) that share
+// the same normalized ContentPath. Returns nil if ContentPath is empty.
+func findCrossSeedGroup(target qbt.Torrent, allTorrents []qbt.Torrent) []qbt.Torrent {
+	targetPath := normalizePath(target.ContentPath)
+	if targetPath == "" {
+		return nil
+	}
+	var group []qbt.Torrent
+	for _, t := range allTorrents {
+		if normalizePath(t.ContentPath) == targetPath {
+			group = append(group, t)
+		}
+	}
+	return group
+}
+
+// fileOverlapKey represents a unique file identity for overlap comparison.
+// Uses lowercase normalized path + size to identify matching files.
+type fileOverlapKey struct {
+	name string // normalized lowercase path
+	size int64
+}
+
+// minFileOverlapPercent is the minimum percentage of file overlap required
+// to consider two torrents as sharing the same files when ContentPath is ambiguous.
+// 90% tolerates small differences (extra NFO/sample/metadata files) while preventing
+// accidental grouping of unrelated torrents that happen to share the same SavePath.
+const minFileOverlapPercent = 90
+
+// verifyFileOverlap checks if two torrents share at least minFileOverlapPercent of their files.
+// Returns true if verification passes, false if not enough overlap or verification failed.
+// This is used as a safety check when ContentPath matching is ambiguous.
+func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent1, torrent2 qbt.Torrent) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	// Get files for both torrents
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrent1.Hash, torrent2.Hash})
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch files: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	files1, ok1 := filesByHash[torrent1.Hash]
+	files2, ok2 := filesByHash[torrent2.Hash]
+	if !ok1 || !ok2 || len(files1) == 0 || len(files2) == 0 {
+		return false, fmt.Errorf("missing file lists for torrents")
+	}
+
+	// Build set of file keys from first torrent and compute total bytes
+	fileSet1 := make(map[fileOverlapKey]struct{}, len(files1))
+	var totalBytes1 int64
+	for _, f := range files1 {
+		key := fileOverlapKey{
+			name: strings.ToLower(normalizePath(f.Name)),
+			size: f.Size,
+		}
+		fileSet1[key] = struct{}{}
+		totalBytes1 += f.Size
+	}
+
+	// Compute total bytes for second torrent and sum matched bytes
+	var totalBytes2, matchedBytes int64
+	for _, f := range files2 {
+		totalBytes2 += f.Size
+		key := fileOverlapKey{
+			name: strings.ToLower(normalizePath(f.Name)),
+			size: f.Size,
+		}
+		if _, exists := fileSet1[key]; exists {
+			matchedBytes += f.Size
+		}
+	}
+
+	// Calculate overlap percentage based on bytes of the smaller torrent
+	smallerBytes := totalBytes1
+	if totalBytes2 < smallerBytes {
+		smallerBytes = totalBytes2
+	}
+	if smallerBytes == 0 {
+		return false, fmt.Errorf("cannot compute overlap: zero-size torrents")
+	}
+
+	overlapPercent := (matchedBytes * 100) / smallerBytes
+	return overlapPercent >= minFileOverlapPercent, nil
+}
+
+// deleteFreesSpace returns true if deleting this torrent with the given mode
+// will actually free disk space. This is used to determine whether to count
+// the torrent's size toward cumulative free space projection.
+//
+// Returns false for:
+//   - DeleteModeKeepFiles: files are retained on disk
+//   - DeleteModeWithFilesPreserveCrossSeeds when cross-seeds exist: files are kept
+//   - Unknown/invalid modes: don't count toward projection to avoid false early-stop
+//
+// Returns true for:
+//   - DeleteModeWithFiles: files are always deleted
+//   - DeleteModeWithFilesPreserveCrossSeeds when no cross-seeds exist: files will be deleted
+//   - DeleteModeWithFilesIncludeCrossSeeds: always frees disk space (deletes entire group)
+func deleteFreesSpace(mode string, torrent qbt.Torrent, allTorrents []qbt.Torrent) bool {
+	switch mode {
+	case DeleteModeKeepFiles, DeleteModeNone, "":
+		// Keep-files mode never frees disk space
+		return false
+	case DeleteModeWithFilesPreserveCrossSeeds:
+		// Only frees space if no cross-seeds share the files
+		return !detectCrossSeeds(torrent, allTorrents)
+	case DeleteModeWithFiles, DeleteModeWithFilesIncludeCrossSeeds:
+		// Always frees disk space (include mode deletes the whole group)
+		return true
+	default:
+		// Unknown mode - don't count toward projection to avoid false early-stop
+		log.Warn().Str("mode", mode).Msg("automations: unknown delete mode, not counting toward free space projection")
+		return false
+	}
+}
+
 // rulesUseCondition checks if any enabled rule uses the given field.
 func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 	for _, rule := range rules {
@@ -1488,6 +2427,9 @@ func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
 			return true
 		}
+		if ac.Move != nil && ConditionUsesField(ac.Move.Condition, field) {
+			return true
+		}
 	}
 	return false
 }
@@ -1506,6 +2448,45 @@ func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
 	return false
 }
 
+// rulesUseIncludeHardlinks checks if any enabled delete rule has IncludeHardlinks enabled
+// with the include-cross-seeds mode (the only mode that can actually expand hardlink groups).
+func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
+	for _, rule := range rules {
+		if rule.Conditions == nil || !rule.Enabled {
+			continue
+		}
+		del := rule.Conditions.Delete
+		// IncludeHardlinks only makes sense with the include-cross-seeds delete mode
+		if del != nil && del.Enabled && del.IncludeHardlinks && del.Mode == DeleteModeWithFilesIncludeCrossSeeds {
+			return true
+		}
+	}
+	return false
+}
+
+// rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks
+// with the include-cross-seeds delete mode. This determines if we need to build
+// the hardlink signature map for accurate FREE_SPACE projection.
+func rulesNeedHardlinkSignatureMap(rules []*models.Automation) bool {
+	for _, rule := range rules {
+		if rule.Conditions == nil || !rule.Enabled {
+			continue
+		}
+		del := rule.Conditions.Delete
+		if del == nil || !del.Enabled || !del.IncludeHardlinks {
+			continue
+		}
+		// Only include-cross-seeds mode can actually delete hardlink groups
+		if del.Mode != DeleteModeWithFilesIncludeCrossSeeds {
+			continue
+		}
+		if ConditionUsesField(del.Condition, FieldFreeSpace) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildTrackerDisplayNameMap builds a map from lowercase domain to display name.
 func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) map[string]string {
 	result := make(map[string]string)
@@ -1514,126 +2495,6 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 			result[strings.ToLower(domain)] = c.DisplayName
 		}
 	}
-	return result
-}
-
-// fileIDInfo holds file identity and link count for hardlink scope detection.
-type fileIDInfo struct {
-	nlink uint64
-	paths map[string]struct{}
-}
-
-// detectHardlinkScope computes the hardlink scope for each torrent.
-// Returns a map of torrent hash to scope value (none, torrents_only, outside_qbittorrent).
-func (s *Service) detectHardlinkScope(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]string {
-	result := make(map[string]string)
-
-	hashes := make([]string, 0, len(torrents))
-	torrentByHash := make(map[string]qbt.Torrent)
-	for _, t := range torrents {
-		hashes = append(hashes, t.Hash)
-		torrentByHash[t.Hash] = t
-	}
-
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).
-			Msg("automations: failed to fetch files for hardlink scope detection")
-		// Return empty map - scope defaults to "none" in evaluator
-		return result
-	}
-
-	// Build fileID accounting map across ALL torrents first
-	// Key: fileID (unique physical file identifier)
-	// Value: link count and set of paths pointing to this file
-	fileIDMap := make(map[string]*fileIDInfo)
-
-	for hash, files := range filesByHash {
-		torrent := torrentByHash[hash]
-		for _, f := range files {
-			fullPath := buildFullPath(torrent.SavePath, f.Name)
-
-			info, err := os.Lstat(fullPath)
-			if err != nil {
-				continue // Skip inaccessible files
-			}
-			if !info.Mode().IsRegular() {
-				continue // Skip directories and non-regular files
-			}
-
-			fileID, nlink, err := hardlink.LinkInfo(info, fullPath)
-			if err != nil {
-				continue // Skip files we can't get info for
-			}
-
-			if fileIDMap[fileID] == nil {
-				fileIDMap[fileID] = &fileIDInfo{
-					nlink: nlink,
-					paths: make(map[string]struct{}),
-				}
-			}
-			fileIDMap[fileID].paths[fullPath] = struct{}{}
-		}
-	}
-
-	// Now compute scope for each torrent
-	for hash, files := range filesByHash {
-		torrent := torrentByHash[hash]
-		scope := HardlinkScopeNone
-		filesAccessible := 0
-
-		for _, f := range files {
-			fullPath := buildFullPath(torrent.SavePath, f.Name)
-
-			info, err := os.Lstat(fullPath)
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-
-			fileID, nlink, err := hardlink.LinkInfo(info, fullPath)
-			if err != nil {
-				continue // Skip files we can't get info for
-			}
-
-			filesAccessible++
-
-			if nlink <= 1 {
-				continue // Not hardlinked, but file was accessible
-			}
-
-			// File has hardlinks (nlink > 1)
-			idInfo := fileIDMap[fileID]
-			if idInfo == nil {
-				continue
-			}
-
-			inTorrentSetCount := uint64(len(idInfo.paths))
-
-			if nlink > inTorrentSetCount {
-				// At least one link is outside the torrent set
-				scope = HardlinkScopeOutsideQBitTorrent
-				break // outside_qbittorrent wins - no need to check more files
-			}
-
-			// All links are within the torrent set
-			if scope != HardlinkScopeOutsideQBitTorrent {
-				scope = HardlinkScopeTorrentsOnly
-			}
-		}
-
-		// Only add to result if at least one file was accessible
-		// Unknown scope (no accessible files) = not added = won't match any condition
-		if filesAccessible > 0 {
-			result[hash] = scope
-		}
-	}
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Int("totalTorrents", len(torrents)).
-		Int("scopeComputed", len(result)).
-		Msg("automations: hardlink scope detection completed")
-
 	return result
 }
 

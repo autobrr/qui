@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -75,4 +75,54 @@ export function useDeleteTrackerCustomization() {
       toast.error("Failed to delete tracker customization")
     },
   })
+}
+
+export interface TrackerCustomizationEntry {
+  displayName: string
+  /** Normalized lowercase domains, primary is index 0 */
+  domains: string[]
+  id: number
+}
+
+export interface TrackerCustomizationMaps {
+  /** Maps lowercase domain to its customization entry */
+  domainToCustomization: Map<string, TrackerCustomizationEntry>
+  /** Set of lowercase secondary domains (not the primary/first domain) */
+  secondaryDomains: Set<string>
+}
+
+/**
+ * Builds lookup maps from tracker customizations for merging and nicknames.
+ * This pure function can be used inside useMemo to derive maps from customization data.
+ */
+export function buildTrackerCustomizationMaps(customizations?: TrackerCustomization[] | null): TrackerCustomizationMaps {
+  const domainToCustomization = new Map<string, TrackerCustomizationEntry>()
+  const secondaryDomains = new Set<string>()
+
+  for (const custom of customizations ?? []) {
+    const domains: string[] = []
+    const seen = new Set<string>()
+    for (const rawDomain of custom.domains) {
+      const normalized = rawDomain.trim().toLowerCase()
+      if (!normalized) continue
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
+      domains.push(normalized)
+    }
+    if (domains.length === 0) continue
+
+    for (let i = 0; i < domains.length; i++) {
+      const domain = domains[i]
+      domainToCustomization.set(domain, {
+        displayName: custom.displayName,
+        domains,
+        id: custom.id,
+      })
+      if (i > 0) {
+        secondaryDomains.add(domain)
+      }
+    }
+  }
+
+  return { domainToCustomization, secondaryDomains }
 }

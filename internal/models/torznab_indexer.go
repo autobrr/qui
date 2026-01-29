@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -71,6 +71,8 @@ type TorznabIndexer struct {
 	Enabled         bool                     `json:"enabled"`
 	Priority        int                      `json:"priority"`
 	TimeoutSeconds  int                      `json:"timeout_seconds"`
+	LimitDefault    int                      `json:"limit_default"`
+	LimitMax        int                      `json:"limit_max"`
 	Capabilities    []string                 `json:"capabilities"`
 	Categories      []TorznabIndexerCategory `json:"categories"`
 	LastTestAt      *time.Time               `json:"last_test_at,omitempty"`
@@ -267,6 +269,8 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 30
 	}
+	limitDefault := 100
+	limitMax := 100
 
 	// Begin transaction for string interning and insert
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -293,11 +297,11 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	}
 
 	query := `
-		INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, backend, api_key_encrypted, enabled, priority, timeout_seconds)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, backend, encryptedAPIKey, enabled, priority, timeoutSeconds)
+	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, backend, encryptedAPIKey, enabled, priority, timeoutSeconds, limitDefault, limitMax)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
 	}
@@ -317,7 +321,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 // Get retrieves a Torznab indexer by ID using the view
 func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE id = ?
 	`
@@ -335,6 +339,8 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		&indexer.Enabled,
 		&indexer.Priority,
 		&indexer.TimeoutSeconds,
+		&indexer.LimitDefault,
+		&indexer.LimitMax,
 		&indexer.LastTestAt,
 		&indexer.LastTestStatus,
 		&indexer.LastTestError,
@@ -381,7 +387,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 // List retrieves all Torznab indexers using the view, ordered by priority (descending) and name
 func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		ORDER BY priority DESC, name ASC
 	`
@@ -407,6 +413,8 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 			&indexer.Enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
+			&indexer.LimitDefault,
+			&indexer.LimitMax,
 			&indexer.LastTestAt,
 			&indexer.LastTestStatus,
 			&indexer.LastTestError,
@@ -456,7 +464,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 // ListEnabled retrieves all enabled Torznab indexers using the view, ordered by priority
 func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE enabled = 1
 		ORDER BY priority DESC, name ASC
@@ -483,6 +491,8 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 			&indexer.Enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
+			&indexer.LimitDefault,
+			&indexer.LimitMax,
 			&indexer.LastTestAt,
 			&indexer.LastTestStatus,
 			&indexer.LastTestError,
@@ -899,6 +909,31 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// SetLimits updates the limit_default and limit_max values for an indexer
+func (s *TorznabIndexerStore) SetLimits(ctx context.Context, indexerID, limitDefault, limitMax int) error {
+	query := `
+		UPDATE torznab_indexers
+		SET limit_default = ?, limit_max = ?
+		WHERE id = ?
+	`
+
+	result, err := s.db.ExecContext(ctx, query, limitDefault, limitMax, indexerID)
+	if err != nil {
+		return fmt.Errorf("failed to update indexer limits: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return ErrTorznabIndexerNotFound
 	}
 
 	return nil

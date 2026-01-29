@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -319,6 +319,7 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{},
@@ -355,6 +356,7 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{},
@@ -415,6 +417,7 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -459,6 +462,7 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/also/nonexistent/path"},
@@ -516,6 +520,7 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
 		&qbt.Torrent{ContentPath: "/downloads/Movie"},
@@ -571,6 +576,7 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
 		&qbt.Torrent{ContentPath: "/downloads/Movie"},
@@ -615,6 +621,7 @@ func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -655,6 +662,7 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -698,6 +706,7 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -738,6 +747,7 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},

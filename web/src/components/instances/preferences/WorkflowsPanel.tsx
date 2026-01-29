@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -412,9 +412,11 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <p>{conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"
               ? "Delete with files (preserve cross-seeds)"
-              : conditions.delete.mode === "deleteWithFiles"
-                ? "Delete with files"
-                : "Delete (keep files)"}</p>
+              : conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"
+                ? "Delete with files (include cross-seeds)"
+                : conditions.delete.mode === "deleteWithFiles"
+                  ? "Delete with files"
+                  : "Delete (keep files)"}</p>
           </TooltipContent>
         </Tooltip>
       )}

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -7,7 +10,7 @@ import (
 )
 
 // discLayoutMarkers are directory names that indicate disc-based media (Blu-ray, DVD).
-// When detected, torrents must be added paused and never auto-resumed.
+// When detected, torrents must be added paused and only auto-resumed after a full recheck.
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
 
 // AddPolicy defines constraints for how a torrent should be added.
@@ -23,7 +26,8 @@ type AddPolicy struct {
 	ForceSkipAutoResume bool
 
 	// DiscLayout indicates this is a disc-based media torrent (Blu-ray/DVD).
-	// When true, both ForcePaused and ForceSkipAutoResume are set.
+	// When true, ForcePaused is set and auto-resume is only allowed after
+	// a full recheck reaches 100%.
 	DiscLayout bool
 
 	// DiscMarker is the marker directory name that triggered disc layout detection
@@ -38,7 +42,7 @@ func PolicyForSourceFiles(sourceFiles qbt.TorrentFiles) AddPolicy {
 	if isDisc {
 		return AddPolicy{
 			ForcePaused:         true,
-			ForceSkipAutoResume: true,
+			ForceSkipAutoResume: false,
 			DiscLayout:          true,
 			DiscMarker:          marker,
 		}
@@ -103,7 +107,7 @@ func (p AddPolicy) ShouldSkipAutoResume() bool {
 // Returns empty string if no policy constraints are active.
 func (p AddPolicy) StatusSuffix() string {
 	if p.DiscLayout {
-		return " - disc layout detected (" + p.DiscMarker + "), left paused"
+		return " - disc layout detected (" + p.DiscMarker + "), full recheck required"
 	}
 	return ""
 }

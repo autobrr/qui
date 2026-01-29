@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -1471,6 +1471,10 @@ func (m *mockTorznabIndexerStore) SetCategories(ctx context.Context, indexerID i
 	return nil
 }
 
+func (m *mockTorznabIndexerStore) SetLimits(ctx context.Context, indexerID, limitDefault, limitMax int) error {
+	return nil
+}
+
 func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error {
 	return nil
 }
@@ -1612,6 +1616,21 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 				// year parameter should be removed
 			},
 			description: "Prowlarr indexer should use year as query when original query is empty",
+		},
+		{
+			name:    "prowlarr with year parameter and ids present",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "movie",
+				"year":   "1999",
+				"imdbid": "0133093",
+			},
+			expected: map[string]string{
+				"t":      "movie",
+				"imdbid": "0133093",
+				// year parameter should be removed
+			},
+			description: "Prowlarr indexer should drop year when doing ID-driven search",
 		},
 		{
 			name:    "jackett with year parameter",
@@ -2302,6 +2321,26 @@ func TestApplyCapabilitySpecificParams(t *testing.T) {
 			},
 			wantParams:  map[string]string{},
 			description: "No query restored when original query is empty",
+		},
+		{
+			name: "all IDs pruned - restores release name when original query empty",
+			indexer: &models.TorznabIndexer{
+				ID:           12,
+				Name:         "NoIDsIndexer",
+				Capabilities: []string{"movie-search"},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "",
+				releaseName:   "The Matrix (1999)",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			wantParams: map[string]string{
+				"q": "The Matrix (1999)",
+			},
+			description: "Release name restored when all IDs are pruned and original query is empty",
 		},
 		{
 			name: "case-insensitive capability matching",

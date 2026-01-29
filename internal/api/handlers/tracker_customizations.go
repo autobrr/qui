@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -18,11 +19,40 @@ import (
 )
 
 type TrackerCustomizationHandler struct {
-	store *models.TrackerCustomizationStore
+	store          *models.TrackerCustomizationStore
+	onMutationHook func() // Called after create/update/delete to allow cache invalidation
 }
 
-func NewTrackerCustomizationHandler(store *models.TrackerCustomizationStore) *TrackerCustomizationHandler {
-	return &TrackerCustomizationHandler{store: store}
+// NewTrackerCustomizationHandler creates a new handler for tracker customization endpoints.
+// The onMutationHook parameter is called after any create/update/delete operation to allow
+// external components (like SyncManager) to invalidate caches when customizations change.
+// Pass nil if no cache invalidation is needed.
+func NewTrackerCustomizationHandler(store *models.TrackerCustomizationStore, onMutationHook func()) *TrackerCustomizationHandler {
+	return &TrackerCustomizationHandler{
+		store:          store,
+		onMutationHook: onMutationHook,
+	}
+}
+
+// invokeMutationHook safely calls the mutation hook if set.
+// It recovers from panics to prevent hook failures from breaking HTTP responses.
+func (h *TrackerCustomizationHandler) invokeMutationHook(action string, id int) {
+	if h.onMutationHook == nil {
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().
+				Str("action", action).
+				Int("id", id).
+				Interface("recover_info", r).
+				Bytes("debug_stack", debug.Stack()).
+				Msg("panic in tracker customization mutation hook")
+		}
+	}()
+
+	h.onMutationHook()
 }
 
 type TrackerCustomizationPayload struct {
@@ -104,6 +134,8 @@ func (h *TrackerCustomizationHandler) Create(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	h.invokeMutationHook("create", customization.ID)
+
 	RespondJSON(w, http.StatusCreated, customization)
 }
 
@@ -142,6 +174,8 @@ func (h *TrackerCustomizationHandler) Update(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	h.invokeMutationHook("update", id)
+
 	RespondJSON(w, http.StatusOK, customization)
 }
 
@@ -162,6 +196,8 @@ func (h *TrackerCustomizationHandler) Delete(w http.ResponseWriter, r *http.Requ
 		RespondError(w, http.StatusInternalServerError, "Failed to delete tracker customization")
 		return
 	}
+
+	h.invokeMutationHook("delete", id)
 
 	w.WriteHeader(http.StatusNoContent)
 }

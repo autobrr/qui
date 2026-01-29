@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -38,7 +38,9 @@ func (h *TrackerIconHandler) GetTrackerIcons(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// The icon map is dynamic (files can be added/updated at runtime), so avoid
+	// browser/proxy caching that can cause stale/missing icons in the UI.
+	w.Header().Set("Cache-Control", "no-store")
 
 	if err := json.NewEncoder(w).Encode(icons); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)

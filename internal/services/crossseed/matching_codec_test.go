@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -60,6 +63,8 @@ func TestJoinNormalizedCodecSlice(t *testing.T) {
 		{"x265 alone", []string{"x265"}, "HEVC"},
 		{"H.265 alone", []string{"H.265"}, "HEVC"},
 		{"multiple codecs sorted", []string{"HEVC", "AVC"}, "AVC HEVC"},
+		{"dedupe hevc aliases", []string{"HEVC", "x265"}, "HEVC"},
+		{"dedupe avc aliases", []string{"x264", "H.264"}, "AVC"},
 		{"passthrough codec", []string{"VP9"}, "VP9"},
 	}
 
