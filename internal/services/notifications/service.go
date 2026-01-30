@@ -188,7 +188,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 	switch event.Type {
 	case EventTorrentCompleted:
 		title := "Torrent completed"
-		return title, fmt.Sprintf("%s: %s%s%s", instanceLabel, event.TorrentName, formatHashSuffix(event.TorrentHash), formatTorrentMetadata(event))
+		return title, formatTorrentCompletedMessage(instanceLabel, event)
 	case EventBackupSucceeded:
 		title := "Backup completed"
 		return title, fmt.Sprintf("%s: %s backup completed (run %d). Torrents: %d", instanceLabel, formatKind(event.BackupKind), event.BackupRunID, event.BackupTorrentCount)
@@ -265,21 +265,25 @@ func formatHashSuffix(hash string) string {
 	return fmt.Sprintf(" [%s]", trimmed[:8])
 }
 
-func formatTorrentMetadata(event Event) string {
-	parts := []string{}
+func formatTorrentCompletedMessage(instanceLabel string, event Event) string {
+	lines := []string{
+		fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash)),
+	}
+	if strings.TrimSpace(instanceLabel) != "" {
+		lines = append(lines, "Instance: "+instanceLabel)
+	}
 	if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
-		parts = append(parts, "tracker: "+tracker)
+		lines = append(lines, "Tracker: "+tracker)
 	}
 	if category := strings.TrimSpace(event.Category); category != "" {
-		parts = append(parts, "category: "+category)
+		lines = append(lines, "Category: "+category)
 	}
 	if len(event.Tags) > 0 {
-		parts = append(parts, "tags: "+strings.Join(event.Tags, ", "))
+		tags := append([]string(nil), event.Tags...)
+		slices.Sort(tags)
+		lines = append(lines, "Tags: "+strings.Join(tags, ", "))
 	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return " • " + strings.Join(parts, " • ")
+	return strings.Join(lines, "\n")
 }
 
 func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message string) (string, string) {
