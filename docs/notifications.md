@@ -44,4 +44,5 @@ Use any Shoutrrr-supported URL scheme. A few examples:
 
 Notifiarr can also include optional parameters such as `channel` or `name`, e.g. `notifiarr://apikey?name=qui&channel=123456789`.
 
-See Shoutrrr documentation for the full list of services and URL formats.
+See the Shoutrrr documentation for the full list of services and URL formats:
+https://github.com/nicholas-fedor/shoutrrr

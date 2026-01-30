@@ -7428,7 +7428,7 @@ func (s *Service) notifyAutomationRun(run *models.CrossSeedRun, runErr error) {
 	}
 
 	eventType := notifications.EventCrossSeedAutomationSucceeded
-	if run.Status == models.CrossSeedRunStatusFailed {
+	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
 		eventType = notifications.EventCrossSeedAutomationFailed
 	}
 

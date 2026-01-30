@@ -32,10 +32,10 @@ func NewNotificationsHandler(store *models.NotificationTargetStore, service *not
 }
 
 type notificationTargetRequest struct {
-	Name       string   `json:"name"`
-	URL        string   `json:"url"`
-	Enabled    *bool    `json:"enabled"`
-	EventTypes []string `json:"eventTypes"`
+	Name       string    `json:"name"`
+	URL        string    `json:"url"`
+	Enabled    *bool     `json:"enabled"`
+	EventTypes *[]string `json:"eventTypes"`
 }
 
 type notificationTestRequest struct {
@@ -100,7 +100,11 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 		enabled = *req.Enabled
 	}
 
-	eventTypes, err := notifications.NormalizeEventTypes(req.EventTypes)
+	var eventTypeInput []string
+	if req.EventTypes != nil {
+		eventTypeInput = *req.EventTypes
+	}
+	eventTypes, err := notifications.NormalizeEventTypes(eventTypeInput)
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -161,18 +165,32 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	enabled := true
+	existing, err := h.store.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrNotificationTargetNotFound) {
+			RespondError(w, http.StatusNotFound, "notification target not found")
+			return
+		}
+		log.Error().Err(err).Msg("notifications: failed to load target")
+		RespondError(w, http.StatusInternalServerError, "failed to load notification target")
+		return
+	}
+
+	enabled := existing.Enabled
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
 
-	eventTypes, err := notifications.NormalizeEventTypes(req.EventTypes)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if len(eventTypes) == 0 {
-		eventTypes = notifications.AllEventTypeStrings()
+	eventTypes := existing.EventTypes
+	if req.EventTypes != nil {
+		eventTypes, err = notifications.NormalizeEventTypes(*req.EventTypes)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if len(eventTypes) == 0 {
+			eventTypes = notifications.AllEventTypeStrings()
+		}
 	}
 
 	updated, err := h.store.Update(r.Context(), id, &models.NotificationTargetUpdate{
