@@ -17,7 +17,7 @@ Notes:
 
 | Event key | Description |
 | --- | --- |
-| `torrent_completed` | A torrent finishes downloading. |
+| `torrent_completed` | A torrent finishes downloading (includes tracker, category, and tags when available). |
 | `backup_succeeded` | A backup run completes successfully. |
 | `backup_failed` | A backup run fails. |
 | `dir_scan_completed` | A directory scan run finishes. |

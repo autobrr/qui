@@ -36,6 +36,9 @@ type Event struct {
 	InstanceName             string
 	TorrentName              string
 	TorrentHash              string
+	TrackerDomain            string
+	Category                 string
+	Tags                     []string
 	BackupKind               models.BackupRunKind
 	BackupRunID              int64
 	BackupTorrentCount       int
@@ -185,7 +188,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 	switch event.Type {
 	case EventTorrentCompleted:
 		title := "Torrent completed"
-		return title, fmt.Sprintf("%s: %s%s", instanceLabel, event.TorrentName, formatHashSuffix(event.TorrentHash))
+		return title, fmt.Sprintf("%s: %s%s%s", instanceLabel, event.TorrentName, formatHashSuffix(event.TorrentHash), formatTorrentMetadata(event))
 	case EventBackupSucceeded:
 		title := "Backup completed"
 		return title, fmt.Sprintf("%s: %s backup completed (run %d). Torrents: %d", instanceLabel, formatKind(event.BackupKind), event.BackupRunID, event.BackupTorrentCount)
@@ -260,6 +263,23 @@ func formatHashSuffix(hash string) string {
 		return ""
 	}
 	return fmt.Sprintf(" [%s]", trimmed[:8])
+}
+
+func formatTorrentMetadata(event Event) string {
+	parts := []string{}
+	if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
+		parts = append(parts, "tracker: "+tracker)
+	}
+	if category := strings.TrimSpace(event.Category); category != "" {
+		parts = append(parts, "category: "+category)
+	}
+	if len(event.Tags) > 0 {
+		parts = append(parts, "tags: "+strings.Join(event.Tags, ", "))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " • " + strings.Join(parts, " • ")
 }
 
 func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message string) (string, string) {
