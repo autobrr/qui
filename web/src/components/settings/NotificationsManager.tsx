@@ -65,10 +65,11 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
     if (initialized) return
     if (initial) {
       setEventTypes(initial.eventTypes ?? [])
+      setInitialized(true)
     } else if (eventDefinitions.length > 0) {
       setEventTypes(eventDefinitions.map((event) => event.type))
+      setInitialized(true)
     }
-    setInitialized(true)
   }, [eventDefinitions, initial, initialized])
 
   const toggleEvent = (type: string) => {

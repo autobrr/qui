@@ -255,7 +255,15 @@ function ApiKeysManager() {
         <p className="text-sm text-muted-foreground">
           API keys allow external applications to access your qBittorrent instances.
         </p>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <Dialog
+          open={showCreateDialog}
+          onOpenChange={(open) => {
+            setShowCreateDialog(open)
+            if (!open) {
+              setNewKey(null)
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />

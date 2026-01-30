@@ -527,15 +527,16 @@ func buildStructuredMessage(message string) (string, []messageField) {
 			}
 			continue
 		}
-		if strings.EqualFold(label, "instance") {
+		lowerLabel := strings.ToLower(label)
+		if lowerLabel == "instance" {
 			fields = append(fields, normalizeField(label, value))
 			continue
 		}
 		if description == "" {
-			switch {
-			case strings.EqualFold(label, "torrent"):
+			switch lowerLabel {
+			case "torrent":
 				description = value
-			case strings.EqualFold(label, "run"):
+			case "run":
 				description = "Run " + value
 			default:
 				description = fmt.Sprintf("%s: %s", label, value)
