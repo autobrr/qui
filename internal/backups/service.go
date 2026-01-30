@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
@@ -58,6 +59,7 @@ type Service struct {
 	store       *models.BackupStore
 	syncManager *qbittorrent.SyncManager
 	jackettSvc  *jackett.Service
+	notifier    notifications.Notifier
 	cfg         Config
 	cacheDir    string
 
@@ -106,7 +108,7 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc interface{}, cfg Config) *Service {
+func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -131,6 +133,7 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		store:       store,
 		syncManager: syncManager,
 		jackettSvc:  jackettService,
+		notifier:    notifier,
 		cfg:         cfg,
 		cacheDir:    cacheDir,
 		jobs:        make(chan job, cfg.WorkerCount*2),
@@ -428,6 +431,13 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		})
 		s.clearInstance(j.instanceID, j.runID)
 		log.Error().Int("instanceID", j.instanceID).Msg("Backup run failed: sync manager not configured")
+		s.notify(notifications.Event{
+			Type:         notifications.EventBackupFailed,
+			InstanceID:   j.instanceID,
+			BackupKind:   j.kind,
+			BackupRunID:  j.runID,
+			ErrorMessage: msg,
+		})
 		return
 	}
 
@@ -455,6 +465,13 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			return nil
 		})
 		log.Error().Err(execErr).Int("instanceID", j.instanceID).Int64("runID", j.runID).Msg("Backup run failed")
+		s.notify(notifications.Event{
+			Type:         notifications.EventBackupFailed,
+			InstanceID:   j.instanceID,
+			BackupKind:   j.kind,
+			BackupRunID:  j.runID,
+			ErrorMessage: msg,
+		})
 	} else {
 		now := s.now()
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -483,9 +500,23 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 				log.Warn().Err(err).Int("instanceID", j.instanceID).Msg("Failed to apply backup retention")
 			}
 		}
+		s.notify(notifications.Event{
+			Type:               notifications.EventBackupSucceeded,
+			InstanceID:         j.instanceID,
+			BackupKind:         j.kind,
+			BackupRunID:        j.runID,
+			BackupTorrentCount: result.torrentCount,
+		})
 	}
 
 	s.clearInstance(j.instanceID, j.runID)
+}
+
+func (s *Service) notify(event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(event)
 }
 
 type backupResult struct {

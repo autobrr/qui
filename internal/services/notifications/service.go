@@ -1,0 +1,313 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package notifications
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"sync"
+	"unicode/utf8"
+
+	"github.com/nicholas-fedor/shoutrrr/pkg/router"
+	"github.com/nicholas-fedor/shoutrrr/pkg/types"
+	"github.com/rs/zerolog"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+const (
+	defaultQueueSize = 100
+	defaultWorkers   = 2
+)
+
+type Notifier interface {
+	Notify(event Event)
+}
+
+type Event struct {
+	Type                     EventType
+	Title                    string
+	Message                  string
+	InstanceID               int
+	InstanceName             string
+	TorrentName              string
+	TorrentHash              string
+	BackupKind               models.BackupRunKind
+	BackupRunID              int64
+	BackupTorrentCount       int
+	DirScanRunID             int64
+	DirScanMatchesFound      int
+	DirScanTorrentsAdded     int
+	OrphanScanRunID          int64
+	OrphanScanFilesDeleted   int
+	OrphanScanFoldersDeleted int
+	ErrorMessage             string
+}
+
+type Service struct {
+	store         *models.NotificationTargetStore
+	instanceStore *models.InstanceStore
+	logger        zerolog.Logger
+	queue         chan Event
+	startOnce     sync.Once
+}
+
+func NewService(store *models.NotificationTargetStore, instanceStore *models.InstanceStore, logger zerolog.Logger) *Service {
+	if store == nil {
+		return nil
+	}
+
+	return &Service{
+		store:         store,
+		instanceStore: instanceStore,
+		logger:        logger,
+		queue:         make(chan Event, defaultQueueSize),
+	}
+}
+
+func ValidateURL(rawURL string) error {
+	_, err := router.New(nil, rawURL)
+	return err
+}
+
+func (s *Service) Start(ctx context.Context) {
+	if s == nil {
+		return
+	}
+
+	s.startOnce.Do(func() {
+		for range defaultWorkers {
+			go s.worker(ctx)
+		}
+	})
+}
+
+func (s *Service) Notify(event Event) {
+	if s == nil || s.store == nil {
+		return
+	}
+
+	if s.queue == nil {
+		go s.dispatch(context.Background(), event)
+		return
+	}
+
+	select {
+	case s.queue <- event:
+	default:
+		s.logger.Warn().Str("event", string(event.Type)).Msg("notifications: queue full, dropping event")
+	}
+}
+
+func (s *Service) SendTest(ctx context.Context, target *models.NotificationTarget, title, message string) error {
+	if target == nil {
+		return errors.New("notification target required")
+	}
+
+	return s.send(ctx, target, title, message)
+}
+
+func (s *Service) worker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-s.queue:
+			s.dispatch(ctx, event)
+		}
+	}
+}
+
+func (s *Service) dispatch(ctx context.Context, event Event) {
+	if s == nil || s.store == nil {
+		return
+	}
+
+	targets, err := s.store.ListEnabled(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("notifications: failed to list targets")
+		return
+	}
+	if len(targets) == 0 {
+		return
+	}
+
+	title, message := s.formatEvent(ctx, event)
+	if strings.TrimSpace(message) == "" {
+		return
+	}
+
+	for _, target := range targets {
+		if !allowsEvent(target.EventTypes, event.Type) {
+			continue
+		}
+
+		if err := s.send(ctx, target, title, message); err != nil {
+			s.logger.Error().Err(err).Str("target", target.Name).Str("event", string(event.Type)).Msg("notifications: send failed")
+		}
+	}
+}
+
+func (s *Service) send(_ context.Context, target *models.NotificationTarget, title, message string) error {
+	sender, err := router.New(nil, target.URL)
+	if err != nil {
+		return err
+	}
+
+	params := types.Params{}
+	if trimmed := strings.TrimSpace(title); trimmed != "" {
+		params.SetTitle(truncateMessage(trimmed, maxTitleLength))
+	}
+
+	trimmedMessage := truncateMessage(message, maxMessageLength)
+	results := sender.Send(trimmedMessage, &params)
+	var errs []error
+	for _, sendErr := range results {
+		if sendErr != nil {
+			errs = append(errs, sendErr)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+
+	return errors.Join(errs...)
+}
+
+func (s *Service) formatEvent(ctx context.Context, event Event) (string, string) {
+	instanceLabel := s.resolveInstanceLabel(ctx, event)
+	customMessage := strings.TrimSpace(event.Message)
+
+	switch event.Type {
+	case EventTorrentCompleted:
+		title := "Torrent completed"
+		return title, fmt.Sprintf("%s: %s%s", instanceLabel, event.TorrentName, formatHashSuffix(event.TorrentHash))
+	case EventBackupSucceeded:
+		title := "Backup completed"
+		return title, fmt.Sprintf("%s: %s backup completed (run %d). Torrents: %d", instanceLabel, formatKind(event.BackupKind), event.BackupRunID, event.BackupTorrentCount)
+	case EventBackupFailed:
+		title := "Backup failed"
+		return title, fmt.Sprintf("%s: %s backup failed (run %d). %s", instanceLabel, formatKind(event.BackupKind), event.BackupRunID, formatErrorMessage(event.ErrorMessage))
+	case EventDirScanCompleted:
+		title := "Directory scan completed"
+		return title, fmt.Sprintf("%s: run %d completed. Matches: %d, Torrents added: %d", instanceLabel, event.DirScanRunID, event.DirScanMatchesFound, event.DirScanTorrentsAdded)
+	case EventDirScanFailed:
+		title := "Directory scan failed"
+		return title, fmt.Sprintf("%s: run %d failed. %s", instanceLabel, event.DirScanRunID, formatErrorMessage(event.ErrorMessage))
+	case EventOrphanScanCompleted:
+		title := "Orphan scan completed"
+		return title, fmt.Sprintf("%s: run %d completed. Files deleted: %d, Folders deleted: %d", instanceLabel, event.OrphanScanRunID, event.OrphanScanFilesDeleted, event.OrphanScanFoldersDeleted)
+	case EventOrphanScanFailed:
+		title := "Orphan scan failed"
+		return title, fmt.Sprintf("%s: run %d failed. %s", instanceLabel, event.OrphanScanRunID, formatErrorMessage(event.ErrorMessage))
+	case EventCrossSeedAutomationSucceeded:
+		title := "Cross-seed automation completed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedAutomationFailed:
+		title := "Cross-seed automation failed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedSearchSucceeded:
+		title := "Cross-seed search completed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedSearchFailed:
+		title := "Cross-seed search failed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventAutomationsActionsApplied:
+		title := "Automations actions applied"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventAutomationsRunFailed:
+		title := "Automations run failed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	default:
+		return "", ""
+	}
+}
+
+func (s *Service) resolveInstanceLabel(ctx context.Context, event Event) string {
+	if strings.TrimSpace(event.InstanceName) != "" {
+		return event.InstanceName
+	}
+	if event.InstanceID <= 0 || s.instanceStore == nil {
+		return "Instance"
+	}
+
+	instance, err := s.instanceStore.Get(ctx, event.InstanceID)
+	if err != nil || instance == nil {
+		return fmt.Sprintf("Instance %d", event.InstanceID)
+	}
+	if strings.TrimSpace(instance.Name) == "" {
+		return fmt.Sprintf("Instance %d", event.InstanceID)
+	}
+
+	return instance.Name
+}
+
+func allowsEvent(eventTypes []string, eventType EventType) bool {
+	if len(eventTypes) == 0 {
+		return true
+	}
+
+	return slices.Contains(eventTypes, string(eventType))
+}
+
+func formatHashSuffix(hash string) string {
+	trimmed := strings.TrimSpace(hash)
+	if len(trimmed) < 8 {
+		return ""
+	}
+	return fmt.Sprintf(" [%s]", trimmed[:8])
+}
+
+func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message string) (string, string) {
+	title := defaultTitle
+	if strings.TrimSpace(overrideTitle) != "" {
+		title = strings.TrimSpace(overrideTitle)
+	}
+	if strings.TrimSpace(message) == "" {
+		return title, ""
+	}
+	return title, fmt.Sprintf("%s: %s", instanceLabel, message)
+}
+
+const (
+	maxMessageLength = 420
+	maxTitleLength   = 80
+)
+
+func truncateMessage(value string, limit int) string {
+	if limit <= 0 {
+		return value
+	}
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(trimmed) <= limit {
+		return trimmed
+	}
+	runes := []rune(trimmed)
+	if limit <= 1 {
+		return string(runes[:limit])
+	}
+	return strings.TrimSpace(string(runes[:limit-1])) + "…"
+}
+
+func formatKind(kind models.BackupRunKind) string {
+	raw := strings.TrimSpace(string(kind))
+	if raw == "" {
+		return "backup"
+	}
+	return raw
+}
+
+func formatErrorMessage(message string) string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return "Unknown error"
+	}
+	return trimmed
+}

@@ -49,6 +49,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -268,6 +269,7 @@ type Service struct {
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
 	arrService               *arr.Service // ARR service for ID lookup
+	notifier                 notifications.Notifier
 
 	// External program execution
 	externalProgramStore *models.ExternalProgramStore
@@ -340,6 +342,7 @@ func NewService(
 	externalProgramStore *models.ExternalProgramStore,
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
+	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
@@ -369,6 +372,7 @@ func NewService(
 		automationStore:               automationStore,
 		jackettService:                jackettService,
 		arrService:                    arrService,
+		notifier:                      notifier,
 		externalProgramStore:          externalProgramStore,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
@@ -1939,6 +1943,10 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
+	var runErr error
+	defer func() {
+		s.notifyAutomationRun(run, runErr)
+	}()
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)
 
@@ -1961,6 +1969,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
+		runErr = err
 		return run, err
 	}
 
@@ -1976,6 +1985,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
+		runErr = err
 		return run, err
 	case <-time.After(10 * time.Minute): // generous timeout for RSS automation
 		msg := "Recent search timed out"
@@ -1986,7 +1996,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
-		return run, errors.New("recent search timed out")
+		timeoutErr := errors.New("recent search timed out")
+		runErr = timeoutErr
+		return run, timeoutErr
 	case <-ctx.Done():
 		msg := "canceled by user"
 		run.ErrorMessage = &msg
@@ -1996,6 +2008,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(context.WithoutCancel(ctx), run); updateErr == nil {
 			run = updated
 		}
+		runErr = ctx.Err()
 		return run, ctx.Err()
 	}
 
@@ -2017,8 +2030,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		Msg("[RSS] Starting feed item processing")
 
 	processed := 0
-	var runErr error
-
 	for _, result := range searchResp.Results {
 		if ctx.Err() != nil {
 			runErr = ctx.Err()
@@ -5869,6 +5880,8 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 		s.searchCancel = nil
 	}
 	s.searchMu.Unlock()
+
+	s.notifySearchRun(state, canceled)
 }
 
 // dedupCacheKey generates a cache key for deduplication results based on instance ID
@@ -7407,6 +7420,161 @@ func (s *Service) appendSearchResult(state *searchRunState, result models.CrossS
 		}
 	}
 	s.searchMu.Unlock()
+}
+
+func (s *Service) notifyAutomationRun(run *models.CrossSeedRun, runErr error) {
+	if s == nil || s.notifier == nil || run == nil {
+		return
+	}
+
+	eventType := notifications.EventCrossSeedAutomationSucceeded
+	if run.Status == models.CrossSeedRunStatusFailed {
+		eventType = notifications.EventCrossSeedAutomationFailed
+	}
+
+	summary := ""
+	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
+		summary = strings.TrimSpace(*run.Message)
+	} else {
+		summary = fmt.Sprintf("feed items=%d, candidates=%d, added=%d, failed=%d, skipped=%d", run.TotalFeedItems, run.CandidatesFound, run.TorrentsAdded, run.TorrentsFailed, run.TorrentsSkipped)
+	}
+
+	message := fmt.Sprintf("run %d (%s, %s)", run.ID, run.Mode, run.Status)
+	if summary != "" {
+		message = fmt.Sprintf("%s, %s", message, summary)
+	}
+	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
+		message = fmt.Sprintf("%s, error=%s", message, strings.TrimSpace(*run.ErrorMessage))
+	} else if runErr != nil {
+		message = fmt.Sprintf("%s, error=%s", message, runErr.Error())
+	}
+	if samples := collectCrossSeedRunSamples(run.Results, 3); len(samples) > 0 {
+		message = fmt.Sprintf("%s, samples=%s", message, formatSampleText(samples))
+	}
+
+	s.notifier.Notify(notifications.Event{
+		Type:         eventType,
+		InstanceName: "Cross-seed RSS",
+		Message:      message,
+	})
+}
+
+func (s *Service) notifySearchRun(state *searchRunState, canceled bool) {
+	if s == nil || s.notifier == nil || state == nil || state.run == nil {
+		return
+	}
+
+	eventType := notifications.EventCrossSeedSearchSucceeded
+	if state.run.Status != models.CrossSeedSearchRunStatusSuccess {
+		eventType = notifications.EventCrossSeedSearchFailed
+	}
+
+	message := fmt.Sprintf(
+		"run %d (%s): processed=%d/%d, added=%d, failed=%d, skipped=%d",
+		state.run.ID,
+		state.run.Status,
+		state.run.Processed,
+		state.run.TotalTorrents,
+		state.run.TorrentsAdded,
+		state.run.TorrentsFailed,
+		state.run.TorrentsSkipped,
+	)
+	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
+		message = fmt.Sprintf("%s, error=%s", message, strings.TrimSpace(*state.run.ErrorMessage))
+	} else if canceled {
+		message = fmt.Sprintf("%s, error=canceled", message)
+	}
+	if samples := collectSearchRunSamples(state); len(samples) > 0 {
+		message = fmt.Sprintf("%s, samples=%s", message, formatSampleText(samples))
+	}
+
+	s.notifier.Notify(notifications.Event{
+		Type:       eventType,
+		InstanceID: state.run.InstanceID,
+		Message:    message,
+	})
+}
+
+func collectCrossSeedRunSamples(results []models.CrossSeedRunResult, limit int) []string {
+	if limit <= 0 || len(results) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, limit)
+	samples := make([]string, 0, limit)
+	for _, result := range results {
+		if !result.Success {
+			continue
+		}
+		label := ""
+		if result.MatchedTorrentName != nil && strings.TrimSpace(*result.MatchedTorrentName) != "" {
+			label = strings.TrimSpace(*result.MatchedTorrentName)
+		} else if result.MatchedTorrentHash != nil && strings.TrimSpace(*result.MatchedTorrentHash) != "" {
+			label = strings.TrimSpace(*result.MatchedTorrentHash)
+		}
+		if label == "" {
+			continue
+		}
+		if strings.TrimSpace(result.InstanceName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, result.InstanceName)
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func collectSearchRunSamples(state *searchRunState) []string {
+	if state == nil {
+		return nil
+	}
+	results := state.recentResults
+	if len(results) == 0 && state.run != nil {
+		results = state.run.Results
+	}
+	if len(results) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 3)
+	samples := make([]string, 0, 3)
+	for _, result := range results {
+		if !result.Added {
+			continue
+		}
+		label := strings.TrimSpace(result.TorrentName)
+		if label == "" {
+			label = "torrent"
+		}
+		if strings.TrimSpace(result.ReleaseTitle) != "" {
+			label = fmt.Sprintf("%s → %s", label, strings.TrimSpace(result.ReleaseTitle))
+		}
+		if strings.TrimSpace(result.IndexerName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(result.IndexerName))
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if len(samples) >= 3 {
+			break
+		}
+	}
+	return samples
+}
+
+func formatSampleText(samples []string) string {
+	if len(samples) == 0 {
+		return ""
+	}
+	return strings.Join(samples, "; ")
 }
 
 func (s *Service) persistSearchRun(state *searchRunState) {

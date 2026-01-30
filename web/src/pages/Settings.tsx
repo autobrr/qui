@@ -12,6 +12,7 @@ import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
+import { NotificationsManager } from "@/components/settings/NotificationsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -54,9 +55,9 @@ import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
@@ -270,91 +271,91 @@ function ApiKeysManager() {
             </DialogHeader>
 
             <div className="flex-1 overflow-y-auto min-h-0">
-            {newKey ? (
-              <div className="space-y-4">
-                <div>
-                  <Label>Your new API key</Label>
-                  <div className="mt-2 flex items-center gap-2">
-                    <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
-                      {newKey.key}
-                    </code>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={async () => {
-                        try {
-                          await copyTextToClipboard(newKey.key)
-                          toast.success("API key copied to clipboard")
-                        } catch {
-                          toast.error("Failed to copy to clipboard")
-                        }
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-sm text-destructive">
-                    Save this key now. You won't be able to see it again.
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    setNewKey(null)
-                    setShowCreateDialog(false)
-                  }}
-                  className="w-full"
-                >
-                  Done
-                </Button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  form.handleSubmit()
-                }}
-                className="space-y-4"
-              >
-                <form.Field
-                  name="name"
-                  validators={{
-                    onChange: ({ value }) => !value ? "Name is required" : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="e.g., Automation Script"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        data-1p-ignore
-                        autoComplete="off"
-                      />
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
+              {newKey ? (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Your new API key</Label>
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
+                        {newKey.key}
+                      </code>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await copyTextToClipboard(newKey.key)
+                            toast.success("API key copied to clipboard")
+                          } catch {
+                            toast.error("Failed to copy to clipboard")
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
-                </form.Field>
-
-                <form.Subscribe
-                  selector={(state) => [state.canSubmit, state.isSubmitting]}
+                    <p className="mt-2 text-sm text-destructive">
+                      Save this key now. You won't be able to see it again.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setNewKey(null)
+                      setShowCreateDialog(false)
+                    }}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    form.handleSubmit()
+                  }}
+                  className="space-y-4"
                 >
-                  {([canSubmit, isSubmitting]) => (
-                    <Button
-                      type="submit"
-                      disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                      className="w-full"
-                    >
-                      {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
-                    </Button>
-                  )}
-                </form.Subscribe>
-              </form>
-            )}
+                  <form.Field
+                    name="name"
+                    validators={{
+                      onChange: ({ value }) => !value ? "Name is required" : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Name</Label>
+                        <Input
+                          id="name"
+                          placeholder="e.g., Automation Script"
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          data-1p-ignore
+                          autoComplete="off"
+                        />
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+
+                  <form.Subscribe
+                    selector={(state) => [state.canSubmit, state.isSubmitting]}
+                  >
+                    {([canSubmit, isSubmitting]) => (
+                      <Button
+                        type="submit"
+                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
+                        className="w-full"
+                      >
+                        {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
+                      </Button>
+                    )}
+                  </form.Subscribe>
+                </form>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -566,7 +567,7 @@ function TorznabSearchCachePanel() {
   const stats: TorznabSearchCacheStats | undefined = statsQuery.data
   const [ttlInput, setTtlInput] = useState("")
 
-  const formatCacheTimestamp = (value?: string | null) => {
+  const formatCacheTimestamp = useCallback((value?: string | null) => {
     if (!value) {
       return "—"
     }
@@ -575,7 +576,7 @@ function TorznabSearchCachePanel() {
       return "—"
     }
     return formatDate(parsed)
-  }
+  }, [formatDate])
 
   useEffect(() => {
     if (stats?.ttlMinutes !== undefined) {
@@ -631,7 +632,7 @@ function TorznabSearchCachePanel() {
       { label: "Newest entry", value: formatCacheTimestamp(stats?.newestCachedAt) },
       { label: "Last used", value: formatCacheTimestamp(stats?.lastUsedAt) },
     ],
-    [approxSize, formatDate, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+    [approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
   return (
@@ -778,6 +779,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 External Programs
               </div>
             </SelectItem>
+            <SelectItem value="notifications">
+              <div className="flex items-center">
+                <Bell className="w-4 h-4 mr-2" />
+                Notifications
+              </div>
+            </SelectItem>
             <SelectItem value="datetime">
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
@@ -872,6 +879,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             >
               <Terminal className="w-4 h-4 mr-2" />
               External Programs
+            </button>
+            <button
+              onClick={() => handleTabChange("notifications")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "notifications" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Bell className="w-4 h-4 mr-2" />
+              Notifications
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -1016,6 +1032,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 </CardHeader>
                 <CardContent>
                   <ExternalProgramsManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "notifications" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notifications</CardTitle>
+                  <CardDescription>
+                    Send alerts and status updates via any Shoutrrr-supported service
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <NotificationsManager />
                 </CardContent>
               </Card>
             </div>

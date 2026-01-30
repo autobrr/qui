@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -43,6 +44,156 @@ const freeSpaceDeleteCooldown = 5 * time.Minute
 
 // Log messages for delete actions (reduces duplication)
 const logMsgRemoveTorrentWithFiles = "automations: removing torrent with files"
+
+var automationActionLabels = map[string]string{
+	models.ActivityActionDeletedRatio:        "Deleted torrent (ratio rule)",
+	models.ActivityActionDeletedSeeding:      "Deleted torrent (seeding rule)",
+	models.ActivityActionDeletedUnregistered: "Deleted torrent (unregistered)",
+	models.ActivityActionDeletedCondition:    "Deleted torrent (rule)",
+	models.ActivityActionDeleteFailed:        "Delete failed",
+	models.ActivityActionLimitFailed:         "Speed/share limit failed",
+	models.ActivityActionTagsChanged:         "Tags updated",
+	models.ActivityActionCategoryChanged:     "Category updated",
+	models.ActivityActionSpeedLimitsChanged:  "Speed limits updated",
+	models.ActivityActionShareLimitsChanged:  "Share limits updated",
+	models.ActivityActionPaused:              "Paused torrents",
+	models.ActivityActionMoved:               "Moved torrents",
+}
+
+type automationSummary struct {
+	applied         int
+	failed          int
+	appliedByAction map[string]int
+	failedByAction  map[string]int
+	sampleTorrents  []string
+	sampleErrors    []string
+	sampleSeen      map[string]struct{}
+}
+
+func newAutomationSummary() *automationSummary {
+	return &automationSummary{
+		appliedByAction: make(map[string]int),
+		failedByAction:  make(map[string]int),
+		sampleSeen:      make(map[string]struct{}),
+	}
+}
+
+func (s *automationSummary) add(action, outcome string, count int) {
+	if s == nil || count <= 0 {
+		return
+	}
+	switch outcome {
+	case models.ActivityOutcomeSuccess:
+		s.applied += count
+		s.appliedByAction[action] += count
+	case models.ActivityOutcomeFailed:
+		s.failed += count
+		s.failedByAction[action] += count
+	}
+}
+
+func (s *automationSummary) hasActivity() bool {
+	if s == nil {
+		return false
+	}
+	return s.applied > 0 || s.failed > 0
+}
+
+func (s *automationSummary) message() string {
+	if s == nil {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("applied=%d", s.applied)}
+	if s.failed > 0 {
+		parts = append(parts, fmt.Sprintf("failed=%d", s.failed))
+	}
+	if len(s.appliedByAction) > 0 {
+		if formatted := formatActionCounts(s.appliedByAction, 3); formatted != "" {
+			parts = append(parts, "top="+formatted)
+		}
+	}
+	if len(s.failedByAction) > 0 {
+		if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
+			parts = append(parts, "failed_top="+formatted)
+		}
+	}
+	if len(s.sampleTorrents) > 0 {
+		parts = append(parts, "samples="+strings.Join(s.sampleTorrents, "; "))
+	}
+	if len(s.sampleErrors) > 0 {
+		parts = append(parts, "errors="+strings.Join(s.sampleErrors, "; "))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (s *automationSummary) addSamplesFromActivity(activity *models.AutomationActivity) {
+	if s == nil || activity == nil {
+		return
+	}
+	if activity.TorrentName != "" && (strings.HasPrefix(activity.Action, "deleted_") || activity.Action == models.ActivityActionDeleteFailed) {
+		s.addSample(&s.sampleTorrents, activity.TorrentName, 3)
+	}
+	if activity.Outcome == models.ActivityOutcomeFailed && strings.TrimSpace(activity.Reason) != "" {
+		s.addSample(&s.sampleErrors, activity.Reason, 2)
+	}
+}
+
+func (s *automationSummary) addSample(list *[]string, value string, limit int) {
+	if s == nil || list == nil || limit <= 0 {
+		return
+	}
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+	if _, exists := s.sampleSeen[trimmed]; exists {
+		return
+	}
+	if len(*list) >= limit {
+		return
+	}
+	s.sampleSeen[trimmed] = struct{}{}
+	*list = append(*list, trimmed)
+}
+
+func formatActionCounts(counts map[string]int, limit int) string {
+	if len(counts) == 0 {
+		return ""
+	}
+	type item struct {
+		action string
+		count  int
+	}
+	items := make([]item, 0, len(counts))
+	for action, count := range counts {
+		items = append(items, item{action: action, count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].count == items[j].count {
+			return items[i].action < items[j].action
+		}
+		return items[i].count > items[j].count
+	})
+
+	maxItems := limit
+	if maxItems <= 0 || maxItems > len(items) {
+		maxItems = len(items)
+	}
+
+	parts := make([]string, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		label := automationActionLabel(items[i].action)
+		parts = append(parts, fmt.Sprintf("%s=%d", label, items[i].count))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func automationActionLabel(action string) string {
+	if label, ok := automationActionLabels[action]; ok {
+		return label
+	}
+	return action
+}
 
 // ruleKey identifies a rule within an instance for per-rule cadence tracking.
 type ruleKey struct {
@@ -68,6 +219,7 @@ type Service struct {
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
+	notifier                  notifications.Notifier
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
@@ -76,7 +228,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -96,6 +248,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
+		notifier:                  notifier,
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
@@ -973,11 +1126,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
+		s.notifyAutomationFailure(instanceID, err)
 		return err
 	}
 	if len(rules) == 0 {
 		return nil
 	}
+	summary := newAutomationSummary()
 
 	// Pre-filter rules by interval eligibility
 	now := time.Now()
@@ -1047,6 +1202,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: unable to fetch torrents")
+		s.notifyAutomationFailure(instanceID, err)
 		return err
 	}
 
@@ -1058,6 +1214,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance")
+		s.notifyAutomationFailure(instanceID, err)
 		return err
 	}
 
@@ -1114,7 +1271,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource)
 			if err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
-				return fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
+				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
+				s.notifyAutomationFailure(instanceID, wrapped)
+				return wrapped
 			}
 			freeSpaceBySourceKey[sourceKey] = freeSpace
 		}
@@ -1569,28 +1728,29 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	defer cancel()
 
 	// Apply speed limits and track success
-	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
-	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary)
 
 	// Record aggregated speed limit activity
-	if s.activityStore != nil && (len(uploadSuccess) > 0 || len(downloadSuccess) > 0) {
+	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
 		speedLimits := make(map[string]int) // "upload:1024" -> count, "download:2048" -> count
+		totalUpdated := 0
 		for limit, count := range uploadSuccess {
 			speedLimits[fmt.Sprintf("upload:%d", limit)] = count
+			totalUpdated += count
 		}
 		for limit, count := range downloadSuccess {
 			speedLimits[fmt.Sprintf("download:%d", limit)] = count
+			totalUpdated += count
 		}
 		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+		s.recordActivity(ctx, &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionSpeedLimitsChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
-		}
+		}, totalUpdated, summary)
 	}
 
 	// Apply share limits and track success
@@ -1605,39 +1765,36 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				continue
 			}
 			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Int("count", len(batch)).Msg("automations: share limit failed")
-			if s.activityStore == nil {
-				continue
-			}
 			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "count": len(batch), "type": "share"})
 			if marshalErr != nil {
 				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
 				continue
 			}
-			if actErr := s.activityStore.Create(ctx, &models.AutomationActivity{
+			s.recordActivity(ctx, &models.AutomationActivity{
 				InstanceID: instanceID,
 				Hash:       strings.Join(batch, ","),
 				Action:     models.ActivityActionLimitFailed,
 				Outcome:    models.ActivityOutcomeFailed,
 				Reason:     "share limit failed: " + err.Error(),
 				Details:    detailsJSON,
-			}); actErr != nil {
-				log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-			}
+			}, len(batch), summary)
 		}
 	}
 
 	// Record aggregated share limit activity
-	if s.activityStore != nil && len(shareLimitSuccess) > 0 {
+	if len(shareLimitSuccess) > 0 {
+		totalUpdated := 0
+		for _, count := range shareLimitSuccess {
+			totalUpdated += count
+		}
 		detailsJSON, _ := json.Marshal(map[string]any{"limits": shareLimitSuccess})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+		s.recordActivity(ctx, &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionShareLimitsChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
-		}
+		}, totalUpdated, summary)
 	}
 
 	// Execute pause actions for expression-based rules
@@ -1655,17 +1812,15 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Record aggregated pause activity
-	if s.activityStore != nil && pausedCount > 0 {
+	if pausedCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+		s.recordActivity(ctx, &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionPaused,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
-		}
+		}, pausedCount, summary)
 	}
 
 	// Execute tag actions for expression-based rules
@@ -1752,36 +1907,33 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 
 		// Record tag activity summary
-		if s.activityStore != nil {
-			// Aggregate counts per tag
-			addCounts := make(map[string]int)    // tag -> count of torrents
-			removeCounts := make(map[string]int) // tag -> count of torrents
+		// Aggregate counts per tag
+		addCounts := make(map[string]int)    // tag -> count of torrents
+		removeCounts := make(map[string]int) // tag -> count of torrents
 
-			for _, change := range tagChanges {
-				for _, tag := range change.toAdd {
-					addCounts[tag]++
-				}
-				for _, tag := range change.toRemove {
-					removeCounts[tag]++
-				}
+		for _, change := range tagChanges {
+			for _, tag := range change.toAdd {
+				addCounts[tag]++
 			}
+			for _, tag := range change.toRemove {
+				removeCounts[tag]++
+			}
+		}
 
-			// Only record if there were actual changes
-			if len(addCounts) > 0 || len(removeCounts) > 0 {
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"added":   addCounts,
-					"removed": removeCounts,
-				})
-				if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-					InstanceID: instanceID,
-					Hash:       "", // No single hash for batch operations
-					Action:     models.ActivityActionTagsChanged,
-					Outcome:    models.ActivityOutcomeSuccess,
-					Details:    detailsJSON,
-				}); err != nil {
-					log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record tag activity")
-				}
-			}
+		// Only record if there were actual changes
+		if len(addCounts) > 0 || len(removeCounts) > 0 {
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"added":   addCounts,
+				"removed": removeCounts,
+			})
+			changedCount := len(tagChanges)
+			s.recordActivity(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "", // No single hash for batch operations
+				Action:     models.ActivityActionTagsChanged,
+				Outcome:    models.ActivityOutcomeSuccess,
+				Details:    detailsJSON,
+			}, changedCount, summary)
 		}
 	}
 
@@ -1872,7 +2024,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Record aggregated category activity (like tags)
-	if s.activityStore != nil && len(successfulMoves) > 0 {
+	if len(successfulMoves) > 0 {
 		categoryCounts := make(map[string]int) // category -> count of torrents moved
 		for _, move := range successfulMoves {
 			categoryCounts[move.category]++
@@ -1881,15 +2033,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		detailsJSON, _ := json.Marshal(map[string]any{
 			"categories": categoryCounts,
 		})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+		s.recordActivity(ctx, &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "", // No single hash for batch operations
 			Action:     models.ActivityActionCategoryChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
-		}
+		}, len(successfulMoves), summary)
 	}
 
 	// Execute moves - sort paths for deterministic processing order
@@ -1963,45 +2113,34 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Record aggregated move activity
-	if s.activityStore != nil {
-		var hasSuccesses, hasFailures bool
-		for _, count := range successfulMovesByPath {
-			if count > 0 {
-				hasSuccesses = true
-				break
-			}
-		}
-		for _, count := range failedMovesByPath {
-			if count > 0 {
-				hasFailures = true
-				break
-			}
-		}
+	var successfulMoveCount int
+	var failedMoveCount int
+	for _, count := range successfulMovesByPath {
+		successfulMoveCount += count
+	}
+	for _, count := range failedMovesByPath {
+		failedMoveCount += count
+	}
 
-		if hasSuccesses {
-			detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
-			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionMoved,
-				Outcome:    models.ActivityOutcomeSuccess,
-				Details:    detailsJSON,
-			}); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
-			}
-		}
-		if hasFailures {
-			detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
-			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionMoved,
-				Outcome:    models.ActivityOutcomeFailed,
-				Details:    detailsJSON,
-			}); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
-			}
-		}
+	if successfulMoveCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+		s.recordActivity(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionMoved,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}, successfulMoveCount, summary)
+	}
+	if failedMoveCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+		s.recordActivity(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionMoved,
+			Outcome:    models.ActivityOutcomeFailed,
+			Details:    detailsJSON,
+		}, failedMoveCount, summary)
 	}
 
 	// Execute deletions
@@ -2027,25 +2166,21 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
 
 				// Record failed deletion activity
-				if s.activityStore != nil {
-					for _, hash := range batch {
-						if pending, ok := pendingByHash[hash]; ok {
-							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-								InstanceID:    instanceID,
-								Hash:          hash,
-								TorrentName:   pending.torrentName,
-								TrackerDomain: pending.trackerDomain,
-								Action:        models.ActivityActionDeleteFailed,
-								RuleID:        &pending.ruleID,
-								RuleName:      pending.ruleName,
-								Outcome:       models.ActivityOutcomeFailed,
-								Reason:        err.Error(),
-								Details:       detailsJSON,
-							}); err != nil {
-								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-							}
-						}
+				for _, hash := range batch {
+					if pending, ok := pendingByHash[hash]; ok {
+						detailsJSON, _ := json.Marshal(pending.details)
+						s.recordActivity(ctx, &models.AutomationActivity{
+							InstanceID:    instanceID,
+							Hash:          hash,
+							TorrentName:   pending.torrentName,
+							TrackerDomain: pending.trackerDomain,
+							Action:        models.ActivityActionDeleteFailed,
+							RuleID:        &pending.ruleID,
+							RuleName:      pending.ruleName,
+							Outcome:       models.ActivityOutcomeFailed,
+							Reason:        err.Error(),
+							Details:       detailsJSON,
+						}, 1, summary)
 					}
 				}
 			} else {
@@ -2076,32 +2211,73 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				}
 
 				// Record successful deletion activity
-				if s.activityStore != nil {
-					for _, hash := range batch {
-						if pending, ok := pendingByHash[hash]; ok {
-							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-								InstanceID:    instanceID,
-								Hash:          hash,
-								TorrentName:   pending.torrentName,
-								TrackerDomain: pending.trackerDomain,
-								Action:        pending.action,
-								RuleID:        &pending.ruleID,
-								RuleName:      pending.ruleName,
-								Outcome:       models.ActivityOutcomeSuccess,
-								Reason:        pending.reason,
-								Details:       detailsJSON,
-							}); err != nil {
-								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-							}
-						}
+				for _, hash := range batch {
+					if pending, ok := pendingByHash[hash]; ok {
+						detailsJSON, _ := json.Marshal(pending.details)
+						s.recordActivity(ctx, &models.AutomationActivity{
+							InstanceID:    instanceID,
+							Hash:          hash,
+							TorrentName:   pending.torrentName,
+							TrackerDomain: pending.trackerDomain,
+							Action:        pending.action,
+							RuleID:        &pending.ruleID,
+							RuleName:      pending.ruleName,
+							Outcome:       models.ActivityOutcomeSuccess,
+							Reason:        pending.reason,
+							Details:       detailsJSON,
+						}, 1, summary)
 					}
 				}
 			}
 		}
 	}
 
+	s.notifyAutomationSummary(instanceID, summary)
 	return nil
+}
+
+func (s *Service) recordActivity(ctx context.Context, activity *models.AutomationActivity, count int, summary *automationSummary) {
+	if activity == nil {
+		return
+	}
+	if count <= 0 {
+		count = 1
+	}
+
+	if s.activityStore != nil {
+		if err := s.activityStore.Create(ctx, activity); err != nil {
+			log.Warn().Err(err).Int("instanceID", activity.InstanceID).Msg("automations: failed to record activity")
+		}
+	}
+
+	if summary != nil {
+		summary.add(activity.Action, activity.Outcome, count)
+		summary.addSamplesFromActivity(activity)
+	}
+}
+
+func (s *Service) notifyAutomationSummary(instanceID int, summary *automationSummary) {
+	if s == nil || s.notifier == nil || summary == nil || !summary.hasActivity() {
+		return
+	}
+
+	s.notifier.Notify(notifications.Event{
+		Type:       notifications.EventAutomationsActionsApplied,
+		InstanceID: instanceID,
+		Message:    summary.message(),
+	})
+}
+
+func (s *Service) notifyAutomationFailure(instanceID int, err error) {
+	if s == nil || s.notifier == nil || err == nil {
+		return
+	}
+
+	s.notifier.Notify(notifications.Event{
+		Type:       notifications.EventAutomationsRunFailed,
+		InstanceID: instanceID,
+		Message:    err.Error(),
+	})
 }
 
 func limitHashBatch(hashes []string, max int) [][]string {
@@ -2520,6 +2696,7 @@ func (s *Service) applySpeedLimits(
 	batches map[int64][]string,
 	limitType string,
 	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
+	summary *automationSummary,
 ) map[int64]int {
 	successCounts := make(map[int64]int)
 	for limit, hashes := range batches {
@@ -2527,22 +2704,18 @@ func (s *Service) applySpeedLimits(
 		for _, batch := range limited {
 			if err := setLimit(ctx, instanceID, batch, limit); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Str("limitType", limitType).Msg("automations: speed limit failed")
-				if s.activityStore != nil {
-					detailsJSON, marshalErr := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": limitType})
-					if marshalErr != nil {
-						log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
-					}
-					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-						InstanceID: instanceID,
-						Hash:       strings.Join(batch, ","),
-						Action:     models.ActivityActionLimitFailed,
-						Outcome:    models.ActivityOutcomeFailed,
-						Reason:     limitType + " limit failed: " + err.Error(),
-						Details:    detailsJSON,
-					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-					}
+				detailsJSON, marshalErr := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": limitType})
+				if marshalErr != nil {
+					log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
 				}
+				s.recordActivity(ctx, &models.AutomationActivity{
+					InstanceID: instanceID,
+					Hash:       strings.Join(batch, ","),
+					Action:     models.ActivityActionLimitFailed,
+					Outcome:    models.ActivityOutcomeFailed,
+					Reason:     limitType + " limit failed: " + err.Error(),
+					Details:    detailsJSON,
+				}, len(batch), summary)
 			} else {
 				successCounts[limit] += len(batch)
 			}

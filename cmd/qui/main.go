@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -39,6 +40,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
@@ -57,7 +59,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
-		Long: `qui - A modern, self-hosted web interface for managing 
+		Long: `qui - A modern, self-hosted web interface for managing
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 
@@ -123,7 +125,7 @@ func RunGenerateConfigCommand() *cobra.Command {
 		Long: `Generate a default configuration file without starting the server.
 
 If no --config-dir is specified, uses the OS-specific default location:
-- Linux/macOS: ~/.config/qui/config.toml  
+- Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml
 
 You can specify either a directory path or a direct file path:
@@ -196,7 +198,7 @@ This command allows you to create the initial user account that is required
 for authentication. Only one user account can exist in the system.
 
 If no --config-dir is specified, uses the OS-specific default location:
-- Linux/macOS: ~/.config/qui/config.toml  
+- Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize configuration
@@ -284,7 +286,7 @@ func RunChangePasswordCommand() *cobra.Command {
 This command allows you to change the password for the existing user account.
 
 If no --config-dir is specified, uses the OS-specific default location:
-- Linux/macOS: ~/.config/qui/config.toml  
+- Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.New(configDir, buildinfo.Version)
@@ -390,7 +392,7 @@ func RunUpdateCommand() *cobra.Command {
 
 	command.SetUsageTemplate(`Usage:
   {{.CommandPath}}
-  
+
 Flags:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
 `)
@@ -572,21 +574,39 @@ func (app *Application) runServer() {
 	arrService := arr.NewService(arrInstanceStore, arrIDCacheStore)
 	log.Info().Msg("ARR service initialized")
 
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
+	notificationCtx, notificationCancel := context.WithCancel(context.Background())
+	defer notificationCancel()
+	if notificationService != nil {
+		notificationService.Start(notificationCtx)
+	}
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore, cfg.Config.CrossSeedRecoverErroredTorrents)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore, notificationService, cfg.Config.CrossSeedRecoverErroredTorrents)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	automationActivityStore := models.NewAutomationActivityStore(db)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
-	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
 
-	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
+	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
+		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
+		if notificationService != nil {
+			notificationService.Notify(notifications.Event{
+				Type:        notifications.EventTorrentCompleted,
+				InstanceID:  instanceID,
+				TorrentName: torrent.Name,
+				TorrentHash: torrent.Hash,
+			})
+		}
+	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	defer func() {
@@ -613,7 +633,7 @@ func (app *Application) runServer() {
 	}
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()}, notificationService)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -701,6 +721,8 @@ func (app *Application) runServer() {
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
 		LogExclusionsStore:               logExclusionsStore,
+		NotificationTargetStore:          notificationTargetStore,
+		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
