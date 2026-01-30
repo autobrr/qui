@@ -571,6 +571,8 @@ export function NotificationsManager() {
             <AlertDialogAction
               onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              aria-busy={deleteMutation.isPending}
             >
               Delete
             </AlertDialogAction>
