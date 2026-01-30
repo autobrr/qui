@@ -346,6 +346,7 @@ export function NotificationsManager() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editTarget, setEditTarget] = useState<NotificationTarget | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<NotificationTarget | null>(null)
+  const [expandedTargets, setExpandedTargets] = useState<number[]>([])
 
   const { data: eventDefinitions = [] } = useQuery({
     queryKey: ["notificationEvents"],
@@ -358,6 +359,12 @@ export function NotificationsManager() {
     queryFn: () => api.listNotificationTargets(),
     staleTime: 30 * 1000,
   })
+
+  const formatFallbackLabel = (value: string) =>
+    value
+      .trim()
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
 
   const eventLabelMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -413,19 +420,128 @@ export function NotificationsManager() {
     },
   })
 
-  const formatEventLabel = (type: string) => eventLabelMap.get(type) ?? type
+  const formatEventLabel = (type: string) => eventLabelMap.get(type) ?? formatFallbackLabel(type)
 
-  const renderEventBadges = (events: string[]) => {
+  const groupedSelectedEvents = useMemo(() => {
+    const groups = new Map<string, string[]>()
+    const addToGroup = (label: string, eventType: string) => {
+      const existing = groups.get(label)
+      if (existing) {
+        existing.push(eventType)
+      } else {
+        groups.set(label, [eventType])
+      }
+    }
+
+    const categorize = (eventType: string) => {
+      if (eventType === "torrent_completed") {
+        return "Torrent"
+      }
+      if (
+        eventType === "backup_succeeded" ||
+        eventType === "backup_failed" ||
+        eventType === "dir_scan_completed" ||
+        eventType === "dir_scan_failed" ||
+        eventType === "orphan_scan_completed" ||
+        eventType === "orphan_scan_failed"
+      ) {
+        return "Maintenance"
+      }
+      if (eventType.startsWith("cross_seed_")) {
+        return "Cross-seed"
+      }
+      if (eventType.startsWith("automations_")) {
+        return "Automations"
+      }
+      return "Other"
+    }
+
+    const known = new Set(eventDefinitions.map((event) => event.type))
+    for (const event of eventDefinitions) {
+      if (known.has(event.type)) {
+        addToGroup(categorize(event.type), event.type)
+      }
+    }
+
+    const ordered = ["Torrent", "Maintenance", "Cross-seed", "Automations", "Other"]
+    return ordered
+      .map((label) => ({ label, events: groups.get(label) ?? [] }))
+      .filter((group) => group.events.length > 0)
+  }, [eventDefinitions])
+
+  const renderEventBadges = (events: string[], targetId: number) => {
     if (events.length === 0) {
       return <Badge variant="secondary">All events</Badge>
     }
+    const selected = new Set(events)
+    const unknownEvents = events.filter((event) => !eventLabelMap.has(event))
+    const isExpanded = expandedTargets.includes(targetId)
+    const counts = groupedSelectedEvents.map((group) => ({
+      label: group.label,
+      count: group.events.filter((event) => selected.has(event)).length,
+    }))
+    if (unknownEvents.length > 0) {
+      counts.push({ label: "Unknown", count: unknownEvents.length })
+    }
+    const summary = counts
+      .filter((group) => group.count > 0)
+      .map((group) => `${group.label} (${group.count})`)
+      .join(" · ")
     return (
-      <div className="flex flex-wrap gap-2">
-        {events.map((event) => (
-          <Badge key={event} variant="outline">
-            {formatEventLabel(event)}
-          </Badge>
-        ))}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">{summary}</p>
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={() =>
+              setExpandedTargets((prev) =>
+                prev.includes(targetId) ? prev.filter((id) => id !== targetId) : [...prev, targetId]
+              )
+            }
+          >
+            {isExpanded ? "Hide list" : "Show list"}
+          </Button>
+        </div>
+        {isExpanded && (
+          <div className="space-y-3">
+            {groupedSelectedEvents.map((group) => {
+              const groupEvents = group.events.filter((event) => selected.has(event))
+              if (groupEvents.length === 0) {
+                return null
+              }
+              return (
+                <div key={group.label} className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {group.label}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {groupEvents.map((event) => (
+                      <Badge key={event} variant="outline" className="text-xs">
+                        {formatEventLabel(event)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+            {unknownEvents.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Unknown
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unknownEvents.map((event) => (
+                    <Badge key={event} variant="outline" className="text-xs">
+                      {formatEventLabel(event)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -537,7 +653,7 @@ export function NotificationsManager() {
               <CardContent className="space-y-2 text-sm">
                 <div>
                   <p className="text-muted-foreground text-xs mb-2">Events</p>
-                  {renderEventBadges(target.eventTypes)}
+                  {renderEventBadges(target.eventTypes, target.id)}
                 </div>
               </CardContent>
             </Card>
