@@ -519,8 +519,15 @@ export function NotificationsManager() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setDeleteTarget(target)}
+                      onClick={() => {
+                        if (deleteMutation.isPending) {
+                          return
+                        }
+                        setDeleteTarget(target)
+                      }}
                       aria-label={`Delete ${target.name}`}
+                      disabled={deleteMutation.isPending}
+                      aria-disabled={deleteMutation.isPending}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
