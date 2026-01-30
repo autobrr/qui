@@ -605,7 +605,7 @@ func (app *Application) runServer() {
 			}
 			tags := []string{}
 			if strings.TrimSpace(torrent.Tags) != "" {
-				for _, tag := range strings.Split(torrent.Tags, ",") {
+				for tag := range strings.SplitSeq(torrent.Tags, ",") {
 					trimmed := strings.TrimSpace(tag)
 					if trimmed == "" {
 						continue

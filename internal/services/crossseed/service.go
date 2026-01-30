@@ -7443,15 +7443,15 @@ func (s *Service) notifyAutomationRun(run *models.CrossSeedRun, runErr error) {
 		fmt.Sprintf("Skipped: %d", run.TorrentsSkipped),
 	}
 	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
-		lines = append(lines, fmt.Sprintf("Message: %s", strings.TrimSpace(*run.Message)))
+		lines = append(lines, "Message: "+strings.TrimSpace(*run.Message))
 	}
 	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
-		lines = append(lines, fmt.Sprintf("Error: %s", strings.TrimSpace(*run.ErrorMessage)))
+		lines = append(lines, "Error: "+strings.TrimSpace(*run.ErrorMessage))
 	} else if runErr != nil {
-		lines = append(lines, fmt.Sprintf("Error: %s", runErr.Error()))
+		lines = append(lines, "Error: "+runErr.Error())
 	}
 	if samples := collectCrossSeedRunSamples(run.Results, 3); len(samples) > 0 {
-		lines = append(lines, fmt.Sprintf("Samples: %s", formatSampleText(samples)))
+		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
 	s.notifier.Notify(notifications.Event{
@@ -7480,12 +7480,12 @@ func (s *Service) notifySearchRun(state *searchRunState, canceled bool) {
 		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
 	}
 	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
-		lines = append(lines, fmt.Sprintf("Error: %s", strings.TrimSpace(*state.run.ErrorMessage)))
+		lines = append(lines, "Error: "+strings.TrimSpace(*state.run.ErrorMessage))
 	} else if canceled {
 		lines = append(lines, "Error: canceled")
 	}
 	if samples := collectSearchRunSamples(state); len(samples) > 0 {
-		lines = append(lines, fmt.Sprintf("Samples: %s", formatSampleText(samples)))
+		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
 	s.notifier.Notify(notifications.Event{

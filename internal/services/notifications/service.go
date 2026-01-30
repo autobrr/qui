@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -288,45 +289,45 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 		title := "Backup completed"
 		lines := []string{
 			formatLine("Backup", formatKind(event.BackupKind)),
-			formatLine("Run", fmt.Sprintf("%d", event.BackupRunID)),
-			formatLine("Torrents", fmt.Sprintf("%d", event.BackupTorrentCount)),
+			formatLine("Run", strconv.FormatInt(event.BackupRunID, 10)),
+			formatLine("Torrents", strconv.Itoa(event.BackupTorrentCount)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventBackupFailed:
 		title := "Backup failed"
 		lines := []string{
 			formatLine("Backup", formatKind(event.BackupKind)),
-			formatLine("Run", fmt.Sprintf("%d", event.BackupRunID)),
+			formatLine("Run", strconv.FormatInt(event.BackupRunID, 10)),
 			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventDirScanCompleted:
 		title := "Directory scan completed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.DirScanRunID)),
-			formatLine("Matches", fmt.Sprintf("%d", event.DirScanMatchesFound)),
-			formatLine("Torrents added", fmt.Sprintf("%d", event.DirScanTorrentsAdded)),
+			formatLine("Run", strconv.FormatInt(event.DirScanRunID, 10)),
+			formatLine("Matches", strconv.Itoa(event.DirScanMatchesFound)),
+			formatLine("Torrents added", strconv.Itoa(event.DirScanTorrentsAdded)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventDirScanFailed:
 		title := "Directory scan failed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.DirScanRunID)),
+			formatLine("Run", strconv.FormatInt(event.DirScanRunID, 10)),
 			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventOrphanScanCompleted:
 		title := "Orphan scan completed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.OrphanScanRunID)),
-			formatLine("Files deleted", fmt.Sprintf("%d", event.OrphanScanFilesDeleted)),
-			formatLine("Folders deleted", fmt.Sprintf("%d", event.OrphanScanFoldersDeleted)),
+			formatLine("Run", strconv.FormatInt(event.OrphanScanRunID, 10)),
+			formatLine("Files deleted", strconv.Itoa(event.OrphanScanFilesDeleted)),
+			formatLine("Folders deleted", strconv.Itoa(event.OrphanScanFoldersDeleted)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventOrphanScanFailed:
 		title := "Orphan scan failed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.OrphanScanRunID)),
+			formatLine("Run", strconv.FormatInt(event.OrphanScanRunID, 10)),
 			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
 		}
 		return title, buildMessage(instanceLabel, lines)
@@ -531,11 +532,12 @@ func buildStructuredMessage(message string) (string, []messageField) {
 			continue
 		}
 		if description == "" {
-			if strings.EqualFold(label, "torrent") {
+			switch {
+			case strings.EqualFold(label, "torrent"):
 				description = value
-			} else if strings.EqualFold(label, "run") {
-				description = fmt.Sprintf("Run %s", value)
-			} else {
+			case strings.EqualFold(label, "run"):
+				description = "Run " + value
+			default:
 				description = fmt.Sprintf("%s: %s", label, value)
 			}
 			continue
@@ -582,10 +584,7 @@ func shouldInlineField(label, value string) bool {
 	case "torrent", "samples", "errors", "error", "message", "tags":
 		return false
 	}
-	if utf8.RuneCountInString(value) > 48 {
-		return false
-	}
-	return true
+	return utf8.RuneCountInString(value) <= 48
 }
 
 func buildDiscordPayload(config *shoutrrrdiscord.Config, event Event, title, message string) (discordWebhookPayload, error) {

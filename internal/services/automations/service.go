@@ -108,16 +108,16 @@ func (s *automationSummary) message() string {
 		lines = append(lines, fmt.Sprintf("Failed: %d", s.failed))
 	}
 	if formatted := formatActionCounts(s.appliedByAction, 3); formatted != "" {
-		lines = append(lines, fmt.Sprintf("Top actions: %s", formatted))
+		lines = append(lines, "Top actions: "+formatted)
 	}
 	if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
-		lines = append(lines, fmt.Sprintf("Top failures: %s", formatted))
+		lines = append(lines, "Top failures: "+formatted)
 	}
 	if len(s.sampleTorrents) > 0 {
-		lines = append(lines, fmt.Sprintf("Samples: %s", strings.Join(s.sampleTorrents, "; ")))
+		lines = append(lines, "Samples: "+strings.Join(s.sampleTorrents, "; "))
 	}
 	if len(s.sampleErrors) > 0 {
-		lines = append(lines, fmt.Sprintf("Errors: %s", strings.Join(s.sampleErrors, "; ")))
+		lines = append(lines, "Errors: "+strings.Join(s.sampleErrors, "; "))
 	}
 	return strings.Join(lines, "\n")
 }
