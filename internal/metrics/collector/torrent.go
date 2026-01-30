@@ -44,7 +44,7 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 		clientPool:  clientPool,
 
 		torrentsByStatusDesc: prometheus.NewDesc(
-			"qbittorrent_torrents",
+			"qbittorrent_torrents_status_count",
 			"Number of torrents by status and instance",
 			[]string{"instance_id", "instance_name", "status"},
 			nil,
