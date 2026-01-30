@@ -230,7 +230,11 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
               const allGroupSelected = groupSelected.length === groupTypes.length
               const anyGroupSelected = groupSelected.length > 0
               return (
-                <AccordionItem key={group.label} value={group.label} className="rounded-md border">
+                <AccordionItem
+                  key={group.label}
+                  value={group.label}
+                  className="rounded-md border last:!border-b"
+                >
                   <AccordionTrigger className="px-3 py-2 text-sm hover:no-underline">
                     <div className="flex flex-1 items-center justify-between gap-3">
                       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
