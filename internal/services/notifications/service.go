@@ -188,25 +188,67 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 	switch event.Type {
 	case EventTorrentCompleted:
 		title := "Torrent completed"
-		return title, formatTorrentCompletedMessage(instanceLabel, event)
+		lines := []string{
+			formatLine("Torrent", fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash))),
+		}
+		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
+			lines = append(lines, formatLine("Tracker", tracker))
+		}
+		if category := strings.TrimSpace(event.Category); category != "" {
+			lines = append(lines, formatLine("Category", category))
+		}
+		if len(event.Tags) > 0 {
+			tags := append([]string(nil), event.Tags...)
+			slices.Sort(tags)
+			lines = append(lines, formatLine("Tags", strings.Join(tags, ", ")))
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventBackupSucceeded:
 		title := "Backup completed"
-		return title, fmt.Sprintf("%s: %s backup completed (run %d). Torrents: %d", instanceLabel, formatKind(event.BackupKind), event.BackupRunID, event.BackupTorrentCount)
+		lines := []string{
+			formatLine("Backup", formatKind(event.BackupKind)),
+			formatLine("Run", fmt.Sprintf("%d", event.BackupRunID)),
+			formatLine("Torrents", fmt.Sprintf("%d", event.BackupTorrentCount)),
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventBackupFailed:
 		title := "Backup failed"
-		return title, fmt.Sprintf("%s: %s backup failed (run %d). %s", instanceLabel, formatKind(event.BackupKind), event.BackupRunID, formatErrorMessage(event.ErrorMessage))
+		lines := []string{
+			formatLine("Backup", formatKind(event.BackupKind)),
+			formatLine("Run", fmt.Sprintf("%d", event.BackupRunID)),
+			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventDirScanCompleted:
 		title := "Directory scan completed"
-		return title, fmt.Sprintf("%s: run %d completed. Matches: %d, Torrents added: %d", instanceLabel, event.DirScanRunID, event.DirScanMatchesFound, event.DirScanTorrentsAdded)
+		lines := []string{
+			formatLine("Run", fmt.Sprintf("%d", event.DirScanRunID)),
+			formatLine("Matches", fmt.Sprintf("%d", event.DirScanMatchesFound)),
+			formatLine("Torrents added", fmt.Sprintf("%d", event.DirScanTorrentsAdded)),
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventDirScanFailed:
 		title := "Directory scan failed"
-		return title, fmt.Sprintf("%s: run %d failed. %s", instanceLabel, event.DirScanRunID, formatErrorMessage(event.ErrorMessage))
+		lines := []string{
+			formatLine("Run", fmt.Sprintf("%d", event.DirScanRunID)),
+			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventOrphanScanCompleted:
 		title := "Orphan scan completed"
-		return title, fmt.Sprintf("%s: run %d completed. Files deleted: %d, Folders deleted: %d", instanceLabel, event.OrphanScanRunID, event.OrphanScanFilesDeleted, event.OrphanScanFoldersDeleted)
+		lines := []string{
+			formatLine("Run", fmt.Sprintf("%d", event.OrphanScanRunID)),
+			formatLine("Files deleted", fmt.Sprintf("%d", event.OrphanScanFilesDeleted)),
+			formatLine("Folders deleted", fmt.Sprintf("%d", event.OrphanScanFoldersDeleted)),
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventOrphanScanFailed:
 		title := "Orphan scan failed"
-		return title, fmt.Sprintf("%s: run %d failed. %s", instanceLabel, event.OrphanScanRunID, formatErrorMessage(event.ErrorMessage))
+		lines := []string{
+			formatLine("Run", fmt.Sprintf("%d", event.OrphanScanRunID)),
+			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventCrossSeedAutomationSucceeded:
 		title := "Cross-seed automation completed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
@@ -265,25 +307,41 @@ func formatHashSuffix(hash string) string {
 	return fmt.Sprintf(" [%s]", trimmed[:8])
 }
 
-func formatTorrentCompletedMessage(instanceLabel string, event Event) string {
-	lines := []string{
-		fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash)),
+func formatLine(label, value string) string {
+	trimmedLabel := strings.TrimSpace(label)
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedLabel == "" || trimmedValue == "" {
+		return ""
 	}
-	if strings.TrimSpace(instanceLabel) != "" {
-		lines = append(lines, "Instance: "+instanceLabel)
+	return fmt.Sprintf("%s: %s", trimmedLabel, trimmedValue)
+}
+
+func buildMessage(instanceLabel string, lines []string) string {
+	payload := make([]string, 0, len(lines)+1)
+	if trimmed := strings.TrimSpace(instanceLabel); trimmed != "" {
+		payload = append(payload, formatLine("Instance", trimmed))
 	}
-	if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
-		lines = append(lines, "Tracker: "+tracker)
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			payload = append(payload, trimmed)
+		}
 	}
-	if category := strings.TrimSpace(event.Category); category != "" {
-		lines = append(lines, "Category: "+category)
+	return strings.Join(payload, "\n")
+}
+
+func splitMessageLines(message string) []string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return nil
 	}
-	if len(event.Tags) > 0 {
-		tags := append([]string(nil), event.Tags...)
-		slices.Sort(tags)
-		lines = append(lines, "Tags: "+strings.Join(tags, ", "))
+	parts := strings.Split(trimmed, "\n")
+	lines := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if line := strings.TrimSpace(part); line != "" {
+			lines = append(lines, line)
+		}
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message string) (string, string) {
@@ -294,7 +352,7 @@ func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message strin
 	if strings.TrimSpace(message) == "" {
 		return title, ""
 	}
-	return title, fmt.Sprintf("%s: %s", instanceLabel, message)
+	return title, buildMessage(instanceLabel, splitMessageLines(message))
 }
 
 const (

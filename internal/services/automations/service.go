@@ -103,27 +103,23 @@ func (s *automationSummary) message() string {
 	if s == nil {
 		return ""
 	}
-	parts := []string{fmt.Sprintf("applied=%d", s.applied)}
+	lines := []string{fmt.Sprintf("Applied: %d", s.applied)}
 	if s.failed > 0 {
-		parts = append(parts, fmt.Sprintf("failed=%d", s.failed))
+		lines = append(lines, fmt.Sprintf("Failed: %d", s.failed))
 	}
-	if len(s.appliedByAction) > 0 {
-		if formatted := formatActionCounts(s.appliedByAction, 3); formatted != "" {
-			parts = append(parts, "top="+formatted)
-		}
+	if formatted := formatActionCounts(s.appliedByAction, 3); formatted != "" {
+		lines = append(lines, fmt.Sprintf("Top actions: %s", formatted))
 	}
-	if len(s.failedByAction) > 0 {
-		if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
-			parts = append(parts, "failed_top="+formatted)
-		}
+	if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
+		lines = append(lines, fmt.Sprintf("Top failures: %s", formatted))
 	}
 	if len(s.sampleTorrents) > 0 {
-		parts = append(parts, "samples="+strings.Join(s.sampleTorrents, "; "))
+		lines = append(lines, fmt.Sprintf("Samples: %s", strings.Join(s.sampleTorrents, "; ")))
 	}
 	if len(s.sampleErrors) > 0 {
-		parts = append(parts, "errors="+strings.Join(s.sampleErrors, "; "))
+		lines = append(lines, fmt.Sprintf("Errors: %s", strings.Join(s.sampleErrors, "; ")))
 	}
-	return strings.Join(parts, ", ")
+	return strings.Join(lines, "\n")
 }
 
 func (s *automationSummary) addSamplesFromActivity(activity *models.AutomationActivity) {

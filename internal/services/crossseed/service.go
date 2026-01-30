@@ -7432,30 +7432,32 @@ func (s *Service) notifyAutomationRun(run *models.CrossSeedRun, runErr error) {
 		eventType = notifications.EventCrossSeedAutomationFailed
 	}
 
-	summary := ""
-	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
-		summary = strings.TrimSpace(*run.Message)
-	} else {
-		summary = fmt.Sprintf("feed items=%d, candidates=%d, added=%d, failed=%d, skipped=%d", run.TotalFeedItems, run.CandidatesFound, run.TorrentsAdded, run.TorrentsFailed, run.TorrentsSkipped)
+	lines := []string{
+		fmt.Sprintf("Run: %d", run.ID),
+		fmt.Sprintf("Mode: %s", run.Mode),
+		fmt.Sprintf("Status: %s", run.Status),
+		fmt.Sprintf("Feed items: %d", run.TotalFeedItems),
+		fmt.Sprintf("Candidates: %d", run.CandidatesFound),
+		fmt.Sprintf("Added: %d", run.TorrentsAdded),
+		fmt.Sprintf("Failed: %d", run.TorrentsFailed),
+		fmt.Sprintf("Skipped: %d", run.TorrentsSkipped),
 	}
-
-	message := fmt.Sprintf("run %d (%s, %s)", run.ID, run.Mode, run.Status)
-	if summary != "" {
-		message = fmt.Sprintf("%s, %s", message, summary)
+	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
+		lines = append(lines, fmt.Sprintf("Message: %s", strings.TrimSpace(*run.Message)))
 	}
 	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
-		message = fmt.Sprintf("%s, error=%s", message, strings.TrimSpace(*run.ErrorMessage))
+		lines = append(lines, fmt.Sprintf("Error: %s", strings.TrimSpace(*run.ErrorMessage)))
 	} else if runErr != nil {
-		message = fmt.Sprintf("%s, error=%s", message, runErr.Error())
+		lines = append(lines, fmt.Sprintf("Error: %s", runErr.Error()))
 	}
 	if samples := collectCrossSeedRunSamples(run.Results, 3); len(samples) > 0 {
-		message = fmt.Sprintf("%s, samples=%s", message, formatSampleText(samples))
+		lines = append(lines, fmt.Sprintf("Samples: %s", formatSampleText(samples)))
 	}
 
 	s.notifier.Notify(notifications.Event{
 		Type:         eventType,
 		InstanceName: "Cross-seed RSS",
-		Message:      message,
+		Message:      strings.Join(lines, "\n"),
 	})
 }
 
@@ -7469,29 +7471,27 @@ func (s *Service) notifySearchRun(state *searchRunState, canceled bool) {
 		eventType = notifications.EventCrossSeedSearchFailed
 	}
 
-	message := fmt.Sprintf(
-		"run %d (%s): processed=%d/%d, added=%d, failed=%d, skipped=%d",
-		state.run.ID,
-		state.run.Status,
-		state.run.Processed,
-		state.run.TotalTorrents,
-		state.run.TorrentsAdded,
-		state.run.TorrentsFailed,
-		state.run.TorrentsSkipped,
-	)
+	lines := []string{
+		fmt.Sprintf("Run: %d", state.run.ID),
+		fmt.Sprintf("Status: %s", state.run.Status),
+		fmt.Sprintf("Processed: %d/%d", state.run.Processed, state.run.TotalTorrents),
+		fmt.Sprintf("Added: %d", state.run.TorrentsAdded),
+		fmt.Sprintf("Failed: %d", state.run.TorrentsFailed),
+		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
+	}
 	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
-		message = fmt.Sprintf("%s, error=%s", message, strings.TrimSpace(*state.run.ErrorMessage))
+		lines = append(lines, fmt.Sprintf("Error: %s", strings.TrimSpace(*state.run.ErrorMessage)))
 	} else if canceled {
-		message = fmt.Sprintf("%s, error=canceled", message)
+		lines = append(lines, "Error: canceled")
 	}
 	if samples := collectSearchRunSamples(state); len(samples) > 0 {
-		message = fmt.Sprintf("%s, samples=%s", message, formatSampleText(samples))
+		lines = append(lines, fmt.Sprintf("Samples: %s", formatSampleText(samples)))
 	}
 
 	s.notifier.Notify(notifications.Event{
 		Type:       eventType,
 		InstanceID: state.run.InstanceID,
-		Message:    message,
+		Message:    strings.Join(lines, "\n"),
 	})
 }
 
