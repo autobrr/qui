@@ -5,14 +5,18 @@ package notifications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/nicholas-fedor/shoutrrr/pkg/router"
+	shoutrrrdiscord "github.com/nicholas-fedor/shoutrrr/pkg/services/chat/discord"
 	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 	"github.com/rs/zerolog"
 
@@ -111,7 +115,7 @@ func (s *Service) SendTest(ctx context.Context, target *models.NotificationTarge
 		return errors.New("notification target required")
 	}
 
-	return s.send(ctx, target, title, message)
+	return s.send(ctx, target, Event{}, title, message)
 }
 
 func (s *Service) worker(ctx context.Context) {
@@ -149,14 +153,29 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 			continue
 		}
 
-		if err := s.send(ctx, target, title, message); err != nil {
+		if err := s.send(ctx, target, event, title, message); err != nil {
 			s.logger.Error().Err(err).Str("target", target.Name).Str("event", string(event.Type)).Msg("notifications: send failed")
 		}
 	}
 }
 
-func (s *Service) send(_ context.Context, target *models.NotificationTarget, title, message string) error {
-	sender, err := router.New(nil, target.URL)
+func (s *Service) send(_ context.Context, target *models.NotificationTarget, event Event, title, message string) error {
+	if target == nil {
+		return errors.New("notification target required")
+	}
+
+	switch targetScheme(target.URL) {
+	case "discord":
+		return s.sendDiscord(target.URL, event, title, message)
+	case "notifiarr":
+		return s.sendNotifiarr(target.URL, event, title, message)
+	default:
+		return s.sendDefault(target.URL, title, message)
+	}
+}
+
+func (s *Service) sendDefault(rawURL, title, message string) error {
+	sender, err := router.New(nil, rawURL)
 	if err != nil {
 		return err
 	}
@@ -168,6 +187,68 @@ func (s *Service) send(_ context.Context, target *models.NotificationTarget, tit
 
 	trimmedMessage := truncateMessage(message, maxMessageLength)
 	results := sender.Send(trimmedMessage, &params)
+	var errs []error
+	for _, sendErr := range results {
+		if sendErr != nil {
+			errs = append(errs, sendErr)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+
+	return errors.Join(errs...)
+}
+
+func (s *Service) sendDiscord(rawURL string, event Event, title, message string) error {
+	configURL, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+
+	service := &shoutrrrdiscord.Service{}
+	if err := service.Initialize(configURL, nil); err != nil {
+		return err
+	}
+	service.Config.JSON = true
+
+	payload, err := buildDiscordPayload(service.Config, event, title, message)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	return service.Send(string(encoded), nil)
+}
+
+func (s *Service) sendNotifiarr(rawURL string, _ Event, title, message string) error {
+	sender, err := router.New(nil, rawURL)
+	if err != nil {
+		return err
+	}
+
+	description, fields := buildStructuredMessage(message)
+	if description == "" {
+		description = message
+	}
+	description = truncateMessage(description, notifiarrDescriptionLimit)
+
+	params := types.Params{}
+	if trimmed := strings.TrimSpace(title); trimmed != "" {
+		params.SetTitle(truncateMessage(trimmed, notifiarrTitleLimit))
+	}
+	if len(fields) > 0 {
+		encoded, err := json.Marshal(buildNotifiarrFields(fields))
+		if err != nil {
+			return err
+		}
+		params["fields"] = string(encoded)
+	}
+
+	results := sender.Send(description, &params)
 	var errs []error
 	for _, sendErr := range results {
 		if sendErr != nil {
@@ -344,6 +425,39 @@ func splitMessageLines(message string) []string {
 	return lines
 }
 
+type messageField struct {
+	Label  string
+	Value  string
+	Inline bool
+}
+
+type discordWebhookPayload struct {
+	Content   string         `json:"content,omitempty"`
+	Username  string         `json:"username,omitempty"`
+	AvatarURL string         `json:"avatar_url,omitempty"`
+	Embeds    []discordEmbed `json:"embeds,omitempty"`
+}
+
+type discordEmbed struct {
+	Title       string              `json:"title,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Color       int                 `json:"color,omitempty"`
+	Fields      []discordEmbedField `json:"fields,omitempty"`
+	Timestamp   string              `json:"timestamp,omitempty"`
+}
+
+type discordEmbedField struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Inline bool   `json:"inline,omitempty"`
+}
+
+type notifiarrField struct {
+	Title  string `json:"title"`
+	Text   string `json:"text"`
+	Inline bool   `json:"inline"`
+}
+
 func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message string) (string, string) {
 	title := defaultTitle
 	if strings.TrimSpace(overrideTitle) != "" {
@@ -356,9 +470,211 @@ func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message strin
 }
 
 const (
-	maxMessageLength = 420
-	maxTitleLength   = 80
+	maxMessageLength          = 420
+	maxTitleLength            = 80
+	discordTitleLimit         = 256
+	discordDescriptionLimit   = 4096
+	discordFieldNameLimit     = 256
+	discordFieldValueLimit    = 1024
+	discordFieldsLimit        = 25
+	notifiarrTitleLimit       = 256
+	notifiarrDescriptionLimit = 4096
 )
+
+const (
+	discordColorInfo    = 0x58b9ff
+	discordColorSuccess = 0x57f287
+	discordColorError   = 0xed4245
+)
+
+func targetScheme(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	if scheme == "" {
+		return ""
+	}
+	if strings.Contains(scheme, "+") {
+		parts := strings.SplitN(scheme, "+", 2)
+		return parts[0]
+	}
+	return scheme
+}
+
+func buildStructuredMessage(message string) (string, []messageField) {
+	lines := splitMessageLines(message)
+	if len(lines) == 0 {
+		return "", nil
+	}
+
+	var description string
+	fields := make([]messageField, 0, len(lines))
+
+	for _, line := range lines {
+		label, value, ok := splitLine(line)
+		if !ok {
+			if description == "" {
+				description = line
+			} else {
+				fields = append(fields, messageField{
+					Label:  "Details",
+					Value:  line,
+					Inline: false,
+				})
+			}
+			continue
+		}
+		if strings.EqualFold(label, "instance") {
+			fields = append(fields, normalizeField(label, value))
+			continue
+		}
+		if description == "" {
+			if strings.EqualFold(label, "torrent") {
+				description = value
+			} else if strings.EqualFold(label, "run") {
+				description = fmt.Sprintf("Run %s", value)
+			} else {
+				description = fmt.Sprintf("%s: %s", label, value)
+			}
+			continue
+		}
+		fields = append(fields, normalizeField(label, value))
+	}
+
+	if description == "" && len(fields) > 0 {
+		description = fmt.Sprintf("%s: %s", fields[0].Label, fields[0].Value)
+		fields = fields[1:]
+	}
+
+	return description, fields
+}
+
+func splitLine(line string) (string, string, bool) {
+	parts := strings.SplitN(line, ":", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	label := strings.TrimSpace(parts[0])
+	value := strings.TrimSpace(parts[1])
+	if label == "" || value == "" {
+		return "", "", false
+	}
+	return label, value, true
+}
+
+func normalizeField(label, value string) messageField {
+	trimmedLabel := truncateMessage(label, discordFieldNameLimit)
+	trimmedValue := truncateMessage(value, discordFieldValueLimit)
+	return messageField{
+		Label:  trimmedLabel,
+		Value:  trimmedValue,
+		Inline: shouldInlineField(trimmedLabel, trimmedValue),
+	}
+}
+
+func shouldInlineField(label, value string) bool {
+	if label == "" || value == "" {
+		return false
+	}
+	switch strings.ToLower(label) {
+	case "torrent", "samples", "errors", "error", "message", "tags":
+		return false
+	}
+	if utf8.RuneCountInString(value) > 48 {
+		return false
+	}
+	return true
+}
+
+func buildDiscordPayload(config *shoutrrrdiscord.Config, event Event, title, message string) (discordWebhookPayload, error) {
+	description, fields := buildStructuredMessage(message)
+	if description == "" {
+		description = message
+	}
+
+	title = truncateMessage(strings.TrimSpace(title), discordTitleLimit)
+	description = truncateMessage(description, discordDescriptionLimit)
+
+	embedFields := make([]discordEmbedField, 0, min(len(fields), discordFieldsLimit))
+	for _, field := range fields {
+		if len(embedFields) >= discordFieldsLimit {
+			break
+		}
+		embedFields = append(embedFields, discordEmbedField{
+			Name:   field.Label,
+			Value:  field.Value,
+			Inline: field.Inline,
+		})
+	}
+
+	embed := discordEmbed{
+		Title:       title,
+		Description: description,
+		Color:       discordEventColor(event.Type),
+		Fields:      embedFields,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+	}
+
+	payload := discordWebhookPayload{
+		Embeds: []discordEmbed{embed},
+	}
+	if config != nil {
+		if strings.TrimSpace(config.Username) != "" {
+			payload.Username = strings.TrimSpace(config.Username)
+		}
+		if strings.TrimSpace(config.Avatar) != "" {
+			payload.AvatarURL = strings.TrimSpace(config.Avatar)
+		}
+	}
+
+	if payload.Embeds[0].Title == "" && payload.Embeds[0].Description == "" && len(payload.Embeds[0].Fields) == 0 {
+		return discordWebhookPayload{}, errors.New("notification has no content to send")
+	}
+
+	return payload, nil
+}
+
+func discordEventColor(eventType EventType) int {
+	switch eventType {
+	case EventBackupFailed,
+		EventDirScanFailed,
+		EventOrphanScanFailed,
+		EventCrossSeedAutomationFailed,
+		EventCrossSeedSearchFailed,
+		EventAutomationsRunFailed:
+		return discordColorError
+	case EventTorrentCompleted,
+		EventBackupSucceeded,
+		EventDirScanCompleted,
+		EventOrphanScanCompleted,
+		EventCrossSeedAutomationSucceeded,
+		EventCrossSeedSearchSucceeded,
+		EventAutomationsActionsApplied:
+		return discordColorSuccess
+	default:
+		return discordColorInfo
+	}
+}
+
+func buildNotifiarrFields(fields []messageField) []notifiarrField {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]notifiarrField, 0, min(len(fields), discordFieldsLimit))
+	for _, field := range fields {
+		if len(out) >= discordFieldsLimit {
+			break
+		}
+		out = append(out, notifiarrField{
+			Title:  truncateMessage(field.Label, discordFieldNameLimit),
+			Text:   truncateMessage(field.Value, discordFieldValueLimit),
+			Inline: field.Inline,
+		})
+	}
+	return out
+}
 
 func truncateMessage(value string, limit int) string {
 	if limit <= 0 {

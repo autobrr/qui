@@ -12,6 +12,7 @@ qui uses Shoutrrr to deliver notifications. Configure one or more targets in **S
 Notes:
 - Existing targets keep their saved event list when new events are introduced.
 - Messages may be truncated to keep notifications short and avoid provider limits.
+- Discord and Notifiarr targets use rich embeds with fields; other services receive plain text.
 
 ## Event types
 
@@ -36,8 +37,11 @@ Notes:
 Use any Shoutrrr-supported URL scheme. A few examples:
 
 - `discord://token@channel`
+- `notifiarr://apikey`
 - `slack://token@channel`
 - `telegram://token@chat-id`
 - `gotify://host/token`
+
+Notifiarr can also include optional parameters such as `channel` or `name`, e.g. `notifiarr://apikey?name=qui&channel=123456789`.
 
 See Shoutrrr documentation for the full list of services and URL formats.

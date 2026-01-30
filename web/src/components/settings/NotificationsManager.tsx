@@ -123,11 +123,13 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
         <Label htmlFor="notification-url">Shoutrrr URL</Label>
         <Input
           id="notification-url"
-          placeholder="discord://token@channel"
+          placeholder="discord://token@channel or notifiarr://apikey"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
-        <p className="text-xs text-muted-foreground">Use any Shoutrrr-supported URL scheme.</p>
+        <p className="text-xs text-muted-foreground">
+          Use any Shoutrrr-supported URL scheme. Notifiarr uses <span className="font-mono">notifiarr://apikey</span>.
+        </p>
       </div>
 
       <div className="flex items-center justify-between rounded-md border px-3 py-2">
