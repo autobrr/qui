@@ -109,15 +109,9 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
     }
   }
 
-  const downloadLimitLabel = downloadLimit > 0
-    ? formatSpeedWithUnit(downloadLimit, speedUnit)
-    : "Unlimited"
-  const uploadLimitLabel = uploadLimit > 0
-    ? formatSpeedWithUnit(uploadLimit, speedUnit)
-    : "Unlimited"
-  const pieceSizeLabel = properties.piece_size
-    ? formatBytes(properties.piece_size)
-    : "—"
+  const downloadLimitLabel = downloadLimit > 0? formatSpeedWithUnit(downloadLimit, speedUnit): "Unlimited"
+  const uploadLimitLabel = uploadLimit > 0? formatSpeedWithUnit(uploadLimit, speedUnit): "Unlimited"
+  const pieceSizeLabel = properties?.piece_size? formatBytes(properties.piece_size): "—"
 
   const formatTimeLimit = (minutes: number | undefined): string => {
     if (minutes === undefined || minutes === -1) return "Unlimited"
@@ -374,9 +368,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               Pieces
             </h4>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {piecesStats.total > 0
-                ? `${piecesStats.have} / ${piecesStats.total} (${piecesStats.progress.toFixed(1)}%)`
-                : "—"}
+              {piecesStats.total > 0? `${piecesStats.have} / ${piecesStats.total} (${piecesStats.progress.toFixed(1)}%)`: "—"}
             </span>
           </div>
           <PieceBar
