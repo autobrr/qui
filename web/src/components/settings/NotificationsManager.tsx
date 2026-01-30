@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,23 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
     )
   }
 
+  const selectGroupEvents = (events: NotificationEventDefinition[]) => {
+    setEventTypes((prev) => {
+      const next = new Set(prev)
+      for (const event of events) {
+        next.add(event.type)
+      }
+      return Array.from(next)
+    })
+  }
+
+  const clearGroupEvents = (events: NotificationEventDefinition[]) => {
+    setEventTypes((prev) => {
+      const blocked = new Set(events.map((event) => event.type))
+      return prev.filter((eventType) => !blocked.has(eventType))
+    })
+  }
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -104,6 +122,43 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
   }
 
   const allSelected = eventDefinitions.length > 0 && eventTypes.length === eventDefinitions.length
+  const groupedEvents = useMemo(() => {
+    const groups = new Map<string, NotificationEventDefinition[]>()
+    const addToGroup = (label: string, event: NotificationEventDefinition) => {
+      const existing = groups.get(label)
+      if (existing) {
+        existing.push(event)
+      } else {
+        groups.set(label, [event])
+      }
+    }
+
+    for (const event of eventDefinitions) {
+      if (event.type === "torrent_completed") {
+        addToGroup("Torrent", event)
+      } else if (
+        event.type === "backup_succeeded" ||
+        event.type === "backup_failed" ||
+        event.type === "dir_scan_completed" ||
+        event.type === "dir_scan_failed" ||
+        event.type === "orphan_scan_completed" ||
+        event.type === "orphan_scan_failed"
+      ) {
+        addToGroup("Maintenance", event)
+      } else if (event.type.startsWith("cross_seed_")) {
+        addToGroup("Cross-seed", event)
+      } else if (event.type.startsWith("automations_")) {
+        addToGroup("Automations", event)
+      } else {
+        addToGroup("Other", event)
+      }
+    }
+
+    const ordered = ["Torrent", "Maintenance", "Cross-seed", "Automations", "Other"]
+    return ordered
+      .map((label) => ({ label, events: groups.get(label) ?? [] }))
+      .filter((group) => group.events.length > 0)
+  }, [eventDefinitions])
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -164,22 +219,71 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
             </Button>
           </div>
         </div>
-        <div className="space-y-3 rounded-md border p-3">
+        <div className="space-y-4 rounded-md border p-3">
           {eventDefinitions.length === 0 && (
             <p className="text-sm text-muted-foreground">Loading event types…</p>
           )}
-          {eventDefinitions.map((event) => (
-            <label key={event.type} className="flex items-start gap-3 text-sm">
-              <Checkbox
-                checked={eventTypes.includes(event.type)}
-                onCheckedChange={() => toggleEvent(event.type)}
-              />
-              <span className="space-y-1">
-                <span className="font-medium text-foreground">{event.label}</span>
-                <span className="block text-xs text-muted-foreground">{event.description}</span>
-              </span>
-            </label>
-          ))}
+          <Accordion type="multiple" className="space-y-2">
+            {groupedEvents.map((group) => {
+              const groupTypes = group.events.map((event) => event.type)
+              const groupSelected = groupTypes.filter((type) => eventTypes.includes(type))
+              const allGroupSelected = groupSelected.length === groupTypes.length
+              const anyGroupSelected = groupSelected.length > 0
+              return (
+                <AccordionItem key={group.label} value={group.label} className="rounded-md border">
+                  <AccordionTrigger className="px-3 py-2 text-sm hover:no-underline">
+                    <div className="flex flex-1 items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group.label}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            selectGroupEvents(group.events)
+                          }}
+                          disabled={group.events.length === 0 || allGroupSelected}
+                        >
+                          Select
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            clearGroupEvents(group.events)
+                          }}
+                          disabled={!anyGroupSelected}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 px-3 pb-3">
+                    {group.events.map((event) => (
+                      <label key={event.type} className="flex items-start gap-3 text-sm">
+                        <Checkbox
+                          checked={eventTypes.includes(event.type)}
+                          onCheckedChange={() => toggleEvent(event.type)}
+                        />
+                        <span className="space-y-1">
+                          <span className="font-medium text-foreground">{event.label}</span>
+                          <span className="block text-xs text-muted-foreground">{event.description}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
         </div>
       </div>
 
