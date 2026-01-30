@@ -46,6 +46,36 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback
 }
 
+const maskNotificationUrl = (rawUrl: string) => {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return ""
+  const redacted = "••••"
+  try {
+    const parsed = new URL(trimmed)
+    const scheme = parsed.protocol.replace(":", "")
+    if (!scheme) {
+      return redacted
+    }
+    if (scheme === "notifiarr") {
+      return `${scheme}://${redacted}`
+    }
+    const hasUserInfo = parsed.username !== "" || parsed.password !== ""
+    const host = parsed.host
+    const hasPath = parsed.pathname && parsed.pathname !== "/"
+    const path = hasPath ? `/${redacted}` : ""
+
+    if (hasUserInfo) {
+      return `${scheme}://${redacted}@${host}${path}`
+    }
+    if (host) {
+      return `${scheme}://${host}${path}`
+    }
+    return `${scheme}://${redacted}`
+  } catch {
+    return redacted
+  }
+}
+
 interface NotificationTargetFormProps {
   initial?: NotificationTarget | null
   eventDefinitions: NotificationEventDefinition[]
@@ -465,7 +495,7 @@ export function NotificationsManager() {
                       </Badge>
                     </div>
                     <CardDescription className="text-xs break-all">
-                      {target.url}
+                      {maskNotificationUrl(target.url)}
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
