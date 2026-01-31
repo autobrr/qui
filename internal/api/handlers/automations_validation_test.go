@@ -160,6 +160,54 @@ func TestValidateFreeSpaceSourcePayload_WindowsRejectsPathAlways(t *testing.T) {
 	}
 }
 
+func TestExternalProgramActionValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		action  *models.ExternalProgramAction
+		wantErr bool
+	}{
+		{
+			name:    "nil action is valid",
+			action:  nil,
+			wantErr: false,
+		},
+		{
+			name:    "disabled action with programId 0 is valid",
+			action:  &models.ExternalProgramAction{Enabled: false, ProgramID: 0},
+			wantErr: false,
+		},
+		{
+			name:    "disabled action with valid programId is valid",
+			action:  &models.ExternalProgramAction{Enabled: false, ProgramID: 5},
+			wantErr: false,
+		},
+		{
+			name:    "enabled action with valid programId is valid",
+			action:  &models.ExternalProgramAction{Enabled: true, ProgramID: 1},
+			wantErr: false,
+		},
+		{
+			name:    "enabled action with programId 0 is invalid",
+			action:  &models.ExternalProgramAction{Enabled: true, ProgramID: 0},
+			wantErr: true,
+		},
+		{
+			name:    "enabled action with negative programId is invalid",
+			action:  &models.ExternalProgramAction{Enabled: true, ProgramID: -1},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.action.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ExternalProgramAction.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestConditionsUseFreeSpace(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -282,6 +330,45 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 				},
 			},
 			want: true,
+		},
+		{
+			name: "external program disabled returns false",
+			conditions: &models.ActionConditions{
+				ExternalProgram: &models.ExternalProgramAction{
+					Enabled:   false,
+					ProgramID: 1,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "external program enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				ExternalProgram: &models.ExternalProgramAction{
+					Enabled:   true,
+					ProgramID: 1,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "external program enabled without FREE_SPACE returns false",
+			conditions: &models.ActionConditions{
+				ExternalProgram: &models.ExternalProgramAction{
+					Enabled:   true,
+					ProgramID: 1,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldSize,
+					},
+				},
+			},
+			want: false,
 		},
 	}
 
