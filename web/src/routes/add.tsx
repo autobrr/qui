@@ -22,13 +22,7 @@ const addSearchSchema = z.object({
   magnet: z.string().optional(),
   url: z.string().optional(),
   instance: z.coerce.number().optional(),
-  expectingFiles: z.preprocess((value) => {
-    if (typeof value === "string") {
-      if (value.toLowerCase() === "true") return true
-      if (value.toLowerCase() === "false") return false
-    }
-    return value
-  }, z.boolean().optional()),
+  expectingFiles: z.enum(["true", "false"]).optional(),
 })
 
 export const Route = createFileRoute("/add")({
@@ -38,10 +32,11 @@ export const Route = createFileRoute("/add")({
 
 function AddTorrentHandler() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
-  const { magnet: magnetParam, url, instance, expectingFiles } = Route.useSearch()
+  const { magnet: magnetParam, url, instance, expectingFiles: expectingFilesParam } = Route.useSearch()
   const navigate = useNavigate()
   const { instances, isLoading: instancesLoading } = useInstances()
 
+  const expectingFiles = expectingFilesParam === "true"
   const magnet = normalizeMagnetLink(magnetParam) ?? normalizeMagnetLink(url) ?? undefined
 
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(instance ?? null)

@@ -57,7 +57,7 @@ export function navigateAfterAuth(navigate: NavigateFn, defaultRoute: string = "
     navigate({ to: "/add", search: { magnet: addIntent.magnet } })
   } else if (addIntent?.hasFiles) {
     // Pass expectingFiles flag so /add can show appropriate error if launchQueue doesn't fire
-    navigate({ to: "/add", search: { expectingFiles: true } })
+    navigate({ to: "/add", search: { expectingFiles: "true" } })
   } else if (addIntent?.openAdd) {
     navigate({ to: "/add" })
   } else {
