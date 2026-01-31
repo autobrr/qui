@@ -373,7 +373,11 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if h.config.BaseURL != "" && h.config.BaseURL != "/" {
 		// Use configured base URL
-		frontendURL = h.config.BaseURL + "/dashboard"
+		base := strings.TrimSuffix(h.config.BaseURL, "/")
+		if base == "" {
+			base = "/"
+		}
+		frontendURL = base + "/dashboard"
 	}
 
 	log.Trace().
