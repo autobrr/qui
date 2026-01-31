@@ -30,7 +30,7 @@ const (
 )
 
 type Notifier interface {
-	Notify(event Event)
+	Notify(ctx context.Context, event Event)
 }
 
 type Event struct {
@@ -60,8 +60,13 @@ type Service struct {
 	store         *models.NotificationTargetStore
 	instanceStore *models.InstanceStore
 	logger        zerolog.Logger
-	queue         chan Event
+	queue         chan notificationTask
 	startOnce     sync.Once
+}
+
+type notificationTask struct {
+	ctx   context.Context
+	event Event
 }
 
 func NewService(store *models.NotificationTargetStore, instanceStore *models.InstanceStore, logger zerolog.Logger) *Service {
@@ -73,7 +78,7 @@ func NewService(store *models.NotificationTargetStore, instanceStore *models.Ins
 		store:         store,
 		instanceStore: instanceStore,
 		logger:        logger,
-		queue:         make(chan Event, defaultQueueSize),
+		queue:         make(chan notificationTask, defaultQueueSize),
 	}
 }
 
@@ -94,18 +99,21 @@ func (s *Service) Start(ctx context.Context) {
 	})
 }
 
-func (s *Service) Notify(event Event) {
+func (s *Service) Notify(ctx context.Context, event Event) {
 	if s == nil || s.store == nil {
 		return
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	if s.queue == nil {
-		go s.dispatch(context.Background(), event)
+		go s.dispatch(ctx, event)
 		return
 	}
 
 	select {
-	case s.queue <- event:
+	case s.queue <- notificationTask{ctx: ctx, event: event}:
 	default:
 		s.logger.Warn().Str("event", string(event.Type)).Msg("notifications: queue full, dropping event")
 	}
@@ -124,8 +132,12 @@ func (s *Service) worker(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-s.queue:
-			s.dispatch(ctx, event)
+		case task := <-s.queue:
+			taskCtx := task.ctx
+			if taskCtx == nil {
+				taskCtx = ctx
+			}
+			s.dispatch(taskCtx, task.event)
 		}
 	}
 }

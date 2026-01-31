@@ -1945,7 +1945,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	}
 	var runErr error
 	defer func() {
-		s.notifyAutomationRun(run, runErr)
+		s.notifyAutomationRun(ctx, run, runErr)
 	}()
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)
@@ -5881,7 +5881,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	}
 	s.searchMu.Unlock()
 
-	s.notifySearchRun(state, canceled)
+	s.notifySearchRun(context.Background(), state, canceled)
 }
 
 // dedupCacheKey generates a cache key for deduplication results based on instance ID
@@ -7422,7 +7422,7 @@ func (s *Service) appendSearchResult(state *searchRunState, result models.CrossS
 	s.searchMu.Unlock()
 }
 
-func (s *Service) notifyAutomationRun(run *models.CrossSeedRun, runErr error) {
+func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeedRun, runErr error) {
 	if s == nil || s.notifier == nil || run == nil {
 		return
 	}
@@ -7454,14 +7454,14 @@ func (s *Service) notifyAutomationRun(run *models.CrossSeedRun, runErr error) {
 		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
-	s.notifier.Notify(notifications.Event{
+	s.notifier.Notify(ctx, notifications.Event{
 		Type:         eventType,
 		InstanceName: "Cross-seed RSS",
 		Message:      strings.Join(lines, "\n"),
 	})
 }
 
-func (s *Service) notifySearchRun(state *searchRunState, canceled bool) {
+func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, canceled bool) {
 	if s == nil || s.notifier == nil || state == nil || state.run == nil {
 		return
 	}
@@ -7488,7 +7488,7 @@ func (s *Service) notifySearchRun(state *searchRunState, canceled bool) {
 		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
-	s.notifier.Notify(notifications.Event{
+	s.notifier.Notify(ctx, notifications.Event{
 		Type:       eventType,
 		InstanceID: state.run.InstanceID,
 		Message:    strings.Join(lines, "\n"),

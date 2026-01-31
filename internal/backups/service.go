@@ -431,7 +431,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		})
 		s.clearInstance(j.instanceID, j.runID)
 		log.Error().Int("instanceID", j.instanceID).Msg("Backup run failed: sync manager not configured")
-		s.notify(notifications.Event{
+		s.notify(ctx, notifications.Event{
 			Type:         notifications.EventBackupFailed,
 			InstanceID:   j.instanceID,
 			BackupKind:   j.kind,
@@ -465,7 +465,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			return nil
 		})
 		log.Error().Err(execErr).Int("instanceID", j.instanceID).Int64("runID", j.runID).Msg("Backup run failed")
-		s.notify(notifications.Event{
+		s.notify(ctx, notifications.Event{
 			Type:         notifications.EventBackupFailed,
 			InstanceID:   j.instanceID,
 			BackupKind:   j.kind,
@@ -500,7 +500,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 				log.Warn().Err(err).Int("instanceID", j.instanceID).Msg("Failed to apply backup retention")
 			}
 		}
-		s.notify(notifications.Event{
+		s.notify(ctx, notifications.Event{
 			Type:               notifications.EventBackupSucceeded,
 			InstanceID:         j.instanceID,
 			BackupKind:         j.kind,
@@ -512,11 +512,11 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 	s.clearInstance(j.instanceID, j.runID)
 }
 
-func (s *Service) notify(event notifications.Event) {
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
 	if s == nil || s.notifier == nil {
 		return
 	}
-	s.notifier.Notify(event)
+	s.notifier.Notify(ctx, event)
 }
 
 type backupResult struct {

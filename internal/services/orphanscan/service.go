@@ -715,7 +715,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
 			return
 		}
-		s.notify(notifications.Event{
+		s.notify(ctx, notifications.Event{
 			Type:                     notifications.EventOrphanScanCompleted,
 			InstanceID:               instanceID,
 			OrphanScanRunID:          runID,
@@ -961,7 +961,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return
 		}
-		s.notify(notifications.Event{
+		s.notify(ctx, notifications.Event{
 			Type:            notifications.EventOrphanScanFailed,
 			InstanceID:      instanceID,
 			OrphanScanRunID: runID,
@@ -980,7 +980,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
-	s.notify(notifications.Event{
+	s.notify(ctx, notifications.Event{
 		Type:                     notifications.EventOrphanScanCompleted,
 		InstanceID:               instanceID,
 		OrphanScanRunID:          runID,
@@ -1020,7 +1020,7 @@ func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, mess
 		return
 	}
 
-	s.notify(notifications.Event{
+	s.notify(ctx, notifications.Event{
 		Type:            notifications.EventOrphanScanFailed,
 		InstanceID:      instanceID,
 		OrphanScanRunID: runID,
@@ -1037,11 +1037,11 @@ func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
 	}
 }
 
-func (s *Service) notify(event notifications.Event) {
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
 	if s == nil || s.notifier == nil {
 		return
 	}
-	s.notifier.Notify(event)
+	s.notifier.Notify(ctx, event)
 }
 
 func (s *Service) updateFileStatus(ctx context.Context, fileID int64, status, errorMessage string) {

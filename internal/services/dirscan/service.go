@@ -523,7 +523,7 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, scanResult *Scan
 		return
 	}
 
-	s.notify(notifications.Event{
+	s.notify(ctx, notifications.Event{
 		Type:                 notifications.EventDirScanCompleted,
 		InstanceID:           instanceID,
 		DirScanRunID:         runID,
@@ -2167,7 +2167,7 @@ func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, i
 		return
 	}
 
-	s.notify(notifications.Event{
+	s.notify(context.Background(), notifications.Event{
 		Type:         notifications.EventDirScanFailed,
 		InstanceID:   instanceID,
 		DirScanRunID: runID,
@@ -2175,11 +2175,11 @@ func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, i
 	})
 }
 
-func (s *Service) notify(event notifications.Event) {
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
 	if s == nil || s.notifier == nil {
 		return
 	}
-	s.notifier.Notify(event)
+	s.notifier.Notify(ctx, event)
 }
 
 // getDirectoryMutex returns the mutex for a directory, creating one if needed.

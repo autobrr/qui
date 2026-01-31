@@ -613,7 +613,7 @@ func (app *Application) runServer() {
 					tags = append(tags, trimmed)
 				}
 			}
-			notificationService.Notify(notifications.Event{
+			notificationService.Notify(ctx, notifications.Event{
 				Type:          notifications.EventTorrentCompleted,
 				InstanceID:    instanceID,
 				TorrentName:   torrent.Name,

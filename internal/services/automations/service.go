@@ -1122,7 +1122,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
-		s.notifyAutomationFailure(instanceID, err)
+		s.notifyAutomationFailure(ctx, instanceID, err)
 		return err
 	}
 	if len(rules) == 0 {
@@ -1198,7 +1198,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: unable to fetch torrents")
-		s.notifyAutomationFailure(instanceID, err)
+		s.notifyAutomationFailure(ctx, instanceID, err)
 		return err
 	}
 
@@ -1210,7 +1210,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance")
-		s.notifyAutomationFailure(instanceID, err)
+		s.notifyAutomationFailure(ctx, instanceID, err)
 		return err
 	}
 
@@ -1268,7 +1268,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			if err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
 				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
-				s.notifyAutomationFailure(instanceID, wrapped)
+				s.notifyAutomationFailure(ctx, instanceID, wrapped)
 				return wrapped
 			}
 			freeSpaceBySourceKey[sourceKey] = freeSpace
@@ -2228,7 +2228,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	s.notifyAutomationSummary(instanceID, summary)
+	s.notifyAutomationSummary(ctx, instanceID, summary)
 	return nil
 }
 
@@ -2252,24 +2252,24 @@ func (s *Service) recordActivity(ctx context.Context, activity *models.Automatio
 	}
 }
 
-func (s *Service) notifyAutomationSummary(instanceID int, summary *automationSummary) {
+func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary) {
 	if s == nil || s.notifier == nil || summary == nil || !summary.hasActivity() {
 		return
 	}
 
-	s.notifier.Notify(notifications.Event{
+	s.notifier.Notify(ctx, notifications.Event{
 		Type:       notifications.EventAutomationsActionsApplied,
 		InstanceID: instanceID,
 		Message:    summary.message(),
 	})
 }
 
-func (s *Service) notifyAutomationFailure(instanceID int, err error) {
+func (s *Service) notifyAutomationFailure(ctx context.Context, instanceID int, err error) {
 	if s == nil || s.notifier == nil || err == nil {
 		return
 	}
 
-	s.notifier.Notify(notifications.Event{
+	s.notifier.Notify(ctx, notifications.Event{
 		Type:       notifications.EventAutomationsRunFailed,
 		InstanceID: instanceID,
 		Message:    err.Error(),
