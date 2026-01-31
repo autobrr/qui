@@ -21,7 +21,9 @@ const listeners = new Set<LaunchQueueListener>()
 
 function emitLaunchQueueEvent(event: LaunchQueueEvent): void {
   pendingEvent = event
-  listeners.forEach((listener) => listener(event))
+  for (const listener of listeners) {
+    listener(event)
+  }
 }
 
 export function consumeLaunchQueueEvent(): LaunchQueueEvent | null {
