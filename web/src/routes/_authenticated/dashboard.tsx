@@ -8,4 +8,7 @@ import { Dashboard } from "@/pages/Dashboard"
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
+  staticData: {
+    title: "Dashboard",
+  },
 })
