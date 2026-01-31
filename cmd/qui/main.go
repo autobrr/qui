@@ -598,31 +598,29 @@ func (app *Application) runServer() {
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
-		if notificationService != nil {
-			trackerDomain := ""
-			if torrent.Tracker != "" {
-				trackerDomain = syncManager.ExtractDomainFromURL(torrent.Tracker)
-			}
-			tags := []string{}
-			if strings.TrimSpace(torrent.Tags) != "" {
-				for tag := range strings.SplitSeq(torrent.Tags, ",") {
-					trimmed := strings.TrimSpace(tag)
-					if trimmed == "" {
-						continue
-					}
-					tags = append(tags, trimmed)
-				}
-			}
-			notificationService.Notify(ctx, notifications.Event{
-				Type:          notifications.EventTorrentCompleted,
-				InstanceID:    instanceID,
-				TorrentName:   torrent.Name,
-				TorrentHash:   torrent.Hash,
-				TrackerDomain: trackerDomain,
-				Category:      torrent.Category,
-				Tags:          tags,
-			})
+		trackerDomain := ""
+		if torrent.Tracker != "" {
+			trackerDomain = syncManager.ExtractDomainFromURL(torrent.Tracker)
 		}
+		tags := []string{}
+		if strings.TrimSpace(torrent.Tags) != "" {
+			for tag := range strings.SplitSeq(torrent.Tags, ",") {
+				trimmed := strings.TrimSpace(tag)
+				if trimmed == "" {
+					continue
+				}
+				tags = append(tags, trimmed)
+			}
+		}
+		notificationService.Notify(ctx, notifications.Event{
+			Type:          notifications.EventTorrentCompleted,
+			InstanceID:    instanceID,
+			TorrentName:   torrent.Name,
+			TorrentHash:   torrent.Hash,
+			TrackerDomain: trackerDomain,
+			Category:      torrent.Category,
+			Tags:          tags,
+		})
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())

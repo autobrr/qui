@@ -60,13 +60,8 @@ type Service struct {
 	store         *models.NotificationTargetStore
 	instanceStore *models.InstanceStore
 	logger        zerolog.Logger
-	queue         chan notificationTask
+	queue         chan Event
 	startOnce     sync.Once
-}
-
-type notificationTask struct {
-	ctx   context.Context
-	event Event
 }
 
 func NewService(store *models.NotificationTargetStore, instanceStore *models.InstanceStore, logger zerolog.Logger) *Service {
@@ -78,7 +73,7 @@ func NewService(store *models.NotificationTargetStore, instanceStore *models.Ins
 		store:         store,
 		instanceStore: instanceStore,
 		logger:        logger,
-		queue:         make(chan notificationTask, defaultQueueSize),
+		queue:         make(chan Event, defaultQueueSize),
 	}
 }
 
@@ -113,7 +108,9 @@ func (s *Service) Notify(ctx context.Context, event Event) {
 	}
 
 	select {
-	case s.queue <- notificationTask{ctx: ctx, event: event}:
+	case <-ctx.Done():
+		return
+	case s.queue <- event:
 	default:
 		s.logger.Warn().Str("event", string(event.Type)).Msg("notifications: queue full, dropping event")
 	}
@@ -132,12 +129,8 @@ func (s *Service) worker(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case task := <-s.queue:
-			taskCtx := task.ctx
-			if taskCtx == nil {
-				taskCtx = ctx
-			}
-			s.dispatch(taskCtx, task.event)
+		case event := <-s.queue:
+			s.dispatch(ctx, event)
 		}
 	}
 }
