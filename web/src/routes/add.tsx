@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/hooks/useAuth"
 import { useInstances } from "@/hooks/useInstances"
-import { storeAddIntent } from "@/lib/add-intent"
-import { extractMagnetFromTargetURL, normalizeMagnetLink } from "@/lib/magnet"
+import { clearAddIntent, storeAddIntent } from "@/lib/add-intent"
+import { consumeLaunchQueueEvent, subscribeLaunchQueueEvents, type LaunchQueueEvent } from "@/lib/launch-queue"
+import { normalizeMagnetLink } from "@/lib/magnet"
 import type { InstanceResponse } from "@/types"
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
@@ -21,7 +22,13 @@ const addSearchSchema = z.object({
   magnet: z.string().optional(),
   url: z.string().optional(),
   instance: z.coerce.number().optional(),
-  expectingFiles: z.boolean().optional(),
+  expectingFiles: z.preprocess((value) => {
+    if (typeof value === "string") {
+      if (value.toLowerCase() === "true") return true
+      if (value.toLowerCase() === "false") return false
+    }
+    return value
+  }, z.boolean().optional()),
 })
 
 export const Route = createFileRoute("/add")({
@@ -44,6 +51,9 @@ function AddTorrentHandler() {
   // Track if payload was ever received (prevents falling back to "waiting" state after consumption)
   const hasReceivedPayload = useRef(false)
 
+  // Filter to active instances
+  const activeInstances = instances?.filter(i => i.isActive) ?? []
+
   // Initialize payload from magnet URL param on mount
   useEffect(() => {
     if (magnet) {
@@ -52,42 +62,31 @@ function AddTorrentHandler() {
     }
   }, [magnet])
 
+  const handleLaunchQueueEvent = useCallback((event: LaunchQueueEvent) => {
+    if (event.kind === "payload") {
+      hasReceivedPayload.current = true
+      setDropPayload(event.payload.type === "file"
+        ? { type: "file", files: event.payload.files }
+        : { type: "url", urls: event.payload.urls })
+      return
+    }
+
+    clearAddIntent()
+    toast.error("No valid .torrent files found")
+    navigate({ to: "/" })
+  }, [navigate])
+
   // Handle files from file handler (launchQueue API)
   useEffect(() => {
-    if (!window.launchQueue) return
+    if (magnet) return
 
-    window.launchQueue.setConsumer(async (launchParams) => {
-      const launchedMagnet = extractMagnetFromTargetURL(launchParams.targetURL)
-      if (launchedMagnet) {
-        hasReceivedPayload.current = true
-        setDropPayload({ type: "url", urls: [launchedMagnet] })
-        return
-      }
+    const pending = consumeLaunchQueueEvent()
+    if (pending) {
+      handleLaunchQueueEvent(pending)
+    }
 
-      if (!launchParams.files?.length) return
-
-      const files: File[] = []
-      for (const handle of launchParams.files) {
-        try {
-          const file = await handle.getFile()
-          if (file.name.toLowerCase().endsWith(".torrent")) {
-            files.push(file)
-          }
-        } catch (err) {
-          console.error("Failed to get file from handle:", err)
-        }
-      }
-
-      if (files.length > 0) {
-        hasReceivedPayload.current = true
-        setDropPayload({ type: "file", files })
-      } else if (launchParams.files.length > 0) {
-        // Files were provided but none were valid .torrent files
-        toast.error("No valid .torrent files found")
-        navigate({ to: "/" })
-      }
-    })
-  }, [navigate])
+    return subscribeLaunchQueueEvents(handleLaunchQueueEvent)
+  }, [handleLaunchQueueEvent, magnet])
 
   // Check if running as installed PWA (file-handler launches only happen in standalone mode)
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
@@ -114,17 +113,6 @@ function AddTorrentHandler() {
     return () => clearTimeout(timeout)
   }, [expectingFiles, isStandalone, magnet, navigate])
 
-  const handleOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setDialogOpen(false)
-      if (selectedInstanceId) {
-        navigate({ to: "/instances/$instanceId", params: { instanceId: String(selectedInstanceId) } })
-      } else {
-        navigate({ to: "/" })
-      }
-    }
-  }, [navigate, selectedInstanceId])
-
   const handleCancel = useCallback(() => {
     navigate({ to: "/" })
   }, [navigate])
@@ -132,6 +120,20 @@ function AddTorrentHandler() {
   const handlePayloadConsumed = useCallback(() => {
     setDropPayload(null)
   }, [])
+
+  // Determine which instance to use
+  const resolvedInstanceId = selectedInstanceId ??
+    (activeInstances.length === 1 ? activeInstances[0].id : null)
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (open) return
+    setDialogOpen(false)
+    if (resolvedInstanceId) {
+      navigate({ to: "/instances/$instanceId", params: { instanceId: String(resolvedInstanceId) } })
+    } else {
+      navigate({ to: "/" })
+    }
+  }, [navigate, resolvedInstanceId])
 
   if (authLoading) {
     return (
@@ -167,17 +169,10 @@ function AddTorrentHandler() {
     )
   }
 
-  // Filter to active instances
-  const activeInstances = instances?.filter(i => i.isActive) ?? []
-
   // If no instances configured, redirect to settings
   if (activeInstances.length === 0) {
     return <Navigate to="/settings" search={{ tab: "instances" }} />
   }
-
-  // Determine which instance to use
-  const resolvedInstanceId = selectedInstanceId ??
-    (activeInstances.length === 1 ? activeInstances[0].id : null)
 
   // If multiple instances and none selected, show selector
   if (!resolvedInstanceId && activeInstances.length > 1) {

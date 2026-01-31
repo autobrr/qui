@@ -39,6 +39,14 @@ export function getAndClearAddIntent(): AddIntent | null {
   }
 }
 
+export function clearAddIntent(): void {
+  try {
+    sessionStorage.removeItem(ADD_INTENT_KEY)
+  } catch (err) {
+    console.error("[add-intent] Failed to clear stored intent:", err)
+  }
+}
+
 /**
  * Navigate to the appropriate route after successful authentication.
  * Checks for stored add intent (from PWA protocol/file handler) and routes accordingly.
