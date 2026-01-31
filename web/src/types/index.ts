@@ -251,6 +251,11 @@ export interface PauseAction {
   condition?: RuleCondition
 }
 
+export interface ResumeAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
 export interface DeleteAction {
   enabled: boolean
   mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
@@ -287,6 +292,7 @@ export interface ActionConditions {
   speedLimits?: SpeedLimitAction
   shareLimits?: ShareLimitsAction
   pause?: PauseAction
+  resume?: ResumeAction
   delete?: DeleteAction
   tag?: TagAction
   category?: CategoryAction
@@ -339,7 +345,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "moved"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
