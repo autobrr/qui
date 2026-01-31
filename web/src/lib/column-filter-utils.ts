@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -77,6 +77,30 @@ const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent),
   instanceName: "InstanceName", // Cross-seed filtering instance column
 }
 
+// State categories: maps filter value to all qBittorrent states in that category
+// Must match the backend's torrentStateCategories in sync_manager.go
+const STATE_CATEGORY_MAP: Record<string, string[]> = {
+  // Seeding states (uploading category)
+  uploading: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
+  // Downloading states
+  downloading: ["downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  // Stalled states
+  stalled: ["stalledDL", "stalledUP"],
+  stalled_uploading: ["stalledUP"],
+  stalled_downloading: ["stalledDL"],
+  // Checking states
+  checking: ["checkingDL", "checkingUP", "checkingResumeData"],
+  // Error states
+  errored: ["error", "missingFiles"],
+  // Paused/stopped states
+  paused: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
+  stopped: ["stoppedDL", "stoppedUP"],
+  // Active states (downloading or uploading actively)
+  active: ["downloading", "uploading", "forcedDL", "forcedUP"],
+  // Moving state
+  moving: ["moving"],
+}
+
 // Remap column IDs for filtering to use total counts instead of connected counts
 // This matches the sorting behavior in TorrentTableOptimized.tsx (lines 972-976)
 const FILTER_COLUMN_REMAP: Record<string, string> = {
@@ -151,9 +175,20 @@ function convertDurationToSeconds(value: number, unit: DurationUnit): number {
  * Examples:
  * - { columnId: "ratio", operation: "gt", value: "2" } => "Ratio > 2"
  * - { columnId: "name", operation: "contains", value: "linux" } => "Name contains \"linux\""
- * - { columnId: "state", operation: "eq", value: "downloading" } => "State == \"downloading\""
  * - { columnId: "size", operation: "gt", value: "10", sizeUnit: "GiB" } => "Size > 10737418240"
  * - { columnId: "added_on", operation: "gt", value: "2024-01-01" } => "AddedOn > 1704067200"
+ *
+ * State filters use category expansion (matching FilterSidebar behavior):
+ * - "uploading" (Seeding) expands to: uploading, stalledUP, queuedUP, checkingUP, forcedUP
+ * - "downloading" expands to: downloading, stalledDL, metaDL, queuedDL, allocating, checkingDL, forcedDL
+ * - "completed" uses progress-based filtering: Progress == 1
+ *
+ * Example expansions:
+ * - { columnId: "state", operation: "eq", value: "uploading" } =>
+ *   "(string(State) == \"uploading\" || string(State) == \"stalledUP\" || ...)"
+ * - { columnId: "state", operation: "ne", value: "uploading" } =>
+ *   "(string(State) != \"uploading\" && string(State) != \"stalledUP\" && ...)"
+ * - { columnId: "state", operation: "eq", value: "completed" } => "Progress == 1"
  */
 export function columnFilterToExpr(filter: ColumnFilter): string | null {
   // Apply column remapping for filtering (use total counts instead of connected)
@@ -298,6 +333,36 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     }
     const fractionValue = numericValue / 100
     return `${fieldName} ${operator} ${fractionValue}`
+  }
+
+  // Handle state column with category expansion
+  // When filtering by a state category (e.g., "uploading" which means "Seeding"),
+  // expand it to match all qBittorrent states in that category
+  if (filter.columnId === "state" && (filter.operation === "eq" || filter.operation === "ne")) {
+    // Special case: "completed" uses progress-based filtering, not state
+    if (filter.value === "completed") {
+      if (filter.operation === "eq") {
+        return "Progress == 1"
+      } else {
+        return "Progress != 1"
+      }
+    }
+
+    const stateCategory = STATE_CATEGORY_MAP[filter.value]
+    if (stateCategory && stateCategory.length >= 1) {
+      // Generate combined expression for all states in the category
+      const stateExpressions = stateCategory.map(state =>
+        `string(${fieldName}) ${operator} "${escapeExprValue(state)}"`
+      )
+      if (filter.operation === "eq") {
+        // "eq" (equals): any state in category matches -> OR logic
+        return `(${stateExpressions.join(" || ")})`
+      } else {
+        // "ne" (not equals): exclude all states in category -> AND logic
+        return `(${stateExpressions.join(" && ")})`
+      }
+    }
+    // Unknown state: fall through to default handling
   }
 
   const needsQuotes = isNaN(Number(filter.value)) ||

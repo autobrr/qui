@@ -1,5 +1,70 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import 'react-day-picker/style.css';
+
+/* Override react-day-picker styles to use theme colors */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--accent);
+  --rdp-day-height: 2rem;
+  --rdp-day-width: 2rem;
+  --rdp-selected-font: inherit;
+  --rdp-disabled-opacity: 0.5;
+  --rdp-outside-opacity: 0.5;
+  --rdp-today-color: var(--accent-foreground);
+  --rdp-dropdown-gap: 0.5rem;
+  --rdp-weekday-opacity: 1;
+  --rdp-weekday-padding: 0.5rem 0;
+  --rdp-range_middle-background-color: var(--accent);
+  --rdp-range_middle-color: var(--accent-foreground);
+  --rdp-range_start-color: var(--primary-foreground);
+  --rdp-range_end-color: var(--primary-foreground);
+  --rdp-range_start-background: var(--primary);
+  --rdp-range_end-background: var(--primary);
+  --rdp-range_start-date-background-color: var(--primary);
+  --rdp-range_end-date-background-color: var(--primary);
+  --rdp-selected-border: none;
+  --rdp-nav-height: 2rem;
+  --rdp-month-caption-height: 2rem;
+  font-size: 0.875rem;
+}
+
+.rdp-root .rdp-day_button {
+  border-radius: var(--radius);
+}
+
+.rdp-root .rdp-today:not(.rdp-selected) .rdp-day_button {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.rdp-root .rdp-selected .rdp-day_button {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.rdp-root .rdp-weekday {
+  color: var(--muted-foreground);
+  font-weight: normal;
+}
+
+.rdp-root .rdp-day_button:hover:not(.rdp-selected) {
+  background-color: var(--accent);
+}
+
+.rdp-root .rdp-chevron {
+  fill: var(--foreground);
+}
+
+.rdp-root .rdp-button_previous,
+.rdp-root .rdp-button_next {
+  border-radius: var(--radius);
+}
+
+.rdp-root .rdp-button_previous:hover,
+.rdp-root .rdp-button_next:hover {
+  background-color: var(--accent);
+}
 
 /* Keep only the custom accordion animations not provided by tw-animate-css */
 @theme {
@@ -227,15 +292,15 @@
     height: 100%;
     margin: 0;
     padding: 0;
+    overflow: hidden;
   }
 
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
     font-family: var(--font-sans);
-    /* Handle safe areas for iOS devices */
+    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav) */
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }

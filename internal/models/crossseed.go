@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -15,18 +15,23 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
+// Category affix mode constants.
+const (
+	CategoryAffixModePrefix = "prefix"
+	CategoryAffixModeSuffix = "suffix"
+)
+
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
 // Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
 	// RSS Automation settings
-	Enabled            bool     `json:"enabled"`            // Enable/disable RSS automation
-	RunIntervalMinutes int      `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
-	StartPaused        bool     `json:"startPaused"`        // RSS: start added torrents paused
-	Category           *string  `json:"category,omitempty"` // RSS: category for added torrents
-	IgnorePatterns     []string `json:"ignorePatterns"`     // RSS: file patterns to ignore
-	TargetInstanceIDs  []int    `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
-	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
+	Enabled            bool    `json:"enabled"`            // Enable/disable RSS automation
+	RunIntervalMinutes int     `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
+	StartPaused        bool    `json:"startPaused"`        // RSS: start added torrents paused
+	Category           *string `json:"category,omitempty"` // RSS: category for added torrents
+	TargetInstanceIDs  []int   `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
+	TargetIndexerIDs   []int   `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
+	MaxResultsPerRun   int     `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
 
 	// RSS source filtering: filter which LOCAL torrents are considered when checking RSS feeds.
 	// Empty arrays mean "all" (no filtering).
@@ -56,16 +61,22 @@ type CrossSeedAutomationSettings struct {
 	WebhookTags          []string `json:"webhookTags"`          // Tags for /apply webhook results
 	InheritSourceTags    bool     `json:"inheritSourceTags"`    // Also copy tags from the matched source torrent
 
-	// Category isolation: add .cross suffix to prevent *arr import loops
-	UseCrossCategorySuffix bool `json:"useCrossCategorySuffix"` // Add .cross suffix to categories (e.g., movies → movies.cross)
+	// Category affix: add prefix or suffix to the original category name
+	UseCrossCategoryAffix bool   `json:"useCrossCategoryAffix"` // Enable category affix
+	CategoryAffixMode     string `json:"categoryAffixMode"`     // "prefix" or "suffix"
+	CategoryAffix         string `json:"categoryAffix"`         // The affix value (default: ".cross")
+	// Custom category: use exact user-specified category without any suffixing
+	UseCustomCategory bool   `json:"useCustomCategory"` // Use custom category instead of affix or indexer name
+	CustomCategory    string `json:"customCategory"`    // Custom category name when UseCustomCategory is true
 
 	// Skip auto-resume settings per source mode.
 	// When enabled, torrents remain paused after hash check instead of auto-resuming.
-	SkipAutoResumeRSS          bool `json:"skipAutoResumeRss"`          // Skip auto-resume for RSS automation results
-	SkipAutoResumeSeededSearch bool `json:"skipAutoResumeSeededSearch"` // Skip auto-resume for seeded torrent search results
-	SkipAutoResumeCompletion   bool `json:"skipAutoResumeCompletion"`   // Skip auto-resume for completion-triggered search results
-	SkipAutoResumeWebhook      bool `json:"skipAutoResumeWebhook"`      // Skip auto-resume for /apply webhook results
-	SkipRecheck                bool `json:"skipRecheck"`                // Skip cross-seed matches that require a recheck
+	SkipAutoResumeRSS            bool `json:"skipAutoResumeRss"`            // Skip auto-resume for RSS automation results
+	SkipAutoResumeSeededSearch   bool `json:"skipAutoResumeSeededSearch"`   // Skip auto-resume for seeded torrent search results
+	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`     // Skip auto-resume for completion-triggered search results
+	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
+	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
+	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -88,7 +99,6 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
 		StartPaused:        true,
 		Category:           nil,
-		IgnorePatterns:     []string{},
 		TargetInstanceIDs:  []int{},
 		TargetIndexerIDs:   []int{},
 		MaxResultsPerRun:   50,
@@ -112,16 +122,22 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		CompletionSearchTags: []string{"cross-seed"},
 		WebhookTags:          []string{"cross-seed"},
 		InheritSourceTags:    false, // Don't copy source torrent tags by default
-		// Category isolation - default to true for backwards compatibility
-		UseCrossCategorySuffix: true,
+		// Category isolation - default to true with suffix mode and ".cross" for backwards compatibility
+		UseCrossCategoryAffix: true,
+		CategoryAffixMode:     CategoryAffixModeSuffix,
+		CategoryAffix:         ".cross",
+		// Custom category - default to false (use affix mode by default)
+		UseCustomCategory: false,
+		CustomCategory:    "",
 		// Skip auto-resume - default to false to preserve existing behavior
-		SkipAutoResumeRSS:          false,
-		SkipAutoResumeSeededSearch: false,
-		SkipAutoResumeCompletion:   false,
-		SkipAutoResumeWebhook:      false,
-		SkipRecheck:                false,
-		CreatedAt:                  time.Now().UTC(),
-		UpdatedAt:                  time.Now().UTC(),
+		SkipAutoResumeRSS:            false,
+		SkipAutoResumeSeededSearch:   false,
+		SkipAutoResumeCompletion:     false,
+		SkipAutoResumeWebhook:        false,
+		SkipRecheck:                  false,
+		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
+		CreatedAt:                    time.Now().UTC(),
+		UpdatedAt:                    time.Now().UTC(),
 	}
 }
 
@@ -287,7 +303,7 @@ func NewCrossSeedStore(db dbinterface.Querier) *CrossSeedStore {
 func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationSettings, error) {
 	query := `
 		SELECT enabled, run_interval_minutes, start_paused, category,
-		       ignore_patterns, target_instance_ids, target_indexer_ids,
+		       target_instance_ids, target_indexer_ids,
 		       max_results_per_run,
 		       rss_source_categories, rss_source_tags,
 		       rss_source_exclude_categories, rss_source_exclude_tags,
@@ -296,10 +312,12 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       find_individual_episodes, size_mismatch_tolerance_percent,
 		       use_category_from_indexer, run_external_program_id,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
-		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
+		       webhook_tags, inherit_source_tags,
+		       use_cross_category_affix, category_affix_mode, category_affix,
+		       use_custom_category, custom_category,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
-		       skip_recheck,
+		       skip_recheck, skip_piece_boundary_safety_check,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -309,7 +327,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 
 	var settings CrossSeedAutomationSettings
 	var category sql.NullString
-	var ignoreJSON, instancesJSON, indexersJSON sql.NullString
+	var instancesJSON, indexersJSON sql.NullString
 	var rssSourceCategories, rssSourceTags, rssSourceExcludeCategories, rssSourceExcludeTags sql.NullString
 	var webhookSourceCategories, webhookSourceTags, webhookSourceExcludeCategories, webhookSourceExcludeTags sql.NullString
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
@@ -321,7 +339,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.RunIntervalMinutes,
 		&settings.StartPaused,
 		&category,
-		&ignoreJSON,
 		&instancesJSON,
 		&indexersJSON,
 		&settings.MaxResultsPerRun,
@@ -342,12 +359,17 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&completionSearchTags,
 		&webhookTags,
 		&settings.InheritSourceTags,
-		&settings.UseCrossCategorySuffix,
+		&settings.UseCrossCategoryAffix,
+		&settings.CategoryAffixMode,
+		&settings.CategoryAffix,
+		&settings.UseCustomCategory,
+		&settings.CustomCategory,
 		&settings.SkipAutoResumeRSS,
 		&settings.SkipAutoResumeSeededSearch,
 		&settings.SkipAutoResumeCompletion,
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
+		&settings.SkipPieceBoundarySafetyCheck,
 		&createdAt,
 		&updatedAt,
 	)
@@ -367,9 +389,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		settings.RunExternalProgramID = &id
 	}
 
-	if err := decodeStringSlice(ignoreJSON, &settings.IgnorePatterns); err != nil {
-		return nil, fmt.Errorf("decode ignore patterns: %w", err)
-	}
 	if err := decodeIntSlice(instancesJSON, &settings.TargetInstanceIDs); err != nil {
 		return nil, fmt.Errorf("decode target instances: %w", err)
 	}
@@ -436,10 +455,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, errors.New("settings cannot be nil")
 	}
 
-	ignoreJSON, err := encodeStringSlice(settings.IgnorePatterns)
-	if err != nil {
-		return nil, fmt.Errorf("encode ignore patterns: %w", err)
-	}
 	instanceJSON, err := encodeIntSlice(settings.TargetInstanceIDs)
 	if err != nil {
 		return nil, fmt.Errorf("encode target instances: %w", err)
@@ -506,7 +521,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	query := `
 		INSERT INTO cross_seed_settings (
 			id, enabled, run_interval_minutes, start_paused, category,
-			ignore_patterns, target_instance_ids, target_indexer_ids,
+			target_instance_ids, target_indexer_ids,
 			max_results_per_run,
 			rss_source_categories, rss_source_tags,
 			rss_source_exclude_categories, rss_source_exclude_tags,
@@ -515,19 +530,20 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			find_individual_episodes, size_mismatch_tolerance_percent,
 			use_category_from_indexer, run_external_program_id,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
-			webhook_tags, inherit_source_tags, use_cross_category_suffix,
+			webhook_tags, inherit_source_tags,
+			use_cross_category_affix, category_affix_mode, category_affix,
+			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck
+			skip_recheck, skip_piece_boundary_safety_check
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
 			run_interval_minutes = excluded.run_interval_minutes,
 			start_paused = excluded.start_paused,
 			category = excluded.category,
-			ignore_patterns = excluded.ignore_patterns,
 			target_instance_ids = excluded.target_instance_ids,
 			target_indexer_ids = excluded.target_indexer_ids,
 			max_results_per_run = excluded.max_results_per_run,
@@ -548,12 +564,17 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			completion_search_tags = excluded.completion_search_tags,
 			webhook_tags = excluded.webhook_tags,
 			inherit_source_tags = excluded.inherit_source_tags,
-			use_cross_category_suffix = excluded.use_cross_category_suffix,
+			use_cross_category_affix = excluded.use_cross_category_affix,
+			category_affix_mode = excluded.category_affix_mode,
+			category_affix = excluded.category_affix,
+			use_custom_category = excluded.use_custom_category,
+			custom_category = excluded.custom_category,
 			skip_auto_resume_rss = excluded.skip_auto_resume_rss,
 			skip_auto_resume_seeded_search = excluded.skip_auto_resume_seeded_search,
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
-			skip_recheck = excluded.skip_recheck
+			skip_recheck = excluded.skip_recheck,
+			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -573,7 +594,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.RunIntervalMinutes,
 		settings.StartPaused,
 		category,
-		ignoreJSON,
 		instanceJSON,
 		indexerJSON,
 		settings.MaxResultsPerRun,
@@ -594,12 +614,17 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		completionSearchTags,
 		webhookTags,
 		settings.InheritSourceTags,
-		settings.UseCrossCategorySuffix,
+		settings.UseCrossCategoryAffix,
+		settings.CategoryAffixMode,
+		settings.CategoryAffix,
+		settings.UseCustomCategory,
+		settings.CustomCategory,
 		settings.SkipAutoResumeRSS,
 		settings.SkipAutoResumeSeededSearch,
 		settings.SkipAutoResumeCompletion,
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
+		settings.SkipPieceBoundarySafetyCheck,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)
@@ -767,6 +792,19 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		return nil, fmt.Errorf("get inserted run id: %w", err)
 	}
 
+	// Prune old runs, keeping only the 10 most recent
+	const pruneQuery = `
+		DELETE FROM cross_seed_runs
+		WHERE id NOT IN (
+			SELECT id FROM cross_seed_runs
+			ORDER BY started_at DESC
+			LIMIT 10
+		)
+	`
+	if _, err := s.db.ExecContext(ctx, pruneQuery); err != nil {
+		return nil, fmt.Errorf("prune old runs: %w", err)
+	}
+
 	return s.GetRun(ctx, runID)
 }
 
@@ -824,7 +862,11 @@ func (s *CrossSeedStore) GetRun(ctx context.Context, id int64) (*CrossSeedRun, e
 	`
 
 	row := s.db.QueryRowContext(ctx, query, id)
-	return scanCrossSeedRun(row)
+	run, err := scanCrossSeedRun(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return run, err
 }
 
 // GetLatestRun returns the most recent automation run.
@@ -841,7 +883,7 @@ func (s *CrossSeedStore) GetLatestRun(ctx context.Context) (*CrossSeedRun, error
 
 	row := s.db.QueryRowContext(ctx, query)
 	run, err := scanCrossSeedRun(row)
-	if err != nil && errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return run, err
@@ -945,6 +987,20 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	insertedID, err := result.LastInsertId()
 	if err != nil {
 		return nil, fmt.Errorf("get inserted search run id: %w", err)
+	}
+
+	// Prune old runs for this instance, keeping only the 10 most recent
+	const pruneQuery = `
+		DELETE FROM cross_seed_search_runs
+		WHERE instance_id = ? AND id NOT IN (
+			SELECT id FROM cross_seed_search_runs
+			WHERE instance_id = ?
+			ORDER BY started_at DESC
+			LIMIT 10
+		)
+	`
+	if _, err := s.db.ExecContext(ctx, pruneQuery, run.InstanceID, run.InstanceID); err != nil {
+		return nil, fmt.Errorf("prune old search runs: %w", err)
 	}
 
 	return s.GetSearchRun(ctx, insertedID)
@@ -1200,6 +1256,50 @@ func (s *CrossSeedStore) PruneFeedItems(ctx context.Context, olderThan time.Time
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, nil
+	}
+
+	return rows, nil
+}
+
+// MarkInterruptedSearchRuns marks any search runs still in 'running' status as failed.
+// This should be called at startup to reconcile runs interrupted by a crash/restart.
+func (s *CrossSeedStore) MarkInterruptedSearchRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
+	query := `
+		UPDATE cross_seed_search_runs
+		SET status = 'failed', completed_at = ?, error_message = ?
+		WHERE status = 'running'
+	`
+
+	result, err := s.db.ExecContext(ctx, query, completedAt, message)
+	if err != nil {
+		return 0, fmt.Errorf("mark interrupted search runs: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+
+	return rows, nil
+}
+
+// MarkInterruptedAutomationRuns marks any automation runs still in 'running' status as failed.
+// This should be called at startup to reconcile runs interrupted by a crash/restart.
+func (s *CrossSeedStore) MarkInterruptedAutomationRuns(ctx context.Context, completedAt time.Time, message string) (int64, error) {
+	query := `
+		UPDATE cross_seed_runs
+		SET status = 'failed', completed_at = ?, error_message = ?
+		WHERE status = 'running'
+	`
+
+	result, err := s.db.ExecContext(ctx, query, completedAt, message)
+	if err != nil {
+		return 0, fmt.Errorf("mark interrupted automation runs: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
 	}
 
 	return rows, nil

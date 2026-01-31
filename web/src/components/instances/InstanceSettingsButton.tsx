@@ -1,13 +1,12 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
-import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Cog } from "lucide-react"
+import { useState } from "react"
+import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
 
 interface InstanceSettingsButtonProps {
   instanceId: number
@@ -36,14 +35,20 @@ export function InstanceSettingsButton({
       {showButton && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 p-0"
+            <span
+              role="button"
+              tabIndex={0}
+              className="cursor-pointer"
               onClick={handleClick}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  handleClick(e as unknown as React.MouseEvent)
+                }
+              }}
             >
               <Cog className="h-4 w-4" />
-            </Button>
+            </span>
           </TooltipTrigger>
           <TooltipContent>
             Instance Settings

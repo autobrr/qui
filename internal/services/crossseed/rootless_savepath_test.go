@@ -1,7 +1,11 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -60,9 +64,7 @@ func (*rootlessSavePathSyncManager) GetAppPreferences(context.Context, int) (qbt
 
 func (m *rootlessSavePathSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
 	m.addedOptions = make(map[string]string, len(options))
-	for key, value := range options {
-		m.addedOptions[key] = value
-	}
+	maps.Copy(m.addedOptions, options)
 	return nil
 }
 
@@ -106,6 +108,30 @@ func (*rootlessSavePathSyncManager) CreateCategory(context.Context, int, string,
 	return nil
 }
 
+// rootlessSavePathInstanceStore is a mock instance provider for tests
+type rootlessSavePathInstanceStore struct {
+	instances map[int]*models.Instance
+}
+
+func (m *rootlessSavePathInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	if inst, ok := m.instances[id]; ok {
+		return inst, nil
+	}
+	// Return instance with hardlinks disabled by default
+	return &models.Instance{
+		ID:           id,
+		UseHardlinks: false,
+	}, nil
+}
+
+func (m *rootlessSavePathInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
+	result := make([]*models.Instance, 0, len(m.instances))
+	for _, inst := range m.instances {
+		result = append(result, inst)
+	}
+	return result, nil
+}
+
 func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testing.T) {
 	t.Parallel()
 
@@ -141,8 +167,18 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 		},
 	}
 
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+			},
+		},
+	}
+
 	service := &Service{
 		syncManager:      sync,
+		instanceStore:    instanceStore,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -161,7 +197,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -209,8 +245,18 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 		},
 	}
 
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+			},
+		},
+	}
+
 	service := &Service{
 		syncManager:      sync,
+		instanceStore:    instanceStore,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -229,7 +275,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -275,8 +321,18 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 		},
 	}
 
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+			},
+		},
+	}
+
 	service := &Service{
 		syncManager:      sync,
+		instanceStore:    instanceStore,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -295,7 +351,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 

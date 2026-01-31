@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package config
@@ -17,6 +17,8 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
+const testConfigContent = "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
+
 func TestDatabasePathResolution(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -26,8 +28,7 @@ func TestDatabasePathResolution(t *testing.T) {
 			name: "default_next_to_config",
 			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
 				configPath := filepath.Join(tmpDir, "config.toml")
-				content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
 				return configPath, "", filepath.Join(tmpDir, "qui.db")
 			},
 		},
@@ -37,7 +38,7 @@ func TestDatabasePathResolution(t *testing.T) {
 				configPath := filepath.Join(tmpDir, "config.toml")
 				dataDir := filepath.Join(tmpDir, "data")
 				require.NoError(t, os.MkdirAll(dataDir, 0o755))
-				content := fmt.Sprintf("host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\ndataDir = %q\n", dataDir)
+				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", dataDir)
 				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
 				return configPath, "", filepath.Join(dataDir, "qui.db")
 			},
@@ -50,7 +51,7 @@ func TestDatabasePathResolution(t *testing.T) {
 				envDataDir := filepath.Join(tmpDir, "env-data")
 				require.NoError(t, os.MkdirAll(configDataDir, 0o755))
 				require.NoError(t, os.MkdirAll(envDataDir, 0o755))
-				content := fmt.Sprintf("host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\ndataDir = %q\n", configDataDir)
+				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", configDataDir)
 				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
 				return configPath, envDataDir, filepath.Join(envDataDir, "qui.db")
 			},
@@ -58,7 +59,6 @@ func TestDatabasePathResolution(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			configPath, envValue, expectedDBPath := tt.prepare(t, tmpDir)
@@ -84,7 +84,6 @@ func TestGenerateSecureTokenHexOutput(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			token, err := generateSecureToken(tt.length)
 			require.NoError(t, err)
@@ -107,7 +106,6 @@ func TestGetEncryptionKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &AppConfig{Config: &domain.Config{SessionSecret: tt.secret}}
 
@@ -118,7 +116,7 @@ func TestGetEncryptionKey(t *testing.T) {
 				assert.Equal(t, []byte(tt.secret[:encryptionKeySize]), key)
 			} else {
 				expected := make([]byte, encryptionKeySize)
-				copy(expected, []byte(tt.secret))
+				copy(expected, tt.secret)
 				assert.Equal(t, expected, key)
 			}
 		})
@@ -165,7 +163,6 @@ func TestConfigDirResolution(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			inputPath := filepath.Join(tmpDir, filepath.Base(tt.input))
@@ -197,8 +194,7 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 			name: "config_file_path",
 			prepare: func(t *testing.T, tmpDir string) (string, string, int, string) {
 				configPath := filepath.Join(tmpDir, "myconfig.toml")
-				content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
 				return configPath, "localhost", 8080, filepath.Join(tmpDir, "qui.db")
 			},
 		},
@@ -215,7 +211,6 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			inputPath, expectedHost, expectedPort, expectedDBPath := tt.prepare(t, tmpDir)
@@ -251,8 +246,7 @@ func TestBindOrReadFromFile(t *testing.T) {
 
 	genConfigFile := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "myconfig.toml")
-		content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
-		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
 		return configPath
 	}
 

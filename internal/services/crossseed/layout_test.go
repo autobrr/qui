@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -13,10 +16,9 @@ func TestClassifyTorrentLayout(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		files          qbt.TorrentFiles
-		ignorePatterns []string
-		expect         TorrentLayout
+		name   string
+		files  qbt.TorrentFiles
+		expect TorrentLayout
 	}{
 		{
 			name: "single mkv with sidecar nfo",
@@ -43,19 +45,18 @@ func TestClassifyTorrentLayout(t *testing.T) {
 			expect: LayoutArchives,
 		},
 		{
-			name: "all ignored files",
+			name: "all ignored files (hardcoded patterns)",
 			files: qbt.TorrentFiles{
 				{Name: "readme.txt", Size: 512},
 				{Name: "info.nfo", Size: 1024},
 			},
-			ignorePatterns: []string{".txt", ".nfo"},
-			expect:         LayoutUnknown,
+			expect: LayoutUnknown,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := classifyTorrentLayout(tt.files, tt.ignorePatterns, stringutils.NewDefaultNormalizer())
+			layout := classifyTorrentLayout(tt.files, stringutils.NewDefaultNormalizer())
 			require.Equal(t, tt.expect, layout)
 		})
 	}

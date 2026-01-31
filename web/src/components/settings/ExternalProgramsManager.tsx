@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -102,18 +102,20 @@ export function ExternalProgramsManager() {
               Create External Program
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-w-full">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Create External Program</DialogTitle>
               <DialogDescription>
                 Configure an external program or script that can be executed from the torrent context menu.
               </DialogDescription>
             </DialogHeader>
+            <div className="flex-1 overflow-y-auto min-h-0">
             <ProgramForm
               onSubmit={(data) => createMutation.mutate(data)}
               onCancel={() => setShowCreateDialog(false)}
               isPending={createMutation.isPending}
             />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -200,16 +202,18 @@ export function ExternalProgramsManager() {
       {/* Edit Dialog */}
       {editProgram && (
         <Dialog open={true} onOpenChange={() => setEditProgram(null)}>
-          <DialogContent className="sm:max-w-2xl max-w-full">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Edit External Program</DialogTitle>
             </DialogHeader>
+            <div className="flex-1 overflow-y-auto min-h-0">
             <ProgramForm
               program={editProgram}
               onSubmit={(data) => updateMutation.mutate({ id: editProgram.id, data })}
               onCancel={() => setEditProgram(null)}
               isPending={updateMutation.isPending}
             />
+            </div>
           </DialogContent>
         </Dialog>
       )}
@@ -330,6 +334,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             <li><code className="bg-muted px-1 rounded">{"{state}"}</code> - Torrent state</li>
             <li><code className="bg-muted px-1 rounded">{"{size}"}</code> - Size in bytes</li>
             <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - Progress (0-1)</li>
+            <li><code className="bg-muted px-1 rounded">{"{comment}"}</code> - Torrent comment</li>
           </ul>
         </div>
       </div>

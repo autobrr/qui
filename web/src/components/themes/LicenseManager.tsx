@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -23,10 +24,13 @@ import {
   useLicenseDetails
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
+import { PGP_KEYS } from "@/lib/pgp-keys"
 import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { QUI_DISCORD_URL, SUPPORT_CRYPTOCURRENCY_URL, SUPPORT_DEVELOPMENT_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
-import { AlertTriangle, Bitcoin, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
+import { DiscordIcon, PolarIcon } from "@/components/icons"
+import { AlertTriangle, Bitcoin, ChevronDown, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -40,7 +44,7 @@ function maskLicenseKey(key: string): string {
 
 export function LicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
-  const [showCryptoDialog, setShowCryptoDialog] = useState(false)
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
@@ -137,8 +141,22 @@ export function LicenseManager() {
                     {hasPremiumAccess ? "Premium Access Active" :hasInvalidLicense ? "License Activation Required" :"Unlock Premium Themes"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"One-time purchase • $9.99 • All themes"}
+                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"Pay what you want (min $4.99) • Lifetime license • All themes"}
                   </p>
+                  {!hasPremiumAccess && !hasInvalidLicense && (
+                    <p className="text-xs text-muted-foreground">
+                      Pay via any method, then DM soup/ze0s on{" "}
+                      <a
+                        href={QUI_DISCORD_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline hover:no-underline"
+                      >
+                        Discord
+                      </a>{" "}
+                      to receive a 100% discount code. Redeem it as a free order on Polar and enter your license key here.
+                    </p>
+                  )}
 
                   {/* License Key Details - Show for both active and invalid licenses */}
                   {licenses && licenses.length > 0 && (
@@ -200,22 +218,11 @@ export function LicenseManager() {
                   </Button>
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
-                  <>
-                    <Button size="sm" asChild>
-                      <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
-                        <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                        Buy license
-                      </a>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowCryptoDialog(true)}
-                    >
-                      <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      Pay with Crypto
-                    </Button>
-                  </>
+                  <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
+                    <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 -ml-1 mr-1 sm:mr-2" />
+                    Get Premium
+                  </Button>
                 )}
               </div>
             </div>
@@ -372,50 +379,121 @@ export function LicenseManager() {
         </DialogContent>
       </Dialog>
 
-      {/* Crypto Payment Dialog */}
-      <Dialog open={showCryptoDialog} onOpenChange={setShowCryptoDialog}>
+      {/* Payment Options Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Bitcoin className="h-5 w-5" />
-              Pay with Cryptocurrency
+              <Sparkles className="h-5 w-5" />
+              Get Premium License
             </DialogTitle>
             <DialogDescription>
-              Support development directly with crypto. All payment methods unlock the same premium themes ($9.99 equivalent).
+              Pay what you want (min $4.99) • Lifetime license • All themes
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5">
-            <div className="rounded-lg border bg-background p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold">Get the current addresses</p>
-                <p className="text-xs text-muted-foreground">We accept all major cryptocurrencies.</p>
+          <div className="space-y-4">
+            {/* Step 1: Payment Methods */}
+            <div className="rounded-lg border bg-background p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</div>
+                <p className="text-sm font-semibold">Choose a payment method</p>
               </div>
-              <Button size="sm" asChild>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-8">
                 <a
-                  href="https://github.com/autobrr/qui#cryptocurrency"
+                  href={SUPPORT_DEVELOPMENT_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center"
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
-                  View on GitHub
-                  <ExternalLink className="h-4 w-4 ml-2" />
+                  <Heart className="h-5 w-5 text-pink-500" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">GitHub Sponsors & BMAC</p>
+                    <p className="text-xs text-muted-foreground">Card payments</p>
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
-              </Button>
+                <a
+                  href={SUPPORT_CRYPTOCURRENCY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
+                >
+                  <Bitcoin className="h-5 w-5 text-orange-500" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Cryptocurrency</p>
+                    <p className="text-xs text-muted-foreground">BTC, ETH, XMR, and more</p>
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                </a>
+              </div>
             </div>
 
-            <div className="rounded-lg bg-muted/30 border p-4 space-y-3">
-              <p className="text-sm font-medium">Redeem your premium license</p>
-              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>Open the README link above and send a payment using your preferred cryptocurrency and address.</li>
-                <li>Join our <a href="https://discord.autobrr.com/qui" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">Discord server</a>.</li>
-                <li>Share the transaction hash with a maintainer to receive a 100% discount code.</li>
-              </ol>
+            {/* Step 2: Discord DM */}
+            <div className="rounded-lg border bg-background p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">2</div>
+                <p className="text-sm font-semibold">Get your discount code</p>
+              </div>
+              <div className="pl-8 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  DM <span className="font-medium text-foreground">soup</span> or <span className="font-medium text-foreground">ze0s</span> on Discord (depending on who you paid) with your transaction hash or receipt.
+                </p>
+                <Collapsible>
+                  <p className="text-sm text-muted-foreground">
+                    Alternatively, email <a href="mailto:s0up4200@pm.me" className="font-medium text-foreground hover:underline">s0up4200@pm.me</a>
+                    <CollapsibleTrigger className="ml-1 inline-flex items-center text-xs text-muted-foreground hover:text-foreground">
+                      (PGP key <ChevronDown className="h-3 w-3" />)
+                    </CollapsibleTrigger>
+                  </p>
+                  <CollapsibleContent>
+                    <pre className="mt-2 p-2 bg-muted rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all font-mono">
+                      {PGP_KEYS.soup}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
+                <Button size="sm" variant="outline" asChild>
+                  <a href={QUI_DISCORD_URL} target="_blank" rel="noopener noreferrer">
+                    <DiscordIcon className="h-4 w-4 mr-2" />
+                    Join Discord
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* Step 3: Redeem on Polar */}
+            <div className="rounded-lg border bg-background p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>
+                <p className="text-sm font-semibold">Redeem your code</p>
+              </div>
+              <div className="pl-8 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Use your 100% discount code on Polar to complete a free order and receive your license key.
+                </p>
+                <Button size="sm" variant="outline" asChild>
+                  <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
+                    <PolarIcon className="h-4 w-4 mr-2" />
+                    Redeem on Polar
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* Step 4: Enter License */}
+            <div className="rounded-lg border bg-background p-4">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">4</div>
+                <p className="text-sm font-semibold">Activate your license</p>
+              </div>
+              <p className="text-sm text-muted-foreground pl-8 mt-2">
+                Close this dialog and click <span className="font-medium text-foreground">Add License</span> to enter your key.
+              </p>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCryptoDialog(false)}>
+            <Button variant="outline" onClick={() => setShowPaymentDialog(false)}>
               Close
             </Button>
           </DialogFooter>

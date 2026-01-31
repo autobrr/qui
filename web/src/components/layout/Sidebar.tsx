@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -31,7 +31,7 @@ import {
   Search,
   SearchCode,
   Settings,
-  Wrench
+  Zap
 } from "lucide-react"
 
 interface NavItem {
@@ -59,14 +59,19 @@ const navigation: NavItem[] = [
     params: {},
   },
   {
-    title: "Services",
-    href: "/services",
-    icon: Wrench,
+    title: "Automations",
+    href: "/automations",
+    icon: Zap,
   },
   {
     title: "Backups",
     href: "/backups",
     icon: Archive,
+  },
+  {
+    title: "RSS",
+    href: "/rss",
+    icon: Rss,
   },
   {
     title: "Settings",
@@ -190,7 +195,7 @@ export function Sidebar() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
-                            Seeded search running
+                            Scan running
                           </TooltipContent>
                         </Tooltip>
                       )}

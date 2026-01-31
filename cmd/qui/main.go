@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package main
@@ -32,13 +32,16 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
-	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -482,12 +485,18 @@ func (app *Application) runServer() {
 		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
 	}
 
-	trackerRuleStore := models.NewTrackerRuleStore(db)
+	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+	logExclusionsStore := models.NewLogExclusionsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
+	arrInstanceStore, err := models.NewArrInstanceStore(db, cfg.GetEncryptionKey())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize ARR instance store")
+	}
+	arrIDCacheStore := models.NewArrIDCacheStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
 
 	// Initialize services
@@ -507,11 +516,19 @@ func (app *Application) runServer() {
 	defer clientPool.Close()
 
 	// Initialize managers
-	syncManager := qbittorrent.NewSyncManager(clientPool)
+	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
 	syncManager.SetFilesManager(filesManagerService)
+
+	// Start background orphan cleanup for torrent files cache
+	filesCleanupCtx, filesCleanupCancel := context.WithCancel(context.Background())
+	defer filesCleanupCancel()
+	filesManagerService.StartOrphanCleanup(filesCleanupCtx,
+		&instanceListerAdapter{store: instanceStore},
+		&torrentHashAdapter{syncManager: syncManager},
+	)
 
 	// Initialize Torznab indexer store
 	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
@@ -551,12 +568,23 @@ func (app *Application) runServer() {
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
+	// Initialize ARR service for Sonarr/Radarr ID lookup
+	arrService := arr.NewService(arrInstanceStore, arrIDCacheStore)
+	log.Info().Msg("ARR service initialized")
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore, cfg.Config.CrossSeedRecoverErroredTorrents)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
+	automationActivityStore := models.NewAutomationActivityStore(db)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager)
+
+	orphanScanStore := models.NewOrphanScanStore(db)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
+
+	dirScanStore := models.NewDirScanStore(db)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -570,9 +598,19 @@ func (app *Application) runServer() {
 	defer reannounceCancel()
 	reannounceService.Start(reannounceCtx)
 
-	trackerRulesCtx, trackerRulesCancel := context.WithCancel(context.Background())
-	defer trackerRulesCancel()
-	trackerRuleService.Start(trackerRulesCtx)
+	automationsCtx, automationsCancel := context.WithCancel(context.Background())
+	defer automationsCancel()
+	automationService.Start(automationsCtx)
+
+	orphanScanCtx, orphanScanCancel := context.WithCancel(context.Background())
+	defer orphanScanCancel()
+	orphanScanService.Start(orphanScanCtx)
+
+	dirScanCtx, dirScanCancel := context.WithCancel(context.Background())
+	defer dirScanCancel()
+	if err := dirScanService.Start(dirScanCtx); err != nil {
+		log.Error().Err(err).Msg("failed to start dirscan service")
+	}
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -657,12 +695,25 @@ func (app *Application) runServer() {
 		CrossSeedService:                 crossSeedService,
 		JackettService:                   jackettService,
 		TorznabIndexerStore:              torznabIndexerStore,
-		TrackerRuleStore:                 trackerRuleStore,
-		TrackerRuleService:               trackerRuleService,
+		AutomationStore:                  automationStore,
+		AutomationActivityStore:          automationActivityStore,
+		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
+		LogExclusionsStore:               logExclusionsStore,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
+		OrphanScanStore:                  orphanScanStore,
+		OrphanScanService:                orphanScanService,
+		DirScanService:                   dirScanService,
+		ArrInstanceStore:                 arrInstanceStore,
+		ArrService:                       arrService,
 	})
+
+	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
+	// Use a short timeout so a locked DB can't hang startup.
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer reconcileCancel()
+	crossSeedService.ReconcileInterruptedRuns(reconcileCtx)
 
 	errorChannel := make(chan error)
 	serverReady := make(chan struct{}, 1)
@@ -751,4 +802,41 @@ func (app *Application) runServer() {
 	//}
 	//
 	//log.Info().Msg("Server stopped")
+}
+
+// instanceListerAdapter implements filesmanager.InstanceLister
+type instanceListerAdapter struct {
+	store *models.InstanceStore
+}
+
+func (a *instanceListerAdapter) ListInstanceIDs(ctx context.Context) ([]int, error) {
+	instances, err := a.store.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	// Only return active instances - disabled ones can't be queried for current hashes
+	ids := make([]int, 0, len(instances))
+	for _, inst := range instances {
+		if inst.IsActive {
+			ids = append(ids, inst.ID)
+		}
+	}
+	return ids, nil
+}
+
+// torrentHashAdapter implements filesmanager.TorrentHashProvider
+type torrentHashAdapter struct {
+	syncManager *qbittorrent.SyncManager
+}
+
+func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
+	torrents, err := a.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get torrents: %w", err)
+	}
+	hashes := make([]string, len(torrents))
+	for i := range torrents {
+		hashes[i] = torrents[i].Hash
+	}
+	return hashes, nil
 }

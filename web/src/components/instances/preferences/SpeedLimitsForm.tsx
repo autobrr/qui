@@ -1,17 +1,17 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import React from "react"
-import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, Upload, Clock } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useForm } from "@tanstack/react-form"
+import { Clock, Download, Upload } from "lucide-react"
+import React from "react"
 import { toast } from "sonner"
 
 // Convert bytes/s to MiB/s for display
@@ -49,7 +49,16 @@ function SpeedLimitInput({
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
 }) {
-  const displayValue = bytesToMiB(value)
+  const [localValue, setLocalValue] = React.useState("")
+  const [isFocused, setIsFocused] = React.useState(false)
+
+  // Sync local value from props when not focused
+  React.useEffect(() => {
+    if (!isFocused) {
+      const displayValue = bytesToMiB(value)
+      setLocalValue(displayValue === 0 ? "" : displayValue.toFixed(1))
+    }
+  }, [value, isFocused])
 
   return (
     <div className="space-y-2">
@@ -62,13 +71,16 @@ function SpeedLimitInput({
           type="number"
           min="0"
           step="0.1"
-          value={displayValue === 0 ? "" : displayValue.toFixed(1)}
+          value={localValue}
+          onFocus={() => setIsFocused(true)}
           onChange={(e) => {
+            setLocalValue(e.target.value)
             const mibValue = e.target.value === "" ? 0 : parseFloat(e.target.value)
             if (!isNaN(mibValue) && mibValue >= 0) {
               onChange(mibToBytes(mibValue))
             }
           }}
+          onBlur={() => setIsFocused(false)}
           placeholder="0 (Unlimited)"
           className="flex-1"
         />

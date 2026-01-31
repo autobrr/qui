@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package stringutils
@@ -94,6 +94,11 @@ func TestNormalizeForMatching(t *testing.T) {
 		// Hyphen handling
 		{"hyphen", "Spider-Man", "spider man"},
 		{"multiple hyphens", "X-Men: Days of Future Past", "x men days of future past"},
+
+		// Ampersand handling
+		{"ampersand", "His & Hers", "his and hers"},
+		{"ampersand no spaces", "Law&Order", "law and order"},
+		{"ampersand with spaces", "Will & Grace", "will and grace"},
 
 		// Combined
 		{"all punctuation", "Bob's Place: Spider-Man", "bobs place spider man"},
@@ -200,6 +205,16 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"curly vs straight apostrophe",
 			"It's Always Sunny",
 			"It's Always Sunny",
+		},
+		{
+			"ampersand vs and",
+			"His & Hers S01",
+			"His and Hers S01",
+		},
+		{
+			"ampersand law and order",
+			"Law & Order SVU",
+			"Law and Order SVU",
 		},
 	}
 

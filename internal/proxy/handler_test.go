@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package proxy
@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -188,4 +189,38 @@ func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	require.False(t, parseErrorLogged.Load(), "expected sync/maindata response to parse successfully")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, payload, rec.Body.Bytes())
+}
+
+func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
+	t.Helper()
+
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	require.NotNil(t, handler)
+
+	rt, ok := handler.proxy.Transport.(*RetryTransport)
+	require.True(t, ok, "expected handler to configure RetryTransport")
+	require.NotNil(t, rt.baseSelector, "expected RetryTransport selector to be configured")
+
+	var selectedCalled atomic.Bool
+	selected := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		selectedCalled.Store(true)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/v2/torrents/add", strings.NewReader("x"))
+	ctx := context.WithValue(req.Context(), proxyContextKey, &proxyContext{
+		httpClient: &http.Client{Transport: selected},
+	})
+	req = req.WithContext(ctx)
+
+	resp, err := handler.proxy.Transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.True(t, selectedCalled.Load(), "expected instance transport to be used")
+	require.NoError(t, resp.Body.Close())
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -15,19 +15,22 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstances } from "@/hooks/useInstances"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
+import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ImperativePanelHandle } from "react-resizable-panels"
 
 interface TorrentsProps {
   instanceId: number
   instanceName: string
-  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }
-  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => void
+  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }
+  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }) => void
 }
 
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
@@ -52,18 +55,87 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     setSelectionInfo(info)
   }, [])
 
-  // Sidebar width: 320px normal, 260px dense
-  const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
+  // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
+  const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
+  const navigate = useNavigate()
+
+  // Handle deep link to a specific torrent (from cross-seed navigation)
+  useEffect(() => {
+    if (!search.torrent) return
+
+    const hash = search.torrent
+    const tab = search.tab
+
+    // Fetch the torrent by hash and select it
+    api.getTorrents(instanceId, {
+      filters: {
+        expr: `Hash == "${hash}"`,
+        status: [],
+        excludeStatus: [],
+        categories: [],
+        excludeCategories: [],
+        tags: [],
+        excludeTags: [],
+        trackers: [],
+        excludeTrackers: [],
+      },
+      limit: 1,
+    }).then((response) => {
+      const torrent = response.torrents[0]
+      if (torrent) {
+        setSelectedTorrent(torrent)
+        if (tab) {
+          setInitialDetailsTab(tab)
+        }
+      }
+      // Clear the search params after consuming
+      onSearchChange({ modal: search.modal })
+    }).catch(() => {
+      // Silently fail - torrent might not exist
+      onSearchChange({ modal: search.modal })
+    })
+  }, [instanceId, search, onSearchChange])
+
+  // Navigate to a cross-seed match torrent
+  const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
+    if (targetInstanceId === instanceId) {
+      // Same instance - fetch and select the torrent directly
+      api.getTorrents(instanceId, {
+        filters: {
+          expr: `Hash == "${torrentHash}"`,
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: [],
+        },
+        limit: 1,
+      }).then((response) => {
+        const torrent = response.torrents[0]
+        if (torrent) {
+          setSelectedTorrent(torrent)
+          setInitialDetailsTab("general")
+        }
+      })
+    } else {
+      // Different instance - navigate with search params
+      navigate({
+        to: "/instances/$instanceId",
+        params: { instanceId: String(targetInstanceId) },
+        search: { torrent: torrentHash, tab: "general" },
+      })
+    }
+  }, [instanceId, navigate])
 
   // Mobile detection for responsive layout
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false
-    return window.innerWidth < 768
-  })
+  const isMobile = useIsMobile()
 
   // Ref for controlling the details panel imperatively (auto-expand/collapse)
   const detailsPanelRef = useRef<ImperativePanelHandle>(null)
@@ -207,31 +279,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     return () => window.removeEventListener("qui-open-mobile-filters", handler)
   }, [])
 
-  // Mobile detection media query listener
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 767px)")
-
-    const handleMobileChange = (event: MediaQueryListEvent) => {
-      setIsMobile(event.matches)
-    }
-
-    // Set initial value
-    setIsMobile(mediaQuery.matches)
-
-    // Add listener
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", handleMobileChange)
-      return () => mediaQuery.removeEventListener("change", handleMobileChange)
-    } else {
-      // Legacy fallback
-      const legacyMediaQuery = mediaQuery as MediaQueryList & {
-        addListener?: (listener: (event: MediaQueryListEvent) => void) => void
-        removeListener?: (listener: (event: MediaQueryListEvent) => void) => void
-      }
-      legacyMediaQuery.addListener?.(handleMobileChange)
-      return () => legacyMediaQuery.removeListener?.(handleMobileChange)
-    }
-  }, [])
 
   // Auto-expand details panel when a torrent is selected on desktop
   useEffect(() => {
@@ -262,35 +309,10 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
   // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 768px)")
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      if (event.matches) {
-        setMobileFilterOpen(false)
-      }
-    }
-
-    if (mediaQuery.matches) {
+    if (!isMobile) {
       setMobileFilterOpen(false)
     }
-
-    const supportsAddEventListener = typeof mediaQuery.addEventListener === "function"
-    if (supportsAddEventListener) {
-      mediaQuery.addEventListener("change", handleChange)
-    } else {
-      type MediaQueryListLegacy = MediaQueryList & {
-        addListener?: (listener: (event: MediaQueryListEvent) => void) => void
-        removeListener?: (listener: (event: MediaQueryListEvent) => void) => void
-      }
-
-      const legacyMediaQuery = mediaQuery as MediaQueryListLegacy
-      legacyMediaQuery.addListener?.(handleChange)
-
-      return () => legacyMediaQuery.removeListener?.(handleChange)
-    }
-
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [])
+  }, [isMobile])
 
   return (
     <div className="flex h-full relative">
@@ -417,6 +439,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                         onInitialTabConsumed={handleInitialTabConsumed}
                         layout="horizontal"
                         onClose={() => setSelectedTorrent(null)}
+                        onNavigateToTorrent={handleNavigateToTorrent}
                       />
                     </div>
                   </ResizablePanel>
@@ -480,6 +503,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                 initialTab={initialDetailsTab}
                 onInitialTabConsumed={handleInitialTabConsumed}
                 onClose={() => setSelectedTorrent(null)}
+                onNavigateToTorrent={handleNavigateToTorrent}
               />
             )}
           </SheetContent>

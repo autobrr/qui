@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -54,7 +57,7 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 			description: "same fansub group should match",
 		},
 		{
-			name: "source has site, candidate does not - should not match",
+			name: "source has site, candidate does not - should match",
 			source: rls.Release{
 				Title:   "Kingdom",
 				Series:  6,
@@ -66,8 +69,8 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 				Series:  6,
 				Episode: 11,
 			},
-			wantMatch:   false,
-			description: "candidate must have matching site when source has one",
+			wantMatch:   true,
+			description: "missing site metadata should not block a match",
 		},
 		{
 			name: "candidate has site, source does not - should match",

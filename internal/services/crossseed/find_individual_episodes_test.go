@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -74,7 +77,6 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:            true,
 		RSSAutomationTags:      []string{"cross-seed"},
-		IgnorePatterns:         []string{},
 		TargetInstanceIDs:      []int{instanceID},
 		FindIndividualEpisodes: true,
 	}
@@ -119,9 +121,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		searchResultCache:   ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				IgnorePatterns: []string{"*.nfo"},
-			}, nil
+			return &models.CrossSeedAutomationSettings{}, nil
 		},
 	}
 
@@ -169,7 +169,6 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
-	require.Equal(t, []string{"*.nfo"}, captured.IgnorePatterns)
 }
 
 type episodeInstanceStore struct {

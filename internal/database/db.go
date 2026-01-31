@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package database provides a SQLite database layer with string interning.
@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -276,9 +277,7 @@ func (t *Tx) promoteStatementsToCache() {
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
-			// Log but don't fail - caching is an optimization
-			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
-			continue
+			continue // silently skip - caching is best-effort
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
@@ -592,6 +591,15 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "VACUUM")
 }
 
+const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
+
+func isSQLiteNestedTxErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
+}
+
 const stmtClosedErrMsg = "statement is closed"
 
 type stmtExecutor[T any] interface {
@@ -671,18 +679,42 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, execResult{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, queryRows{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if isWriteQuery(query) {
+		db.writerMu.Lock()
+		row := db.queryRowUnlocked(ctx, query, args...)
+		db.writerMu.Unlock()
+		return row
+	}
+	return db.queryRowUnlocked(ctx, query, args...)
+}
+
+func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		if isWriteQuery(query) {
@@ -838,8 +870,18 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock() // Unlock on error
-		return nil, err
+		db.writerMu.Unlock()
+		if isSQLiteNestedTxErr(err) {
+			// This indicates a bug: a previous transaction failed to rollback properly,
+			// leaving the connection wedged. Log with stack trace to help diagnose.
+			recordWedgedTransaction()
+			log.Error().
+				Err(err).
+				Str("stack", string(debug.Stack())).
+				Msg("SQLite writer connection is wedged in a transaction - this indicates a bug where a previous transaction failed to rollback properly")
+			return nil, fmt.Errorf("database connection wedged: %w", err)
+		}
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
@@ -913,8 +955,15 @@ func (db *DB) migrate() error {
 			filename TEXT NOT NULL UNIQUE,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
-	`); err != nil {
-		return fmt.Errorf("failed to create migrations table: %w", err)
+		`); err != nil {
+			return fmt.Errorf("failed to create migrations table: %w", err)
+		}
+
+	// Handle historical migration file renames.
+	// If we ever rename an embedded migration file, we must update the filename
+	// stored in the migrations table so existing databases don't re-run it.
+	if err := db.normalizeMigrationFilenames(ctx); err != nil {
+		return fmt.Errorf("failed to normalize migration filenames: %w", err)
 	}
 
 	// Get all migration files
@@ -946,6 +995,41 @@ func (db *DB) migrate() error {
 	// Apply all pending migrations in a single transaction
 	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
+	renames := []struct {
+		from string
+		to   string
+	}{
+		{
+			from: "052_add_dir_scan.sql",
+			to:   "053_add_dir_scan.sql",
+		},
+	}
+
+	for _, r := range renames {
+		// If both entries exist, keep the new name.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			DELETE FROM migrations
+			WHERE filename = ?
+			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+		}
+
+		// Rename old -> new if the new entry doesn't already exist.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			UPDATE migrations
+			SET filename = ?
+			WHERE filename = ?
+			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.to, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+		}
 	}
 
 	return nil
@@ -1178,6 +1262,10 @@ const referencedStringsInsertQuery = `
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
 	UNION ALL
 	SELECT error_message_id AS string_id FROM torznab_indexer_errors WHERE error_message_id IS NOT NULL
+	UNION ALL
+	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
+	UNION ALL
+	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {

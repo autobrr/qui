@@ -15,12 +15,13 @@ import { Route as AddRouteImport } from './routes/add'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated/services'
 import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
+import { Route as AuthenticatedRssRouteImport } from './routes/_authenticated/rss'
 import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCrossSeedRouteImport } from './routes/_authenticated/cross-seed'
 import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticated/backups'
+import { Route as AuthenticatedAutomationsRouteImport } from './routes/_authenticated/automations'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
 
@@ -53,14 +54,14 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedServicesRoute = AuthenticatedServicesRouteImport.update({
-  id: '/services',
-  path: '/services',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedSearchRoute = AuthenticatedSearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedRssRoute = AuthenticatedRssRouteImport.update({
+  id: '/rss',
+  path: '/rss',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedInstancesRoute = AuthenticatedInstancesRouteImport.update({
@@ -83,6 +84,12 @@ const AuthenticatedBackupsRoute = AuthenticatedBackupsRouteImport.update({
   path: '/backups',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAutomationsRoute =
+  AuthenticatedAutomationsRouteImport.update({
+    id: '/automations',
+    path: '/automations',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedInstancesIndexRoute =
   AuthenticatedInstancesIndexRouteImport.update({
     id: '/',
@@ -101,12 +108,13 @@ export interface FileRoutesByFullPath {
   '/add': typeof AddRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/automations': typeof AuthenticatedAutomationsRoute
   '/backups': typeof AuthenticatedBackupsRoute
   '/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
+  '/rss': typeof AuthenticatedRssRoute
   '/search': typeof AuthenticatedSearchRoute
-  '/services': typeof AuthenticatedServicesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances/': typeof AuthenticatedInstancesIndexRoute
@@ -116,11 +124,12 @@ export interface FileRoutesByTo {
   '/add': typeof AddRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/automations': typeof AuthenticatedAutomationsRoute
   '/backups': typeof AuthenticatedBackupsRoute
   '/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/rss': typeof AuthenticatedRssRoute
   '/search': typeof AuthenticatedSearchRoute
-  '/services': typeof AuthenticatedServicesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances': typeof AuthenticatedInstancesIndexRoute
@@ -132,12 +141,13 @@ export interface FileRoutesById {
   '/add': typeof AddRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/_authenticated/automations': typeof AuthenticatedAutomationsRoute
   '/_authenticated/backups': typeof AuthenticatedBackupsRoute
   '/_authenticated/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
+  '/_authenticated/rss': typeof AuthenticatedRssRoute
   '/_authenticated/search': typeof AuthenticatedSearchRoute
-  '/_authenticated/services': typeof AuthenticatedServicesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
@@ -149,12 +159,13 @@ export interface FileRouteTypes {
     | '/add'
     | '/login'
     | '/setup'
+    | '/automations'
     | '/backups'
     | '/cross-seed'
     | '/dashboard'
     | '/instances'
+    | '/rss'
     | '/search'
-    | '/services'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances/'
@@ -164,11 +175,12 @@ export interface FileRouteTypes {
     | '/add'
     | '/login'
     | '/setup'
+    | '/automations'
     | '/backups'
     | '/cross-seed'
     | '/dashboard'
+    | '/rss'
     | '/search'
-    | '/services'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances'
@@ -179,12 +191,13 @@ export interface FileRouteTypes {
     | '/add'
     | '/login'
     | '/setup'
+    | '/_authenticated/automations'
     | '/_authenticated/backups'
     | '/_authenticated/cross-seed'
     | '/_authenticated/dashboard'
     | '/_authenticated/instances'
+    | '/_authenticated/rss'
     | '/_authenticated/search'
-    | '/_authenticated/services'
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
@@ -242,18 +255,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/services': {
-      id: '/_authenticated/services'
-      path: '/services'
-      fullPath: '/services'
-      preLoaderRoute: typeof AuthenticatedServicesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/search': {
       id: '/_authenticated/search'
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof AuthenticatedSearchRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/rss': {
+      id: '/_authenticated/rss'
+      path: '/rss'
+      fullPath: '/rss'
+      preLoaderRoute: typeof AuthenticatedRssRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/instances': {
@@ -282,6 +295,13 @@ declare module '@tanstack/react-router' {
       path: '/backups'
       fullPath: '/backups'
       preLoaderRoute: typeof AuthenticatedBackupsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/automations': {
+      id: '/_authenticated/automations'
+      path: '/automations'
+      fullPath: '/automations'
+      preLoaderRoute: typeof AuthenticatedAutomationsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/instances/': {
@@ -319,22 +339,24 @@ const AuthenticatedInstancesRouteWithChildren =
   )
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedAutomationsRoute: typeof AuthenticatedAutomationsRoute
   AuthenticatedBackupsRoute: typeof AuthenticatedBackupsRoute
   AuthenticatedCrossSeedRoute: typeof AuthenticatedCrossSeedRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
+  AuthenticatedRssRoute: typeof AuthenticatedRssRoute
   AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
-  AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAutomationsRoute: AuthenticatedAutomationsRoute,
   AuthenticatedBackupsRoute: AuthenticatedBackupsRoute,
   AuthenticatedCrossSeedRoute: AuthenticatedCrossSeedRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
+  AuthenticatedRssRoute: AuthenticatedRssRoute,
   AuthenticatedSearchRoute: AuthenticatedSearchRoute,
-  AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
 

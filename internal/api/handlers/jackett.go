@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const (
@@ -107,11 +108,11 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Validate request - require either query or advanced parameters
-	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
-		req.Year > 0 || req.Season != nil || req.Episode != nil
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
+		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
 	if req.Query == "" && !hasAdvancedParams {
-		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
+		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
 		return
 	}
 
@@ -178,11 +179,11 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate request - require either query or advanced parameters
-	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
-		req.Year > 0 || req.Season != nil || req.Episode != nil
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
+		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
 	if req.Query == "" && !hasAdvancedParams {
-		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
+		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
 		return
 	}
 
@@ -858,7 +859,7 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 
 	result, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey)
 	if err != nil {
-		log.Error().Err(err).Str("base_url", req.BaseURL).Msg("Failed to discover indexers")
+		log.Error().Str("base_url", redact.URLString(req.BaseURL)).Str("error", redact.String(err.Error())).Msg("Failed to discover indexers")
 		RespondError(w, http.StatusInternalServerError, "Failed to discover indexers")
 		return
 	}

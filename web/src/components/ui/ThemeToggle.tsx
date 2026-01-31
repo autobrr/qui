@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -137,7 +137,7 @@ export const ThemeToggle: React.FC = () => {
           description: "License check failed. Premium theme switching is temporarily unavailable.",
         });
       } else {
-        toast.error("This is a premium theme. Please purchase a license to use it.");
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
       }
       return;
     }
@@ -157,7 +157,7 @@ export const ThemeToggle: React.FC = () => {
           description: "License check failed. Premium theme switching is temporarily unavailable.",
         });
       } else {
-        toast.error("This is a premium theme. Please purchase a license to use it.");
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
       }
       return;
     }

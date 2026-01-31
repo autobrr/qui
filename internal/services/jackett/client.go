@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torrent blobs
@@ -39,6 +40,16 @@ func (e *DownloadError) Error() string {
 func (e *DownloadError) Is(target error) bool {
 	_, ok := target.(*DownloadError)
 	return ok
+}
+
+// MagnetDownloadError indicates that the download endpoint redirected to a magnet URL.
+// Callers should add the magnet directly to the torrent client.
+type MagnetDownloadError struct {
+	MagnetURL string
+}
+
+func (e *MagnetDownloadError) Error() string {
+	return fmt.Sprintf("torrent download redirected to magnet link: %s", e.MagnetURL)
 }
 
 // IsRateLimited returns true if this error indicates rate limiting (HTTP 429).
@@ -252,7 +263,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*t
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("jackett caps request failed: %w", err)
+		return nil, fmt.Errorf("jackett caps request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -287,7 +298,7 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("prowlarr caps request failed: %w", err)
+		return nil, fmt.Errorf("prowlarr caps request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -322,7 +333,7 @@ func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("native caps request failed: %w", err)
+		return nil, fmt.Errorf("native caps request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -348,6 +359,18 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 		downloadURL = strings.TrimRight(c.baseURL, "/") + "/" + strings.TrimLeft(downloadURL, "/")
 	}
 
+	checkRedirect := c.httpClient.CheckRedirect
+	redirectClient := *c.httpClient
+	redirectClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if strings.EqualFold(req.URL.Scheme, "magnet") {
+			return http.ErrUseLastResponse
+		}
+		if checkRedirect != nil {
+			return checkRedirect(req, via)
+		}
+		return nil
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build download request: %w", err)
@@ -362,14 +385,22 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 		req.URL.RawQuery = query.Encode()
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := redirectClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("torrent download failed: %w", err)
+		return nil, fmt.Errorf("torrent download failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode < http.StatusBadRequest {
+		location := strings.TrimSpace(resp.Header.Get("Location"))
+		if strings.HasPrefix(strings.ToLower(location), "magnet:") {
+			return nil, &MagnetDownloadError{MagnetURL: location}
+		}
+		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL)}
+	}
+
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: downloadURL}
+		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL)}
 	}
 
 	limitedReader := io.LimitReader(resp.Body, maxTorrentDownloadBytes+1)

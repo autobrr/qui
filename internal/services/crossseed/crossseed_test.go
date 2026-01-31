@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -1227,7 +1227,7 @@ func TestPartialInPackIntegration(t *testing.T) {
 
 	// Step 1: Verify matching produces partial-in-pack
 	// The episode's files should be found inside the season pack's files
-	matchType := svc.getMatchType(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles, nil)
+	matchType := svc.getMatchType(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles)
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 
@@ -1275,7 +1275,7 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	collectionRelease := svc.releaseCache.Parse(collectionName)
 
 	// Step 1: Verify matching produces partial-in-pack
-	matchType := svc.getMatchType(movieRelease, collectionRelease, movieFiles, collectionFiles, nil)
+	matchType := svc.getMatchType(movieRelease, collectionRelease, movieFiles, collectionFiles)
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
 
@@ -1414,7 +1414,9 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				UseCategoryFromIndexer: true,
-				UseCrossCategorySuffix: true,
+				UseCrossCategoryAffix:  true,
+				CategoryAffixMode:      models.CategoryAffixModeSuffix,
+				CategoryAffix:          ".cross",
 			},
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "IndexerCat",
@@ -1467,6 +1469,126 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "movies.cross",
 			expectedCrossCategory: "movies.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode adds prefix to category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "cross/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode with nested category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies/1080p",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies/1080p",
+			expectedCrossCategory: "cross/movies/1080p",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode with empty category stays empty",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "",
+			expectedCrossCategory: "",
+			expectedTags:          []string{},
+		},
+		{
+			name: "no double prefix for already prefixed category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "cross/movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross/movies",
+			expectedCrossCategory: "cross/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "suffix mode adds suffix to category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "tv",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModeSuffix,
+				CategoryAffix:         ".cross",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "tv",
+			expectedCrossCategory: "tv.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "affix disabled returns category unchanged",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: false,
+				CategoryAffixMode:     models.CategoryAffixModeSuffix,
+				CategoryAffix:         ".cross",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "movies",
 			expectedTags:          []string{},
 		},
 	}
@@ -3561,7 +3683,6 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
 
@@ -3662,7 +3783,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
 
@@ -3747,7 +3867,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3822,7 +3941,6 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3900,7 +4018,6 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3977,7 +4094,6 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -4777,7 +4893,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 		{
 			name: "RSS include categories passed through",
 			settings: &models.CrossSeedAutomationSettings{
-				TargetInstanceIDs:  []int{instanceID},
+				TargetInstanceIDs:   []int{instanceID},
 				RSSSourceCategories: []string{"movies-LTS", "tv-LTS"},
 			},
 			expectCategories:        []string{"movies-LTS", "tv-LTS"},
@@ -4810,7 +4926,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 		{
 			name: "RSS exclude tags passed through",
 			settings: &models.CrossSeedAutomationSettings{
-				TargetInstanceIDs:      []int{instanceID},
+				TargetInstanceIDs:    []int{instanceID},
 				RSSSourceExcludeTags: []string{"no-cross-seed", "temporary"},
 			},
 			expectCategories:        nil,

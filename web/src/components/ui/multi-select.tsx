@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -10,6 +15,8 @@ export interface Option {
   label: string
   value: string
   level?: number
+  /** Optional icon element to display before the label */
+  icon?: React.ReactNode
 }
 
 interface MultiSelectProps {
@@ -21,6 +28,8 @@ interface MultiSelectProps {
   creatable?: boolean
   onCreateOption?: (inputValue: string) => void
   disabled?: boolean
+  /** Hide the check icon in dropdown items (useful when options have icons) */
+  hideCheckIcon?: boolean
 }
 
 export function MultiSelect({
@@ -32,6 +41,7 @@ export function MultiSelect({
   creatable = false,
   onCreateOption,
   disabled = false,
+  hideCheckIcon = false,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState("")
@@ -73,7 +83,9 @@ export function MultiSelect({
         >
           <div className="flex flex-wrap gap-1">
             {selected.length > 0 ? (
-              selected.map((item) => (
+              selected.map((item) => {
+                const option = options.find((o) => o.value === item)
+                return (
                 <Badge
                   variant="secondary"
                   key={item}
@@ -83,7 +95,8 @@ export function MultiSelect({
                     handleUnselect(item)
                   }}
                 >
-                  {options.find((option) => option.value === item)?.label || item}
+                  {option?.icon && <span className="mr-1 shrink-0">{option.icon}</span>}
+                  {option?.label || item}
                   <span
                     role="button"
                     tabIndex={0}
@@ -107,7 +120,7 @@ export function MultiSelect({
                     <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   </span>
                 </Badge>
-              ))
+              )})
             ) : (
               <span className="text-muted-foreground font-normal">{placeholder}</span>
             )}
@@ -147,12 +160,15 @@ export function MultiSelect({
                   }}
                   className="truncate"
                 >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      selected.includes(option.value) ? "opacity-100" : "opacity-0"
-                    )}
-                  />
+                  {!hideCheckIcon && (
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4 shrink-0",
+                        selected.includes(option.value) ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                  )}
+                  {option.icon && <span className="mr-1.5 shrink-0">{option.icon}</span>}
                   <span
                     className="truncate"
                     style={option.level ? { paddingLeft: option.level * 12 } : undefined}

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -164,6 +164,12 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -172,9 +178,9 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
 			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
 		);
-		
+
 		CREATE VIEW instances_view AS
-		SELECT 
+		SELECT
 			i.id,
 			sp_name.value AS name,
 			sp_host.value AS host,
@@ -184,17 +190,23 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
 			i.sort_order,
-			i.is_active
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with host
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil)
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 	assert.False(t, instance.TLSSkipVerify)
@@ -206,10 +218,11 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
 	assert.False(t, retrieved.TLSSkipVerify)
 	assert.True(t, retrieved.IsActive)
+	assert.False(t, retrieved.HasLocalFilesystemAccess)
 
 	// Test updating the instance
 	newTLSSetting := true
-	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &newTLSSetting)
+	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &InstanceUpdateParams{TLSSkipVerify: &newTLSSetting})
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 	assert.True(t, updated.TLSSkipVerify)
@@ -271,6 +284,12 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -291,20 +310,29 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
 			i.sort_order,
-			i.is_active
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with empty username (localhost bypass)
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "testpass", nil, nil, false)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err, "Failed to create instance with empty username")
 	assert.Equal(t, "", instance.Username, "username should be empty")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
+	password, err := store.GetDecryptedPassword(instance)
+	require.NoError(t, err, "Failed to decrypt instance password")
+	assert.Equal(t, "", password, "password should be empty for bypass auth instances")
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
@@ -362,6 +390,12 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
 			FOREIGN KEY (host_id) REFERENCES string_pool(id),
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -379,19 +413,28 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
 			i.sort_order,
-			i.is_active
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
 	// This should work even without pre-inserted empty string (self-healing)
-	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "pass", nil, nil, false)
+	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err, "Create with empty username should work even when empty string not pre-inserted")
 	assert.Equal(t, "", instance.Username, "username should be empty")
+	password, err := store.GetDecryptedPassword(instance)
+	require.NoError(t, err, "Failed to decrypt instance password")
+	assert.Equal(t, "", password, "password should be empty for bypass auth instances")
 
 	// Verify the empty string was created in string_pool
 	var count int
@@ -442,6 +485,12 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
 			FOREIGN KEY (host_id) REFERENCES string_pool(id),
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -459,17 +508,23 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
 			i.sort_order,
-			i.is_active
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
 	// First create an instance with non-empty username (this works without empty string)
-	instance, err := store.Create(ctx, "Regular Instance", "http://localhost:8080", "admin", "pass", nil, nil, false)
+	instance, err := store.Create(ctx, "Regular Instance", "http://localhost:8080", "admin", "pass", nil, nil, false, nil)
 	require.NoError(t, err, "Create with non-empty username should work")
 	assert.Equal(t, "admin", instance.Username, "username should be admin")
 
@@ -477,6 +532,9 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 	updated, err := store.Update(ctx, instance.ID, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, nil)
 	require.NoError(t, err, "Update to empty username should work even when empty string not pre-inserted")
 	assert.Equal(t, "", updated.Username, "username should be empty after update")
+	password, err := store.GetDecryptedPassword(updated)
+	require.NoError(t, err, "Failed to decrypt instance password")
+	assert.Equal(t, "", password, "password should be cleared when enabling bypass auth")
 
 	// Verify the empty string was created in string_pool
 	var count int
@@ -522,6 +580,12 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -532,7 +596,7 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 		);
 
 		CREATE VIEW instances_view AS
-		SELECT 
+		SELECT
 			i.id,
 			sp_name.value AS name,
 			sp_host.value AS host,
@@ -542,18 +606,24 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
 			i.sort_order,
-			i.is_active
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err)
 
-	first, err := store.Create(ctx, "First", "http://first.local", "user1", "pass1", nil, nil, false)
+	first, err := store.Create(ctx, "First", "http://first.local", "user1", "pass1", nil, nil, false, nil)
 	require.NoError(t, err)
-	second, err := store.Create(ctx, "Second", "http://second.local", "user2", "pass2", nil, nil, false)
+	second, err := store.Create(ctx, "Second", "http://second.local", "user2", "pass2", nil, nil, false, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, first.SortOrder)

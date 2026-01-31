@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -11,7 +11,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceSettings } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -72,12 +72,18 @@ interface InstanceFormProps {
   instance?: Instance
   onSuccess: () => void
   onCancel: () => void
+  /** When provided, renders without internal buttons (for external DialogFooter) */
+  formId?: string
 }
 
-export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProps) {
+export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
-  const [authBypass, setAuthBypass] = useState(false)
+  const [authBypass, setAuthBypass] = useState(instance?.username === "")
+
+  useEffect(() => {
+    setAuthBypass(instance?.username === "")
+  }, [instance?.username])
 
   const handleSubmit = (data: InstanceFormData) => {
     let submitData: InstanceFormData
@@ -99,6 +105,14 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         ...data,
         basicUsername: "",
         basicPassword: "",
+      }
+    }
+
+    if (authBypass) {
+      submitData = {
+        ...submitData,
+        username: "",
+        password: "",
       }
     }
 
@@ -142,6 +156,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+      hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
       reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
     },
     onSubmit: ({ value }) => {
@@ -152,6 +167,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   return (
     <>
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault()
           form.handleSubmit()
@@ -175,7 +191,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="e.g., Main Server or Home qBittorrent"
                 data-1p-ignore
-                autoComplete='off'
+                autoComplete="off"
               />
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
                 <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -228,6 +244,24 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
           )}
         </form.Field>
 
+        <form.Field name="hasLocalFilesystemAccess">
+          {(field) => (
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="local-filesystem-access">Local Filesystem Access</Label>
+                <p className="text-sm text-muted-foreground max-w-prose">
+                  Enable if qui can access this instance's download paths (required for hardlink detection in automations).
+                </p>
+              </div>
+              <Switch
+                id="local-filesystem-access"
+                checked={field.state.value}
+                onCheckedChange={(checked) => field.handleChange(checked)}
+              />
+            </div>
+          )}
+        </form.Field>
+
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -257,7 +291,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="qBittorrent username (usually admin)"
                     data-1p-ignore
-                    autoComplete='off'
+                    autoComplete="off"
                   />
                 </div>
               )}
@@ -277,7 +311,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={instance ? "Leave empty to keep current password" : "qBittorrent password"}
                     data-1p-ignore
-                    autoComplete='off'
+                    autoComplete="off"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -316,7 +350,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder="Basic auth username"
                       data-1p-ignore
-                      autoComplete='off'
+                      autoComplete="off"
                     />
                   </div>
                 )}
@@ -326,7 +360,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 name="basicPassword"
                 validators={{
                   onChange: ({ value }) =>
-                    showBasicAuth && value === ""? "Basic auth password is required when basic auth is enabled": undefined,
+                    showBasicAuth && value === "" ? "Basic auth password is required when basic auth is enabled" : undefined,
                 }}
               >
                 {(field) => (
@@ -346,7 +380,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder="Enter basic auth password (required)"
                       data-1p-ignore
-                      autoComplete='off'
+                      autoComplete="off"
                     />
                     {field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -358,29 +392,30 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
           )}
         </div>
 
+        {!formId && (
+          <div className="flex gap-2">
+            <form.Subscribe
+              selector={(state) => [state.canSubmit, state.isSubmitting]}
+            >
+              {([canSubmit, isSubmitting]) => (
+                <Button
+                  type="submit"
+                  disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
+                >
+                  {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
+                </Button>
+              )}
+            </form.Subscribe>
 
-        <div className="flex gap-2">
-          <form.Subscribe
-            selector={(state) => [state.canSubmit, state.isSubmitting]}
-          >
-            {([canSubmit, isSubmitting]) => (
-              <Button
-                type="submit"
-                disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
-              >
-                {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
-              </Button>
-            )}
-          </form.Subscribe>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </form>
 
     </>

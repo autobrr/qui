@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package domain
@@ -24,6 +24,12 @@ type Config struct {
 	TrackerIconsFetchEnabled bool   `toml:"trackerIconsFetchEnabled" mapstructure:"trackerIconsFetchEnabled"`
 
 	ExternalProgramAllowList []string `toml:"externalProgramAllowList" mapstructure:"externalProgramAllowList"`
+
+	// CrossSeedRecoverErroredTorrents enables recovery attempts for errored/missingFiles torrents
+	// in cross-seed automation. When enabled, qui will pause, recheck, and resume errored torrents
+	// before candidate selection. This can cause automation runs to take 25+ minutes per torrent.
+	// When disabled (default), errored torrents are simply excluded from candidate selection.
+	CrossSeedRecoverErroredTorrents bool `toml:"crossSeedRecoverErroredTorrents" mapstructure:"crossSeedRecoverErroredTorrents"`
 
 	// OIDC Configuration
 	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`

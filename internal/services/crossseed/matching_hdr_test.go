@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -179,7 +182,7 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 				require.True(t, metadataMatch, "%s: metadata should match", tt.description)
 
 				// If metadata matches, also verify file matching works
-				matchType := svc.getMatchType(sourceRelease, candidateRelease, tt.sourceFiles, tt.candidateFiles, nil)
+				matchType := svc.getMatchType(sourceRelease, candidateRelease, tt.sourceFiles, tt.candidateFiles)
 				require.NotEmpty(t, matchType, "%s: should produce a match type", tt.description)
 			} else {
 				require.False(t, metadataMatch, "%s: metadata should NOT match", tt.description)

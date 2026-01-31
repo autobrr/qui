@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -166,7 +166,7 @@ export function ThemeSelector() {
     }
 
     toast.error("This theme requires a premium license", {
-      description: "Please purchase a license to access premium themes",
+      description: "Open Settings → Themes to see payment options and redeem your discount code.",
     })
   }
 

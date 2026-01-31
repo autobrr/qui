@@ -6,74 +6,18 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
   <img src=".github/assets/qui.png" alt="qui" width="100%" />
 </div>
 
-## Table of Contents
+## Documentation
 
-- [Features](#features)
-- [Installation](#installation)
-- [Docker](#docker)
-- [Updating](#updating)
-- [Configuration](#configuration)
-- [Magnet Link Handling](#magnet-link-handling)
-  - [Base URL](#base-url-configuration)
-  - [OpenID Connect (OIDC)](#openid-connect-oidc)
-  - [CLI Commands](#cli-commands)
-- [Backups & Restore Modes](#backups--restore-modes)
-- [Cross-Seed](#cross-seed)
-- [Reverse Proxy for External Applications](#reverse-proxy-for-external-applications)
-- [External Programs](#external-programs)
-- [Tracker Icons](#tracker-icons)
-- [API](#api)
-- [Metrics](#metrics)
-- [qBittorrent Version Compatibility](#qbittorrent-version-compatibility)
-- [Community](#community)
-- [Support Development](#support-development)
-- [Contributing](#contributing)
-- [License](#license)
+Full documentation available at **[getqui.com](https://getqui.com)**
 
-## Features
+## Quick Start
 
-- **Single Binary**: No dependencies, just download and run
-- **Multi-Instance Support**: Manage all your qBittorrent instances from one place
-- **Fast & Responsive**: Optimized for performance with large torrent collections
-- **Clean Interface**: Modern UI built with React and shadcn/ui components
-- **Multiple Themes**: Choose from various color themes
-- **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
-- **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
-- **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
-- **Tracker Reannounce**: Automatically fix stalled torrents when qBittorrent doesn't retry fast enough ([info](internal/services/reannounce/REANNOUNCE.md))
-- **Tracker Rules**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically ([info](internal/services/trackerrules/TRACKER_RULES.md))
-- **Backups & Restore**: Scheduled snapshots with incremental, overwrite, and complete restore modes ([info](#backups--restore-modes))
-- **Cross-Seed**: Automatically find and add matching torrents across trackers with autobrr webhook integration ([info](#cross-seed))
-- **Reverse Proxy**: Transparent qBittorrent proxy for external apps like autobrr, Sonarr, and Radarr—no credential sharing needed ([info](#reverse-proxy-for-external-applications))
-
-## Installation
-
-### Quick Install (Linux x86_64)
+### Linux x86_64
 
 ```bash
 # Download and extract the latest release
 wget $(curl -s https://api.github.com/repos/autobrr/qui/releases/latest | grep browser_download_url | grep linux_x86_64 | cut -d\" -f4)
-```
-
-### Unpack
-
-Run with root or sudo. If you do not have root, or are on a shared system, place the binaries somewhere in your home directory like ~/.bin.
-
-```bash
 tar -C /usr/local/bin -xzf qui*.tar.gz
-```
-
-This will extract both qui to /usr/local/bin. Note: If the command fails, prefix it with sudo and re-run again.
-
-### Manual Download
-
-Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases).
-
-### Run
-
-```bash
-# Make it executable (Linux/macOS)
-chmod +x qui
 
 # Run
 ./qui serve
@@ -81,59 +25,9 @@ chmod +x qui
 
 The web interface will be available at http://localhost:7476
 
-### Seedbox installers
-
-Bytesized installer (NOT TESTED)
+### Docker
 
 ```bash
-wget -O installer.sh https://get.autobrr.com/qui/bytesized && chmod +x installer.sh && ./installer.sh
-```
-
-Feral hosting installer
-
-```bash
-wget -O installer.sh https://get.autobrr.com/qui/feral && chmod +x installer.sh && ./installer.sh
-```
-
-HostingByDesign App slots installer
-
-```bash
-wget -O installer.sh https://get.autobrr.com/qui/hostingbydesign && chmod +x installer.sh && ./installer.sh
-```
-
-Seedhost installer
-
-```bash
-wget -O installer.sh https://get.autobrr.com/qui/seedhost && chmod +x installer.sh && ./installer.sh
-```
-
-Ultra.cc installer
-
-```bash
-wget -O installer.sh https://get.autobrr.com/qui/ultra && chmod +x installer.sh && ./installer.sh
-```
-
-Whatbox installer
-
-```bash
-wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
-```
-
-
-### First Setup
-
-1. Open your browser to http://localhost:7476
-2. Create your admin account
-3. Add your qBittorrent instance(s)
-4. Start managing your torrents
-
-## Docker
-
-```bash
-# Using Docker Compose
-docker compose up -d
-
-# Or standalone
 docker run -d \
   -p 7476:7476 \
   -v $(pwd)/config:/config \
@@ -852,12 +746,24 @@ qui automatically detects the features available on each qBittorrent instance an
 
 > [!NOTE]
 > Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. Builds compiled with libtorrent 1.x ignore the `format` parameter.
+## Features
+
+- **Single Binary**: No dependencies, just download and run
+- **Multi-Instance Support**: Manage all your qBittorrent instances from one place
+- **Fast & Responsive**: Optimized for performance with large torrent collections
+- **Cross-Seed**: Automatically find and add matching torrents across trackers
+- **Automations**: Rule-based torrent management with conditions and actions
+- **Backups & Restore**: Scheduled snapshots with multiple restore modes
+- **Reverse Proxy**: Transparent qBittorrent proxy for external apps
 
 ## Community
 
-Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences.
-Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support.
-We're all here to help each other out, so don't hesitate to jump in!
+Join our community on [Discord](https://discord.autobrr.com/qui)!
+
+## Support
+
+- [GitHub Discussions](https://github.com/autobrr/qui/discussions/new/choose) - Feature requests and bug reports
+- [GitHub Issues](https://github.com/autobrr/qui/issues) - Work in progress
 
 ## Support Development
 
@@ -865,21 +771,26 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 
 ### License Key
 
-Pay what you want (minimum $9.99) to unlock premium themes:
-- Visit [Polar.sh](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) or Settings → Themes in your qui instance
+Donate what you want (minimum $4.99) to unlock premium themes:
+- Use any donation method below
+- After donating, DM soup or ze0s on Discord (whoever you donated to)
+  - For crypto, include the transaction hash/link
+- You'll receive a 100% discount code
+- Redeem the code on [Polar](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) (free order) to receive your license key
+- Enter the license key in Settings → Themes in your qui instance
 - License is lifetime
 
-### Other methods
+### Donation Methods
 
 - **soup**
-  - [GitHub Sponsors](https://github.com/s0up4200)
+  - [GitHub Sponsors](https://github.com/sponsors/s0up4200)
   - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
+  - [Ko-fi](https://ko-fi.com/s0up4200)
 - **zze0s**
-  - [GitHub Sponsors](https://github.com/zze0s)
+  - [GitHub Sponsors](https://github.com/sponsors/zze0s)
+  - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)
 
 #### Cryptocurrency
-
-To get a qui license with crypto, send the transaction link to soup or ze0s on Discord.
 
 #### Bitcoin (BTC)
 - soup: `bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem`
@@ -899,7 +810,7 @@ To get a qui license with crypto, send the transaction link to soup or ze0s on D
 
 ---
 
-All methods unlock premium themes — use whichever works best for you. For other currencies or payment methods, [reach out on Discord](https://discord.autobrr.com/qui).
+All methods unlock premium themes — use whichever works best for you. For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
 
 Thank you for your support ❤️
 

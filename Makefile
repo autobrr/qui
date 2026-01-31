@@ -18,7 +18,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps docs-dev docs-build
 
 # Default target
 all: build
@@ -28,10 +28,10 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
-	docker buildx build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:
@@ -100,24 +100,47 @@ clean: themes-clean
 # Run tests
 test:
 	@echo "Running tests..."
-	go test -race -v ./...
+	go test -race -count=3 -v ./...
 
 # Validate OpenAPI specification
 test-openapi:
 	@echo "Validating OpenAPI specification..."
 	go test -v ./internal/web/swagger
 
-# Format code
+# Format changed code only (fast, for iteration)
 fmt:
-	@echo "Formatting code..."
-	go fmt ./...
-	cd $(WEB_DIR) && pnpm format
+	@echo "Formatting changed Go code..."
+	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -n "$$gofiles" ]; then echo "$$gofiles" | xargs gofmt -w; fi
+	@echo "Formatting changed frontend code..."
+	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
+		if [ -n "$$webfiles" ]; then cd $(WEB_DIR) && echo "$$webfiles" | xargs pnpm eslint --fix; fi
 
-# Lint code
+# Lint code (changed files only - fast feedback for AI iteration)
 lint:
-	@echo "Linting code..."
-	golangci-lint run
+	@echo "Linting changed Go code..."
+	golangci-lint run --new-from-merge-base=develop --timeout=5m
+	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
+
+# Full lint (entire codebase - use before commits/PRs)
+lint-full:
+	@echo "Linting entire Go codebase..."
+	golangci-lint run --timeout=10m
+	@echo "Linting frontend..."
+	cd $(WEB_DIR) && pnpm lint
+
+# Lint with JSON output (for AI agent consumption)
+lint-json:
+	@echo "Generating lint report..."
+	golangci-lint run --new-from-merge-base=main --output.json.path=./lint-report.json --timeout=5m || true
+	@echo "Lint report saved to lint-report.json"
+
+# Lint with auto-fix where possible
+lint-fix:
+	@echo "Running linters with auto-fix..."
+	golangci-lint run --fix --timeout=10m
+	cd $(WEB_DIR) && pnpm lint --fix
 
 # Modernize Go code (interface{} -> any, etc)
 modern:
@@ -130,23 +153,53 @@ deps:
 	go mod download
 	cd $(WEB_DIR) && pnpm install
 
+# Documentation development server
+docs-dev:
+	@echo "Starting documentation development server..."
+	cd documentation && pnpm start
+
+# Build documentation
+docs-build:
+	@echo "Building documentation..."
+	cd documentation && pnpm build
+
 # Help
 help:
 	@echo "Available targets:"
-	@echo "  make build        - Build both frontend and backend"
-	@echo "  make frontend     - Build frontend only"
-	@echo "  make backend      - Build backend only"
-	@echo "  make themes-fetch - Fetch premium themes from private repository"
-	@echo "  make themes-clean - Clean premium themes"
-	@echo "  make dev          - Run development servers"
-	@echo "  make dev-backend  - Run backend with hot reload"
-	@echo "  make dev-frontend - Run frontend development server"
-	@echo "  make dev-expose   - Run frontend dev server exposed on 0.0.0.0"
-	@echo "  make clean        - Clean build artifacts"
-	@echo "  make test         - Run all tests"
-	@echo "  make test-openapi - Validate OpenAPI specification"
-	@echo "  make fmt          - Format code"
-	@echo "  make lint         - Lint code"
-	@echo "  make modern       - Modernize Go code (interface{} -> any, etc)"
-	@echo "  make deps         - Install dependencies"
-	@echo "  make help         - Show this help message"
+	@echo ""
+	@echo "Build:"
+	@echo "  make build          - Build both frontend and backend"
+	@echo "  make frontend       - Build frontend only"
+	@echo "  make backend        - Build backend only"
+	@echo "  make build/docker   - Build Docker image"
+	@echo ""
+	@echo "Development:"
+	@echo "  make dev            - Run development servers (air + pnpm dev)"
+	@echo "  make dev-backend    - Run backend with hot reload"
+	@echo "  make dev-frontend   - Run frontend development server"
+	@echo "  make dev-expose     - Run frontend dev server exposed on 0.0.0.0"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test           - Run all tests with race detection"
+	@echo "  make test-openapi   - Validate OpenAPI specification"
+	@echo ""
+	@echo "Linting:"
+	@echo "  make lint           - Lint changed files only (fast, for iteration)"
+	@echo "  make lint-full      - Lint entire codebase"
+	@echo "  make lint-json      - Generate JSON lint report for AI agents"
+	@echo "  make lint-fix       - Auto-fix linting issues where possible"
+	@echo ""
+	@echo "Formatting:"
+	@echo "  make fmt            - Format changed files only (fast, for iteration)"
+	@echo "  make modern         - Modernize Go code (interface{} -> any)"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  make docs-dev       - Run documentation development server"
+	@echo "  make docs-build     - Build documentation for production"
+	@echo ""
+	@echo "Other:"
+	@echo "  make themes-fetch   - Fetch premium themes from private repository"
+	@echo "  make themes-clean   - Clean premium themes"
+	@echo "  make clean          - Clean build artifacts"
+	@echo "  make deps           - Install dependencies"
+	@echo "  make help           - Show this help message"
