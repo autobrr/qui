@@ -442,13 +442,18 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		"Tracker":             "",
 	}
 
-	if displayName, found := getTrackerDisplayName(state.trackerDomains, evalCtx); found {
-		data["Tracker"] = displayName
+	if state != nil {
+		if displayName, found := getTrackerDisplayName(state.trackerDomains, evalCtx); found {
+			data["Tracker"] = displayName
+		}
 	}
 
-	tmpl, err := template.New("movePath").Funcs(template.FuncMap{
-		"sanitize":  pathutil.SanitizePathSegment,
-	}).Parse(path)
+	tmpl, err := template.New("movePath").
+		Option("missingkey=error").
+		Funcs(template.FuncMap{
+			"sanitize": pathutil.SanitizePathSegment,
+		}).
+		Parse(path)
 	if err != nil {
 		// Log template parse error for debugging
 		log.Error().Err(err).Str("path", path).Msg("failed to parse move path template")
@@ -589,7 +594,7 @@ func getTrackerDisplayName(domains []string, evalCtx *EvalContext) (displayName 
 			return displayName, true
 		}
 	}
-	
+
 	return "", false
 }
 
