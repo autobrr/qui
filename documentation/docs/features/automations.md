@@ -253,7 +253,7 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 | `.Hash` | Info hash |
 | `.Category` | qBittorrent category |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
-| `.Tracker` | Tracker display name (when available from instance config) |
+| `.Tracker` | Tracker display name (when available from instance config), otherwise the tracker domain |
 
 **Template function:**
 

@@ -434,18 +434,17 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
 func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	tracker := ""
+	if state != nil {
+		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
+	}
+
 	data := map[string]any{
 		"Name":                torrent.Name,
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
-		"Tracker":             "",
-	}
-
-	if state != nil {
-		if displayName, found := getTrackerDisplayName(state.trackerDomains, evalCtx); found {
-			data["Tracker"] = displayName
-		}
+		"Tracker":             tracker,
 	}
 
 	tmpl, err := template.New("movePath").
@@ -514,26 +513,20 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 		EvaluateConditionWithContext(tagAction.Condition, torrent, evalCtx, 0)
 
 	// Determine tags to manage - either from static list or derived from tracker
-	var tagsToManage []string
+	tagsToManage := tagAction.Tags
 	if tagAction.UseTrackerAsTag && len(state.trackerDomains) > 0 {
 		// Derive tag from tracker domain, preferring domains with customizations
-		tag := selectTrackerTag(state.trackerDomains, tagAction.UseDisplayName, evalCtx)
-		if tag != "" {
+		if tag := selectTrackerTag(state.trackerDomains, tagAction.UseDisplayName, evalCtx); tag != "" {
 			tagsToManage = []string{tag}
+		} else {
+			tagsToManage = nil
 		}
-	} else {
-		tagsToManage = tagAction.Tags
 	}
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
-		hasTagNow := false
-		if _, ok := state.currentTags[managedTag]; ok {
-			hasTagNow = true
-		}
-
+		_, hasTag := state.currentTags[managedTag]
 		// Apply pending action if exists
-		hasTag := hasTagNow
 		if pending, ok := state.tagActions[managedTag]; ok {
 			hasTag = (pending == "add")
 		}
