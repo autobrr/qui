@@ -419,9 +419,9 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 
 func TestResolveMovePath_Literal(t *testing.T) {
 	torrent := qbt.Torrent{
-		Hash:        "abc",
-		Name:        "Show.S01",
-		Category:    "tv",
+		Hash:     "abc",
+		Name:     "Show.S01",
+		Category: "tv",
 	}
 	resolved, ok := resolveMovePath("/data/archive", torrent, nil, nil)
 	require.True(t, ok)
@@ -430,9 +430,9 @@ func TestResolveMovePath_Literal(t *testing.T) {
 
 func TestResolveMovePath_Template(t *testing.T) {
 	torrent := qbt.Torrent{
-		Hash:        "abc",
-		Name:        "Movie.2024",
-		Category:    "movies",
+		Hash:     "abc",
+		Name:     "Movie.2024",
+		Category: "movies",
 	}
 	resolved, ok := resolveMovePath("/data/{{.Category}}", torrent, nil, nil)
 	require.True(t, ok)
@@ -441,9 +441,9 @@ func TestResolveMovePath_Template(t *testing.T) {
 
 func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
 	torrent := qbt.Torrent{
-		Hash:        "abc",
-		Name:        "Movie/2024:Bad*Name",
-		Category:    "movies",
+		Hash:     "abc",
+		Name:     "Movie/2024:Bad*Name",
+		Category: "movies",
 	}
 	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", torrent, nil, nil)
 	require.True(t, ok)
@@ -458,14 +458,14 @@ func TestMoveAction_WithTemplatePath(t *testing.T) {
 		Name:        "Show.S01",
 		Category:    "tv",
 		SavePath:    "/incoming",
-		ContentPath:  "/incoming/Show.S01",
+		ContentPath: "/incoming/Show.S01",
 	}
 	rules := []*models.Automation{{
-		ID:              1,
-		Name:            "move-by-category",
-		Enabled:         true,
-		TrackerPattern:  "*",
-		Conditions:      &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/archive/{{.Category}}"}},
+		ID:             1,
+		Name:           "move-by-category",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions:     &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/archive/{{.Category}}"}},
 	}}
 	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, sm, nil, nil)
 	state, ok := states["abc"]
