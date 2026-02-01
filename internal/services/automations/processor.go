@@ -439,6 +439,7 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		"Hash":                torrent.Hash,
 		"Category":            torrent.Category,
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"Tracker":             "",
 	}
 
 	if displayName, found := getTrackerDisplayName(state.trackerDomains, evalCtx); found {
