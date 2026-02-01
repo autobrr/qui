@@ -108,7 +108,7 @@ import type {
   TrackerCustomizationInput,
   User,
   WarningResponse,
-  WebSeed,
+  WebSeed
 } from "@/types"
 import type {
   ArrInstance,
@@ -151,7 +151,7 @@ const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
 /**
  * Detect network errors that indicate an SSO redirect was blocked by CORS.
  * When an upstream SSO proxy session expires, it often returns a cross-origin
- * redirect that fetch() cannot follow, resulting in a TypeError.
+ * redirect that fetch() cannot follow, resulting in a TypeError or DOMException.
  *
  * This check is intentionally broad because browsers hide redirect details for
  * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
@@ -160,11 +160,32 @@ const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
  * genuine network outage.
  */
 function isSSOBlockedNetworkError(error: unknown): boolean {
-  if (!(error instanceof TypeError)) {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    if (error.name === "NetworkError") {
+      return true
+    }
+  }
+
+  const maybeName = typeof error === "object" && error !== null && "name" in error? String((error as { name?: unknown }).name): ""
+  if (maybeName === "NetworkError") {
+    return true
+  }
+
+  const msg = error instanceof Error? error.message: typeof error === "string"? error: ""
+
+  if (!msg) {
     return false
   }
-  const msg = error.message.toLowerCase()
-  return msg.includes("networkerror") || msg.includes("failed to fetch")
+
+  const normalized = msg.toLowerCase()
+  return normalized.includes("networkerror") ||
+    normalized.includes("network error") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("cors request did not succeed") ||
+    normalized.includes("cors") ||
+    normalized.includes("load failed") ||
+    normalized.includes("network request failed") ||
+    normalized.includes("request failed")
 }
 
 /**
@@ -185,6 +206,41 @@ function isSSOHTMLResponse(response: Response): boolean {
   // 5xx with HTML is likely a reverse proxy error page, not SSO.
   const status = response.status
   return status < 500
+}
+
+async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
+  if (isSSOHTMLResponse(response)) {
+    return true
+  }
+
+  if (response.status >= 500) {
+    return false
+  }
+
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType) {
+    return false
+  }
+
+  if (response.headers.get("content-disposition")) {
+    return false
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || "0")
+  if (contentLength > 1_000_000) {
+    return false
+  }
+
+  try {
+    const snippet = await response.clone().text()
+    const trimmed = snippet.trimStart().toLowerCase()
+    return trimmed.startsWith("<!doctype html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<head") ||
+      trimmed.startsWith("<body")
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -244,7 +300,7 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
 
   // If we got an HTML response on an API endpoint, it's likely an SSO login page.
   // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
-  if (isSSOHTMLResponse(response)) {
+  if (await isLikelySSOHTMLResponse(response)) {
     attemptSSORecoveryReload()
     throw new Error("Received HTML instead of JSON - SSO session may have expired")
   }
