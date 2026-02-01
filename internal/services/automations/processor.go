@@ -441,7 +441,7 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
 	}
 
-	if displayName, ok := getTrackerDisplayName(state.trackerDomains, evalCtx); ok {
+	if displayName, found := getTrackerDisplayName(state.trackerDomains, evalCtx); found {
 		data["Tracker"] = displayName
 	}
 
@@ -584,7 +584,7 @@ func getTrackerDisplayName(domains []string, evalCtx *EvalContext) (displayName 
 	}
 
 	for _, domain := range domains {
-		if displayName, ok := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
+		if displayName, found := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; found {
 			return displayName, true
 		}
 	}
