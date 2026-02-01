@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
@@ -446,7 +447,8 @@ func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
 	}
 	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", torrent, nil, nil)
 	require.True(t, ok)
-	require.Equal(t, "/data/" + pathutil.SanitizePathSegment(data["Name"]), resolved)
+	expectedName := pathutil.SanitizePathSegment(torrent.Name)
+	require.Equal(t, "/data/"+expectedName, resolved)
 }
 
 func TestMoveAction_WithTemplatePath(t *testing.T) {
