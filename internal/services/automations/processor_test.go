@@ -417,22 +417,34 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 }
 
 func TestResolveMovePath_Literal(t *testing.T) {
-	data := map[string]any{"Name": "Movie.2024", "Category": "movies"}
-	resolved, ok := resolveMovePath("/data/archive", data)
+	torrent := qbt.Torrent{
+		Hash:        "abc",
+		Name:        "Show.S01",
+		Category:    "tv",
+	}
+	resolved, ok := resolveMovePath("/data/archive", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/archive", resolved)
 }
 
 func TestResolveMovePath_Template(t *testing.T) {
-	data := map[string]any{"Name": "Movie.2024", "Category": "movies"}
-	resolved, ok := resolveMovePath("/data/{{.Category}}", data)
+	torrent := qbt.Torrent{
+		Hash:        "abc",
+		Name:        "Movie.2024",
+		Category:    "movies",
+	}
+	resolved, ok := resolveMovePath("/data/{{.Category}}", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/movies", resolved)
 }
 
 func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
-	data := map[string]any{"Name": "Movie/2024:Bad*Name"}
-	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", data)
+	torrent := qbt.Torrent{
+		Hash:        "abc",
+		Name:        "Movie/2024:Bad*Name",
+		Category:    "movies",
+	}
+	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", torrent, nil, nil)
 	require.True(t, ok)
 	require.Equal(t, "/data/" + pathutil.SanitizePathSegment(data["Name"]), resolved)
 }
