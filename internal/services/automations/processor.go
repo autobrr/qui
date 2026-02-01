@@ -455,7 +455,7 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		// Log template parse error for debugging
+		// Log template execution error for debugging
 		log.Error().Err(err).Str("path", path).Msg("failed to execute move path template")
 		return "", false
 	}
