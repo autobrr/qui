@@ -429,21 +429,6 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// truncate returns the first n characters of a string.
-func truncate(str string, n int) string {
-	// Convert the string to a slice of runes.
-	// This ensures proper handling of multi-byte characters (Unicode).
-	runes := []rune(str)
-
-	// Check if n is greater than or equal to the actual number of characters.
-	if n >= len(runes) {
-		return str
-	}
-
-	// Slice the rune slice and convert it back to a string.
-	return string(runes[:n])
-}
-
 // resolveMovePath returns the path to use for a move. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
