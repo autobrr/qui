@@ -10,6 +10,7 @@ import (
 	"text/template"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
