@@ -241,6 +241,34 @@ Move torrents to a different path on disk. This is needed to move the contents i
 Options:
 - **Skip if cross-seeds don't match the rule's conditions** - Skip the move if the torrent has cross-seeds that don't match the rule's conditions
 
+#### Move path templates
+
+The move path is evaluated as a **Go template** for each torrent. You can use a fixed path (e.g. `/data/archive`) or template actions to build paths from torrent properties.
+
+**Available template variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `.Name` | Torrent display name |
+| `.Hash` | Info hash |
+| `.Category` | qBittorrent category |
+| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
+| `.Tracker` | Tracker display name (when available from instance config), otherwise the tracker domain |
+
+**Template function:**
+
+| Function | Description |
+|----------|-------------|
+| `sanitize` | Makes a string safe for use as a path segment (removes invalid characters). Use for user-controlled values like names, e.g. `{{ sanitize .Name }}`. |
+
+**Examples:**
+
+- Fixed path (no template actions): `/data/archive`
+- By category: `/data/{{.Category}}` → e.g. `/data/movies`
+- By name (safe for paths): `/data/{{ sanitize .Name }}`
+- By isolation folder: `/data/{{.IsolationFolderName}}`
+- By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
+
 ## Cross-Seed Awareness
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
