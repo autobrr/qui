@@ -4,13 +4,16 @@
 package automations
 
 import (
+	"bytes"
 	"sort"
 	"strings"
+	"text/template"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 // torrentDesiredState tracks accumulated actions for a single torrent across all matching rules.
@@ -331,7 +334,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 }
 
 func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
-	pathValid := strings.TrimSpace(action.Path) != ""
+	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
 	if !pathValid {
 		if stats != nil {
 			stats.MoveConditionNotMet++
@@ -341,7 +344,7 @@ func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx 
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
-	alreadyAtDest := inSavePath(torrent, action.Path)
+	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
 	if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx) {
@@ -349,7 +352,7 @@ func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx 
 			stats.MoveApplied++
 		}
 		state.shouldMove = true
-		state.movePath = action.Path
+		state.movePath = resolvedPath
 		return
 	}
 	if stats == nil {
@@ -424,6 +427,56 @@ func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAc
 
 func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
+}
+
+// truncate returns the first n characters of a string.
+func truncate(str string, n int) string {
+	// Convert the string to a slice of runes.
+	// This ensures proper handling of multi-byte characters (Unicode).
+	runes := []rune(str)
+
+	// Check if n is greater than or equal to the actual number of characters.
+	if n >= len(runes) {
+		return str
+	}
+
+	// Slice the rune slice and convert it back to a string.
+	return string(runes[:n])
+}
+
+// resolveMovePath returns the path to use for a move. The path is executed as a
+// Go template with data; paths with no template actions are unchanged. sanitize
+// is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
+func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	data := map[string]any{
+		"Name":                torrent.Name,
+		"Hash":                torrent.Hash,
+		"Category":            torrent.Category,
+		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+	}
+
+	if displayName, ok := getTrackerDisplayName(state.trackerDomains, evalCtx); ok {
+		data["Tracker"] = displayName
+	}
+
+	tmpl, err := template.New("movePath").Funcs(template.FuncMap{
+		"sanitize":  pathutil.SanitizePathSegment,
+	}).Parse(path)
+	if err != nil {
+		return "", false
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", false
+	}
+
+	resolvedPath := strings.TrimSpace(buf.String())
+
+	if resolvedPath == "" {
+		return "", false
+	}
+
+	return resolvedPath, true
 }
 
 func containsStringFold(list []string, candidate string) bool {
@@ -524,16 +577,29 @@ func selectTrackerTag(domains []string, useDisplayName bool, evalCtx *EvalContex
 	}
 
 	// If using display names, prefer domains that have a customization
-	if useDisplayName && evalCtx != nil && evalCtx.TrackerDisplayNameByDomain != nil {
-		for _, domain := range domains {
-			if displayName, ok := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
-				return displayName
-			}
+	if useDisplayName {
+		if displayName, ok := getTrackerDisplayName(domains, evalCtx); ok {
+			return displayName
 		}
 	}
 
 	// Fall back to the first domain
 	return domains[0]
+}
+
+// getTrackerDisplayName picks the best tracker display name available.
+func getTrackerDisplayName(domains []string, evalCtx *EvalContext) string, bool {
+	if evalCtx == nil {
+		return "", false
+	}
+
+	for _, domain := range domains {
+		if displayName, ok := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
+			return displayName, true
+		}
+	}
+	
+	return "", false
 }
 
 // parseTorrentTags parses the comma-separated tag string into a set.

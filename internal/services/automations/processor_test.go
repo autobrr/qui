@@ -416,6 +416,50 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
 }
 
+func TestResolveMovePath_Literal(t *testing.T) {
+	data := map[string]any{"Name": "Movie.2024", "Category": "movies"}
+	resolved, ok := resolveMovePath("/data/archive", data)
+	require.True(t, ok)
+	require.Equal(t, "/data/archive", resolved)
+}
+
+func TestResolveMovePath_Template(t *testing.T) {
+	data := map[string]any{"Name": "Movie.2024", "Category": "movies"}
+	resolved, ok := resolveMovePath("/data/{{.Category}}", data)
+	require.True(t, ok)
+	require.Equal(t, "/data/movies", resolved)
+}
+
+func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
+	data := map[string]any{"Name": "Movie/2024:Bad*Name"}
+	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", data)
+	require.True(t, ok)
+	require.Equal(t, "/data/" + pathutil.SanitizePathSegment(data["Name"]), resolved)
+}
+
+func TestMoveAction_WithTemplatePath(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	torrent := qbt.Torrent{
+		Hash:        "abc",
+		Name:        "Show.S01",
+		Category:    "tv",
+		SavePath:    "/incoming",
+		ContentPath:  "/incoming/Show.S01",
+	}
+	rules := []*models.Automation{{
+		ID:              1,
+		Name:            "move-by-category",
+		Enabled:         true,
+		TrackerPattern:  "*",
+		Conditions:      &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/archive/{{.Category}}"}},
+	}}
+	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, sm, nil, nil)
+	state, ok := states["abc"]
+	require.True(t, ok)
+	require.True(t, state.shouldMove)
+	require.Equal(t, "/archive/tv", state.movePath)
+}
+
 func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 	t.Run("adds size for non-cross-seed torrent with deleteWithFiles", func(t *testing.T) {
 		evalCtx := &EvalContext{
