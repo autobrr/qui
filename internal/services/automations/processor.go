@@ -573,7 +573,7 @@ func selectTrackerTag(domains []string, useDisplayName bool, evalCtx *EvalContex
 }
 
 // getTrackerDisplayName picks the best tracker display name available.
-func getTrackerDisplayName(domains []string, evalCtx *EvalContext) string, bool {
+func getTrackerDisplayName(domains []string, evalCtx *EvalContext) (displayName string, ok bool) {
 	if evalCtx == nil {
 		return "", false
 	}
