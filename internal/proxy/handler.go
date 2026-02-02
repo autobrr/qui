@@ -92,10 +92,11 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		return proxyCtx.httpClient.Transport
 	})
 	h.proxy = &httputil.ReverseProxy{
-		Rewrite:      h.rewriteRequest,
-		BufferPool:   bufferPool,
-		ErrorHandler: h.errorHandler,
-		Transport:    retryTransport,
+		Rewrite:        h.rewriteRequest,
+		ModifyResponse: h.modifyResponse,
+		BufferPool:     bufferPool,
+		ErrorHandler:   h.errorHandler,
+		Transport:      retryTransport,
 	}
 
 	return h
@@ -200,6 +201,108 @@ func (h *Handler) stripProxyPrefix(path, apiKey string) string {
 		return after
 	}
 	return path
+}
+
+// modifyResponse injects a <base> tag into HTML responses to fix relative resource URLs
+func (h *Handler) modifyResponse(resp *http.Response) error {
+	// Only process HTML responses
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "text/html") {
+		return nil
+	}
+
+	// Get the original request from the response
+	req := resp.Request
+	if req == nil {
+		return nil
+	}
+
+	// Extract the API key from the original request to construct the base URL
+	apiKey := chi.URLParam(req, "api-key")
+	if apiKey == "" {
+		// Try to extract from URL path as fallback
+		pathParts := strings.Split(strings.TrimPrefix(req.URL.Path, h.basePath), "/")
+		if len(pathParts) >= 2 && pathParts[0] == "proxy" {
+			apiKey = pathParts[1]
+		}
+	}
+
+	if apiKey == "" {
+		log.Debug().Msg("Cannot inject base tag: API key not found in request")
+		return nil
+	}
+
+	// Construct the base URL (the proxy path with trailing slash)
+	// This should be the URL path that the client used to access the proxy
+	baseURL := httphelpers.JoinBasePath(h.basePath, "/proxy/"+apiKey+"/")
+
+	// Read the response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+	resp.Body.Close()
+
+	// Inject the base tag into the HTML
+	modifiedBody := injectBaseTag(bodyBytes, baseURL)
+
+	// Update the response body and content length
+	resp.Body = io.NopCloser(bytes.NewReader(modifiedBody))
+	resp.ContentLength = int64(len(modifiedBody))
+	resp.Header.Set("Content-Length", strconv.FormatInt(int64(len(modifiedBody)), 10))
+
+	log.Debug().
+		Str("baseURL", baseURL).
+		Int("originalSize", len(bodyBytes)).
+		Int("modifiedSize", len(modifiedBody)).
+		Msg("Injected base tag into HTML response")
+
+	return nil
+}
+
+// injectBaseTag inserts a <base href="..."> tag into the HTML <head> section
+func injectBaseTag(html []byte, baseURL string) []byte {
+	htmlStr := string(html)
+	htmlLower := strings.ToLower(htmlStr)
+
+	// Check if a base tag already exists (more specific pattern to avoid false positives)
+	// Match <base followed by whitespace or > to avoid matching words like "database"
+	if strings.Contains(htmlLower, "<base ") || strings.Contains(htmlLower, "<base>") {
+		log.Debug().Msg("Base tag already exists, skipping injection")
+		return html
+	}
+
+	// Find the <head> tag (case-insensitive)
+	headStart := strings.Index(htmlLower, "<head")
+	if headStart == -1 {
+		log.Debug().Msg("No <head> tag found, skipping base tag injection")
+		return html
+	}
+
+	// Find the end of the <head> opening tag
+	headEnd := strings.Index(htmlStr[headStart:], ">")
+	if headEnd == -1 {
+		log.Debug().Msg("Malformed <head> tag, skipping base tag injection")
+		return html
+	}
+
+	// Check if this is a self-closing tag (e.g., <head/>)
+	// Look backwards from the > to see if there's a / before it
+	headTagContent := htmlStr[headStart : headStart+headEnd]
+	if strings.HasSuffix(strings.TrimSpace(headTagContent), "/") {
+		log.Debug().Msg("Self-closing <head/> tag found, skipping base tag injection")
+		return html
+	}
+
+	insertPos := headStart + headEnd + 1
+
+	// Construct the base tag
+	baseTag := fmt.Sprintf("<base href=\"%s\">", baseURL)
+
+	// Insert the base tag right after the <head> opening tag
+	result := htmlStr[:insertPos] + baseTag + htmlStr[insertPos:]
+
+	return []byte(result)
 }
 
 func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string {
