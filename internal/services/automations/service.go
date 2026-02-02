@@ -1177,7 +1177,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// First, cache free space by source key to avoid redundant disk reads
 		freeSpaceBySourceKey := make(map[string]int64)
 		for _, r := range eligibleRules {
-			if !rulesUseCondition([]*models.Automation{r}, FieldFreeSpace) {
+			if !ruleUsesCondition(r, FieldFreeSpace) {
 				continue
 			}
 			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
@@ -1196,7 +1196,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Now create per-rule states using cached free space values
 		for _, r := range eligibleRules {
-			if !rulesUseCondition([]*models.Automation{r}, FieldFreeSpace) {
+			if !ruleUsesCondition(r, FieldFreeSpace) {
 				continue
 			}
 			ruleKey := GetFreeSpaceRuleKey(r)
@@ -2534,35 +2534,42 @@ func deleteFreesSpace(mode string, torrent qbt.Torrent, allTorrents []qbt.Torren
 	}
 }
 
+func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
+	if rule == nil || rule.Conditions == nil || !rule.Enabled {
+		return false
+	}
+	ac := rule.Conditions
+	if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, field) {
+		return true
+	}
+	if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, field) {
+		return true
+	}
+	if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, field) {
+		return true
+	}
+	if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
+		return true
+	}
+	if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, field) {
+		return true
+	}
+	if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
+		return true
+	}
+	if ac.Move != nil && ConditionUsesField(ac.Move.Condition, field) {
+		return true
+	}
+	if ac.ExternalProgram != nil && ConditionUsesField(ac.ExternalProgram.Condition, field) {
+		return true
+	}
+	return false
+}
+
 // rulesUseCondition checks if any enabled rule uses the given field.
 func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 	for _, rule := range rules {
-		if rule.Conditions == nil || !rule.Enabled {
-			continue
-		}
-		ac := rule.Conditions
-		if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, field) {
-			return true
-		}
-		if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, field) {
-			return true
-		}
-		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, field) {
-			return true
-		}
-		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
-			return true
-		}
-		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, field) {
-			return true
-		}
-		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
-			return true
-		}
-		if ac.Move != nil && ConditionUsesField(ac.Move.Condition, field) {
-			return true
-		}
-		if ac.ExternalProgram != nil && ConditionUsesField(ac.ExternalProgram.Condition, field) {
+		if ruleUsesCondition(rule, field) {
 			return true
 		}
 	}
@@ -2706,6 +2713,24 @@ func (s *Service) recordDryRunActivities(
 		return
 	}
 
+	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
+		detailsJSON, _ := json.Marshal(details)
+		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     action,
+			Outcome:    models.ActivityOutcomeDryRun,
+			Details:    detailsJSON,
+		})
+		if err != nil || s.activityRuns == nil || buildItems == nil {
+			return
+		}
+		items := buildItems()
+		if len(items) > 0 {
+			s.activityRuns.Put(activityID, instanceID, items)
+		}
+	}
+
 	// Speed limits
 	if len(uploadBatches) > 0 || len(downloadBatches) > 0 {
 		limitCounts := make(map[string]int)
@@ -2715,20 +2740,9 @@ func (s *Service) recordDryRunActivities(
 		for limit, hashes := range downloadBatches {
 			limitCounts[fmt.Sprintf("download:%d", limit)] = len(dedupeHashes(hashes))
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionSpeedLimitsChanged,
-			Outcome:    models.ActivityOutcomeDryRun,
-			Details:    detailsJSON,
+		createActivity(models.ActivityActionSpeedLimitsChanged, map[string]any{"limits": limitCounts}, func() []ActivityRunTorrent {
+			return buildSpeedLimitRunItems(uploadBatches, downloadBatches, torrentByHash, s.syncManager)
 		})
-		if err == nil && s.activityRuns != nil {
-			items := buildSpeedLimitRunItems(uploadBatches, downloadBatches, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
-			}
-		}
 	}
 
 	// Share limits
@@ -2738,39 +2752,17 @@ func (s *Service) recordDryRunActivities(
 			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
 			limitCounts[limitKey] = len(dedupeHashes(hashes))
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionShareLimitsChanged,
-			Outcome:    models.ActivityOutcomeDryRun,
-			Details:    detailsJSON,
+		createActivity(models.ActivityActionShareLimitsChanged, map[string]any{"limits": limitCounts}, func() []ActivityRunTorrent {
+			return buildShareLimitRunItems(shareBatches, torrentByHash, s.syncManager)
 		})
-		if err == nil && s.activityRuns != nil {
-			items := buildShareLimitRunItems(shareBatches, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
-			}
-		}
 	}
 
 	// Pause
 	if len(pauseHashes) > 0 {
 		uniqueHashes := dedupeHashes(pauseHashes)
-		detailsJSON, _ := json.Marshal(map[string]any{"count": len(uniqueHashes)})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionPaused,
-			Outcome:    models.ActivityOutcomeDryRun,
-			Details:    detailsJSON,
+		createActivity(models.ActivityActionPaused, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+			return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 		})
-		if err == nil && s.activityRuns != nil {
-			items := buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
-			}
-		}
 	}
 
 	// Tags
@@ -2786,23 +2778,12 @@ func (s *Service) recordDryRunActivities(
 			}
 		}
 		if len(addCounts) > 0 || len(removeCounts) > 0 {
-			detailsJSON, _ := json.Marshal(map[string]any{
+			createActivity(models.ActivityActionTagsChanged, map[string]any{
 				"added":   addCounts,
 				"removed": removeCounts,
+			}, func() []ActivityRunTorrent {
+				return buildTagRunItems(tagChanges, torrentByHash, s.syncManager)
 			})
-			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionTagsChanged,
-				Outcome:    models.ActivityOutcomeDryRun,
-				Details:    detailsJSON,
-			})
-			if err == nil && s.activityRuns != nil {
-				items := buildTagRunItems(tagChanges, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
 		}
 	}
 
@@ -2874,20 +2855,9 @@ func (s *Service) recordDryRunActivities(
 			for _, move := range plannedMoves {
 				categoryCounts[move.category]++
 			}
-			detailsJSON, _ := json.Marshal(map[string]any{"categories": categoryCounts})
-			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionCategoryChanged,
-				Outcome:    models.ActivityOutcomeDryRun,
-				Details:    detailsJSON,
+			createActivity(models.ActivityActionCategoryChanged, map[string]any{"categories": categoryCounts}, func() []ActivityRunTorrent {
+				return buildCategoryRunItems(plannedMoves, torrentByHash, s.syncManager)
 			})
-			if err == nil && s.activityRuns != nil {
-				items := buildCategoryRunItems(plannedMoves, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
 		}
 	}
 
@@ -2948,20 +2918,9 @@ func (s *Service) recordDryRunActivities(
 		}
 
 		if len(plannedHashesByPath) > 0 {
-			detailsJSON, _ := json.Marshal(map[string]any{"paths": plannedCounts})
-			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionMoved,
-				Outcome:    models.ActivityOutcomeDryRun,
-				Details:    detailsJSON,
+			createActivity(models.ActivityActionMoved, map[string]any{"paths": plannedCounts}, func() []ActivityRunTorrent {
+				return buildMoveRunItems(plannedHashesByPath, torrentByHash, s.syncManager)
 			})
-			if err == nil && s.activityRuns != nil {
-				items := buildMoveRunItems(plannedHashesByPath, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
 		}
 	}
 
@@ -2973,20 +2932,9 @@ func (s *Service) recordDryRunActivities(
 		}
 		for programID, hashes := range hashesByProgram {
 			uniqueHashes := dedupeHashes(hashes)
-			detailsJSON, _ := json.Marshal(map[string]any{"programId": programID, "count": len(uniqueHashes)})
-			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     externalprograms.ActivityActionExternalProgram,
-				Outcome:    models.ActivityOutcomeDryRun,
-				Details:    detailsJSON,
+			createActivity(externalprograms.ActivityActionExternalProgram, map[string]any{"programId": programID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 			})
-			if err == nil && s.activityRuns != nil {
-				items := buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
 		}
 	}
 
@@ -2998,20 +2946,9 @@ func (s *Service) recordDryRunActivities(
 		}
 		for action, hashes := range hashesByAction {
 			uniqueHashes := dedupeHashes(hashes)
-			detailsJSON, _ := json.Marshal(map[string]any{"count": len(uniqueHashes)})
-			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     action,
-				Outcome:    models.ActivityOutcomeDryRun,
-				Details:    detailsJSON,
+			createActivity(action, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 			})
-			if err == nil && s.activityRuns != nil {
-				items := buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
 		}
 	}
 }

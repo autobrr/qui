@@ -282,7 +282,6 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
   return { mode: "custom", value: storedValue }
 }
 
-
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
@@ -308,21 +307,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const dryRunPromptKey = rule?.id ? `workflow-dry-run-prompted:${rule.id}` : null
 
   const hasPromptedDryRun = useCallback(() => {
-    if (rule?.id) {
-      if (typeof window === "undefined") return true
-      return window.localStorage.getItem(dryRunPromptKey ?? "") === "1"
-    }
-    return dryRunPromptedForNew
+    if (!rule?.id) return dryRunPromptedForNew
+    if (typeof window === "undefined" || !dryRunPromptKey) return true
+    return window.localStorage.getItem(dryRunPromptKey) === "1"
   }, [dryRunPromptKey, dryRunPromptedForNew, rule?.id])
 
   const markDryRunPrompted = useCallback(() => {
-    if (rule?.id) {
-      if (typeof window !== "undefined" && dryRunPromptKey) {
-        window.localStorage.setItem(dryRunPromptKey, "1")
-      }
+    if (!rule?.id) {
+      setDryRunPromptedForNew(true)
       return
     }
-    setDryRunPromptedForNew(true)
+    if (typeof window !== "undefined" && dryRunPromptKey) {
+      window.localStorage.setItem(dryRunPromptKey, "1")
+    }
   }, [dryRunPromptKey, rule?.id])
 
   const commitPendingTags = () => {

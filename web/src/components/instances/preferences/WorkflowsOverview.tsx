@@ -184,6 +184,10 @@ function sumRecordValues(values: Record<string, number> | undefined): number {
   }, 0)
 }
 
+function formatCountWithVerb(count: number, noun: string, verb: string): string {
+  return `${count} ${noun}${count !== 1 ? "s" : ""} ${verb}`
+}
+
 function formatTagsChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const addedTotal = sumRecordValues(details?.added)
   const removedTotal = sumRecordValues(details?.removed)
@@ -197,36 +201,34 @@ function formatTagsChangedSummary(details: AutomationActivity["details"], outcom
 function formatCategoryChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.categories)
   const verb = outcome === "dry-run" ? "would move" : "moved"
-  return `${total} torrent${total !== 1 ? "s" : ""} ${verb}`
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
 function formatSpeedLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
   const verb = outcome === "dry-run" ? "would be limited" : "limited"
-  return `${total} torrent${total !== 1 ? "s" : ""} ${verb}`
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
 function formatShareLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
   const verb = outcome === "dry-run" ? "would be limited" : "limited"
-  return `${total} torrent${total !== 1 ? "s" : ""} ${verb}`
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
 function formatPausedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
   const verb = outcome === "dry-run" ? "would pause" : "paused"
-  return `${count} torrent${count !== 1 ? "s" : ""} ${verb}`
+  return formatCountWithVerb(count, "torrent", verb)
 }
 
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
   if (outcome === "failed") {
-    return `${count} torrent${count !== 1 ? "s" : ""} failed to move`
+    return formatCountWithVerb(count, "torrent", "failed to move")
   }
-  if (outcome === "dry-run") {
-    return `${count} torrent${count !== 1 ? "s" : ""} would move`
-  }
-  return `${count} torrent${count !== 1 ? "s" : ""} moved`
+  const verb = outcome === "dry-run" ? "would move" : "moved"
+  return formatCountWithVerb(count, "torrent", verb)
 }
 
 function formatExternalProgramSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
@@ -261,8 +263,8 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
 
 function isRunSummary(event: AutomationActivity): boolean {
   if (event.hash !== "") return false
-  if (event.outcome === "dry-run") return true
-  return event.outcome === "success" && runSummaryActions.has(event.action)
+  return event.outcome === "dry-run"
+    || (event.outcome === "success" && runSummaryActions.has(event.action))
 }
 
 interface WorkflowsOverviewProps {
