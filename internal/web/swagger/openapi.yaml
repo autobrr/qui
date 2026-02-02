@@ -3067,6 +3067,7 @@ paths:
           in: query
           schema:
             type: integer
+            minimum: 1
           description: Instance ID
       responses:
         '200':
@@ -3091,7 +3092,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/crossSeedBlocklistRequest'
+              $ref: '#/components/schemas/CrossSeedBlocklistRequest'
       responses:
         '201':
           description: Blocklist entry created
@@ -5398,7 +5399,7 @@ components:
           type: string
           format: date-time
 
-    crossSeedBlocklistRequest:
+    CrossSeedBlocklistRequest:
       type: object
       required:
         - instanceId
