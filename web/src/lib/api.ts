@@ -145,8 +145,8 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
-// Session storage key used to guard against reload loops when backend is truly down.
-const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
+// Session storage key used to guard against recovery loops when backend is truly down.
+const SSO_RECOVERY_GUARD_KEY = "qui_sso_recovery_attempted"
 
 /**
  * Detect network errors that indicate an SSO redirect was blocked by CORS.
@@ -155,8 +155,8 @@ const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
  *
  * This check is intentionally broad because browsers hide redirect details for
  * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
- * network failures at this level. The sessionStorage reload guard in
- * attemptSSORecoveryReload() prevents infinite loops if this misclassifies a
+ * network failures at this level. The sessionStorage recovery guard in
+ * attemptSSORecoveryNavigation() prevents infinite loops if this misclassifies a
  * genuine network outage.
  */
 function isSSOBlockedNetworkError(error: unknown): boolean {
@@ -244,11 +244,11 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
 }
 
 /**
- * Attempt a single hard page reload to let the browser follow the SSO redirect
+ * Attempt a single hard navigation to let the browser follow the SSO redirect
  * at the top level. Uses sessionStorage to prevent infinite reload loops.
  * Skips reload when offline or in background tabs to avoid pointless refreshes.
  */
-function attemptSSORecoveryReload(): void {
+function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): void {
   if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
     return
   }
@@ -260,24 +260,29 @@ function attemptSSORecoveryReload(): void {
   if (typeof document !== "undefined" && document.visibilityState !== "visible") {
     return
   }
-  if (sessionStorage.getItem(SSO_RELOAD_GUARD_KEY)) {
+  if (!options?.bypassGuard && sessionStorage.getItem(SSO_RECOVERY_GUARD_KEY)) {
     // Already tried once this session; don't loop.
     return
   }
-  sessionStorage.setItem(SSO_RELOAD_GUARD_KEY, "1")
-  window.location.reload()
+  sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
+  const target = options?.target ?? withBasePath("/")
+  if (window.location.href === target) {
+    window.location.reload()
+    return
+  }
+  window.location.assign(target)
 }
 
-/** Clear the SSO reload guard after a successful request. */
-function clearSSOReloadGuard(): void {
+/** Clear the SSO recovery guard after a successful request. */
+function clearSSORecoveryGuard(): void {
   if (typeof sessionStorage !== "undefined") {
-    sessionStorage.removeItem(SSO_RELOAD_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
   }
 }
 
 /**
  * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
- * an expired SSO session by triggering a page reload.
+ * an expired SSO session by triggering a top-level navigation.
  */
 async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
   let response: Response
@@ -293,7 +298,8 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   } catch (error) {
     // Only attempt SSO recovery for API endpoints (not other fetches)
     if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
-      attemptSSORecoveryReload()
+      const isLoginRequest = url.includes("/api/auth/login")
+      attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })
     }
     throw error
   }
@@ -301,11 +307,11 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   // If we got an HTML response on an API endpoint, it's likely an SSO login page.
   // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
   if (await isLikelySSOHTMLResponse(response)) {
-    attemptSSORecoveryReload()
+    attemptSSORecoveryNavigation()
     throw new Error("Received HTML instead of JSON - SSO session may have expired")
   }
 
-  clearSSOReloadGuard()
+  clearSSORecoveryGuard()
   return response
 }
 
