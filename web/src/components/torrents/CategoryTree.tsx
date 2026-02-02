@@ -202,12 +202,12 @@ const CategoryTreeNode = memo(({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
-          className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer select-none", itemGap, itemPadding)}
-          style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
-          onPointerDown={handlePointerDown}
-          onPointerLeave={onCategoryPointerLeave}
-          role="presentation"
-        >
+            className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer select-none w-full min-w-0", itemGap, itemPadding)}
+            style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
+            onPointerDown={handlePointerDown}
+            onPointerLeave={onCategoryPointerLeave}
+            role="presentation"
+          >
             {useSubcategories && hasChildren && (
               <button
                 onClick={handleToggleCollapse}
@@ -234,7 +234,7 @@ const CategoryTreeNode = memo(({
             />
 
             <span
-              className={`flex-1 text-sm cursor-pointer ${categoryState === "exclude" ? "text-destructive" : ""}`}
+              className={`flex-1 min-w-0 truncate text-sm cursor-pointer ${categoryState === "exclude" ? "text-destructive" : ""}`}
               onClick={handleCheckboxChange}
             >
               {node.displayName}
@@ -242,7 +242,7 @@ const CategoryTreeNode = memo(({
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className={`text-xs tabular-nums ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+                <span className={`text-xs tabular-nums shrink-0 ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
                   {getCategoryCount(node.name)}
                 </span>
               </TooltipTrigger>
@@ -378,7 +378,7 @@ export const CategoryTree = memo(({
       {/* All/Uncategorized special items */}
 
       <li
-        className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer", itemGap, itemPadding)}
+        className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer w-full min-w-0", itemGap, itemPadding)}
         onClick={() => onCategoryCheckboxChange("")}
         onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
         onPointerLeave={onCategoryPointerLeave}
@@ -387,12 +387,12 @@ export const CategoryTree = memo(({
           checked={uncategorizedCheckboxState}
           className="size-4"
         />
-        <span className={cn("flex-1 text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
+        <span className={cn("flex-1 min-w-0 truncate text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
           Uncategorized
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className={cn("text-xs tabular-nums", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
+            <span className={cn("text-xs tabular-nums shrink-0", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
               {uncategorizedCount}
             </span>
           </TooltipTrigger>
