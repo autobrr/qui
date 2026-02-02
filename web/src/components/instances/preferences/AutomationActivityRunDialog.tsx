@@ -142,7 +142,7 @@ export function AutomationActivityRunDialog({
         <DialogHeader>
           <DialogTitle>{title} run</DialogTitle>
           <DialogDescription>
-            {formatISOTimestamp(activity.createdAt)} - {total} torrent{total === 1 ? "" : "s"} - stored in memory for 24 hours
+            {formatISOTimestamp(activity.createdAt)} - {total} torrent{total === 1 ? "" : "s"} - stored temporarily in memory
           </DialogDescription>
         </DialogHeader>
 
