@@ -76,6 +76,43 @@ const maskNotificationUrl = (rawUrl: string) => {
   }
 }
 
+const convertDiscordWebhookUrl = (rawUrl: string) => {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return null
+  }
+
+  const protocol = parsed.protocol.toLowerCase()
+  if (protocol !== "https:" && protocol !== "http:") {
+    return null
+  }
+
+  const host = parsed.hostname.toLowerCase()
+  if (!host.endsWith("discord.com") && !host.endsWith("discordapp.com")) {
+    return null
+  }
+
+  const parts = parsed.pathname.split("/").filter(Boolean)
+  const [apiPrefix, webhookPrefix, webhookId, token] = parts
+  if (parts.length < 4 || apiPrefix !== "api" || webhookPrefix !== "webhooks" || !webhookId || !token) {
+    return null
+  }
+
+  const threadId = parsed.searchParams.get("thread_id")
+  const suffix = threadId ? `?thread_id=${encodeURIComponent(threadId)}` : ""
+  return `discord://${token}@${webhookId}${suffix}`
+}
+
+const normalizeNotificationUrl = (rawUrl: string) => {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return rawUrl
+  if (trimmed.startsWith("discord://")) return rawUrl
+  const converted = convertDiscordWebhookUrl(trimmed)
+  return converted ?? rawUrl
+}
+
 interface NotificationTargetFormProps {
   initial?: NotificationTarget | null
   eventDefinitions: NotificationEventDefinition[]
@@ -129,7 +166,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
     event.preventDefault()
 
     const trimmedName = name.trim()
-    const trimmedUrl = url.trim()
+    const trimmedUrl = normalizeNotificationUrl(url).trim()
 
     if (!trimmedName) {
       toast.error("Name is required")
@@ -209,12 +246,13 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
         <Label htmlFor="notification-url">Shoutrrr URL</Label>
         <Input
           id="notification-url"
-          placeholder="discord://token@channel or notifiarr://apikey"
+          placeholder="discord://token@id or notifiarr://apikey"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => setUrl(normalizeNotificationUrl(e.target.value))}
         />
         <p className="text-xs text-muted-foreground">
           Use any Shoutrrr-supported URL scheme. Notifiarr uses <span className="font-mono">notifiarr://apikey</span>.
+          Discord webhook URLs auto-convert to <span className="font-mono">discord://token@id</span>.
         </p>
       </div>
 
