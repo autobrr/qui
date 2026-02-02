@@ -241,22 +241,30 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
     const maxBytes = 1024
     let totalBytes = 0
     let snippet = ""
-    while (totalBytes < maxBytes) {
-      const { value, done } = await reader.read()
-      if (done) {
-        break
-      }
-      if (value) {
-        const remaining = maxBytes - totalBytes
-        const chunk = value.length > remaining? value.subarray(0, remaining): value
-        totalBytes += chunk.length
-        snippet += decoder.decode(chunk, { stream: true })
-        if (snippet.length >= maxBytes) {
+    try {
+      while (totalBytes < maxBytes) {
+        const { value, done } = await reader.read()
+        if (done) {
           break
         }
+        if (value) {
+          const remaining = maxBytes - totalBytes
+          const chunk = value.length > remaining? value.subarray(0, remaining): value
+          totalBytes += chunk.length
+          snippet += decoder.decode(chunk, { stream: true })
+          if (snippet.length >= maxBytes) {
+            break
+          }
+        }
       }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {
+        // ignore cancel errors
+      }
+      reader.releaseLock()
     }
-    reader.releaseLock()
     snippet += decoder.decode()
     const trimmed = snippet.trimStart().toLowerCase()
     return trimmed.startsWith("<!doctype html") ||
