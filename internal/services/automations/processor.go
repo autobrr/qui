@@ -477,19 +477,13 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 	// qBittorrent instance default save path.
 	cleaned := filepath.Clean(resolvedPath)
 	if !filepath.IsAbs(cleaned) {
-		// Prefer instance default save path from evalCtx, fall back to torrent.SavePath.
-		base := ""
-		if evalCtx != nil && evalCtx.InstanceDefaultSavePath != "" {
-			base = evalCtx.InstanceDefaultSavePath
-		} else if torrent.SavePath != "" {
-			base = torrent.SavePath
-		}
-		if base == "" {
-			// No base to resolve relative path against -> invalid
+		// Use instance default save path from evalCtx.
+		if evalCtx == nil || evalCtx.InstanceDefaultSavePath == "" {
 			return "", false
 		}
+
 		// Join using OS-native separators
-		joined := filepath.Join(base, cleaned)
+		joined := filepath.Join(evalCtx.InstanceDefaultSavePath, cleaned)
 		return filepath.ToSlash(joined), true
 	}
 

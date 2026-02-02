@@ -465,6 +465,20 @@ func TestResolveMovePath_TrackerFallback(t *testing.T) {
 	require.Equal(t, "/data/tracker.example.com", resolved)
 }
 
+func TestResolveMovePath_RelativeUsesInstanceDefaultSavePath(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:  "abc",
+		Name:  "Show.S01",
+		SavePath: "/incoming",
+	}
+	evalCtx := &EvalContext{
+		InstanceDefaultSavePath: "/downloads",
+	}
+	resolved, ok := resolveMovePath("tv/Show.S01", torrent, nil, evalCtx)
+	require.True(t, ok)
+	require.Equal(t, "/downloads/tv/Show.S01", resolved)
+}
+
 func TestMoveAction_WithTemplatePath(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrent := qbt.Torrent{
