@@ -1978,7 +1978,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	}
 	var runErr error
 	defer func() {
-		s.notifyAutomationRun(ctx, run, runErr)
+		s.notifyAutomationRun(context.WithoutCancel(ctx), run, runErr)
 	}()
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)

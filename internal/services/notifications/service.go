@@ -538,7 +538,7 @@ func buildStructuredMessage(message string) (string, []messageField) {
 			} else {
 				fields = append(fields, messageField{
 					Label:  "Details",
-					Value:  line,
+					Value:  normalizeField("Details", line).Value,
 					Inline: false,
 				})
 			}
