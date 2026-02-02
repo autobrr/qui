@@ -94,6 +94,10 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 		RespondError(w, http.StatusBadRequest, fmt.Sprintf("invalid notification url: %v", err))
 		return
 	}
+	if err := notifications.ValidateNotifiarrAPIKey(r.Context(), url); err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	enabled := true
 	if req.Enabled != nil {
@@ -162,6 +166,10 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 
 	if err := notifications.ValidateURL(url); err != nil {
 		RespondError(w, http.StatusBadRequest, fmt.Sprintf("invalid notification url: %v", err))
+		return
+	}
+	if err := notifications.ValidateNotifiarrAPIKey(r.Context(), url); err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

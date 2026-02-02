@@ -20,8 +20,10 @@ import (
 )
 
 const (
-	notifiarrAPIEndpoint = "https://notifiarr.com/api/v1/notification/qui"
-	notifiarrAPITimeout  = 30 * time.Second
+	notifiarrAPIEndpoint         = "https://notifiarr.com/api/v1/notification/qui"
+	notifiarrAPIValidateEndpoint = "https://notifiarr.com/api/v1/user/validate"
+	notifiarrAPITimeout          = 30 * time.Second
+	notifiarrAPIValidateTimeout  = 10 * time.Second
 )
 
 type notifiarrAPIPayload struct {
@@ -96,6 +98,48 @@ func parseNotifiarrAPIConfig(rawURL string) (notifiarrAPIConfig, error) {
 		apiKey:   apiKey,
 		endpoint: endpoint,
 	}, nil
+}
+
+func ValidateNotifiarrAPIKey(ctx context.Context, rawURL string) error {
+	if targetScheme(rawURL) != "notifiarrapi" {
+		return nil
+	}
+
+	config, err := parseNotifiarrAPIConfig(rawURL)
+	if err != nil {
+		return err
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	validateCtx, cancel := context.WithTimeout(ctx, notifiarrAPIValidateTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(validateCtx, http.MethodGet, buildNotifiarrAPIValidateURL(config.endpoint), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "qui")
+	req.Header.Set("X-API-Key", config.apiKey)
+
+	client := &http.Client{Timeout: notifiarrAPIValidateTimeout}
+	res, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("notifiarr api validation failed: %w", err)
+	}
+	defer httphelpers.DrainAndClose(res)
+
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		message := "notifiarr api key invalid; use the API key only (not the full URL)"
+		if trimmed := strings.TrimSpace(string(body)); trimmed != "" {
+			message = fmt.Sprintf("%s: %s", message, trimmed)
+		}
+		return errors.New(message)
+	}
+
+	return nil
 }
 
 func (s *Service) sendNotifiarrAPI(ctx context.Context, rawURL string, event Event, title, message string) error {
@@ -240,6 +284,18 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	}
 
 	return data
+}
+
+func buildNotifiarrAPIValidateURL(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
+		return notifiarrAPIValidateEndpoint
+	}
+	return (&url.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host,
+		Path:   "/api/v1/user/validate",
+	}).String()
 }
 
 func buildNotifiarrEventValue(eventType EventType) string {
