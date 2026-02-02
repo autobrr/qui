@@ -51,6 +51,9 @@ type notifiarrAPIPayloadData struct {
 	OrphanScanFilesDeleted   *int             `json:"orphan_scan_files_deleted,omitempty"`
 	OrphanScanFoldersDeleted *int             `json:"orphan_scan_folders_deleted,omitempty"`
 	ErrorMessage             *string          `json:"error_message,omitempty"`
+	StartedAt                *time.Time       `json:"started_at,omitempty"`
+	CompletedAt              *time.Time       `json:"completed_at,omitempty"`
+	DurationMs               *int64           `json:"duration_ms,omitempty"`
 	Description              string           `json:"description,omitempty"`
 	Fields                   []notifiarrField `json:"fields,omitempty"`
 }
@@ -210,6 +213,19 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	}
 	if strings.TrimSpace(event.ErrorMessage) != "" {
 		data.ErrorMessage = stringPtr(event.ErrorMessage)
+	}
+
+	if event.StartedAt != nil && !event.StartedAt.IsZero() {
+		data.StartedAt = event.StartedAt
+	}
+	if event.CompletedAt != nil && !event.CompletedAt.IsZero() {
+		data.CompletedAt = event.CompletedAt
+	}
+	if data.StartedAt != nil && data.CompletedAt != nil {
+		durationMs := data.CompletedAt.Sub(*data.StartedAt).Milliseconds()
+		if durationMs >= 0 {
+			data.DurationMs = &durationMs
+		}
 	}
 
 	description, fields := buildStructuredMessage(trimmedMessage)

@@ -37,6 +37,8 @@ type Event struct {
 	Type                     EventType
 	Title                    string
 	Message                  string
+	StartedAt                *time.Time
+	CompletedAt              *time.Time
 	InstanceID               int
 	InstanceName             string
 	TorrentName              string

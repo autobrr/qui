@@ -437,6 +437,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			BackupKind:   j.kind,
 			BackupRunID:  j.runID,
 			ErrorMessage: msg,
+			CompletedAt:  &now,
 		})
 		return
 	}
@@ -471,6 +472,8 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			BackupKind:   j.kind,
 			BackupRunID:  j.runID,
 			ErrorMessage: msg,
+			StartedAt:    &start,
+			CompletedAt:  &now,
 		})
 	} else {
 		now := s.now()
@@ -506,6 +509,8 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			BackupKind:         j.kind,
 			BackupRunID:        j.runID,
 			BackupTorrentCount: result.torrentCount,
+			StartedAt:          &start,
+			CompletedAt:        &now,
 		})
 	}
 

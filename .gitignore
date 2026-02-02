@@ -47,6 +47,7 @@ web/eslint-sarif-report.sarif
 test/mockindexer/feeds/*
 test/mockindexer/files/*
 cpu.pprof
+scripts/notifiarr-test-events.go
 
 web/src/themes/premium/
 

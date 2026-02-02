@@ -715,12 +715,15 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
 			return
 		}
+		startedAt, completedAt := s.getRunTimes(ctx, runID)
 		s.notify(ctx, notifications.Event{
 			Type:                     notifications.EventOrphanScanCompleted,
 			InstanceID:               instanceID,
 			OrphanScanRunID:          runID,
 			OrphanScanFilesDeleted:   0,
 			OrphanScanFoldersDeleted: 0,
+			StartedAt:                startedAt,
+			CompletedAt:              completedAt,
 		})
 		log.Info().Int64("run", runID).Msg("orphanscan: clean (no orphan files found)")
 		return
@@ -961,11 +964,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return
 		}
+		startedAt, completedAt := s.getRunTimes(ctx, runID)
 		s.notify(ctx, notifications.Event{
 			Type:            notifications.EventOrphanScanFailed,
 			InstanceID:      instanceID,
 			OrphanScanRunID: runID,
 			ErrorMessage:    failureMessage,
+			StartedAt:       startedAt,
+			CompletedAt:     completedAt,
 		})
 		log.Warn().
 			Int64("run", runID).
@@ -980,12 +986,15 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
 		Type:                     notifications.EventOrphanScanCompleted,
 		InstanceID:               instanceID,
 		OrphanScanRunID:          runID,
 		OrphanScanFilesDeleted:   filesDeleted,
 		OrphanScanFoldersDeleted: foldersDeleted,
+		StartedAt:                startedAt,
+		CompletedAt:              completedAt,
 	})
 
 	// Add warning for partial failures
@@ -1020,11 +1029,14 @@ func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, mess
 		return
 	}
 
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
 		Type:            notifications.EventOrphanScanFailed,
 		InstanceID:      instanceID,
 		OrphanScanRunID: runID,
 		ErrorMessage:    message,
+		StartedAt:       startedAt,
+		CompletedAt:     completedAt,
 	})
 }
 
@@ -1042,6 +1054,25 @@ func (s *Service) notify(ctx context.Context, event notifications.Event) {
 		return
 	}
 	s.notifier.Notify(ctx, event)
+}
+
+func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *time.Time) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	var startedAt *time.Time
+	if !run.StartedAt.IsZero() {
+		started := run.StartedAt
+		startedAt = &started
+	}
+	return startedAt, run.CompletedAt
 }
 
 func (s *Service) updateFileStatus(ctx context.Context, fileID int64, status, errorMessage string) {

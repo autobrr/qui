@@ -1511,6 +1511,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return errors.New("qbittorrent sync manager not configured")
 	}
 
+	startedAt := time.Now().UTC()
 	if err := s.ensureIndexersConfigured(ctx); err != nil {
 		return err
 	}
@@ -1648,6 +1649,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
+		completedAt := time.Now().UTC()
 		eventType := notifications.EventCrossSeedCompletionSucceeded
 		if failedCount > 0 {
 			eventType = notifications.EventCrossSeedCompletionFailed
@@ -1663,9 +1665,11 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			lines = append(lines, "Samples: "+formatSampleText(samples))
 		}
 		s.notifier.Notify(ctx, notifications.Event{
-			Type:       eventType,
-			InstanceID: instanceID,
-			Message:    strings.Join(lines, "\n"),
+			Type:        eventType,
+			InstanceID:  instanceID,
+			Message:     strings.Join(lines, "\n"),
+			StartedAt:   &startedAt,
+			CompletedAt: &completedAt,
 		})
 	}
 
@@ -7491,6 +7495,8 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 		Type:         eventType,
 		InstanceName: "Cross-seed RSS",
 		Message:      strings.Join(lines, "\n"),
+		StartedAt:    &run.StartedAt,
+		CompletedAt:  run.CompletedAt,
 	})
 }
 
@@ -7522,9 +7528,11 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 	}
 
 	s.notifier.Notify(ctx, notifications.Event{
-		Type:       eventType,
-		InstanceID: state.run.InstanceID,
-		Message:    strings.Join(lines, "\n"),
+		Type:        eventType,
+		InstanceID:  state.run.InstanceID,
+		Message:     strings.Join(lines, "\n"),
+		StartedAt:   &state.run.StartedAt,
+		CompletedAt: state.run.CompletedAt,
 	})
 }
 
@@ -7644,7 +7652,7 @@ func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string
 	return samples
 }
 
-func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string) {
+func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
 	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
 		return
 	}
@@ -7672,14 +7680,17 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
+	completedAt := time.Now().UTC()
 	s.notifier.Notify(ctx, notifications.Event{
 		Type:         notifications.EventCrossSeedWebhookSucceeded,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
+		StartedAt:    &startedAt,
+		CompletedAt:  &completedAt,
 	})
 }
 
-func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookCheckRequest, err error) {
+func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookCheckRequest, err error, startedAt time.Time) {
 	if s == nil || s.notifier == nil || req == nil || err == nil {
 		return
 	}
@@ -7692,10 +7703,13 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 		"Error: " + err.Error(),
 	}
 
+	completedAt := time.Now().UTC()
 	s.notifier.Notify(ctx, notifications.Event{
 		Type:         notifications.EventCrossSeedWebhookFailed,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
+		StartedAt:    &startedAt,
+		CompletedAt:  &completedAt,
 	})
 }
 
@@ -8433,6 +8447,7 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 // This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
 // and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
 func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
+	startedAt := time.Now().UTC()
 	if err := validateWebhookCheckRequest(req); err != nil {
 		return nil, err
 	}
@@ -8459,7 +8474,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	instances, err := s.resolveInstances(ctx, requestedInstanceIDs)
 	if err != nil {
-		s.notifyWebhookCheckFailure(ctx, req, err)
+		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
 		return nil, err
 	}
 
@@ -8686,7 +8701,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
 
-	s.notifyWebhookCheck(ctx, req, matches, recommendation)
+	s.notifyWebhookCheck(ctx, req, matches, recommendation, startedAt)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,

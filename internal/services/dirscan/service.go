@@ -523,12 +523,15 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, scanResult *Scan
 		return
 	}
 
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
 		Type:                 notifications.EventDirScanCompleted,
 		InstanceID:           instanceID,
 		DirScanRunID:         runID,
 		DirScanMatchesFound:  matchesFound,
 		DirScanTorrentsAdded: torrentsAdded,
+		StartedAt:            startedAt,
+		CompletedAt:          completedAt,
 	})
 
 	if l != nil {
@@ -2167,11 +2170,14 @@ func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, i
 		return
 	}
 
+	startedAt, completedAt := s.getRunTimes(context.Background(), runID)
 	s.notify(context.Background(), notifications.Event{
 		Type:         notifications.EventDirScanFailed,
 		InstanceID:   instanceID,
 		DirScanRunID: runID,
 		ErrorMessage: errMsg,
+		StartedAt:    startedAt,
+		CompletedAt:  completedAt,
 	})
 }
 
@@ -2180,6 +2186,25 @@ func (s *Service) notify(ctx context.Context, event notifications.Event) {
 		return
 	}
 	s.notifier.Notify(ctx, event)
+}
+
+func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *time.Time) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	var startedAt *time.Time
+	if !run.StartedAt.IsZero() {
+		started := run.StartedAt
+		startedAt = &started
+	}
+	return startedAt, run.CompletedAt
 }
 
 // getDirectoryMutex returns the mutex for a directory, creating one if needed.
