@@ -1,11 +1,17 @@
+---
+sidebar_position: 7
+title: Notifications
+description: Send events to Shoutrrr targets and Notifiarr.
+---
+
 # Notifications
 
-qui uses Shoutrrr to deliver notifications. Configure one or more targets in **Settings → Notifications** and choose which events to send.
+qui supports both the Notifiarr API (rich JSON payloads) and Shoutrrr targets. Configure one or more targets in **Settings → Notifications** and choose which events to send.
 
 ## Setup
 
 1. Open **Settings → Notifications**.
-2. Add a target name and Shoutrrr URL.
+2. Add a target name and URL.
 3. Pick the events you want.
 4. Save and use **Test** to verify delivery.
 
@@ -29,8 +35,21 @@ Notes:
 | `cross_seed_automation_failed` | RSS cross-seed automation fails or completes with errors (summary). |
 | `cross_seed_search_succeeded` | Seeded search run completes (summary counts and samples). |
 | `cross_seed_search_failed` | Seeded search run fails or is canceled (summary). |
+| `cross_seed_completion_succeeded` | Completion search run completes (summary counts and samples). |
+| `cross_seed_completion_failed` | Completion search run fails. |
+| `cross_seed_webhook_succeeded` | Webhook check run completes (summary counts and samples). |
+| `cross_seed_webhook_failed` | Webhook check run fails. |
 | `automations_actions_applied` | Automation rules applied actions (summary counts and samples; only when actions occur). |
 | `automations_run_failed` | Automation rules failed to run for an instance (system error). |
+
+## Notifiarr API (rich JSON)
+
+For prettier output similar to Discord embeds, use the native Notifiarr API scheme:
+
+- `notifiarrapi://apikey`
+- Optional override: `notifiarrapi://apikey?endpoint=https://notifiarr.com/api/v1/notification/qui`
+
+This sends a JSON payload with stable keys for event metadata plus a human-friendly `message`.
 
 ## Shoutrrr URLs
 

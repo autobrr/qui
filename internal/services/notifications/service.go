@@ -78,6 +78,10 @@ func NewService(store *models.NotificationTargetStore, instanceStore *models.Ins
 }
 
 func ValidateURL(rawURL string) error {
+	if targetScheme(rawURL) == "notifiarrapi" {
+		_, err := parseNotifiarrAPIConfig(rawURL)
+		return err
+	}
 	_, err := router.New(nil, rawURL)
 	return err
 }
@@ -165,7 +169,7 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 	}
 }
 
-func (s *Service) send(_ context.Context, target *models.NotificationTarget, event Event, title, message string) error {
+func (s *Service) send(ctx context.Context, target *models.NotificationTarget, event Event, title, message string) error {
 	if target == nil {
 		return errors.New("notification target required")
 	}
@@ -175,6 +179,8 @@ func (s *Service) send(_ context.Context, target *models.NotificationTarget, eve
 		return s.sendDiscord(target.URL, event, title, message)
 	case "notifiarr":
 		return s.sendNotifiarr(target.URL, event, title, message)
+	case "notifiarrapi":
+		return s.sendNotifiarrAPI(ctx, target.URL, event, title, message)
 	default:
 		return s.sendDefault(target.URL, title, message)
 	}
