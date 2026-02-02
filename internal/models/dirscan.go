@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 )
@@ -58,6 +61,7 @@ type DirScanSettings struct {
 	MatchMode                    MatchMode `json:"matchMode"`
 	SizeTolerancePercent         float64   `json:"sizeTolerancePercent"`
 	MinPieceRatio                float64   `json:"minPieceRatio"`
+	MaxSearcheesPerRun           int       `json:"maxSearcheesPerRun"`
 	AllowPartial                 bool      `json:"allowPartial"`
 	SkipPieceBoundarySafetyCheck bool      `json:"skipPieceBoundarySafetyCheck"`
 	StartPaused                  bool      `json:"startPaused"`
@@ -156,7 +160,7 @@ func NewDirScanStore(db dbinterface.Querier) *DirScanStore {
 // GetSettings retrieves the global directory scanner settings.
 func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, enabled, match_mode, size_tolerance_percent, min_piece_ratio,
+		SELECT id, enabled, match_mode, size_tolerance_percent, min_piece_ratio, max_searchees_per_run,
 		       allow_partial, skip_piece_boundary_safety_check, start_paused,
 		       category, tags, created_at, updated_at
 		FROM dir_scan_settings
@@ -173,6 +177,7 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 		&settings.MatchMode,
 		&settings.SizeTolerancePercent,
 		&settings.MinPieceRatio,
+		&settings.MaxSearcheesPerRun,
 		&settings.AllowPartial,
 		&settings.SkipPieceBoundarySafetyCheck,
 		&settings.StartPaused,
@@ -212,6 +217,10 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 		return nil, errors.New("settings is nil")
 	}
 
+	if settings.MaxSearcheesPerRun < 0 {
+		return nil, errors.New("maxSearcheesPerRun must be >= 0")
+	}
+
 	tagsJSON, err := json.Marshal(settings.Tags)
 	if err != nil {
 		return nil, fmt.Errorf("marshal tags: %w", err)
@@ -225,14 +234,16 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO dir_scan_settings (
 			id, enabled, match_mode, size_tolerance_percent, min_piece_ratio,
+			max_searchees_per_run,
 			allow_partial, skip_piece_boundary_safety_check, start_paused,
 			category, tags
-		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
 			match_mode = excluded.match_mode,
 			size_tolerance_percent = excluded.size_tolerance_percent,
 			min_piece_ratio = excluded.min_piece_ratio,
+			max_searchees_per_run = excluded.max_searchees_per_run,
 			allow_partial = excluded.allow_partial,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
 			start_paused = excluded.start_paused,
@@ -243,6 +254,7 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 		settings.MatchMode,
 		settings.SizeTolerancePercent,
 		minPieceRatioToDB(settings.MinPieceRatio),
+		settings.MaxSearcheesPerRun,
 		boolToInt(settings.AllowPartial),
 		boolToInt(settings.SkipPieceBoundarySafetyCheck),
 		boolToInt(settings.StartPaused),
@@ -1056,6 +1068,21 @@ func scanRunInjectionFromScanner(scanner sqlScanner) (*DirScanRunInjection, erro
 
 // --- File Operations ---
 
+func (s *DirScanStore) deleteDuplicateFileIDRows(ctx context.Context, directoryID int, fileID []byte, keepPath string) error {
+	if s == nil || s.db == nil || directoryID <= 0 || len(fileID) == 0 || keepPath == "" {
+		return nil
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM dir_scan_files
+		WHERE directory_id = ? AND file_id = ? AND file_path <> ?
+	`, directoryID, fileID, keepPath)
+	if err != nil {
+		return fmt.Errorf("dedupe file_id rows: %w", err)
+	}
+	return nil
+}
+
 // UpsertFile inserts or updates a scanned file.
 func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error {
 	if file == nil {
@@ -1070,6 +1097,42 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 	var matchedTorrentHash any
 	if file.MatchedTorrentHash != "" {
 		matchedTorrentHash = file.MatchedTorrentHash
+	}
+
+	// Handle renames via FileID where possible: if we have a platform-neutral FileID
+	// and a tracked row exists for it, update its file_path instead of creating a new row.
+	if len(file.FileID) > 0 {
+		res, err := s.db.ExecContext(ctx, `
+			UPDATE dir_scan_files
+			SET file_path = ?,
+			    file_size = ?,
+			    file_mod_time = ?,
+			    file_id = ?,
+			    status = ?,
+			    matched_torrent_hash = ?,
+			    matched_indexer_id = ?,
+			    last_processed_at = CURRENT_TIMESTAMP
+			WHERE directory_id = ? AND file_id = ?
+		`, file.FilePath, file.FileSize, file.FileModTime, file.FileID, file.Status,
+			matchedTorrentHash, matchedIndexerID, file.DirectoryID, file.FileID)
+		if err != nil {
+			// If the target path is already tracked, fall back to the path-upsert which will merge state.
+			var sqlErr *sqlite.Error
+			if !errors.As(err, &sqlErr) || sqlErr.Code() != sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+				return fmt.Errorf("update by file_id: %w", err)
+			}
+		} else {
+			rows, rowsErr := res.RowsAffected()
+			if rowsErr != nil {
+				return fmt.Errorf("rows affected: %w", rowsErr)
+			}
+			if rows > 0 {
+				if err := s.deleteDuplicateFileIDRows(ctx, file.DirectoryID, file.FileID, file.FilePath); err != nil {
+					return err
+				}
+				return nil
+			}
+		}
 	}
 
 	_, err := s.db.ExecContext(ctx, `
@@ -1089,6 +1152,10 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 		file.Status, matchedTorrentHash, matchedIndexerID)
 	if err != nil {
 		return fmt.Errorf("upsert file: %w", err)
+	}
+
+	if err := s.deleteDuplicateFileIDRows(ctx, file.DirectoryID, file.FileID, file.FilePath); err != nil {
+		return err
 	}
 
 	return nil

@@ -241,6 +241,68 @@ Move torrents to a different path on disk. This is needed to move the contents i
 Options:
 - **Skip if cross-seeds don't match the rule's conditions** - Skip the move if the torrent has cross-seeds that don't match the rule's conditions
 
+#### Move path templates
+
+The move path is evaluated as a **Go template** for each torrent. You can use a fixed path (e.g. `/data/archive`) or template actions to build paths from torrent properties.
+
+**Available template variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `.Name` | Torrent display name |
+| `.Hash` | Info hash |
+| `.Category` | qBittorrent category |
+| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
+| `.Tracker` | Tracker display name (when available from instance config), otherwise the tracker domain |
+
+**Template function:**
+
+| Function | Description |
+|----------|-------------|
+| `sanitize` | Makes a string safe for use as a path segment (removes invalid characters). Use for user-controlled values like names, e.g. `{{ sanitize .Name }}`. |
+
+**Examples:**
+
+- Fixed path (no template actions): `/data/archive`
+- By category: `/data/{{.Category}}` → e.g. `/data/movies`
+- By name (safe for paths): `/data/{{ sanitize .Name }}`
+- By isolation folder: `/data/{{.IsolationFolderName}}`
+- By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
+
+### External Program
+
+Run a pre-configured external program when torrents match the automation rule. Uses the same programs configured in **Settings → External Programs**.
+
+| Field | Description |
+|-------|-------------|
+| **Program** | Select from enabled external programs |
+| **Condition Override** | Optional condition specific to this action |
+
+**Behavior:**
+
+- Executes asynchronously (fire-and-forget) to avoid blocking automation processing
+- Can be combined with other actions (speed limits, share limits, pause, tag, category)
+- Only enabled programs appear in the dropdown
+- Activity is logged with rule name, torrent details, and success/failure status
+
+:::note
+The program must be enabled in Settings → External Programs to appear in the automation dropdown.
+:::
+
+:::note
+When multiple rules match the same torrent with External Program actions enabled, the **last matching rule** (by sort order) determines which program executes for that torrent. Only one program runs per torrent per automation cycle.
+:::
+
+:::warning
+The program's executable path must be present in the application's allowlist. Programs that are disabled or have forbidden paths will not run—attempts are rejected and logged in the activity log with the rule name and torrent details.
+:::
+
+**Use cases:**
+- Run post-processing scripts when torrents complete
+- Notify external systems (webhooks, notifications) when conditions are met
+- Trigger media library scans after category changes
+- Execute cleanup scripts for old or stalled torrents
+
 ## Cross-Seed Awareness
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
@@ -291,9 +353,9 @@ Only sends API calls when the torrent's current setting differs from the desired
 
 ### Processing Order
 
-- **First match wins** for exclusive actions (delete, category)
-- **Accumulative** for combinable actions (tags, speed limits)
-- Delete ends torrent processing (no further rules evaluated)
+- **First match wins** for delete actions (delete ends torrent processing, no further rules evaluated)
+- **Last rule wins** for speed limits, share limits, category, and external program actions
+- **Accumulative** for tag actions (tags are combined across matching rules)
 
 ### Free Space Condition Behavior
 
@@ -434,3 +496,17 @@ When a torrent matches, any other torrents pointing to the same downloaded files
 Move torrents to tracker-named categories:
 - Tracker: `tracker.example.com`
 - Action: Category "example" with "Include Cross-Seeds" enabled
+
+### Post-Processing on Completion
+
+Run a script when torrents finish downloading:
+- Tracker: `*`
+- Condition: `State is completed` AND `Progress = 100`
+- Action: External Program "post-process.sh"
+
+### Notify on Stalled Torrents
+
+Alert an external monitoring system when torrents stall:
+- Tracker: `*`
+- Condition: `State is stalled` AND `Last Activity Age > 24 hours`
+- Action: External Program "send-alert" + Tag "stalled" (mode: add)

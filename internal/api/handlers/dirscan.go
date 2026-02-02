@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -38,6 +38,7 @@ type DirScanSettingsPayload struct {
 	MatchMode                    *string  `json:"matchMode"`
 	SizeTolerancePercent         *float64 `json:"sizeTolerancePercent"`
 	MinPieceRatio                *float64 `json:"minPieceRatio"`
+	MaxSearcheesPerRun           *int     `json:"maxSearcheesPerRun"`
 	AllowPartial                 *bool    `json:"allowPartial"`
 	SkipPieceBoundarySafetyCheck *bool    `json:"skipPieceBoundarySafetyCheck"`
 	StartPaused                  *bool    `json:"startPaused"`
@@ -60,6 +61,7 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 			MatchMode:                    models.MatchModeStrict,
 			SizeTolerancePercent:         5.0,
 			MinPieceRatio:                98.0,
+			MaxSearcheesPerRun:           0,
 			AllowPartial:                 false,
 			SkipPieceBoundarySafetyCheck: true,
 			StartPaused:                  true,
@@ -109,6 +111,13 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	if payload.MinPieceRatio != nil {
 		settings.MinPieceRatio = *payload.MinPieceRatio
+	}
+	if payload.MaxSearcheesPerRun != nil {
+		if *payload.MaxSearcheesPerRun < 0 {
+			RespondError(w, http.StatusBadRequest, "maxSearcheesPerRun must be >= 0")
+			return
+		}
+		settings.MaxSearcheesPerRun = *payload.MaxSearcheesPerRun
 	}
 	if payload.AllowPartial != nil {
 		settings.AllowPartial = *payload.AllowPartial
@@ -365,6 +374,37 @@ func (h *DirScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.CancelScan(r.Context(), dirID); err != nil {
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to cancel scan")
 		RespondError(w, http.StatusInternalServerError, "Failed to cancel scan")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ResetFiles deletes tracked scan progress for a directory.
+func (h *DirScanHandler) ResetFiles(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
+		return
+	}
+
+	run, err := h.service.GetActiveRun(r.Context(), dirID)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to check active run before reset")
+		RespondError(w, http.StatusInternalServerError, "Failed to reset scan progress")
+		return
+	}
+	if run != nil {
+		RespondError(w, http.StatusConflict, "Cannot reset scan progress while a scan is running")
+		return
+	}
+
+	if err := h.service.ResetFilesForDirectory(r.Context(), dirID); err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to reset tracked files")
+		RespondError(w, http.StatusInternalServerError, "Failed to reset scan progress")
 		return
 	}
 

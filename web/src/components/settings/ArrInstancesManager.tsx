@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -426,7 +426,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="My Sonarr"
+          placeholder={`My ${type === "sonarr" ? "Sonarr" : "Radarr"}`}
           required
         />
       </div>
@@ -437,7 +437,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           id="baseUrl"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="http://localhost:8989"
+          placeholder={`http://localhost:${type === "sonarr" ? "8989" : "7878"}`}
           required
         />
         <p className="text-xs text-muted-foreground">

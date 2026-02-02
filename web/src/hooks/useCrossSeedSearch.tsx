@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -411,7 +416,7 @@ export function useCrossSeedSearch(instanceId: number) {
         const instanceResults = result.instanceResults ?? []
         if (instanceResults.length > 0) {
           for (const ir of instanceResults) {
-            if (ir.status === "added") {
+            if (ir.status === "added" || ir.status === "added_hardlink" || ir.status === "added_reflink") {
               addedCount++
             } else if (!ir.success) {
               failedCount++

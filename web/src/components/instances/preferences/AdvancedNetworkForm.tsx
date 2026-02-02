@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -31,16 +31,27 @@ function SwitchSetting({
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
+  const switchId = React.useId()
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
 
@@ -63,16 +74,20 @@ function NumberInput({
   placeholder?: string
   unit?: string
 }) {
+  const inputId = React.useId()
+  const descriptionId = description ? `${inputId}-desc` : undefined
+
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium">
+      <Label htmlFor={inputId} className="text-sm font-medium">
         {label}
         {unit && <span className="text-muted-foreground ml-1">({unit})</span>}
       </Label>
       {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
       )}
       <Input
+        id={inputId}
         type="number"
         min={min}
         max={max}
@@ -82,6 +97,7 @@ function NumberInput({
           onChange(isNaN(val) ? 0 : val)
         }}
         placeholder={placeholder}
+        aria-describedby={descriptionId}
       />
     </div>
   )
@@ -133,7 +149,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        await updatePreferences(value)
         toast.success("Advanced network settings updated successfully")
         onSuccess?.()
       } catch (error) {
@@ -183,10 +199,15 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       // Security & filtering
       form.setFieldValue("block_peers_on_privileged_ports", preferences.block_peers_on_privileged_ports)
     }
-  }, [preferences, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [preferences])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading advanced network settings...</div>
+    return (
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+        <p className="text-sm text-muted-foreground">Loading advanced network settings...</p>
+      </div>
+    )
   }
 
   return (
@@ -458,15 +479,15 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
               )}
             </form.Field>
 
-            <form.Field 
+            <form.Field
               name="checking_memory_use"
               validators={{
                 onChange: ({ value }) => {
                   if (value <= 0 || value > 1024) {
-                    return 'Outstanding memory when checking torrents must be greater than 0 and less than 1024'
+                    return "Outstanding memory when checking torrents must be greater than 0 and less than 1024"
                   }
                   return undefined
-                }
+                },
               }}
             >
               {(field) => (
@@ -481,7 +502,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                     description="Maximum memory used for piece checking"
                   />
                   {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                   )}
                 </div>
               )}
@@ -558,15 +579,15 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <form.Field 
+          <form.Field
             name="peer_turnover"
             validators={{
               onChange: ({ value }) => {
                 if (value < 0 || value > 100) {
-                  return 'Peer turnover must be between 0 and 100'
+                  return "Peer turnover must be between 0 and 100"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -581,21 +602,21 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                   description="Percentage of peers to disconnect/reconnect"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="peer_turnover_cutoff"
             validators={{
               onChange: ({ value }) => {
                 if (value < 0 || value > 100) {
-                  return 'Peer turnover cutoff must be between 0 and 100'
+                  return "Peer turnover cutoff must be between 0 and 100"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -610,21 +631,21 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                   description="Peer turnover threshold percentage"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="peer_turnover_interval"
             validators={{
               onChange: ({ value }) => {
                 if (value < 0 || value > 3600) {
-                  return 'Peer turnover interval must be greater than or equal to 0 and less than 3600 seconds'
+                  return "Peer turnover interval must be greater than or equal to 0 and less than 3600 seconds"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -639,7 +660,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                   description="How often to perform peer turnover"
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -670,19 +691,21 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
       </div>
 
-      <form.Subscribe
-        selector={(state) => [state.canSubmit, state.isSubmitting]}
-      >
-        {([canSubmit, isSubmitting]) => (
-          <Button
-            type="submit"
-            disabled={!canSubmit || isSubmitting || isUpdating}
-            className="w-full"
-          >
-            {isSubmitting || isUpdating ? "Updating..." : "Update Advanced Network Settings"}
-          </Button>
-        )}
-      </form.Subscribe>
+      <div className="flex justify-end pt-4">
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </form>
   )
 }

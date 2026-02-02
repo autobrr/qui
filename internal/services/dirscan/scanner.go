@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package dirscan
@@ -122,15 +122,17 @@ func (s *Scanner) processDirEntry(ctx context.Context, entry fs.DirEntry, entryP
 		return
 	}
 
-	if alreadySeeding, _ := s.CheckAlreadySeeding(searchee); alreadySeeding {
+	alreadySeeding, _ := s.CheckAlreadySeeding(searchee)
+	if alreadySeeding {
 		result.SkippedFiles += len(searchee.Files)
-		return
 	}
 
 	result.Searchees = append(result.Searchees, searchee)
-	for _, f := range searchee.Files {
-		result.TotalFiles++
-		result.TotalSize += f.Size
+	if !alreadySeeding {
+		for _, f := range searchee.Files {
+			result.TotalFiles++
+			result.TotalSize += f.Size
+		}
 	}
 }
 
@@ -141,14 +143,16 @@ func (s *Scanner) processFileEntry(entryPath string, result *ScanResult) {
 		return
 	}
 
-	if alreadySeeding, _ := s.CheckAlreadySeeding(searchee); alreadySeeding {
+	alreadySeeding, _ := s.CheckAlreadySeeding(searchee)
+	if alreadySeeding {
 		result.SkippedFiles++
-		return
 	}
 
 	result.Searchees = append(result.Searchees, searchee)
-	result.TotalFiles++
-	result.TotalSize += searchee.Files[0].Size
+	if !alreadySeeding {
+		result.TotalFiles++
+		result.TotalSize += searchee.Files[0].Size
+	}
 }
 
 // scanSearcheeDir scans a directory as a searchee.

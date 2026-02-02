@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package handlers
 
 import (
@@ -19,8 +22,8 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		RSSAutomationTags:            []string{"old"},
 		SeededSearchTags:             []string{"old"},
 		CompletionSearchTags:         []string{"old"},
-		WebhookTags:       []string{"old"},
-		TargetInstanceIDs: []int{1},
+		WebhookTags:                  []string{"old"},
+		TargetInstanceIDs:            []int{1},
 		TargetIndexerIDs:             []int{2},
 		MaxResultsPerRun:             10,
 		FindIndividualEpisodes:       false,
@@ -36,8 +39,8 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		StartPaused:                  ptrBool(false),
 		Category:                     optionalString{Set: true, Value: &newCategory},
 		RSSAutomationTags:            &[]string{"new"},
-		SeededSearchTags:  &[]string{"new-seeded"},
-		TargetInstanceIDs: &[]int{3, 4},
+		SeededSearchTags:             &[]string{"new-seeded"},
+		TargetInstanceIDs:            &[]int{3, 4},
 		TargetIndexerIDs:             &[]int{7},
 		MaxResultsPerRun:             ptrInt(25),
 		FindIndividualEpisodes:       ptrBool(true),
@@ -136,9 +139,42 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 
 func stringPtr(value string) *string { return &value }
 
+func TestApplyAutomationSettingsPatch_CategoryAffix(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategoryAffix:  true,
+		CategoryAffixMode:      models.CategoryAffixModeSuffix,
+		CategoryAffix:          ".cross",
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	newAffixMode := models.CategoryAffixModePrefix
+	newAffix := "cross/"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategoryAffix: ptrBool(true),
+		CategoryAffixMode:     &newAffixMode,
+		CategoryAffix:         &newAffix,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if !existing.UseCrossCategoryAffix {
+		t.Fatalf("expected useCrossCategoryAffix to be true")
+	}
+	if existing.CategoryAffixMode != models.CategoryAffixModePrefix {
+		t.Fatalf("expected categoryAffixMode to be 'prefix', got %q", existing.CategoryAffixMode)
+	}
+	if existing.CategoryAffix != "cross/" {
+		t.Fatalf("expected categoryAffix to be 'cross/', got %q", existing.CategoryAffix)
+	}
+}
+
 func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
-		UseCrossCategorySuffix: true,
+		UseCrossCategoryAffix:  true,
+		CategoryAffixMode:      models.CategoryAffixModeSuffix,
+		CategoryAffix:          ".cross",
 		UseCategoryFromIndexer: false,
 		UseCustomCategory:      false,
 		CustomCategory:         "",
@@ -146,15 +182,15 @@ func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 
 	customCat := "cross-seed"
 	patch := automationSettingsPatchRequest{
-		UseCrossCategorySuffix: ptrBool(false),
-		UseCustomCategory:      ptrBool(true),
-		CustomCategory:         &customCat,
+		UseCrossCategoryAffix: ptrBool(false),
+		UseCustomCategory:     ptrBool(true),
+		CustomCategory:        &customCat,
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
 
-	if existing.UseCrossCategorySuffix {
-		t.Fatalf("expected useCrossCategorySuffix to be false")
+	if existing.UseCrossCategoryAffix {
+		t.Fatalf("expected useCrossCategoryAffix to be false")
 	}
 	if !existing.UseCustomCategory {
 		t.Fatalf("expected useCustomCategory to be true")
