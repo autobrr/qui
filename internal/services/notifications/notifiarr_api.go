@@ -104,6 +104,10 @@ func (s *Service) sendNotifiarrAPI(ctx context.Context, rawURL string, event Eve
 		return err
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	payload := notifiarrAPIPayload{
 		Event: buildNotifiarrEventValue(event.Type),
 		Data:  s.buildNotifiarrAPIData(ctx, event, title, message),
@@ -111,10 +115,6 @@ func (s *Service) sendNotifiarrAPI(ctx context.Context, rawURL string, event Eve
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return err
-	}
-
-	if ctx == nil {
-		ctx = context.Background()
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.endpoint, bytes.NewReader(encoded))
