@@ -337,16 +337,28 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventCrossSeedAutomationSucceeded:
-		title := "Cross-seed automation completed"
+		title := "Cross-seed RSS automation completed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedAutomationFailed:
-		title := "Cross-seed automation failed"
+		title := "Cross-seed RSS automation failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedSearchSucceeded:
-		title := "Cross-seed search completed"
+		title := "Cross-seed seeded search completed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedSearchFailed:
-		title := "Cross-seed search failed"
+		title := "Cross-seed seeded search failed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedCompletionSucceeded:
+		title := "Cross-seed completion search completed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedCompletionFailed:
+		title := "Cross-seed completion search failed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedWebhookSucceeded:
+		title := "Cross-seed webhook check completed"
+		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+	case EventCrossSeedWebhookFailed:
+		title := "Cross-seed webhook check failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventAutomationsActionsApplied:
 		title := "Automations actions applied"
@@ -648,6 +660,8 @@ func discordEventColor(eventType EventType) int {
 		EventOrphanScanFailed,
 		EventCrossSeedAutomationFailed,
 		EventCrossSeedSearchFailed,
+		EventCrossSeedCompletionFailed,
+		EventCrossSeedWebhookFailed,
 		EventAutomationsRunFailed:
 		return discordColorError
 	case EventTorrentCompleted,
@@ -656,6 +670,8 @@ func discordEventColor(eventType EventType) int {
 		EventOrphanScanCompleted,
 		EventCrossSeedAutomationSucceeded,
 		EventCrossSeedSearchSucceeded,
+		EventCrossSeedCompletionSucceeded,
+		EventCrossSeedWebhookSucceeded,
 		EventAutomationsActionsApplied:
 		return discordColorSuccess
 	default:

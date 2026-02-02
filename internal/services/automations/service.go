@@ -65,6 +65,7 @@ type automationSummary struct {
 	failed          int
 	appliedByAction map[string]int
 	failedByAction  map[string]int
+	ruleCounts      map[string]int
 	sampleTorrents  []string
 	sampleErrors    []string
 	sampleSeen      map[string]struct{}
@@ -74,6 +75,7 @@ func newAutomationSummary() *automationSummary {
 	return &automationSummary{
 		appliedByAction: make(map[string]int),
 		failedByAction:  make(map[string]int),
+		ruleCounts:      make(map[string]int),
 		sampleSeen:      make(map[string]struct{}),
 	}
 }
@@ -113,6 +115,9 @@ func (s *automationSummary) message() string {
 	if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
 		lines = append(lines, "Top failures: "+formatted)
 	}
+	if formatted := formatRuleCounts(s.ruleCounts, 3); formatted != "" {
+		lines = append(lines, "Rules: "+formatted)
+	}
 	if len(s.sampleTorrents) > 0 {
 		lines = append(lines, "Samples: "+strings.Join(s.sampleTorrents, "; "))
 	}
@@ -134,6 +139,17 @@ func (s *automationSummary) addSamplesFromActivity(activity *models.AutomationAc
 	}
 }
 
+func (s *automationSummary) addRuleCount(ruleName string, count int) {
+	if s == nil || count <= 0 {
+		return
+	}
+	trimmed := strings.TrimSpace(ruleName)
+	if trimmed == "" {
+		return
+	}
+	s.ruleCounts[trimmed] += count
+}
+
 func (s *automationSummary) addSample(list *[]string, value string, limit int) {
 	if s == nil || list == nil || limit <= 0 {
 		return
@@ -152,24 +168,34 @@ func (s *automationSummary) addSample(list *[]string, value string, limit int) {
 	*list = append(*list, trimmed)
 }
 
-func formatActionCounts(counts map[string]int, limit int) string {
+type countItem struct {
+	key   string
+	count int
+}
+
+func sortedCountItems(counts map[string]int) []countItem {
 	if len(counts) == 0 {
-		return ""
+		return nil
 	}
-	type item struct {
-		action string
-		count  int
-	}
-	items := make([]item, 0, len(counts))
-	for action, count := range counts {
-		items = append(items, item{action: action, count: count})
+
+	items := make([]countItem, 0, len(counts))
+	for key, count := range counts {
+		items = append(items, countItem{key: key, count: count})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].count == items[j].count {
-			return items[i].action < items[j].action
+			return items[i].key < items[j].key
 		}
 		return items[i].count > items[j].count
 	})
+	return items
+}
+
+func formatActionCounts(counts map[string]int, limit int) string {
+	items := sortedCountItems(counts)
+	if len(items) == 0 {
+		return ""
+	}
 
 	maxItems := limit
 	if maxItems <= 0 || maxItems > len(items) {
@@ -178,8 +204,26 @@ func formatActionCounts(counts map[string]int, limit int) string {
 
 	parts := make([]string, 0, maxItems)
 	for i := 0; i < maxItems; i++ {
-		label := automationActionLabel(items[i].action)
+		label := automationActionLabel(items[i].key)
 		parts = append(parts, fmt.Sprintf("%s=%d", label, items[i].count))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func formatRuleCounts(counts map[string]int, limit int) string {
+	items := sortedCountItems(counts)
+	if len(items) == 0 {
+		return ""
+	}
+
+	maxItems := limit
+	if maxItems <= 0 || maxItems > len(items) {
+		maxItems = len(items)
+	}
+
+	parts := make([]string, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		parts = append(parts, items[i].key)
 	}
 	return strings.Join(parts, "; ")
 }
@@ -2248,6 +2292,7 @@ func (s *Service) recordActivity(ctx context.Context, activity *models.Automatio
 
 	if summary != nil {
 		summary.add(activity.Action, activity.Outcome, count)
+		summary.addRuleCount(activity.RuleName, count)
 		summary.addSamplesFromActivity(activity)
 	}
 }

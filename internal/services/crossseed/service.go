@@ -1605,8 +1605,21 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	successCount := 0
+	failedCount := 0
+	skippedCount := 0
+	results := make([]models.CrossSeedSearchResult, 0, len(searchResp.Results))
 	for _, match := range searchResp.Results {
 		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
+		if result != nil {
+			results = append(results, *result)
+			if result.Added {
+				successCount++
+			} else if attemptErr != nil {
+				failedCount++
+			} else {
+				skippedCount++
+			}
+		}
 		if attemptErr != nil {
 			log.Debug().
 				Err(attemptErr).
@@ -1615,9 +1628,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				Str("matchIndexer", match.Indexer).
 				Msg("[CROSSSEED-COMPLETION] Cross-seed apply attempt failed")
 			continue
-		}
-		if result != nil && result.Added {
-			successCount++
 		}
 	}
 
@@ -1634,6 +1644,28 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Completion search executed with no additions")
+	}
+
+	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
+		eventType := notifications.EventCrossSeedCompletionSucceeded
+		if failedCount > 0 {
+			eventType = notifications.EventCrossSeedCompletionFailed
+		}
+		lines := []string{
+			fmt.Sprintf("Torrent: %s", torrent.Name),
+			fmt.Sprintf("Matches: %d", len(searchResp.Results)),
+			fmt.Sprintf("Added: %d", successCount),
+			fmt.Sprintf("Failed: %d", failedCount),
+			fmt.Sprintf("Skipped: %d", skippedCount),
+		}
+		if samples := collectSearchResultSamples(results, 3); len(samples) > 0 {
+			lines = append(lines, "Samples: "+formatSampleText(samples))
+		}
+		s.notifier.Notify(ctx, notifications.Event{
+			Type:       eventType,
+			InstanceID: instanceID,
+			Message:    strings.Join(lines, "\n"),
+		})
 	}
 
 	return nil
@@ -7538,12 +7570,16 @@ func collectSearchRunSamples(state *searchRunState) []string {
 	if len(results) == 0 && state.run != nil {
 		results = state.run.Results
 	}
-	if len(results) == 0 {
+	return collectSearchResultSamples(results, 3)
+}
+
+func collectSearchResultSamples(results []models.CrossSeedSearchResult, limit int) []string {
+	if limit <= 0 || len(results) == 0 {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, 3)
-	samples := make([]string, 0, 3)
+	seen := make(map[string]struct{}, limit)
+	samples := make([]string, 0, limit)
 	for _, result := range results {
 		if !result.Added {
 			continue
@@ -7563,7 +7599,7 @@ func collectSearchRunSamples(state *searchRunState) []string {
 		}
 		seen[label] = struct{}{}
 		samples = append(samples, label)
-		if len(samples) >= 3 {
+		if len(samples) >= limit {
 			break
 		}
 	}
@@ -7575,6 +7611,91 @@ func formatSampleText(samples []string) string {
 		return ""
 	}
 	return strings.Join(samples, "; ")
+}
+
+func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string {
+	if limit <= 0 || len(matches) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, limit)
+	samples := make([]string, 0, limit)
+	for _, match := range matches {
+		label := strings.TrimSpace(match.TorrentName)
+		if label == "" {
+			label = strings.TrimSpace(match.TorrentHash)
+		}
+		if label == "" {
+			continue
+		}
+		if strings.TrimSpace(match.InstanceName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(match.InstanceName))
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string) {
+	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
+		return
+	}
+
+	completeCount := 0
+	pendingCount := 0
+	for _, match := range matches {
+		if match.Progress >= 1.0 {
+			completeCount++
+		} else {
+			pendingCount++
+		}
+	}
+
+	lines := []string{
+		fmt.Sprintf("Torrent: %s", strings.TrimSpace(req.TorrentName)),
+		fmt.Sprintf("Matches: %d", len(matches)),
+		fmt.Sprintf("Complete matches: %d", completeCount),
+		fmt.Sprintf("Pending matches: %d", pendingCount),
+	}
+	if strings.TrimSpace(recommendation) != "" {
+		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
+	}
+	if samples := collectWebhookMatchSamples(matches, 3); len(samples) > 0 {
+		lines = append(lines, "Samples: "+formatSampleText(samples))
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventCrossSeedWebhookSucceeded,
+		InstanceName: "Cross-seed webhook",
+		Message:      strings.Join(lines, "\n"),
+	})
+}
+
+func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookCheckRequest, err error) {
+	if s == nil || s.notifier == nil || req == nil || err == nil {
+		return
+	}
+	if errors.Is(err, ErrInvalidWebhookRequest) {
+		return
+	}
+
+	lines := []string{
+		fmt.Sprintf("Torrent: %s", strings.TrimSpace(req.TorrentName)),
+		fmt.Sprintf("Error: %s", err.Error()),
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventCrossSeedWebhookFailed,
+		InstanceName: "Cross-seed webhook",
+		Message:      strings.Join(lines, "\n"),
+	})
 }
 
 func (s *Service) persistSearchRun(state *searchRunState) {
@@ -8337,6 +8458,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	instances, err := s.resolveInstances(ctx, requestedInstanceIDs)
 	if err != nil {
+		s.notifyWebhookCheckFailure(ctx, req, err)
 		return nil, err
 	}
 
@@ -8562,6 +8684,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
+
+	s.notifyWebhookCheck(ctx, req, matches, recommendation)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,
