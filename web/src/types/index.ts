@@ -95,6 +95,7 @@ export interface InstanceCrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
 }
 
 /**
@@ -364,6 +365,28 @@ export interface AutomationActivity {
     paths?: Record<string, number> // path -> count of torrents
   }
   createdAt: string
+}
+
+export interface AutomationActivityRunItem {
+  hash: string
+  name: string
+  trackerDomain?: string
+  tagsAdded?: string[]
+  tagsRemoved?: string[]
+  category?: string
+  movePath?: string
+  size?: number
+  ratio?: number
+  addedOn?: number
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingMinutes?: number
+}
+
+export interface AutomationActivityRun {
+  total: number
+  items: AutomationActivityRunItem[]
 }
 
 export interface AutomationPreviewTorrent {
