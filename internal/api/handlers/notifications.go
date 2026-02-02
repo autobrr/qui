@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,11 +91,7 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := notifications.ValidateURL(url); err != nil {
-		RespondError(w, http.StatusBadRequest, fmt.Sprintf("invalid notification url: %v", err))
-		return
-	}
-	if err := notifications.ValidateNotifiarrAPIKey(r.Context(), url); err != nil {
+	if err := validateNotificationURL(r.Context(), url); err != nil {
 		RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -164,11 +161,7 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := notifications.ValidateURL(url); err != nil {
-		RespondError(w, http.StatusBadRequest, fmt.Sprintf("invalid notification url: %v", err))
-		return
-	}
-	if err := notifications.ValidateNotifiarrAPIKey(r.Context(), url); err != nil {
+	if err := validateNotificationURL(r.Context(), url); err != nil {
 		RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -245,6 +238,16 @@ func (h *NotificationsHandler) DeleteTarget(w http.ResponseWriter, r *http.Reque
 	}
 
 	RespondJSON(w, http.StatusNoContent, nil)
+}
+
+func validateNotificationURL(ctx context.Context, url string) error {
+	if err := notifications.ValidateURL(url); err != nil {
+		return fmt.Errorf("invalid notification url: %w", err)
+	}
+	if err := notifications.ValidateNotifiarrAPIKey(ctx, url); err != nil {
+		return err
+	}
+	return nil
 }
 
 // TestTarget handles POST /api/notifications/targets/{id}/test
