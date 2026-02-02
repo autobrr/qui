@@ -1516,15 +1516,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode, "isTrigger": isTrigger},
 				}
 
-			// Mark as processed
-			if !dryRun {
-				s.mu.Lock()
-				instLastApplied[h] = now
-				s.mu.Unlock()
+				// Mark as processed
+				if !dryRun {
+					s.mu.Lock()
+					instLastApplied[h] = now
+					s.mu.Unlock()
+				}
 			}
+			continue
 		}
-		continue
-	}
 
 		// Speed limits - only add to batch if current doesn't match desired
 		if state.uploadLimitKiB != nil {

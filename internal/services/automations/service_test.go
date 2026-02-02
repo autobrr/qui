@@ -1334,7 +1334,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 	)
 
 	require.Len(t, mockDB.activities, 1)
-	assert.Equal(t, "", mockDB.activities[0].Hash)
+	assert.Empty(t, mockDB.activities[0].Hash)
 	assert.Equal(t, models.ActivityActionDeletedCondition, mockDB.activities[0].Action)
 	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }

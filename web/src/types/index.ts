@@ -374,8 +374,6 @@ export interface AutomationActivity {
     limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
     // Move activity details
     paths?: Record<string, number> // path -> count of torrents
-    // External program activity details
-    programName?: string
   }
   createdAt: string
 }
