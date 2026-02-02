@@ -306,7 +306,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
-  const { data: allExternalPrograms, isError: externalProgramsError } = useQuery({
+  const {
+    data: allExternalPrograms,
+    isError: externalProgramsError,
+    isLoading: externalProgramsLoading,
+  } = useQuery({
     queryKey: ["externalPrograms"],
     queryFn: () => api.listExternalPrograms(),
     enabled: open,
@@ -1796,7 +1800,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Program</Label>
-                          {externalProgramsError ? (
+                          {externalProgramsLoading ? (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Loading external programs...
+                            </div>
+                          ) : externalProgramsError ? (
                             <div className="text-sm text-destructive p-2 border border-destructive/50 rounded-md bg-destructive/10">
                               Failed to load external programs. Please try again.
                             </div>
