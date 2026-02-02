@@ -1145,7 +1145,9 @@ export function WorkflowsOverview({
                                               outcomeClasses[event.outcome]
                                             )}
                                           >
-                                            {event.outcome === "success" ? "Removed" : "Failed"}
+                                            {event.action === "external_program"
+                                              ? (event.outcome === "success" ? "Executed" : "Failed")
+                                              : (event.outcome === "success" ? "Removed" : "Failed")}
                                           </Badge>
                                         )}
                                       </div>
