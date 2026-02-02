@@ -60,7 +60,15 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
   const [note, setNote] = useState("")
 
   useEffect(() => {
-    if (instanceId === null && instances.length > 0) {
+    if (instances.length === 0) {
+      if (instanceId !== null) {
+        setInstanceId(null)
+      }
+      return
+    }
+
+    const hasInstance = instanceId !== null && instances.some((instance) => instance.id === instanceId)
+    if (!hasInstance) {
       setInstanceId(instances[0].id)
     }
   }, [instanceId, instances])
@@ -226,25 +234,35 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {blocklist.map((entry) => (
-                  <TableRow key={`${entry.instanceId}-${entry.infoHash}`}>
-                    <TableCell className="font-mono text-xs break-all">
-                      {entry.infoHash}
-                    </TableCell>
-                    <TableCell>{entry.note || "—"}</TableCell>
-                    <TableCell>{formatDateValue(entry.createdAt)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate(entry)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {blocklist.map((entry) => {
+                  const isDeleting = deleteMutation.isPending
+                    && deleteMutation.variables?.instanceId === entry.instanceId
+                    && deleteMutation.variables?.infoHash === entry.infoHash
+                  return (
+                    <TableRow key={`${entry.instanceId}-${entry.infoHash}`}>
+                      <TableCell className="font-mono text-xs break-all">
+                        {entry.infoHash}
+                      </TableCell>
+                      <TableCell>{entry.note || "—"}</TableCell>
+                      <TableCell>{formatDateValue(entry.createdAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteMutation.mutate(entry)}
+                          disabled={isDeleting}
+                          aria-label={`Remove ${entry.infoHash} from blocklist`}
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}
