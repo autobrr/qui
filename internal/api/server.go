@@ -491,6 +491,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/preview", automationsHandler.PreviewDeleteRule)
 						r.Post("/validate-regex", automationsHandler.ValidateRegex)
 						r.Get("/activity", automationsHandler.ListActivity)
+						r.Get("/activity/{activityId}", automationsHandler.GetActivityRun)
 						r.Delete("/activity", automationsHandler.DeleteActivity)
 
 						r.Route("/{ruleID}", func(r chi.Router) {

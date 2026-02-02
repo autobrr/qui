@@ -12,6 +12,7 @@ import type {
   AuthResponse,
   Automation,
   AutomationActivity,
+  AutomationActivityRun,
   AutomationInput,
   AutomationPreviewInput,
   AutomationPreviewResult,
@@ -108,7 +109,7 @@ import type {
   TrackerCustomizationInput,
   User,
   WarningResponse,
-  WebSeed,
+  WebSeed
 } from "@/types"
 import type {
   ArrInstance,
@@ -1552,6 +1553,22 @@ class ApiClient {
   async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
+  }
+
+  async getAutomationActivityRun(
+    instanceId: number,
+    activityId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<AutomationActivityRun> {
+    const query = new URLSearchParams()
+    if (typeof params?.limit === "number") {
+      query.set("limit", String(params.limit))
+    }
+    if (typeof params?.offset === "number") {
+      query.set("offset", String(params.offset))
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : ""
+    return this.request<AutomationActivityRun>(`/instances/${instanceId}/automations/activity/${activityId}${suffix}`)
   }
 
   async deleteAutomationActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
