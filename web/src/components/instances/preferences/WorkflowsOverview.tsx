@@ -1125,10 +1125,10 @@ export function WorkflowsOverview({
                                         >
                                           {formatAction(event.action)}
                                         </Badge>
-                                        {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "moved"].includes(event.action) && (
-                                          <Badge
-                                            variant="outline"
-                                            className={cn(
+                                      {!runSummaryActions.has(event.action) && (
+                                        <Badge
+                                          variant="outline"
+                                          className={cn(
                                               "text-[10px] px-1.5 py-0 h-5 shrink-0",
                                               outcomeClasses[event.outcome]
                                             )}
