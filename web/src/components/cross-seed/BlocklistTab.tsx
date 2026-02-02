@@ -65,11 +65,12 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
     }
   }, [instanceId, instances])
 
-  const { data: blocklist = [], isLoading } = useQuery({
+  const { data: blocklistData, isLoading } = useQuery({
     queryKey: ["cross-seed", "blocklist", instanceId],
     queryFn: () => instanceId ? api.listCrossSeedBlocklist(instanceId) : Promise.resolve([]),
     enabled: instanceId !== null,
   })
+  const blocklist = blocklistData ?? []
 
   const addMutation = useMutation({
     mutationFn: (payload: { instanceId: number; infoHash: string; note?: string }) => api.addCrossSeedBlocklist(payload),

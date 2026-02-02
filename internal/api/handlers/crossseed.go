@@ -1108,6 +1108,9 @@ func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to load blocklist")
 		return
 	}
+	if entries == nil {
+		entries = []*models.CrossSeedBlocklistEntry{}
+	}
 
 	RespondJSON(w, http.StatusOK, entries)
 }
