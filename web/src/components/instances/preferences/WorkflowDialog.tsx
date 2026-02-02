@@ -45,6 +45,7 @@ import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
@@ -1828,7 +1829,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
                               No external programs configured.{" "}
                               <a
-                                href="/settings?tab=external-programs"
+                                href={withBasePath("/settings?tab=external-programs")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-primary hover:underline"
