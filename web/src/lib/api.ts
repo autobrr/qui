@@ -299,11 +299,12 @@ function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?
   }
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
   const target = options?.target ?? withBasePath("/")
-  if (window.location.href === target) {
+  const targetUrl = new URL(target, window.location.origin)
+  if (window.location.href === targetUrl.href) {
     window.location.reload()
     return
   }
-  window.location.assign(target)
+  window.location.assign(targetUrl.href)
 }
 
 /** Clear the SSO recovery guard after a successful request. */
