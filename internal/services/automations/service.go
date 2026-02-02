@@ -31,6 +31,8 @@ type Config struct {
 	SkipWithin            time.Duration
 	MaxBatchHashes        int
 	ActivityRetentionDays int
+	ActivityRunRetention  time.Duration
+	ActivityRunMax        int
 	ApplyTimeout          time.Duration // timeout for applying all actions per instance
 }
 
@@ -125,6 +127,18 @@ func (s *automationSummary) message() string {
 		lines = append(lines, "Errors: "+strings.Join(s.sampleErrors, "; "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (s *automationSummary) recordActivity(activity *models.AutomationActivity, count int) {
+	if s == nil || activity == nil {
+		return
+	}
+	if count <= 0 {
+		count = 1
+	}
+	s.add(activity.Action, activity.Outcome, count)
+	s.addRuleCount(activity.RuleName, count)
+	s.addSamplesFromActivity(activity)
 }
 
 func (s *automationSummary) addSamplesFromActivity(activity *models.AutomationActivity) {
@@ -232,7 +246,7 @@ func automationActionLabel(action string) string {
 	if label, ok := automationActionLabels[action]; ok {
 		return label
 	}
-	return action
+	return strings.ReplaceAll(action, "_", " ")
 }
 
 // ruleKey identifies a rule within an instance for per-rule cadence tracking.
@@ -241,12 +255,34 @@ type ruleKey struct {
 	ruleID     int
 }
 
+type shareKey struct {
+	ratio    float64
+	seed     int64
+	inactive int64
+}
+
+type tagChange struct {
+	current  map[string]struct{}
+	desired  map[string]struct{}
+	toAdd    []string
+	toRemove []string
+}
+
+type categoryMove struct {
+	hash          string
+	name          string
+	trackerDomain string
+	category      string
+}
+
 func DefaultConfig() Config {
 	return Config{
 		ScanInterval:          20 * time.Second,
 		SkipWithin:            2 * time.Minute,
 		MaxBatchHashes:        50, // matches qBittorrent's max_concurrent_http_announces default
 		ActivityRetentionDays: 7,
+		ActivityRunRetention:  24 * time.Hour,
+		ActivityRunMax:        500,
 		ApplyTimeout:          60 * time.Second,
 	}
 }
@@ -260,6 +296,7 @@ type Service struct {
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
 	notifier                  notifications.Notifier
+	activityRuns              *activityRunStore
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
@@ -281,6 +318,12 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 	if cfg.ActivityRetentionDays <= 0 {
 		cfg.ActivityRetentionDays = DefaultConfig().ActivityRetentionDays
 	}
+	if cfg.ActivityRunRetention <= 0 {
+		cfg.ActivityRunRetention = DefaultConfig().ActivityRunRetention
+	}
+	if cfg.ActivityRunMax <= 0 {
+		cfg.ActivityRunMax = DefaultConfig().ActivityRunMax
+	}
 	return &Service{
 		cfg:                       cfg,
 		instanceStore:             instanceStore,
@@ -289,6 +332,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
 		notifier:                  notifier,
+		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
@@ -322,6 +366,10 @@ func (s *Service) cleanupStaleEntries() {
 		if ts.Before(cutoff) {
 			delete(s.lastFreeSpaceDeleteAt, instanceID)
 		}
+	}
+
+	if s.activityRuns != nil {
+		s.activityRuns.Prune()
 	}
 }
 
@@ -1439,22 +1487,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Build batches from desired states
-	type shareKey struct {
-		ratio    float64
-		seed     int64
-		inactive int64
-	}
 	shareBatches := make(map[shareKey][]string)
 	uploadBatches := make(map[int64][]string)
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
 
-	type tagChange struct {
-		current  map[string]struct{}
-		desired  map[string]struct{}
-		toAdd    []string
-		toRemove []string
-	}
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
 	moveBatches := make(map[string][]string)     // path -> hashes
@@ -1775,33 +1812,44 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
 		speedLimits := make(map[string]int) // "upload:1024" -> count, "download:2048" -> count
 		totalUpdated := 0
-		for limit, count := range uploadSuccess {
-			speedLimits[fmt.Sprintf("upload:%d", limit)] = count
-			totalUpdated += count
+		for limit, hashes := range uploadSuccess {
+			speedLimits[fmt.Sprintf("upload:%d", limit)] = len(hashes)
+			totalUpdated += len(hashes)
 		}
-		for limit, count := range downloadSuccess {
-			speedLimits[fmt.Sprintf("download:%d", limit)] = count
-			totalUpdated += count
+		for limit, hashes := range downloadSuccess {
+			speedLimits[fmt.Sprintf("download:%d", limit)] = len(hashes)
+			totalUpdated += len(hashes)
 		}
 		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
-		s.recordActivity(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionSpeedLimitsChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}, totalUpdated, summary)
+		}
+		summary.recordActivity(activity, totalUpdated)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
+			} else if s.activityRuns != nil {
+				items := buildSpeedLimitRunItems(uploadSuccess, downloadSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
 	}
 
 	// Apply share limits and track success
-	shareLimitSuccess := make(map[string]int) // "ratio:seed:inactive" -> count
+	shareLimitSuccess := make(map[shareKey][]string) // "ratio:seed:inactive" -> hashes
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive)
 			if err == nil {
-				limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
-				shareLimitSuccess[limitKey] += len(batch)
+				shareLimitSuccess[key] = append(shareLimitSuccess[key], batch...)
 				continue
 			}
 			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Int("count", len(batch)).Msg("automations: share limit failed")
@@ -1810,35 +1858,57 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
 				continue
 			}
-			s.recordActivity(ctx, &models.AutomationActivity{
+			activity := &models.AutomationActivity{
 				InstanceID: instanceID,
 				Hash:       strings.Join(batch, ","),
 				Action:     models.ActivityActionLimitFailed,
 				Outcome:    models.ActivityOutcomeFailed,
 				Reason:     "share limit failed: " + err.Error(),
 				Details:    detailsJSON,
-			}, len(batch), summary)
+			}
+			summary.recordActivity(activity, len(batch))
+			if s.activityStore != nil {
+				if actErr := s.activityStore.Create(ctx, activity); actErr != nil {
+					log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+				}
+			}
 		}
 	}
 
 	// Record aggregated share limit activity
 	if len(shareLimitSuccess) > 0 {
+		limitCounts := make(map[string]int)
 		totalUpdated := 0
-		for _, count := range shareLimitSuccess {
-			totalUpdated += count
+		for key, hashes := range shareLimitSuccess {
+			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
+			limitCounts[limitKey] = len(hashes)
+			totalUpdated += len(hashes)
 		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": shareLimitSuccess})
-		s.recordActivity(ctx, &models.AutomationActivity{
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionShareLimitsChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}, totalUpdated, summary)
+		}
+		summary.recordActivity(activity, totalUpdated)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
+			} else if s.activityRuns != nil {
+				items := buildShareLimitRunItems(shareLimitSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
 	}
 
 	// Execute pause actions for expression-based rules
 	pausedCount := 0
+	pausedHashesSuccess := make([]string, 0)
 	if len(pauseHashes) > 0 {
 		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -1847,6 +1917,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			} else {
 				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: paused torrents")
 				pausedCount += len(batch)
+				pausedHashesSuccess = append(pausedHashesSuccess, batch...)
 			}
 		}
 	}
@@ -1854,13 +1925,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// Record aggregated pause activity
 	if pausedCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
-		s.recordActivity(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionPaused,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}, pausedCount, summary)
+		}
+		summary.recordActivity(activity, pausedCount)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(pausedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
 	}
 
 	// Execute tag actions for expression-based rules
@@ -1966,25 +2049,31 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				"added":   addCounts,
 				"removed": removeCounts,
 			})
-			changedCount := len(tagChanges)
-			s.recordActivity(ctx, &models.AutomationActivity{
+			activity := &models.AutomationActivity{
 				InstanceID: instanceID,
 				Hash:       "", // No single hash for batch operations
 				Action:     models.ActivityActionTagsChanged,
 				Outcome:    models.ActivityOutcomeSuccess,
 				Details:    detailsJSON,
-			}, changedCount, summary)
+			}
+			changedCount := len(tagChanges)
+			summary.recordActivity(activity, changedCount)
+			if s.activityStore != nil {
+				activityID, err := s.activityStore.CreateWithID(ctx, activity)
+				if err != nil {
+					log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record tag activity")
+				} else if s.activityRuns != nil {
+					items := buildTagRunItems(tagChanges, torrentByHash, s.syncManager)
+					if len(items) > 0 {
+						s.activityRuns.Put(activityID, instanceID, items)
+					}
+				}
+			}
 		}
 	}
 
 	// Execute category changes - expand with cross-seeds where winning rule requested it
 	// Sort keys for deterministic execution order
-	type categoryMove struct {
-		hash          string
-		name          string
-		trackerDomain string
-		category      string
-	}
 	var successfulMoves []categoryMove
 
 	sortedCategories := make([]string, 0, len(categoryBatches))
@@ -2073,13 +2162,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		detailsJSON, _ := json.Marshal(map[string]any{
 			"categories": categoryCounts,
 		})
-		s.recordActivity(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "", // No single hash for batch operations
 			Action:     models.ActivityActionCategoryChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}, len(successfulMoves), summary)
+		}
+		summary.recordActivity(activity, len(successfulMoves))
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
+			} else if s.activityRuns != nil {
+				items := buildCategoryRunItems(successfulMoves, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
 	}
 
 	// Execute moves - sort paths for deterministic processing order
@@ -2092,6 +2193,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	movedHashes := make(map[string]struct{})
 	successfulMovesByPath := make(map[string]int)
 	failedMovesByPath := make(map[string]int)
+	successfulMoveHashesByPath := make(map[string][]string)
 	for _, path := range sortedPaths {
 		hashes := moveBatches[path]
 		successfulMovesForPath := 0
@@ -2145,6 +2247,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 			} else {
 				log.Debug().Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: moved torrent")
 				successfulMovesForPath += len(batch)
+				successfulMoveHashesByPath[path] = append(successfulMoveHashesByPath[path], batch...)
 			}
 		}
 
@@ -2153,34 +2256,52 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Record aggregated move activity
-	var successfulMoveCount int
-	var failedMoveCount int
+	successCount := 0
 	for _, count := range successfulMovesByPath {
-		successfulMoveCount += count
+		successCount += count
 	}
+	failureCount := 0
 	for _, count := range failedMovesByPath {
-		failedMoveCount += count
+		failureCount += count
 	}
 
-	if successfulMoveCount > 0 {
+	if successCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
-		s.recordActivity(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionMoved,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		}, successfulMoveCount, summary)
+		}
+		summary.recordActivity(activity, successCount)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			} else if s.activityRuns != nil {
+				items := buildMoveRunItems(successfulMoveHashesByPath, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
 	}
-	if failedMoveCount > 0 {
+	if failureCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
-		s.recordActivity(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionMoved,
 			Outcome:    models.ActivityOutcomeFailed,
 			Details:    detailsJSON,
-		}, failedMoveCount, summary)
+		}
+		summary.recordActivity(activity, failureCount)
+		if s.activityStore != nil {
+			if err := s.activityStore.Create(ctx, activity); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
+			}
+		}
 	}
 
 	// Execute deletions
@@ -2209,7 +2330,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				for _, hash := range batch {
 					if pending, ok := pendingByHash[hash]; ok {
 						detailsJSON, _ := json.Marshal(pending.details)
-						s.recordActivity(ctx, &models.AutomationActivity{
+						activity := &models.AutomationActivity{
 							InstanceID:    instanceID,
 							Hash:          hash,
 							TorrentName:   pending.torrentName,
@@ -2220,7 +2341,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 							Outcome:       models.ActivityOutcomeFailed,
 							Reason:        err.Error(),
 							Details:       detailsJSON,
-						}, 1, summary)
+						}
+						summary.recordActivity(activity, 1)
+						if s.activityStore != nil {
+							if err := s.activityStore.Create(ctx, activity); err != nil {
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+							}
+						}
 					}
 				}
 			} else {
@@ -2254,7 +2381,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				for _, hash := range batch {
 					if pending, ok := pendingByHash[hash]; ok {
 						detailsJSON, _ := json.Marshal(pending.details)
-						s.recordActivity(ctx, &models.AutomationActivity{
+						activity := &models.AutomationActivity{
 							InstanceID:    instanceID,
 							Hash:          hash,
 							TorrentName:   pending.torrentName,
@@ -2265,7 +2392,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 							Outcome:       models.ActivityOutcomeSuccess,
 							Reason:        pending.reason,
 							Details:       detailsJSON,
-						}, 1, summary)
+						}
+						summary.recordActivity(activity, 1)
+						if s.activityStore != nil {
+							if err := s.activityStore.Create(ctx, activity); err != nil {
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+							}
+						}
 					}
 				}
 			}
@@ -2274,27 +2407,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 	s.notifyAutomationSummary(ctx, instanceID, summary)
 	return nil
-}
-
-func (s *Service) recordActivity(ctx context.Context, activity *models.AutomationActivity, count int, summary *automationSummary) {
-	if activity == nil {
-		return
-	}
-	if count <= 0 {
-		count = 1
-	}
-
-	if s.activityStore != nil {
-		if err := s.activityStore.Create(ctx, activity); err != nil {
-			log.Warn().Err(err).Int("instanceID", activity.InstanceID).Msg("automations: failed to record activity")
-		}
-	}
-
-	if summary != nil {
-		summary.add(activity.Action, activity.Outcome, count)
-		summary.addRuleCount(activity.RuleName, count)
-		summary.addSamplesFromActivity(activity)
-	}
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary) {
@@ -2730,7 +2842,7 @@ func buildFullPath(basePath, filePath string) string {
 }
 
 // applySpeedLimits applies upload or download limits in batches, logging and recording failures.
-// Returns a map of limit (KiB) -> count of successfully updated torrents.
+// Returns a map of limit (KiB) -> hashes of successfully updated torrents.
 func (s *Service) applySpeedLimits(
 	ctx context.Context,
 	instanceID int,
@@ -2738,8 +2850,8 @@ func (s *Service) applySpeedLimits(
 	limitType string,
 	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
 	summary *automationSummary,
-) map[int64]int {
-	successCounts := make(map[int64]int)
+) map[int64][]string {
+	successHashes := make(map[int64][]string)
 	for limit, hashes := range batches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -2749,18 +2861,219 @@ func (s *Service) applySpeedLimits(
 				if marshalErr != nil {
 					log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
 				}
-				s.recordActivity(ctx, &models.AutomationActivity{
+				activity := &models.AutomationActivity{
 					InstanceID: instanceID,
 					Hash:       strings.Join(batch, ","),
 					Action:     models.ActivityActionLimitFailed,
 					Outcome:    models.ActivityOutcomeFailed,
 					Reason:     limitType + " limit failed: " + err.Error(),
 					Details:    detailsJSON,
-				}, len(batch), summary)
+				}
+				if summary != nil {
+					summary.recordActivity(activity, len(batch))
+				}
+				if s.activityStore != nil {
+					if err := s.activityStore.Create(ctx, activity); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+					}
+				}
 			} else {
-				successCounts[limit] += len(batch)
+				successHashes[limit] = append(successHashes[limit], batch...)
 			}
 		}
 	}
-	return successCounts
+	return successHashes
+}
+
+func buildRunItemFromHash(hash string, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) ActivityRunTorrent {
+	item := ActivityRunTorrent{Hash: hash}
+	if t, ok := torrentByHash[hash]; ok {
+		item.Name = t.Name
+		size := t.Size
+		ratio := t.Ratio
+		addedOn := t.AddedOn
+		item.Size = &size
+		item.Ratio = &ratio
+		item.AddedOn = &addedOn
+		if sm != nil {
+			if domains := collectTrackerDomains(t, sm); len(domains) > 0 {
+				item.TrackerDomain = domains[0]
+			}
+		}
+	}
+	return item
+}
+
+func buildRunItemsFromHashes(hashes []string, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) []ActivityRunTorrent {
+	seen := make(map[string]struct{})
+	items := make([]ActivityRunTorrent, 0, len(hashes))
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+		items = append(items, buildRunItemFromHash(hash, torrentByHash, sm))
+	}
+	sortActivityRunItems(items)
+	return items
+}
+
+func buildTagRunItems(tagChanges map[string]*tagChange, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) []ActivityRunTorrent {
+	items := make([]ActivityRunTorrent, 0, len(tagChanges))
+	for hash, change := range tagChanges {
+		if len(change.toAdd) == 0 && len(change.toRemove) == 0 {
+			continue
+		}
+		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		item.TagsAdded = slices.Clone(change.toAdd)
+		item.TagsRemoved = slices.Clone(change.toRemove)
+		slices.Sort(item.TagsAdded)
+		slices.Sort(item.TagsRemoved)
+		items = append(items, item)
+	}
+	sortActivityRunItems(items)
+	return items
+}
+
+func buildCategoryRunItems(moves []categoryMove, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) []ActivityRunTorrent {
+	items := make([]ActivityRunTorrent, 0, len(moves))
+	for _, move := range moves {
+		item := buildRunItemFromHash(move.hash, torrentByHash, sm)
+		if item.Name == "" {
+			item.Name = move.name
+		}
+		if item.TrackerDomain == "" {
+			item.TrackerDomain = move.trackerDomain
+		}
+		item.Category = move.category
+		items = append(items, item)
+	}
+	sortActivityRunItems(items)
+	return items
+}
+
+func buildSpeedLimitRunItems(
+	uploadSuccess map[int64][]string,
+	downloadSuccess map[int64][]string,
+	torrentByHash map[string]qbt.Torrent,
+	sm *qbittorrent.SyncManager,
+) []ActivityRunTorrent {
+	itemMap := make(map[string]*ActivityRunTorrent)
+
+	getItem := func(hash string) *ActivityRunTorrent {
+		if item, ok := itemMap[hash]; ok {
+			return item
+		}
+		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		itemMap[hash] = &item
+		return &item
+	}
+
+	for limit, hashes := range uploadSuccess {
+		for _, hash := range hashes {
+			item := getItem(hash)
+			limitValue := limit
+			item.UploadLimitKiB = &limitValue
+		}
+	}
+
+	for limit, hashes := range downloadSuccess {
+		for _, hash := range hashes {
+			item := getItem(hash)
+			limitValue := limit
+			item.DownloadLimitKiB = &limitValue
+		}
+	}
+
+	items := make([]ActivityRunTorrent, 0, len(itemMap))
+	for _, item := range itemMap {
+		items = append(items, *item)
+	}
+	sortActivityRunItems(items)
+	return items
+}
+
+func buildShareLimitRunItems(
+	shareLimitSuccess map[shareKey][]string,
+	torrentByHash map[string]qbt.Torrent,
+	sm *qbittorrent.SyncManager,
+) []ActivityRunTorrent {
+	itemMap := make(map[string]*ActivityRunTorrent)
+
+	getItem := func(hash string) *ActivityRunTorrent {
+		if item, ok := itemMap[hash]; ok {
+			return item
+		}
+		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		itemMap[hash] = &item
+		return &item
+	}
+
+	for key, hashes := range shareLimitSuccess {
+		for _, hash := range hashes {
+			item := getItem(hash)
+			ratioValue := key.ratio
+			seedValue := key.seed
+			item.RatioLimit = &ratioValue
+			item.SeedingMinutes = &seedValue
+		}
+	}
+
+	items := make([]ActivityRunTorrent, 0, len(itemMap))
+	for _, item := range itemMap {
+		items = append(items, *item)
+	}
+	sortActivityRunItems(items)
+	return items
+}
+
+func buildMoveRunItems(
+	successfulMoveHashesByPath map[string][]string,
+	torrentByHash map[string]qbt.Torrent,
+	sm *qbittorrent.SyncManager,
+) []ActivityRunTorrent {
+	itemMap := make(map[string]*ActivityRunTorrent)
+
+	getItem := func(hash string) *ActivityRunTorrent {
+		if item, ok := itemMap[hash]; ok {
+			return item
+		}
+		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		itemMap[hash] = &item
+		return &item
+	}
+
+	for path, hashes := range successfulMoveHashesByPath {
+		for _, hash := range hashes {
+			item := getItem(hash)
+			item.MovePath = path
+		}
+	}
+
+	items := make([]ActivityRunTorrent, 0, len(itemMap))
+	for _, item := range itemMap {
+		items = append(items, *item)
+	}
+	sortActivityRunItems(items)
+	return items
+}
+
+func sortActivityRunItems(items []ActivityRunTorrent) {
+	sort.Slice(items, func(i, j int) bool {
+		nameA := strings.ToLower(items[i].Name)
+		nameB := strings.ToLower(items[j].Name)
+		if nameA == "" && nameB != "" {
+			return false
+		}
+		if nameA != "" && nameB == "" {
+			return true
+		}
+		if nameA != nameB {
+			return nameA < nameB
+		}
+		return items[i].Hash < items[j].Hash
+	})
 }

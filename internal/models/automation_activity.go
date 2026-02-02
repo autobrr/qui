@@ -62,6 +62,33 @@ func (s *AutomationActivityStore) Create(ctx context.Context, activity *Automati
 		return nil
 	}
 
+	_, err := s.insert(ctx, activity)
+	return err
+}
+
+func (s *AutomationActivityStore) CreateWithID(ctx context.Context, activity *AutomationActivity) (int, error) {
+	if activity == nil {
+		return 0, nil
+	}
+
+	res, err := s.insert(ctx, activity)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(id), nil
+}
+
+func (s *AutomationActivityStore) insert(ctx context.Context, activity *AutomationActivity) (sql.Result, error) {
+	if activity == nil {
+		return nil, nil
+	}
+
 	var detailsStr sql.NullString
 	if len(activity.Details) > 0 {
 		detailsStr = sql.NullString{String: string(activity.Details), Valid: true}
@@ -72,15 +99,13 @@ func (s *AutomationActivityStore) Create(ctx context.Context, activity *Automati
 		ruleID = sql.NullInt64{Int64: int64(*activity.RuleID), Valid: true}
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	return s.db.ExecContext(ctx, `
 		INSERT INTO automation_activity
 			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, activity.Action,
 		ruleID, activity.RuleName, activity.Outcome, activity.Reason, detailsStr)
-
-	return err
 }
 
 func (s *AutomationActivityStore) ListByInstance(ctx context.Context, instanceID int, limit int) ([]*AutomationActivity, error) {
