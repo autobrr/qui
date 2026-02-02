@@ -84,7 +84,7 @@ import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -105,6 +105,7 @@ import {
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
+import { toast } from "sonner"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -735,6 +736,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    blockCrossSeeds,
+    setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
     showAddTagsDialog,
@@ -815,6 +818,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     instanceName: instance?.name ?? "",
     torrents: contextTorrents,
   })
+
+  const hasCrossSeedTag = useMemo(() => anyTorrentHasTag(contextTorrents, "cross-seed"), [contextTorrents])
+  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
+
+  const blockCrossSeedHashes = useCallback(async (hashes: string[]) => {
+    if (instanceId <= 0 || hashes.length === 0) return
+    const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)))
+    if (uniqueHashes.length === 0) return
+
+    const results = await Promise.allSettled(
+      uniqueHashes.map((infoHash) => api.addCrossSeedBlocklist({ instanceId, infoHash }))
+    )
+    const failed = results.filter((result) => result.status === "rejected").length
+    if (failed > 0) {
+      toast.error(`Failed to block ${failed} of ${uniqueHashes.length} cross-seed torrents`)
+      return
+    }
+    toast.success(`Blocked ${uniqueHashes.length} cross-seed ${uniqueHashes.length === 1 ? "torrent" : "torrents"}`)
+  }, [instanceId])
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
@@ -1920,14 +1942,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     activeSortOrder,
   ])
 
-  const handleDeleteWrapper = useCallback(() => {
+  const handleDeleteWrapper = useCallback(async () => {
+    if (shouldBlockCrossSeeds) {
+      const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
+      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+      try {
+        await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to block cross-seed torrents"
+        toast.error(message)
+      }
+    }
+
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]: contextHashes
+    const hashesToDelete = deleteCrossSeeds ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)] : contextHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }: contextClientMeta
+    const deleteClientMeta = deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : contextClientMeta
 
-    handleDelete(
+    await handleDelete(
       hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
@@ -1935,7 +1968,21 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       Array.from(excludedFromSelectAll),
       deleteClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
+  }, [
+    blockCrossSeedHashes,
+    contextHashes,
+    contextClientMeta,
+    contextTorrents,
+    crossSeedWarning.affectedTorrents,
+    deleteCrossSeeds,
+    effectiveSearch,
+    excludedFromSelectAll,
+    filters,
+    handleDelete,
+    isAllSelected,
+    selectAllFilters,
+    shouldBlockCrossSeeds,
+  ])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -2731,6 +2778,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onDeleteFilesChange={setDeleteFiles}
           isDeleteFilesLocked={isDeleteFilesLocked}
           onToggleDeleteFilesLock={toggleDeleteFilesLock}
+          showBlockCrossSeeds={hasCrossSeedTag}
+          blockCrossSeeds={blockCrossSeeds}
+          onBlockCrossSeedsChange={setBlockCrossSeeds}
           deleteCrossSeeds={deleteCrossSeeds}
           onDeleteCrossSeedsChange={setDeleteCrossSeeds}
           crossSeedWarning={crossSeedWarning}

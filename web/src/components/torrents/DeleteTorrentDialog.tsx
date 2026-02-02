@@ -11,11 +11,12 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface DeleteTorrentDialogProps {
   open: boolean
@@ -29,6 +30,9 @@ interface DeleteTorrentDialogProps {
   onToggleDeleteFilesLock: () => void
   deleteCrossSeeds: boolean
   onDeleteCrossSeedsChange: (checked: boolean) => void
+  showBlockCrossSeeds: boolean
+  blockCrossSeeds: boolean
+  onBlockCrossSeedsChange: (checked: boolean) => void
   crossSeedWarning: CrossSeedWarningResult
   onConfirm: () => void
 }
@@ -45,13 +49,14 @@ export function DeleteTorrentDialog({
   onToggleDeleteFilesLock,
   deleteCrossSeeds,
   onDeleteCrossSeedsChange,
+  showBlockCrossSeeds,
+  blockCrossSeeds,
+  onBlockCrossSeedsChange,
   crossSeedWarning,
   onConfirm,
 }: DeleteTorrentDialogProps) {
   // Include cross-seeds in the displayed count when selected
-  const displayCount = deleteCrossSeeds
-    ? count + crossSeedWarning.affectedTorrents.length
-    : count
+  const displayCount = deleteCrossSeeds ? count + crossSeedWarning.affectedTorrents.length : count
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -85,6 +90,21 @@ export function DeleteTorrentDialog({
           totalToCheck={crossSeedWarning.totalToCheck}
           checkedCount={crossSeedWarning.checkedCount}
         />
+        {showBlockCrossSeeds && (
+          <div className="mt-3 flex items-center gap-2">
+            <Checkbox
+              id="blockCrossSeeds"
+              checked={blockCrossSeeds}
+              onCheckedChange={(checked) => onBlockCrossSeedsChange(checked === true)}
+            />
+            <label
+              htmlFor="blockCrossSeeds"
+              className="text-xs cursor-pointer select-none"
+            >
+              Block cross-seed infohashes (prevent re-add)
+            </label>
+          </div>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction

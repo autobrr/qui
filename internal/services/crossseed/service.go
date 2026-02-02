@@ -265,6 +265,7 @@ type Service struct {
 	stringNormalizer    *stringutils.Normalizer[string, string]
 
 	automationStore          *models.CrossSeedStore
+	blocklistStore           *models.CrossSeedBlocklistStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
 	arrService               *arr.Service // ARR service for ID lookup
@@ -335,6 +336,7 @@ func NewService(
 	syncManager *qbittorrent.SyncManager,
 	filesManager *filesmanager.Service,
 	automationStore *models.CrossSeedStore,
+	blocklistStore *models.CrossSeedBlocklistStore,
 	jackettService *jackett.Service,
 	arrService *arr.Service,
 	externalProgramStore *models.ExternalProgramStore,
@@ -367,6 +369,7 @@ func NewService(
 		indexerDomainCache:            indexerDomainCache,
 		stringNormalizer:              stringutils.NewDefaultNormalizer(),
 		automationStore:               automationStore,
+		blocklistStore:                blocklistStore,
 		jackettService:                jackettService,
 		arrService:                    arrService,
 		externalProgramStore:          externalProgramStore,
@@ -932,6 +935,27 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 	}
 
 	return settings, nil
+}
+
+func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.CrossSeedBlocklistEntry, error) {
+	if s.blocklistStore == nil {
+		return nil, errors.New("blocklist store unavailable")
+	}
+	return s.blocklistStore.List(ctx, instanceID)
+}
+
+func (s *Service) UpsertBlocklistEntry(ctx context.Context, entry *models.CrossSeedBlocklistEntry) (*models.CrossSeedBlocklistEntry, error) {
+	if s.blocklistStore == nil {
+		return nil, errors.New("blocklist store unavailable")
+	}
+	return s.blocklistStore.Upsert(ctx, entry)
+}
+
+func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash string) error {
+	if s.blocklistStore == nil {
+		return errors.New("blocklist store unavailable")
+	}
+	return s.blocklistStore.Delete(ctx, instanceID, infoHash)
 }
 
 // UpdateAutomationSettings persists automation configuration and wakes the scheduler.
@@ -2353,7 +2377,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		case "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped", "rejected":
+		case "no_match", "skipped", "rejected", "blocked":
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
@@ -3069,6 +3093,25 @@ func (s *Service) processCrossSeedCandidate(
 		}
 		seenHashes[canonical] = struct{}{}
 		hashes = append(hashes, trimmed)
+	}
+
+	if s.blocklistStore != nil {
+		blockedHash, blocked, err := s.blocklistStore.FindBlocked(ctx, candidate.InstanceID, hashes)
+		if err != nil {
+			result.Message = fmt.Sprintf("Failed to check cross-seed blocklist: %v", err)
+			return result
+		}
+		if blocked {
+			result.Status = "blocked"
+			result.Message = "Blocked by cross-seed blocklist"
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("instanceName", candidate.InstanceName).
+				Str("torrentHash", torrentHash).
+				Str("blockedHash", blockedHash).
+				Msg("Cross-seed apply skipped: infohash is blocked")
+			return result
+		}
 	}
 
 	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, hashes)
@@ -5679,14 +5722,17 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 
 			torrentName := ""
+			infoHash := ""
 			if resp.TorrentInfo != nil {
 				torrentName = resp.TorrentInfo.Name
+				infoHash = resp.TorrentInfo.Hash
 			}
 
 			resultChan <- selectionResult{idx, TorrentSearchAddResult{
 				Title:           title,
 				Indexer:         indexerName,
 				TorrentName:     torrentName,
+				InfoHash:        infoHash,
 				Success:         resp.Success,
 				InstanceResults: resp.Results,
 			}}

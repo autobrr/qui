@@ -35,8 +35,10 @@ import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { api } from "@/lib/api"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -69,6 +71,7 @@ import {
   Trash2,
   X
 } from "lucide-react"
+import { toast } from "sonner"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
@@ -80,11 +83,9 @@ import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
-import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -1059,6 +1060,8 @@ export function TorrentCardsMobile({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    blockCrossSeeds,
+    setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
     showSetTagsDialog,
@@ -1306,6 +1309,25 @@ export function TorrentCardsMobile({
     instanceName: instance?.name ?? "",
     torrents: deleteTorrents,
   })
+
+  const hasCrossSeedTag = useMemo(() => anyTorrentHasTag(deleteTorrents, "cross-seed"), [deleteTorrents])
+  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
+
+  const blockCrossSeedHashes = useCallback(async (hashes: string[]) => {
+    if (instanceId <= 0 || hashes.length === 0) return
+    const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)))
+    if (uniqueHashes.length === 0) return
+
+    const results = await Promise.allSettled(
+      uniqueHashes.map((infoHash) => api.addCrossSeedBlocklist({ instanceId, infoHash }))
+    )
+    const failed = results.filter((result) => result.status === "rejected").length
+    if (failed > 0) {
+      toast.error(`Failed to block ${failed} of ${uniqueHashes.length} cross-seed torrents`)
+      return
+    }
+    toast.success(`Blocked ${uniqueHashes.length} cross-seed ${uniqueHashes.length === 1 ? "torrent" : "torrents"}`)
+  }, [instanceId])
 
   // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
@@ -1561,6 +1583,17 @@ export function TorrentCardsMobile({
   }, [triggerSelectionAction])
 
   const handleDeleteWrapper = useCallback(async () => {
+    if (shouldBlockCrossSeeds) {
+      const taggedHashes = getTorrentHashesWithTag(deleteTorrents, "cross-seed")
+      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+      try {
+        await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to block cross-seed torrents"
+        toast.error(message)
+      }
+    }
+
     let hashes: string[]
     if (torrentToDelete) {
       hashes = [torrentToDelete.hash]
@@ -1571,9 +1604,7 @@ export function TorrentCardsMobile({
     }
 
     // Include cross-seed hashes if user opted to delete them
-    const crossSeedHashes = deleteCrossSeeds
-      ? crossSeedWarning.affectedTorrents.map((t) => t.hash)
-      : []
+    const crossSeedHashes = deleteCrossSeeds ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
     const hashesToDelete = [...hashes, ...crossSeedHashes]
 
     let visibleHashes: string[]
@@ -1614,7 +1645,22 @@ export function TorrentCardsMobile({
       }
     )
     setTorrentToDelete(null)
-  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
+  }, [
+    blockCrossSeedHashes,
+    crossSeedWarning.affectedTorrents,
+    deleteCrossSeeds,
+    deleteTorrents,
+    effectiveSearch,
+    effectiveSelectionCount,
+    excludedFromSelectAll,
+    filters,
+    handleDelete,
+    isAllSelected,
+    selectedHashes,
+    shouldBlockCrossSeeds,
+    torrentToDelete,
+    torrents,
+  ])
 
   const handleSetTagsWrapper = useCallback(async (tags: string[]) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
@@ -2220,6 +2266,9 @@ export function TorrentCardsMobile({
         onToggleDeleteFilesLock={toggleDeleteFilesLock}
         deleteCrossSeeds={deleteCrossSeeds}
         onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        showBlockCrossSeeds={hasCrossSeedTag}
+        blockCrossSeeds={blockCrossSeeds}
+        onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={crossSeedWarning}
         onConfirm={handleDeleteWrapper}
       />

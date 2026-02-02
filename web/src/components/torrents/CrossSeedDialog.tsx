@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { api } from "@/lib/api"
 import { formatBytes, formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
@@ -38,6 +39,7 @@ import type {
 } from "@/types"
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
@@ -159,6 +161,7 @@ const CrossSeedDialogComponent = ({
 
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
+  const [blocklistPending, setBlocklistPending] = useState<string | null>(null)
 
   // Auto-expand results when there are failures
   const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
@@ -167,6 +170,24 @@ const CrossSeedDialogComponent = ({
       setApplyResultOpen(true)
     }
   }, [hasFailures])
+
+  const handleBlockInfoHash = useCallback(async (infoHash: string) => {
+    const instanceId = sourceTorrent?.instanceId
+    if (!instanceId) {
+      toast.error("Missing instance for blocklist")
+      return
+    }
+    setBlocklistPending(infoHash)
+    try {
+      await api.addCrossSeedBlocklist({ instanceId, infoHash })
+      toast.success("Added to blocklist")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add to blocklist"
+      toast.error(message)
+    } finally {
+      setBlocklistPending(null)
+    }
+  }, [sourceTorrent?.instanceId])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -460,9 +481,23 @@ const CrossSeedDialogComponent = ({
                           >
                             <div className="flex items-center justify-between gap-2 text-sm">
                               <span className="min-w-0 truncate">{result.indexer}</span>
-                              <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
-                                {result.success ? "Queued" : "Check"}
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                {result.infoHash && sourceTorrent?.instanceId && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleBlockInfoHash(result.infoHash!)}
+                                    disabled={blocklistPending === result.infoHash}
+                                    title={`Block ${result.infoHash}`}
+                                    className="h-6 px-2 text-[10px]"
+                                  >
+                                    {blocklistPending === result.infoHash ? "Blocking..." : "Block"}
+                                  </Button>
+                                )}
+                                <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
+                                  {result.success ? "Queued" : "Check"}
+                                </Badge>
+                              </div>
                             </div>
                             <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
                             {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
@@ -551,6 +586,8 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
       return { text: "Added (reflink)", variant: "success" }
     case "exists":
       return { text: "Already exists", variant: "warning" }
+    case "blocked":
+      return { text: "Blocked", variant: "warning" }
     case "no_match":
       return { text: "No match", variant: "destructive" }
     case "rejected":
