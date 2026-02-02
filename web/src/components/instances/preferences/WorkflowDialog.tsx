@@ -1843,7 +1843,27 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">New save path</Label>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">New save path</Label>
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                    aria-label="About move path templates"
+                                  >
+                                    <Info className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[320px]">
+                                  <p>
+                                    The path supports Go templates. Available fields: <code>{{.Name}}</code>, <code>{{.Hash}}</code>, <code>{{.Category}}</code>, <code>{{.IsolationFolderName}}</code>, <code>{{.Tracker}}</code>. Use <code>{{ sanitize .Name }}</code> to create safe path segments. Example: <code>/data/{{.Category}}/{{ sanitize .Name }}</code>
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
                           <Input
                             type="text"
                             value={formState.exprMovePath}
