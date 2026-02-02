@@ -44,6 +44,8 @@ type notificationTestRequest struct {
 	Message string `json:"message"`
 }
 
+const maxNotificationBodySize = 1 << 20
+
 // ListEvents handles GET /api/notifications/events
 func (h *NotificationsHandler) ListEvents(w http.ResponseWriter, _ *http.Request) {
 	RespondJSON(w, http.StatusOK, notifications.EventDefinitions())
@@ -73,8 +75,11 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxNotificationBodySize)
+	dec := json.NewDecoder(r.Body)
+
 	var req notificationTargetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -143,8 +148,11 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxNotificationBodySize)
+	dec := json.NewDecoder(r.Body)
+
 	var req notificationTargetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -264,8 +272,11 @@ func (h *NotificationsHandler) TestTarget(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxNotificationBodySize)
+	dec := json.NewDecoder(r.Body)
+
 	var req notificationTestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+	if err := dec.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -25,15 +27,22 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 	t.Parallel()
 
 	var (
-		hits    int
-		gotKey  string
-		gotPath string
+		hits int32
+		ch   = make(chan struct {
+			key  string
+			path string
+		}, 1)
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		gotKey = r.Header.Get("X-API-Key")
-		gotPath = r.URL.Path
+		atomic.AddInt32(&hits, 1)
+		ch <- struct {
+			key  string
+			path string
+		}{
+			key:  r.Header.Get("X-API-Key"),
+			path: r.URL.Path,
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(server.Close)
@@ -43,9 +52,14 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 
 	err := ValidateNotifiarrAPIKey(context.Background(), rawURL)
 	require.NoError(t, err)
-	require.Equal(t, 1, hits)
-	require.Equal(t, "abc123", gotKey)
-	require.Equal(t, "/api/v1/user/validate", gotPath)
+	require.Equal(t, int32(1), atomic.LoadInt32(&hits))
+	select {
+	case got := <-ch:
+		require.Equal(t, "abc123", got.key)
+		require.Equal(t, "/api/v1/user/validate", got.path)
+	case <-time.After(time.Second):
+		t.Fatal("expected validation request")
+	}
 }
 
 func TestValidateNotifiarrAPIKeyInvalid(t *testing.T) {
