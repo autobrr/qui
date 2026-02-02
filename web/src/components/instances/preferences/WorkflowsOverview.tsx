@@ -1146,7 +1146,8 @@ export function WorkflowsOverview({
                                           <button
                                             type="button"
                                             className="hover:text-foreground transition-colors"
-                                            onClick={() => {
+                                            onClick={(clickEvent) => {
+                                              clickEvent.stopPropagation()
                                               copyTextToClipboard(event.hash)
                                               toast.success("Hash copied")
                                             }}
