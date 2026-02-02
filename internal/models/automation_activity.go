@@ -32,6 +32,7 @@ const (
 const (
 	ActivityOutcomeSuccess = "success"
 	ActivityOutcomeFailed  = "failed"
+	ActivityOutcomeDryRun  = "dry-run"
 )
 
 type AutomationActivity struct {

@@ -58,6 +58,7 @@ type Automation struct {
 	Conditions      *ActionConditions `json:"conditions"`
 	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	Enabled         bool              `json:"enabled"`
+	DryRun          bool              `json:"dryRun"`
 	SortOrder       int               `json:"sortOrder"`
 	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	CreatedAt       time.Time         `json:"createdAt"`
@@ -114,7 +115,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -138,6 +139,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&automation.TrackerPattern,
 			&conditionsJSON,
 			&automation.Enabled,
+			&automation.DryRun,
 			&automation.SortOrder,
 			&intervalSeconds,
 			&freeSpaceSourceJSON,
@@ -180,7 +182,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, created_at, updated_at
 		FROM automations
 		WHERE id = ? AND instance_id = ?
 	`, id, instanceID)
@@ -197,6 +199,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 		&automation.TrackerPattern,
 		&conditionsJSON,
 		&automation.Enabled,
+		&automation.DryRun,
 		&automation.SortOrder,
 		&intervalSeconds,
 		&freeSpaceSourceJSON,
@@ -282,10 +285,10 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, free_space_source)
+			(instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder, intervalSeconds, freeSpaceSourceJSON)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -332,9 +335,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
-		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?
+		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, dry_run = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?
 		WHERE id = ? AND instance_id = ?
-	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, automation.ID, automation.InstanceID)
+	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}

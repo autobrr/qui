@@ -73,6 +73,17 @@ type categoryMove struct {
 	category      string
 }
 
+type pendingDeletion struct {
+	hash          string
+	torrentName   string
+	trackerDomain string
+	action        string
+	ruleID        int
+	ruleName      string
+	reason        string
+	details       map[string]any
+}
+
 func DefaultConfig() Config {
 	return Config{
 		ScanInterval:          20 * time.Second,
@@ -1018,6 +1029,31 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		return nil
 	}
 
+	var liveRules []*models.Automation
+	var dryRunRules []*models.Automation
+	for _, rule := range rules {
+		if rule.DryRun {
+			dryRunRules = append(dryRunRules, rule)
+		} else {
+			liveRules = append(liveRules, rule)
+		}
+	}
+
+	if err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
+		return err
+	}
+	if err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) error {
+	if len(rules) == 0 {
+		return nil
+	}
+
 	// Pre-filter rules by interval eligibility
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
@@ -1290,17 +1326,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 	// External program execution tracking
 	var programExecutions []pendingProgramExec
-
-	type pendingDeletion struct {
-		hash          string
-		torrentName   string
-		trackerDomain string
-		action        string
-		ruleID        int
-		ruleName      string
-		reason        string
-		details       map[string]any
-	}
 	deleteHashesByMode := make(map[string][]string)
 	pendingByHash := make(map[string]pendingDeletion)
 
@@ -1491,13 +1516,15 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 					details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode, "isTrigger": isTrigger},
 				}
 
-				// Mark as processed
+			// Mark as processed
+			if !dryRun {
 				s.mu.Lock()
 				instLastApplied[h] = now
 				s.mu.Unlock()
 			}
-			continue
 		}
+		continue
+	}
 
 		// Speed limits - only add to batch if current doesn't match desired
 		if state.uploadLimitKiB != nil {
@@ -1602,9 +1629,31 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 
 		// Mark as processed
-		s.mu.Lock()
-		instLastApplied[hash] = now
-		s.mu.Unlock()
+		if !dryRun {
+			s.mu.Lock()
+			instLastApplied[hash] = now
+			s.mu.Unlock()
+		}
+	}
+
+	if dryRun {
+		s.recordDryRunActivities(
+			ctx,
+			instanceID,
+			uploadBatches,
+			downloadBatches,
+			shareBatches,
+			pauseHashes,
+			tagChanges,
+			categoryBatches,
+			moveBatches,
+			pendingByHash,
+			programExecutions,
+			torrentByHash,
+			torrents,
+			states,
+		)
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
@@ -2637,6 +2686,336 @@ func (s *Service) applySpeedLimits(
 	return successHashes
 }
 
+func (s *Service) recordDryRunActivities(
+	ctx context.Context,
+	instanceID int,
+	uploadBatches map[int64][]string,
+	downloadBatches map[int64][]string,
+	shareBatches map[shareKey][]string,
+	pauseHashes []string,
+	tagChanges map[string]*tagChange,
+	categoryBatches map[string][]string,
+	moveBatches map[string][]string,
+	pendingByHash map[string]pendingDeletion,
+	programExecutions []pendingProgramExec,
+	torrentByHash map[string]qbt.Torrent,
+	torrents []qbt.Torrent,
+	states map[string]*torrentDesiredState,
+) {
+	if s.activityStore == nil {
+		return
+	}
+
+	// Speed limits
+	if len(uploadBatches) > 0 || len(downloadBatches) > 0 {
+		limitCounts := make(map[string]int)
+		for limit, hashes := range uploadBatches {
+			limitCounts[fmt.Sprintf("upload:%d", limit)] = len(dedupeHashes(hashes))
+		}
+		for limit, hashes := range downloadBatches {
+			limitCounts[fmt.Sprintf("download:%d", limit)] = len(dedupeHashes(hashes))
+		}
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
+		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionSpeedLimitsChanged,
+			Outcome:    models.ActivityOutcomeDryRun,
+			Details:    detailsJSON,
+		})
+		if err == nil && s.activityRuns != nil {
+			items := buildSpeedLimitRunItems(uploadBatches, downloadBatches, torrentByHash, s.syncManager)
+			if len(items) > 0 {
+				s.activityRuns.Put(activityID, instanceID, items)
+			}
+		}
+	}
+
+	// Share limits
+	if len(shareBatches) > 0 {
+		limitCounts := make(map[string]int)
+		for key, hashes := range shareBatches {
+			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
+			limitCounts[limitKey] = len(dedupeHashes(hashes))
+		}
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
+		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionShareLimitsChanged,
+			Outcome:    models.ActivityOutcomeDryRun,
+			Details:    detailsJSON,
+		})
+		if err == nil && s.activityRuns != nil {
+			items := buildShareLimitRunItems(shareBatches, torrentByHash, s.syncManager)
+			if len(items) > 0 {
+				s.activityRuns.Put(activityID, instanceID, items)
+			}
+		}
+	}
+
+	// Pause
+	if len(pauseHashes) > 0 {
+		uniqueHashes := dedupeHashes(pauseHashes)
+		detailsJSON, _ := json.Marshal(map[string]any{"count": len(uniqueHashes)})
+		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionPaused,
+			Outcome:    models.ActivityOutcomeDryRun,
+			Details:    detailsJSON,
+		})
+		if err == nil && s.activityRuns != nil {
+			items := buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+			if len(items) > 0 {
+				s.activityRuns.Put(activityID, instanceID, items)
+			}
+		}
+	}
+
+	// Tags
+	if len(tagChanges) > 0 {
+		addCounts := make(map[string]int)
+		removeCounts := make(map[string]int)
+		for _, change := range tagChanges {
+			for _, tag := range change.toAdd {
+				addCounts[tag]++
+			}
+			for _, tag := range change.toRemove {
+				removeCounts[tag]++
+			}
+		}
+		if len(addCounts) > 0 || len(removeCounts) > 0 {
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"added":   addCounts,
+				"removed": removeCounts,
+			})
+			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionTagsChanged,
+				Outcome:    models.ActivityOutcomeDryRun,
+				Details:    detailsJSON,
+			})
+			if err == nil && s.activityRuns != nil {
+				items := buildTagRunItems(tagChanges, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Categories (include cross-seed expansion)
+	if len(categoryBatches) > 0 && len(states) > 0 {
+		var plannedMoves []categoryMove
+		sortedCategories := make([]string, 0, len(categoryBatches))
+		for cat := range categoryBatches {
+			sortedCategories = append(sortedCategories, cat)
+		}
+		sort.Strings(sortedCategories)
+
+		for _, category := range sortedCategories {
+			hashes := categoryBatches[category]
+			expandedHashes := hashes
+
+			keysToExpand := make(map[crossSeedKey]struct{})
+			for _, hash := range hashes {
+				if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
+					if t, exists := torrentByHash[hash]; exists {
+						if key, ok := makeCrossSeedKey(t); ok {
+							keysToExpand[key] = struct{}{}
+						}
+					}
+				}
+			}
+
+			if len(keysToExpand) > 0 {
+				expandedSet := make(map[string]struct{})
+				for _, h := range expandedHashes {
+					expandedSet[h] = struct{}{}
+				}
+
+				for _, t := range torrents {
+					if t.Category == category {
+						continue
+					}
+					if _, exists := expandedSet[t.Hash]; exists {
+						continue
+					}
+					if state, hasState := states[t.Hash]; hasState && state.category != nil {
+						if *state.category != category {
+							continue
+						}
+					}
+					if key, ok := makeCrossSeedKey(t); ok {
+						if _, shouldExpand := keysToExpand[key]; shouldExpand {
+							expandedHashes = append(expandedHashes, t.Hash)
+							expandedSet[t.Hash] = struct{}{}
+						}
+					}
+				}
+			}
+
+			for _, hash := range expandedHashes {
+				move := categoryMove{hash: hash, category: category}
+				if t, exists := torrentByHash[hash]; exists {
+					move.name = t.Name
+					if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
+						move.trackerDomain = domains[0]
+					}
+				}
+				plannedMoves = append(plannedMoves, move)
+			}
+		}
+
+		if len(plannedMoves) > 0 {
+			categoryCounts := make(map[string]int)
+			for _, move := range plannedMoves {
+				categoryCounts[move.category]++
+			}
+			detailsJSON, _ := json.Marshal(map[string]any{"categories": categoryCounts})
+			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionCategoryChanged,
+				Outcome:    models.ActivityOutcomeDryRun,
+				Details:    detailsJSON,
+			})
+			if err == nil && s.activityRuns != nil {
+				items := buildCategoryRunItems(plannedMoves, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Moves (include cross-seed expansion)
+	if len(moveBatches) > 0 {
+		sortedPaths := make([]string, 0, len(moveBatches))
+		for path := range moveBatches {
+			sortedPaths = append(sortedPaths, path)
+		}
+		sort.Strings(sortedPaths)
+
+		movedHashes := make(map[string]struct{})
+		plannedCounts := make(map[string]int)
+		plannedHashesByPath := make(map[string][]string)
+
+		for _, path := range sortedPaths {
+			hashes := moveBatches[path]
+			var expandedHashes []string
+			for _, hash := range hashes {
+				if _, exists := movedHashes[hash]; exists {
+					continue
+				}
+				expandedHashes = append(expandedHashes, hash)
+				movedHashes[hash] = struct{}{}
+			}
+
+			keysToExpand := make(map[crossSeedKey]struct{})
+			for _, hash := range hashes {
+				if t, exists := torrentByHash[hash]; exists {
+					if key, ok := makeCrossSeedKey(t); ok {
+						keysToExpand[key] = struct{}{}
+					}
+				}
+			}
+
+			if len(keysToExpand) > 0 {
+				for _, t := range torrents {
+					if normalizePath(t.SavePath) == normalizePath(path) {
+						continue
+					}
+					if _, exists := movedHashes[t.Hash]; exists {
+						continue
+					}
+					if key, ok := makeCrossSeedKey(t); ok {
+						if _, matched := keysToExpand[key]; matched {
+							expandedHashes = append(expandedHashes, t.Hash)
+							movedHashes[t.Hash] = struct{}{}
+						}
+					}
+				}
+			}
+
+			expandedHashes = dedupeHashes(expandedHashes)
+			if len(expandedHashes) > 0 {
+				plannedHashesByPath[path] = expandedHashes
+				plannedCounts[path] = len(expandedHashes)
+			}
+		}
+
+		if len(plannedHashesByPath) > 0 {
+			detailsJSON, _ := json.Marshal(map[string]any{"paths": plannedCounts})
+			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     models.ActivityActionMoved,
+				Outcome:    models.ActivityOutcomeDryRun,
+				Details:    detailsJSON,
+			})
+			if err == nil && s.activityRuns != nil {
+				items := buildMoveRunItems(plannedHashesByPath, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// External programs
+	if len(programExecutions) > 0 {
+		hashesByProgram := make(map[int][]string)
+		for _, exec := range programExecutions {
+			hashesByProgram[exec.programID] = append(hashesByProgram[exec.programID], exec.hash)
+		}
+		for programID, hashes := range hashesByProgram {
+			uniqueHashes := dedupeHashes(hashes)
+			detailsJSON, _ := json.Marshal(map[string]any{"programId": programID, "count": len(uniqueHashes)})
+			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     externalprograms.ActivityActionExternalProgram,
+				Outcome:    models.ActivityOutcomeDryRun,
+				Details:    detailsJSON,
+			})
+			if err == nil && s.activityRuns != nil {
+				items := buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Deletes
+	if len(pendingByHash) > 0 {
+		hashesByAction := make(map[string][]string)
+		for hash, pending := range pendingByHash {
+			hashesByAction[pending.action] = append(hashesByAction[pending.action], hash)
+		}
+		for action, hashes := range hashesByAction {
+			uniqueHashes := dedupeHashes(hashes)
+			detailsJSON, _ := json.Marshal(map[string]any{"count": len(uniqueHashes)})
+			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "",
+				Action:     action,
+				Outcome:    models.ActivityOutcomeDryRun,
+				Details:    detailsJSON,
+			})
+			if err == nil && s.activityRuns != nil {
+				items := buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+}
+
 func buildRunItemFromHash(hash string, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) ActivityRunTorrent {
 	item := ActivityRunTorrent{Hash: hash}
 	if t, ok := torrentByHash[hash]; ok {
@@ -2828,6 +3207,22 @@ func sortActivityRunItems(items []ActivityRunTorrent) {
 		}
 		return items[i].Hash < items[j].Hash
 	})
+}
+
+func dedupeHashes(hashes []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+		result = append(result, hash)
+	}
+	return result
 }
 
 // pendingProgramExec tracks a pending external program execution
