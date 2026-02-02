@@ -37,7 +37,7 @@ interface CategorySubmenuProps {
 
 // Threshold for when to use virtualization vs simple rendering
 // Below this, simple CSS scrolling is faster
-const VIRTUALIZATION_THRESHOLD = 50
+const VIRTUALIZATION_THRESHOLD = 250
 
 export const CategorySubmenu = memo(function CategorySubmenu({
   type,

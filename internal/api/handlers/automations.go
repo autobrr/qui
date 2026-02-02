@@ -551,6 +551,55 @@ func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, activities)
 }
 
+func (h *AutomationHandler) GetActivityRun(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	activityIDStr := chi.URLParam(r, "activityId")
+	activityID, err := strconv.Atoi(activityIDStr)
+	if err != nil || activityID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid activity ID")
+		return
+	}
+
+	limit := 200
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			if parsed > 1000 {
+				parsed = 1000
+			}
+			limit = parsed
+		}
+	}
+
+	offset := 0
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if parsed, err := strconv.Atoi(offsetStr); err == nil && parsed > 0 {
+			offset = parsed
+		}
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusNotFound, "Run details not available (in-memory only)")
+		return
+	}
+
+	run, err := h.service.GetActivityRun(instanceID, activityID, limit, offset)
+	if errors.Is(err, automations.ErrActivityRunNotFound) {
+		RespondError(w, http.StatusNotFound, "Run details not available (in-memory only)")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("activityID", activityID).Msg("failed to load activity run details")
+		RespondError(w, http.StatusInternalServerError, "Failed to load run details")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, run)
+}
+
 func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {

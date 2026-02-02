@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
@@ -414,6 +415,77 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 	_, ok := states["a"]
 	require.False(t, ok, "expected move action to be blocked when condition is met but cross-seed exists")
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
+}
+
+func TestResolveMovePath_Literal(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc",
+		Name:     "Show.S01",
+		Category: "tv",
+	}
+	resolved, ok := resolveMovePath("/data/archive", torrent, nil, nil)
+	require.True(t, ok)
+	require.Equal(t, "/data/archive", resolved)
+}
+
+func TestResolveMovePath_Template(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc",
+		Name:     "Movie.2024",
+		Category: "movies",
+	}
+	resolved, ok := resolveMovePath("/data/{{.Category}}", torrent, nil, nil)
+	require.True(t, ok)
+	require.Equal(t, "/data/movies", resolved)
+}
+
+func TestResolveMovePath_TemplateWithSanitize(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc",
+		Name:     "Movie/2024:Bad*Name",
+		Category: "movies",
+	}
+	resolved, ok := resolveMovePath("/data/{{ sanitize .Name }}", torrent, nil, nil)
+	require.True(t, ok)
+	expectedName := pathutil.SanitizePathSegment(torrent.Name)
+	require.Equal(t, "/data/"+expectedName, resolved)
+}
+
+func TestResolveMovePath_TrackerFallback(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc",
+		Name:     "Show.S01",
+		Category: "tv",
+	}
+	state := &torrentDesiredState{
+		trackerDomains: []string{"tracker.example.com"},
+	}
+	resolved, ok := resolveMovePath("/data/{{.Tracker}}", torrent, state, nil)
+	require.True(t, ok)
+	require.Equal(t, "/data/tracker.example.com", resolved)
+}
+
+func TestMoveAction_WithTemplatePath(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	torrent := qbt.Torrent{
+		Hash:        "abc",
+		Name:        "Show.S01",
+		Category:    "tv",
+		SavePath:    "/incoming",
+		ContentPath: "/incoming/Show.S01",
+	}
+	rules := []*models.Automation{{
+		ID:             1,
+		Name:           "move-by-category",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions:     &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/archive/{{.Category}}"}},
+	}}
+	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, sm, nil, nil)
+	state, ok := states["abc"]
+	require.True(t, ok)
+	require.True(t, state.shouldMove)
+	require.Equal(t, "/archive/tv", state.movePath)
 }
 
 func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
