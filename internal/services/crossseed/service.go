@@ -1612,11 +1612,12 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
 		if result != nil {
 			results = append(results, *result)
-			if result.Added {
+			switch {
+			case result.Added:
 				successCount++
-			} else if attemptErr != nil {
+			case attemptErr != nil:
 				failedCount++
-			} else {
+			default:
 				skippedCount++
 			}
 		}
@@ -1652,7 +1653,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			eventType = notifications.EventCrossSeedCompletionFailed
 		}
 		lines := []string{
-			fmt.Sprintf("Torrent: %s", torrent.Name),
+			"Torrent: " + torrent.Name,
 			fmt.Sprintf("Matches: %d", len(searchResp.Results)),
 			fmt.Sprintf("Added: %d", successCount),
 			fmt.Sprintf("Failed: %d", failedCount),
@@ -7659,7 +7660,7 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 	}
 
 	lines := []string{
-		fmt.Sprintf("Torrent: %s", strings.TrimSpace(req.TorrentName)),
+		"Torrent: " + strings.TrimSpace(req.TorrentName),
 		fmt.Sprintf("Matches: %d", len(matches)),
 		fmt.Sprintf("Complete matches: %d", completeCount),
 		fmt.Sprintf("Pending matches: %d", pendingCount),
@@ -7687,8 +7688,8 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 	}
 
 	lines := []string{
-		fmt.Sprintf("Torrent: %s", strings.TrimSpace(req.TorrentName)),
-		fmt.Sprintf("Error: %s", err.Error()),
+		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		"Error: " + err.Error(),
 	}
 
 	s.notifier.Notify(ctx, notifications.Event{
