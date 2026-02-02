@@ -27,20 +27,12 @@ import { useInstances } from "@/hooks/useInstances"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { Instance } from "@/types"
 import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, RefreshCw, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
-import { Component, lazy, Suspense, useState, type ErrorInfo, type ReactNode } from "react"
+import { Component, lazy, Suspense, useCallback, useMemo, useState, type ErrorInfo, type ReactNode } from "react"
 
 import { toast } from "sonner"
 
 // Lazy load tab content components - only Instance tab is eagerly loaded
 import { InstanceSettingsPanel } from "./InstanceSettingsPanel"
-
-const SpeedLimitsForm = lazy(() => import("./SpeedLimitsForm").then(m => ({ default: m.SpeedLimitsForm })))
-const QueueManagementForm = lazy(() => import("./QueueManagementForm").then(m => ({ default: m.QueueManagementForm })))
-const FileManagementForm = lazy(() => import("./FileManagementForm").then(m => ({ default: m.FileManagementForm })))
-const SeedingLimitsForm = lazy(() => import("./SeedingLimitsForm").then(m => ({ default: m.SeedingLimitsForm })))
-const ConnectionSettingsForm = lazy(() => import("./ConnectionSettingsForm").then(m => ({ default: m.ConnectionSettingsForm })))
-const NetworkDiscoveryForm = lazy(() => import("./NetworkDiscoveryForm").then(m => ({ default: m.NetworkDiscoveryForm })))
-const AdvancedNetworkForm = lazy(() => import("./AdvancedNetworkForm").then(m => ({ default: m.AdvancedNetworkForm })))
 
 /** Loading fallback for lazy-loaded tab content */
 function TabLoadingFallback() {
@@ -67,6 +59,7 @@ function TabErrorFallback({ onRetry }: { onRetry: () => void }) {
 /** Error boundary for lazy-loaded tab content */
 interface TabErrorBoundaryProps {
   children: ReactNode
+  onRetry?: () => void
 }
 
 interface TabErrorBoundaryState {
@@ -89,6 +82,7 @@ class TabErrorBoundary extends Component<TabErrorBoundaryProps, TabErrorBoundary
 
   handleRetry = () => {
     this.setState({ hasError: false })
+    this.props.onRetry?.()
   }
 
   render() {
@@ -126,7 +120,42 @@ export function InstancePreferencesDialog({
     updatingStatusId,
   } = useInstances()
   const currentInstance = instances?.find(i => i.id === instanceId) ?? instance
+  const displayInstanceName = currentInstance?.name ?? instanceName
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [lazyRetryKey, setLazyRetryKey] = useState(0)
+
+  const handleLazyRetry = useCallback(() => {
+    setLazyRetryKey((prev) => prev + 1)
+  }, [])
+
+  const SpeedLimitsForm = useMemo(
+    () => lazy(() => import("./SpeedLimitsForm").then(m => ({ default: m.SpeedLimitsForm }))),
+    [lazyRetryKey],
+  )
+  const QueueManagementForm = useMemo(
+    () => lazy(() => import("./QueueManagementForm").then(m => ({ default: m.QueueManagementForm }))),
+    [lazyRetryKey],
+  )
+  const FileManagementForm = useMemo(
+    () => lazy(() => import("./FileManagementForm").then(m => ({ default: m.FileManagementForm }))),
+    [lazyRetryKey],
+  )
+  const SeedingLimitsForm = useMemo(
+    () => lazy(() => import("./SeedingLimitsForm").then(m => ({ default: m.SeedingLimitsForm }))),
+    [lazyRetryKey],
+  )
+  const ConnectionSettingsForm = useMemo(
+    () => lazy(() => import("./ConnectionSettingsForm").then(m => ({ default: m.ConnectionSettingsForm }))),
+    [lazyRetryKey],
+  )
+  const NetworkDiscoveryForm = useMemo(
+    () => lazy(() => import("./NetworkDiscoveryForm").then(m => ({ default: m.NetworkDiscoveryForm }))),
+    [lazyRetryKey],
+  )
+  const AdvancedNetworkForm = useMemo(
+    () => lazy(() => import("./AdvancedNetworkForm").then(m => ({ default: m.AdvancedNetworkForm }))),
+    [lazyRetryKey],
+  )
 
   const handleSuccess = () => {
     // Keep dialog open after successful updates
@@ -218,7 +247,7 @@ export function InstancePreferencesDialog({
               )}
             </DialogTitle>
             <DialogDescription>
-              Configure all settings and preferences for <strong className="truncate max-w-xs inline-block align-bottom" title={instanceName}>{instanceName}</strong>
+              Configure all settings and preferences for <strong className="truncate max-w-xs inline-block align-bottom" title={displayInstanceName}>{displayInstanceName}</strong>
             </DialogDescription>
           </DialogHeader>
 
@@ -290,7 +319,7 @@ export function InstancePreferencesDialog({
                   Configure download and upload speed limits
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -304,7 +333,7 @@ export function InstancePreferencesDialog({
                   Configure torrent queue settings and active torrent limits
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -318,7 +347,7 @@ export function InstancePreferencesDialog({
                   Configure file paths and torrent management settings
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -332,7 +361,7 @@ export function InstancePreferencesDialog({
                   Configure share ratio and seeding time limits
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -346,7 +375,7 @@ export function InstancePreferencesDialog({
                   Configure listening port, protocol settings, and connection limits
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -360,7 +389,7 @@ export function InstancePreferencesDialog({
                   Configure peer discovery protocols and tracker settings
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -374,7 +403,7 @@ export function InstancePreferencesDialog({
                   Performance tuning, disk I/O, peer management, and security settings
                 </p>
               </div>
-              <TabErrorBoundary>
+              <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
@@ -390,7 +419,7 @@ export function InstancePreferencesDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Instance</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{instanceName}"? This action cannot be undone.
+              Are you sure you want to delete "{displayInstanceName}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -366,6 +366,7 @@ export function Header({
                     size="icon"
                     className="hidden md:inline-flex"
                     onClick={() => setInstanceSettingsOpen(true)}
+                    aria-label="Instance settings"
                   >
                     <Cog className="h-4 w-4" />
                   </Button>
