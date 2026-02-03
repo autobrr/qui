@@ -5,13 +5,13 @@
 
 import { Button } from "@/components/ui/button"
 import {
-  ResponsiveCommand,
-  ResponsiveCommandEmpty,
-  ResponsiveCommandGroup,
-  ResponsiveCommandInput,
-  ResponsiveCommandItem,
-  ResponsiveCommandList
-} from "@/components/ui/responsive-command-popover"
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -266,15 +266,15 @@ function ValueInput({
 
       return (
         <div className="flex flex-col gap-1">
-          <ResponsiveCommand className="border rounded-md">
-            <ResponsiveCommandInput placeholder="Search..." className="h-8" />
-            <ResponsiveCommandList className="max-h-[200px]">
-              <ResponsiveCommandEmpty>No results found.</ResponsiveCommandEmpty>
-              <ResponsiveCommandGroup>
+          <Command className="border rounded-md">
+            <CommandInput placeholder="Search..." className="h-8" />
+            <CommandList className="max-h-[200px]">
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup>
                 {enumOptions.map((option) => {
                   const isSelected = selectedValues.includes(option.value)
                   return (
-                    <ResponsiveCommandItem
+                    <CommandItem
                       key={option.value}
                       onSelect={() => handleSelect(option.value)}
                     >
@@ -289,12 +289,12 @@ function ValueInput({
                         <Check className={cn("h-4 w-4")} />
                       </div>
                       <span>{option.label}</span>
-                    </ResponsiveCommandItem>
+                    </CommandItem>
                   )
                 })}
-              </ResponsiveCommandGroup>
-            </ResponsiveCommandList>
-          </ResponsiveCommand>
+              </CommandGroup>
+            </CommandList>
+          </Command>
           {selectedValues.length > 0 && (
             <Button
               type="button"
