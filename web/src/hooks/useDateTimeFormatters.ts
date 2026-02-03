@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useMemo } from "react"
+
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { formatAddedOn, formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
 
@@ -13,7 +15,7 @@ import { formatAddedOn, formatDate, formatDateOnly, formatISOTimestamp, formatTi
 export function useDateTimeFormatters() {
   const { preferences } = usePersistedDateTimePreferences()
 
-  return {
+  return useMemo(() => ({
     /**
      * Format a Unix timestamp (seconds) to a full date/time string
      */
@@ -48,5 +50,5 @@ export function useDateTimeFormatters() {
      * Get the current preferences (useful for conditional formatting)
      */
     preferences,
-  }
+  }), [preferences])
 }
