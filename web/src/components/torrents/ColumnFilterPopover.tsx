@@ -4,7 +4,14 @@
  */
 
 import { Button } from "@/components/ui/button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import {
+  ResponsiveCommand,
+  ResponsiveCommandEmpty,
+  ResponsiveCommandGroup,
+  ResponsiveCommandInput,
+  ResponsiveCommandItem,
+  ResponsiveCommandList
+} from "@/components/ui/responsive-command-popover"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -259,15 +266,15 @@ function ValueInput({
 
       return (
         <div className="flex flex-col gap-1">
-          <Command className="border rounded-md">
-            <CommandInput placeholder="Search..." className="h-8" />
-            <CommandList className="max-h-[200px]">
-              <CommandEmpty>No results found.</CommandEmpty>
-              <CommandGroup>
+          <ResponsiveCommand className="border rounded-md">
+            <ResponsiveCommandInput placeholder="Search..." className="h-8" />
+            <ResponsiveCommandList className="max-h-[200px]">
+              <ResponsiveCommandEmpty>No results found.</ResponsiveCommandEmpty>
+              <ResponsiveCommandGroup>
                 {enumOptions.map((option) => {
                   const isSelected = selectedValues.includes(option.value)
                   return (
-                    <CommandItem
+                    <ResponsiveCommandItem
                       key={option.value}
                       onSelect={() => handleSelect(option.value)}
                     >
@@ -282,14 +289,15 @@ function ValueInput({
                         <Check className={cn("h-4 w-4")} />
                       </div>
                       <span>{option.label}</span>
-                    </CommandItem>
+                    </ResponsiveCommandItem>
                   )
                 })}
-              </CommandGroup>
-            </CommandList>
-          </Command>
+              </ResponsiveCommandGroup>
+            </ResponsiveCommandList>
+          </ResponsiveCommand>
           {selectedValues.length > 0 && (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() => onChange("")}
@@ -524,7 +532,7 @@ export function ColumnFilterPopover({
           size="icon"
           ref={triggerRef}
           className={`h-6 w-6 p-0 transition-opacity ${hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
-            }`}
+          }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)
