@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -122,7 +124,7 @@ func buildFilter(raw string) map[string]struct{} {
 	if strings.TrimSpace(raw) == "" {
 		return filter
 	}
-	for _, part := range strings.Split(raw, ",") {
+	for part := range strings.SplitSeq(raw, ",") {
 		if value := strings.TrimSpace(part); value != "" {
 			filter[value] = struct{}{}
 		}
@@ -165,7 +167,7 @@ func sendPayload(client *http.Client, endpoint string, payload notifiarrMessage)
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(encoded))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(encoded))
 	if err != nil {
 		return err
 	}
@@ -462,7 +464,7 @@ func formatEvent(event notifications.Event) (string, string) {
 	case notifications.EventTorrentCompleted:
 		title := "Torrent completed"
 		lines := []string{
-			formatLine("Torrent", fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash))),
+			formatLine("Torrent", event.TorrentName+formatHashSuffix(event.TorrentHash)),
 		}
 		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
 			lines = append(lines, formatLine("Tracker", tracker))
@@ -480,45 +482,45 @@ func formatEvent(event notifications.Event) (string, string) {
 		title := "Backup completed"
 		lines := []string{
 			formatLine("Backup", formatKind(event.BackupKind)),
-			formatLine("Run", fmt.Sprintf("%d", event.BackupRunID)),
-			formatLine("Torrents", fmt.Sprintf("%d", event.BackupTorrentCount)),
+			formatLine("Run", strconv.FormatInt(event.BackupRunID, 10)),
+			formatLine("Torrents", strconv.Itoa(event.BackupTorrentCount)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case notifications.EventBackupFailed:
 		title := "Backup failed"
 		lines := []string{
 			formatLine("Backup", formatKind(event.BackupKind)),
-			formatLine("Run", fmt.Sprintf("%d", event.BackupRunID)),
+			formatLine("Run", strconv.FormatInt(event.BackupRunID, 10)),
 			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case notifications.EventDirScanCompleted:
 		title := "Directory scan completed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.DirScanRunID)),
-			formatLine("Matches", fmt.Sprintf("%d", event.DirScanMatchesFound)),
-			formatLine("Torrents added", fmt.Sprintf("%d", event.DirScanTorrentsAdded)),
+			formatLine("Run", strconv.FormatInt(event.DirScanRunID, 10)),
+			formatLine("Matches", strconv.Itoa(event.DirScanMatchesFound)),
+			formatLine("Torrents added", strconv.Itoa(event.DirScanTorrentsAdded)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case notifications.EventDirScanFailed:
 		title := "Directory scan failed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.DirScanRunID)),
+			formatLine("Run", strconv.FormatInt(event.DirScanRunID, 10)),
 			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case notifications.EventOrphanScanCompleted:
 		title := "Orphan scan completed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.OrphanScanRunID)),
-			formatLine("Files deleted", fmt.Sprintf("%d", event.OrphanScanFilesDeleted)),
-			formatLine("Folders deleted", fmt.Sprintf("%d", event.OrphanScanFoldersDeleted)),
+			formatLine("Run", strconv.FormatInt(event.OrphanScanRunID, 10)),
+			formatLine("Files deleted", strconv.Itoa(event.OrphanScanFilesDeleted)),
+			formatLine("Folders deleted", strconv.Itoa(event.OrphanScanFoldersDeleted)),
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case notifications.EventOrphanScanFailed:
 		title := "Orphan scan failed"
 		lines := []string{
-			formatLine("Run", fmt.Sprintf("%d", event.OrphanScanRunID)),
+			formatLine("Run", strconv.FormatInt(event.OrphanScanRunID, 10)),
 			formatLine("Error", formatErrorMessage(event.ErrorMessage)),
 		}
 		return title, buildMessage(instanceLabel, lines)
@@ -568,7 +570,7 @@ func resolveInstanceLabel(event notifications.Event) string {
 		return strings.TrimSpace(event.InstanceName)
 	}
 	if event.InstanceID > 0 {
-		return fmt.Sprintf("Instance %d", event.InstanceID)
+		return "Instance " + strconv.Itoa(event.InstanceID)
 	}
 	return "Instance"
 }
@@ -590,7 +592,7 @@ func formatLine(label, value string) string {
 	if trimmedLabel == "" || trimmedValue == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s: %s", trimmedLabel, trimmedValue)
+	return trimmedLabel + ": " + trimmedValue
 }
 
 func buildMessage(instanceLabel string, lines []string) string {
@@ -626,7 +628,7 @@ func formatHashSuffix(hash string) string {
 	if len(trimmed) < 8 {
 		return ""
 	}
-	return fmt.Sprintf(" [%s]", trimmed[:8])
+	return " [" + trimmed[:8] + "]"
 }
 
 func formatKind(kind models.BackupRunKind) string {
@@ -790,7 +792,7 @@ func buildStructuredMessage(message string) (string, []messageField) {
 			case "run":
 				description = "Run " + value
 			default:
-				description = fmt.Sprintf("%s: %s", label, value)
+				description = label + ": " + value
 			}
 			continue
 		}
@@ -798,7 +800,7 @@ func buildStructuredMessage(message string) (string, []messageField) {
 	}
 
 	if description == "" && len(fields) > 0 {
-		description = fmt.Sprintf("%s: %s", fields[0].Label, fields[0].Value)
+		description = fields[0].Label + ": " + fields[0].Value
 		fields = fields[1:]
 	}
 
@@ -843,7 +845,7 @@ func buildNotifiarrFields(fields []messageField) []notifiarrField {
 	if len(fields) == 0 {
 		return nil
 	}
-	out := make([]notifiarrField, 0, min(len(fields), discordFieldsLimit))
+	out := make([]notifiarrField, 0, minInt(len(fields), discordFieldsLimit))
 	for _, field := range fields {
 		if len(out) >= discordFieldsLimit {
 			break
@@ -899,7 +901,7 @@ func truncateMessage(value string, limit int) string {
 	return strings.TrimSpace(string(runes[:limit-1])) + "…"
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

@@ -5,7 +5,6 @@ package notifications
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -47,8 +46,8 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	endpoint := fmt.Sprintf("%s/api/v1/notification/qui", server.URL)
-	rawURL := fmt.Sprintf("notifiarrapi://abc123?endpoint=%s", url.QueryEscape(endpoint))
+	endpoint := server.URL + "/api/v1/notification/qui"
+	rawURL := "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint)
 
 	err := ValidateNotifiarrAPIKey(context.Background(), rawURL)
 	require.NoError(t, err)
@@ -71,8 +70,8 @@ func TestValidateNotifiarrAPIKeyInvalid(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	endpoint := fmt.Sprintf("%s/api/v1/notification/qui", server.URL)
-	rawURL := fmt.Sprintf("notifiarrapi://abc123?endpoint=%s", url.QueryEscape(endpoint))
+	endpoint := server.URL + "/api/v1/notification/qui"
+	rawURL := "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint)
 
 	err := ValidateNotifiarrAPIKey(context.Background(), rawURL)
 	require.Error(t, err)
