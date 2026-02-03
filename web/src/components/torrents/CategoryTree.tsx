@@ -216,6 +216,7 @@ const CategoryTreeNode = memo(({
               hasChildren ? (
                 <button
                   onClick={handleToggleCollapse}
+                  onPointerDown={(event) => event.stopPropagation()}
                   className="size-4 flex items-center justify-center"
                   type="button"
                   aria-label={isCollapsed ? "Expand category" : "Collapse category"}
@@ -227,7 +228,10 @@ const CategoryTreeNode = memo(({
                   )}
                 </button>
               ) : (
-                <span className="size-4" />
+                <span
+                  className="size-4"
+                  onPointerDown={(event) => event.stopPropagation()}
+                />
               )
             )}
 
