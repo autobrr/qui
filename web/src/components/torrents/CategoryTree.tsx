@@ -160,6 +160,10 @@ const CategoryTreeNode = memo(({
   const isSynthetic = syntheticCategories?.has(node.name) ?? false
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
+  const hasToggleSlot = useSubcategories && (hasChildren || node.level > 0)
+  const itemColumns = hasToggleSlot
+    ? "grid-cols-[auto_auto_minmax(0,1fr)_auto]"
+    : "grid-cols-[auto_minmax(0,1fr)_auto]"
 
   const handleToggleCollapse = useCallback((e: ReactMouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -202,29 +206,29 @@ const CategoryTreeNode = memo(({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
-            className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer select-none w-full min-w-0", itemGap, itemPadding)}
+            className={cn("grid items-center hover:bg-muted rounded-md cursor-pointer select-none w-full min-w-0", itemColumns, itemGap, itemPadding)}
             style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
             onPointerDown={handlePointerDown}
             onPointerLeave={onCategoryPointerLeave}
             role="presentation"
           >
-            {useSubcategories && hasChildren && (
-              <button
-                onClick={handleToggleCollapse}
-                className="size-4 flex items-center justify-center"
-                type="button"
-                aria-label={isCollapsed ? "Expand category" : "Collapse category"}
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="size-3" />
-                ) : (
-                  <ChevronDown className="size-3" />
-                )}
-              </button>
-            )}
-            {/* Spacer for subcategories without children to align with parent's checkbox */}
-            {useSubcategories && !hasChildren && node.level > 0 && (
-              <span className="size-4" />
+            {hasToggleSlot && (
+              hasChildren ? (
+                <button
+                  onClick={handleToggleCollapse}
+                  className="size-4 flex items-center justify-center"
+                  type="button"
+                  aria-label={isCollapsed ? "Expand category" : "Collapse category"}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="size-3" />
+                  ) : (
+                    <ChevronDown className="size-3" />
+                  )}
+                </button>
+              ) : (
+                <span className="size-4" />
+              )
             )}
 
             <Checkbox
@@ -344,6 +348,7 @@ export const CategoryTree = memo(({
 }: CategoryTreeProps) => {
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
+  const uncategorizedColumns = "grid-cols-[auto_minmax(0,1fr)_auto]"
   // Filter categories based on search term
   const filteredCategories = useMemo(() => {
     if (!searchTerm) return categories
@@ -378,7 +383,7 @@ export const CategoryTree = memo(({
       {/* All/Uncategorized special items */}
 
       <li
-        className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer w-full min-w-0", itemGap, itemPadding)}
+        className={cn("grid items-center hover:bg-muted rounded-md cursor-pointer w-full min-w-0", uncategorizedColumns, itemGap, itemPadding)}
         onClick={() => onCategoryCheckboxChange("")}
         onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
         onPointerLeave={onCategoryPointerLeave}
