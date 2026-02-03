@@ -38,7 +38,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
-import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -118,7 +118,6 @@ interface FilterSidebarProps {
   tags?: string[]
   useSubcategories?: boolean
   className?: string
-  viewMode?: ViewMode
   isStaleData?: boolean
   isLoading?: boolean
   isMobile?: boolean
@@ -186,7 +185,6 @@ const FilterSidebarComponent = ({
   tags: propsTags,
   useSubcategories = false,
   className = "",
-  viewMode: viewModeProp,
   isStaleData = false,
   isLoading = false,
   isMobile = false,
@@ -219,11 +217,10 @@ const FilterSidebarComponent = ({
   // Desktop supports all modes including "dense" (compact table rows).
   // Mobile excludes "dense" since TorrentCardsMobile uses card layouts, not table rows.
   // Passing undefined for desktop allows all modes; mobile restricts to card-compatible modes.
-  const { viewMode: persistedViewMode, cycleViewMode } = usePersistedCompactViewState(
-    isMobile ? "compact" : "normal",
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState(
+    "compact",
     isMobile ? ["normal", "compact", "ultra-compact"] : undefined
   )
-  const viewMode = isMobile ? persistedViewMode : (viewModeProp ?? persistedViewMode)
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -3081,7 +3078,6 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isStaleData !== nextProps.isStaleData) return false
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
-  if (prevProps.viewMode !== nextProps.viewMode) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 

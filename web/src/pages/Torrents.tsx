@@ -337,7 +337,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             instanceId={instanceId}
             selectedFilters={filters}
             onFilterChange={setFilters}
-            viewMode={viewMode}
             torrentCounts={torrentCounts}
             categorySizes={categorySizes}
             tagSizes={tagSizes}
