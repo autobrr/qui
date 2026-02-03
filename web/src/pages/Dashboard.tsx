@@ -324,6 +324,7 @@ function InstanceCard({
               <InstanceSettingsButton
                 instanceId={instance.id}
                 instanceName={instance.name}
+                instance={instance}
                 showButton={showSettingsButton}
               />
             </div>
@@ -336,9 +337,7 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled
-                    ? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`
-                    : `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
+                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
