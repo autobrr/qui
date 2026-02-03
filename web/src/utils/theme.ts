@@ -105,12 +105,11 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
 
   // Clean up all variation variables to prevent stale values
   Array.from(root.style)
-    .filter(prop => prop.startsWith("--variation"))
+    .filter(prop => prop.startsWith('--variation'))
     .forEach(prop => root.style.removeProperty(prop));
 
   // Apply theme CSS variables (lightOnly themes always use light vars)
-  // Merge light vars into dark to avoid missing tokens (fonts/spacing/etc) in dark blocks.
-  const cssVars = effectiveIsDark ? { ...theme.cssVars.light, ...theme.cssVars.dark } : theme.cssVars.light;
+  const cssVars = effectiveIsDark ? theme.cssVars.dark : theme.cssVars.light;
   Object.entries(cssVars).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
