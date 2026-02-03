@@ -171,13 +171,13 @@ const CrossSeedDialogComponent = ({
     }
   }, [hasFailures])
 
-  const handleBlockInfoHash = useCallback(async (infoHash: string) => {
-    const instanceId = sourceTorrent?.instanceId
-    if (!instanceId) {
+  const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string) => {
+    if (instanceId <= 0) {
       toast.error("Missing instance for blocklist")
       return
     }
-    setBlocklistPending(infoHash)
+    const pendingKey = `${instanceId}:${infoHash}`
+    setBlocklistPending(pendingKey)
     try {
       await api.addCrossSeedBlocklist({ instanceId, infoHash })
       toast.success("Added to blocklist")
@@ -187,7 +187,7 @@ const CrossSeedDialogComponent = ({
     } finally {
       setBlocklistPending(null)
     }
-  }, [sourceTorrent?.instanceId])
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -481,29 +481,17 @@ const CrossSeedDialogComponent = ({
                           >
                             <div className="flex items-center justify-between gap-2 text-sm">
                               <span className="min-w-0 truncate">{result.indexer}</span>
-                              <div className="flex items-center gap-2">
-                                {result.infoHash && sourceTorrent?.instanceId && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleBlockInfoHash(result.infoHash!)}
-                                    disabled={blocklistPending === result.infoHash}
-                                    title={`Block ${result.infoHash}`}
-                                    className="h-6 px-2 text-[10px]"
-                                  >
-                                    {blocklistPending === result.infoHash ? "Blocking..." : "Block"}
-                                  </Button>
-                                )}
-                                <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
-                                  {result.success ? "Queued" : "Check"}
-                                </Badge>
-                              </div>
+                              <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
+                                {result.success ? "Queued" : "Check"}
+                              </Badge>
                             </div>
                             <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
                             {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
                             {result.instanceResults && result.instanceResults.length > 0 && (
                               <ul className="mt-1.5 space-y-1 text-xs">
                                 {result.instanceResults.map(instance => {
+                                  const infoHash = result.infoHash
+                                  const isBlocking = Boolean(infoHash) && blocklistPending === `${instance.instanceId}:${infoHash}`
                                   const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
@@ -515,6 +503,19 @@ const CrossSeedDialogComponent = ({
                                         >
                                           {statusDisplay.text}
                                         </Badge>
+                                        {infoHash && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleBlockInfoHash(instance.instanceId, infoHash!)}
+                                            disabled={isBlocking}
+                                            aria-label={`Block ${infoHash} for ${instance.instanceName}`}
+                                            title={`Block ${infoHash}`}
+                                            className="h-5 px-2 text-[10px]"
+                                          >
+                                            {isBlocking ? "Blocking..." : "Block"}
+                                          </Button>
+                                        )}
                                       </div>
                                       {instance.message && instance.message !== instance.status && (
                                         <span className={`break-words pl-0.5 ${instance.success ? "text-muted-foreground" : "text-destructive/80"}`}>

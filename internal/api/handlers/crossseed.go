@@ -326,7 +326,7 @@ type searchRunRequest struct {
 	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
 }
 
-type crossSeedBlocklistRequest struct {
+type CrossSeedBlocklistRequest struct {
 	InstanceID int    `json:"instanceId"`
 	InfoHash   string `json:"infoHash"`
 	Note       string `json:"note"`
@@ -1121,14 +1121,14 @@ func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request)
 // @Tags cross-seed
 // @Accept json
 // @Produce json
-// @Param request body crossSeedBlocklistRequest true "Blocklist entry"
+// @Param request body CrossSeedBlocklistRequest true "Blocklist entry"
 // @Success 201 {object} models.CrossSeedBlocklistEntry
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/blocklist [post]
 func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Request) {
-	var payload crossSeedBlocklistRequest
+	var payload CrossSeedBlocklistRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -1137,6 +1137,19 @@ func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Requ
 	if payload.InstanceID <= 0 {
 		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
 		return
+	}
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), payload.InstanceID)
+		switch {
+		case err == nil:
+		case errors.Is(err, models.ErrInstanceNotFound):
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		default:
+			log.Error().Err(err).Int("instanceID", payload.InstanceID).Msg("Failed to validate instance for cross-seed blocklist")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
 	}
 
 	infohash, ok := normalizeInfoHashInput(payload.InfoHash)

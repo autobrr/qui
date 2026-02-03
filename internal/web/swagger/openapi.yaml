@@ -4715,6 +4715,7 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: qBittorrent instance ID
     hash:
       name: hash
