@@ -105,8 +105,8 @@ func updateLogSettingsInTOML(content, level, path string, maxSize, maxBackups in
 func processLogLine(line string, s logSettings, updated map[string]bool) string {
 	trimmed := strings.TrimSpace(line)
 
-	// Preserve empty lines and comments as-is
-	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+	// Preserve empty lines as-is
+	if trimmed == "" {
 		return line
 	}
 
