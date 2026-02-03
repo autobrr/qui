@@ -47,6 +47,10 @@ type CrossSeedIndexerOption = {
   name: string
 }
 
+function getBlocklistPendingKey(instanceId: number, infoHash: string): string {
+  return `${instanceId}:${infoHash}`
+}
+
 export interface CrossSeedDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -161,7 +165,7 @@ const CrossSeedDialogComponent = ({
 
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
-  const [blocklistPending, setBlocklistPending] = useState<string | null>(null)
+  const [blocklistPendingKeys, setBlocklistPendingKeys] = useState<Set<string>>(() => new Set())
 
   // Auto-expand results when there are failures
   const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
@@ -176,8 +180,8 @@ const CrossSeedDialogComponent = ({
       toast.error("Missing instance for blocklist")
       return
     }
-    const pendingKey = `${instanceId}:${infoHash}`
-    setBlocklistPending(pendingKey)
+    const pendingKey = getBlocklistPendingKey(instanceId, infoHash)
+    setBlocklistPendingKeys(prev => new Set(prev).add(pendingKey))
     try {
       await api.addCrossSeedBlocklist({ instanceId, infoHash })
       toast.success("Added to blocklist")
@@ -185,7 +189,11 @@ const CrossSeedDialogComponent = ({
       const message = error instanceof Error ? error.message : "Failed to add to blocklist"
       toast.error(message)
     } finally {
-      setBlocklistPending(null)
+      setBlocklistPendingKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(pendingKey)
+        return next
+      })
     }
   }, [])
 
@@ -491,7 +499,8 @@ const CrossSeedDialogComponent = ({
                               <ul className="mt-1.5 space-y-1 text-xs">
                                 {result.instanceResults.map(instance => {
                                   const infoHash = result.infoHash
-                                  const isBlocking = Boolean(infoHash) && blocklistPending === `${instance.instanceId}:${infoHash}`
+                                  const pendingKey = infoHash ? getBlocklistPendingKey(instance.instanceId, infoHash) : null
+                                  const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
                                   const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
