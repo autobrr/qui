@@ -282,6 +282,12 @@ export interface MoveAction {
   condition?: RuleCondition
 }
 
+export interface ExternalProgramAction {
+  enabled: boolean
+  programId: number
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -291,6 +297,7 @@ export interface ActionConditions {
   tag?: TagAction
   category?: CategoryAction
   move?: MoveAction
+  externalProgram?: ExternalProgramAction
 }
 
 export type FreeSpaceSource =
@@ -339,7 +346,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved" | "external_program"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -363,8 +370,32 @@ export interface AutomationActivity {
     limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
     // Move activity details
     paths?: Record<string, number> // path -> count of torrents
+    // External program activity details
+    programName?: string
   }
   createdAt: string
+}
+
+export interface AutomationActivityRunItem {
+  hash: string
+  name: string
+  trackerDomain?: string
+  tagsAdded?: string[]
+  tagsRemoved?: string[]
+  category?: string
+  movePath?: string
+  size?: number
+  ratio?: number
+  addedOn?: number
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingMinutes?: number
+}
+
+export interface AutomationActivityRun {
+  total: number
+  items: AutomationActivityRunItem[]
 }
 
 export interface AutomationPreviewTorrent {
