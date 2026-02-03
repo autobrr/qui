@@ -414,7 +414,10 @@ export function getThemeColors(
 } {
   // Use passed mode if specified
   const isDark = mode ? mode === 'dark' : document.documentElement.classList.contains("dark");
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
+  const effectiveIsDark = theme.lightOnly ? false : isDark;
+  const cssVars = effectiveIsDark
+    ? { ...theme.cssVars.light, ...theme.cssVars.dark }
+    : theme.cssVars.light;
 
   // Helper to resolve variation colors
   const resolveColor = (varName: '--primary' | '--secondary' | '--accent'): string => {
