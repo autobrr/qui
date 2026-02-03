@@ -29,16 +29,27 @@ function SwitchSetting({
   checked: boolean
   onChange: (checked: boolean) => void
 }) {
+  const switchId = React.useId()
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
 
@@ -79,10 +90,15 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
       form.setFieldValue("announce_to_all_trackers", preferences.announce_to_all_trackers)
       form.setFieldValue("resolve_peer_countries", preferences.resolve_peer_countries)
     }
-  }, [preferences, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [preferences])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading network discovery settings...</div>
+    return (
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+        <p className="text-sm text-muted-foreground">Loading network discovery settings...</p>
+      </div>
+    )
   }
 
   const getEncryptionLabel = (value: number) => {
@@ -233,19 +249,21 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
         </div>
       </div>
 
-      <form.Subscribe
-        selector={(state) => [state.canSubmit, state.isSubmitting]}
-      >
-        {([canSubmit, isSubmitting]) => (
-          <Button
-            type="submit"
-            disabled={!canSubmit || isSubmitting || isUpdating}
-            className="w-full"
-          >
-            {isSubmitting || isUpdating ? "Updating..." : "Update Network Discovery Settings"}
-          </Button>
-        )}
-      </form.Subscribe>
+      <div className="flex justify-end pt-4">
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
+        </form.Subscribe>
+      </div>
     </form>
   )
 }

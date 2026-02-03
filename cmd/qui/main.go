@@ -37,6 +37,7 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
@@ -574,6 +575,9 @@ func (app *Application) runServer() {
 	arrService := arr.NewService(arrInstanceStore, arrIDCacheStore)
 	log.Info().Msg("ARR service initialized")
 
+	// Initialize automation activity store and external programs service
+	automationActivityStore := models.NewAutomationActivityStore(db)
+	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
 	notificationTargetStore := models.NewNotificationTargetStore(db)
 	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
 	notificationCtx, notificationCancel := context.WithCancel(context.Background())
@@ -585,10 +589,9 @@ func (app *Application) runServer() {
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore, notificationService, cfg.Config.CrossSeedRecoverErroredTorrents)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, externalProgramService, instanceCrossSeedCompletionStore, trackerCustomizationStore, notificationService, cfg.Config.CrossSeedRecoverErroredTorrents)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	automationActivityStore := models.NewAutomationActivityStore(db)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
@@ -720,6 +723,7 @@ func (app *Application) runServer() {
 		ReannounceService:                reannounceService,
 		ClientAPIKeyStore:                clientAPIKeyStore,
 		ExternalProgramStore:             externalProgramStore,
+		ExternalProgramService:           externalProgramService,
 		ClientPool:                       clientPool,
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,

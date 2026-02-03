@@ -36,10 +36,18 @@ import { Edit, Plus, Trash2, X } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
+// Type for automation references in delete conflict response
+interface AutomationReference {
+  id: number
+  instanceId: number
+  name: string
+}
+
 export function ExternalProgramsManager() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editProgram, setEditProgram] = useState<ExternalProgram | null>(null)
   const [deleteProgram, setDeleteProgram] = useState<ExternalProgram | null>(null)
+  const [deleteConflict, setDeleteConflict] = useState<AutomationReference[] | null>(null)
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
@@ -79,15 +87,23 @@ export function ExternalProgramsManager() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return api.deleteExternalProgram(id)
+    mutationFn: async ({ id, force }: { id: number; force?: boolean }) => {
+      return api.deleteExternalProgram(id, force)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
+      // Also invalidate automations since we may have modified them
+      queryClient.invalidateQueries({ queryKey: ["automations"] })
       setDeleteProgram(null)
+      setDeleteConflict(null)
       toast.success("External program deleted successfully")
     },
     onError: (error: any) => {
+      // Check if this is a 409 conflict with automation references
+      if (error.status === 409 && error.data?.automations) {
+        setDeleteConflict(error.data.automations)
+        return
+      }
       toast.error(`Failed to delete external program: ${error.message || "Unknown error"}`)
     },
   })
@@ -154,7 +170,7 @@ export function ExternalProgramsManager() {
                     </div>
                     <CardDescription className="text-xs">
                       Created {formatDate(new Date(program.created_at))}
-                      {program.updated_at !== program.created_at && 
+                      {program.updated_at !== program.created_at &&
                         ` • Updated ${formatDate(new Date(program.updated_at))}`}
                     </CardDescription>
                   </div>
@@ -219,21 +235,45 @@ export function ExternalProgramsManager() {
       )}
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteProgram !== null} onOpenChange={() => setDeleteProgram(null)}>
+      <AlertDialog open={deleteProgram !== null} onOpenChange={(open) => {
+        if (!open) {
+          setDeleteProgram(null)
+          setDeleteConflict(null)
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete External Program</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deleteProgram?.name}"? This action cannot be undone.
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {deleteConflict ? (
+                  <>
+                    <p className="text-amber-600 dark:text-amber-500">
+                      This program is used by the following automation rules:
+                    </p>
+                    <ul className="list-disc list-inside text-sm space-y-1 max-h-32 overflow-y-auto">
+                      {deleteConflict.map((ref) => (
+                        <li key={ref.id}>{ref.name}</li>
+                      ))}
+                    </ul>
+                    <p>
+                      If you proceed, the external program action will be removed from these automation rules.
+                    </p>
+                  </>
+                ) : (
+                  <p>Are you sure you want to delete "{deleteProgram?.name}"? This action cannot be undone.</p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteProgram && deleteMutation.mutate(deleteProgram.id)}
+              onClick={() => deleteProgram && deleteMutation.mutate({ id: deleteProgram.id, force: deleteConflict !== null })}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
             >
-              Delete
+              {deleteConflict ? "Delete Anyway" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -393,7 +433,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. 
+          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote.
           Paths are matched by longest prefix first. Use the same path separator style as the remote qBittorrent instance (/ for Linux, \ for Windows).
         </p>
       </div>

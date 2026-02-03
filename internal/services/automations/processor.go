@@ -53,6 +53,11 @@ type torrentDesiredState struct {
 	// Move (first rule to trigger wins)
 	shouldMove bool
 	movePath   string
+
+	// External program (last rule wins)
+	externalProgramID *int
+	programRuleID     int
+	programRuleName   string
 }
 
 type ruleRunStats struct {
@@ -74,13 +79,15 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
+	ExternalProgramApplied           int
+	ExternalProgramConditionNotMet   int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -290,6 +297,23 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		} else if stats != nil {
 			stats.CategoryConditionNotMetOrBlocked++
+		}
+	}
+
+	// External program (last rule wins)
+	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled && conditions.ExternalProgram.ProgramID > 0 {
+		shouldApply := conditions.ExternalProgram.Condition == nil ||
+			EvaluateConditionWithContext(conditions.ExternalProgram.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ExternalProgramApplied++
+			}
+			state.externalProgramID = &conditions.ExternalProgram.ProgramID
+			state.programRuleID = rule.ID
+			state.programRuleName = rule.Name
+		} else if stats != nil {
+			stats.ExternalProgramConditionNotMet++
 		}
 	}
 
@@ -554,7 +578,8 @@ func hasActions(state *torrentDesiredState) bool {
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||
-		state.shouldMove
+		state.shouldMove ||
+		state.externalProgramID != nil
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.

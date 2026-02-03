@@ -73,9 +73,9 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
     }
   }, [preferences, form])
 
-  if (isLoading || !preferences) {
+  if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading seeding limits...</p>
       </div>
     )
@@ -83,7 +83,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
 
   if (!preferences) {
     return (
-      <div className="text-center py-8">
+      <div className="text-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )

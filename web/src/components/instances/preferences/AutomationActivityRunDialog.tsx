@@ -44,6 +44,7 @@ const actionLabels: Record<AutomationActivity["action"], string> = {
   share_limits_changed: "Share limits changed",
   paused: "Paused",
   moved: "Moved",
+  external_program: "External program",
 }
 
 interface AutomationActivityRunDialogProps {
