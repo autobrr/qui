@@ -54,8 +54,18 @@ function AddTorrentHandler() {
     if (magnet) {
       hasReceivedPayload.current = true
       setDropPayload({ type: "url", urls: [magnet] })
+      return
     }
-  }, [magnet])
+
+    const hasRawParam = (typeof magnetParam === "string" && magnetParam.trim().length > 0) ||
+      (typeof url === "string" && url.trim().length > 0)
+    if (hasRawParam) {
+      hasReceivedPayload.current = true
+      clearAddIntent()
+      toast.error("Invalid magnet link")
+      navigate({ to: "/" })
+    }
+  }, [magnet, magnetParam, navigate, url])
 
   const handleLaunchQueueEvent = useCallback((event: LaunchQueueEvent) => {
     if (event.kind === "payload") {
