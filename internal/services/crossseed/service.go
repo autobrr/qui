@@ -1665,7 +1665,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		if samples := collectSearchResultSamples(results, 3); len(samples) > 0 {
 			lines = append(lines, "Samples: "+formatSampleText(samples))
 		}
-		s.notifier.Notify(ctx, notifications.Event{
+		notifyCtx := context.WithoutCancel(ctx)
+		s.notifier.Notify(notifyCtx, notifications.Event{
 			Type:        eventType,
 			InstanceID:  instanceID,
 			Message:     strings.Join(lines, "\n"),

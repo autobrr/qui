@@ -22,8 +22,8 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
