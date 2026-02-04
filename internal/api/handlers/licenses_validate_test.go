@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/services/license"
 )
@@ -29,7 +30,7 @@ func TestValidateLicense_MissingStoredLicenseReturns404(t *testing.T) {
 	handler := NewLicenseHandler(service)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/license/validate", bytes.NewReader([]byte(`{"licenseKey":"missing"}`)))
-	req = req.WithContext(context.WithValue(req.Context(), "username", "tester"))
+	req = req.WithContext(context.WithValue(req.Context(), ctxkeys.Username, "tester"))
 
 	rr := httptest.NewRecorder()
 	handler.ValidateLicense(rr, req)

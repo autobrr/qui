@@ -130,7 +130,7 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 
 func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fingerprint string, existingLicense *models.ProductLicense) (*models.ProductLicense, error) {
 	if s.dodoClient == nil {
-		return nil, fmt.Errorf("dodo client not configured")
+		return nil, errors.New("dodo client not configured")
 	}
 
 	log.Debug().Msgf("attempting Dodo license activation..")
@@ -204,7 +204,7 @@ func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fi
 
 func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, fingerprint string, existingLicense *models.ProductLicense) (*models.ProductLicense, error) {
 	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
-		return nil, fmt.Errorf("polar client not configured")
+		return nil, errors.New("polar client not configured")
 	}
 
 	log.Debug().Msgf("attempting Polar license activation..")
@@ -216,7 +216,7 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 	activateResp, err := s.polarClient.Activate(ctx, activateReq)
 	switch {
 	case errors.Is(err, polar.ErrActivationLimitExceeded):
-		return nil, fmt.Errorf("activation limit exceeded")
+		return nil, errors.New("activation limit exceeded")
 	case err != nil:
 		return nil, errors.Wrap(err, "failed to activate license")
 	}
@@ -281,7 +281,7 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 
 func (s *Service) validateExistingDodoLicense(ctx context.Context, license *models.ProductLicense) error {
 	if s.dodoClient == nil {
-		return fmt.Errorf("dodo client not configured")
+		return errors.New("dodo client not configured")
 	}
 
 	validationResp, err := s.dodoClient.Validate(ctx, dodo.ValidateRequest{
@@ -293,7 +293,7 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 	}
 
 	if !validationResp.Valid {
-		return fmt.Errorf("license is not active")
+		return errors.New("license is not active")
 	}
 
 	license.LastValidated = time.Now()
@@ -320,7 +320,7 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 
 func (s *Service) validateExistingPolarLicense(ctx context.Context, license *models.ProductLicense, fingerprint string) error {
 	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
-		return fmt.Errorf("polar client not configured")
+		return errors.New("polar client not configured")
 	}
 
 	validationReq := polar.ValidateRequest{Key: license.LicenseKey, ActivationID: license.PolarActivationID}
@@ -362,7 +362,7 @@ func (s *Service) ensureDodoActivation(ctx context.Context, license *models.Prod
 	}
 
 	if s.dodoClient == nil {
-		return fmt.Errorf("dodo client not configured")
+		return errors.New("dodo client not configured")
 	}
 
 	log.Info().
@@ -411,7 +411,7 @@ func (s *Service) ensurePolarActivation(ctx context.Context, license *models.Pro
 	}
 
 	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
-		return fmt.Errorf("polar client not configured")
+		return errors.New("polar client not configured")
 	}
 
 	log.Info().
@@ -492,7 +492,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		switch normalizeProvider(license.Provider) {
 		case models.LicenseProviderDodo:
 			if s.dodoClient == nil {
-				return fmt.Errorf("dodo client not configured")
+				return errors.New("dodo client not configured")
 			}
 			if err := s.ensureDodoActivation(ctx, license, fingerprint); err != nil {
 				log.Error().
@@ -580,7 +580,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			}
 		default:
 			if s.dodoClient == nil {
-				return fmt.Errorf("dodo client not configured")
+				return errors.New("dodo client not configured")
 			}
 			licenseInfo, err := s.dodoClient.Validate(ctx, dodo.ValidateRequest{
 				LicenseKey: license.LicenseKey,
@@ -834,7 +834,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			}
 		default:
 			if s.dodoClient == nil {
-				handleTransient(license, fmt.Errorf("dodo client not configured"))
+				handleTransient(license, errors.New("dodo client not configured"))
 				continue
 			}
 
@@ -943,7 +943,7 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 	case models.LicenseProviderDodo:
 		if license.DodoInstanceID != "" {
 			if s.dodoClient == nil {
-				return fmt.Errorf("dodo client not configured")
+				return errors.New("dodo client not configured")
 			}
 			_, err := s.dodoClient.Deactivate(ctx, dodo.DeactivateRequest{
 				LicenseKey:           license.LicenseKey,

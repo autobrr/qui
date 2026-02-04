@@ -11,6 +11,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -50,7 +51,7 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			}
 
 			username := sessionManager.GetString(r.Context(), "username")
-			ctx := context.WithValue(r.Context(), "username", username)
+			ctx := context.WithValue(r.Context(), ctxkeys.Username, username)
 			r = r.WithContext(ctx)
 
 			next.ServeHTTP(w, r)

@@ -317,7 +317,11 @@ func (r *LicenseRepo) UpdateLicenseProvider(ctx context.Context, licenseID int, 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			log.Error().Err(rollbackErr).Msg("failed to rollback transaction")
+		}
+	}()
 
 	query := `
 		UPDATE licenses
