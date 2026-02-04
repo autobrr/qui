@@ -3428,7 +3428,7 @@ func (s *Service) processCrossSeedCandidate(
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
 			Str("matchedHash", matchedTorrent.Hash).
-			Str("matchType", string(matchType)).
+			Str("matchType", matchType).
 			Str("sourceRoot", sourceRoot).
 			Str("candidateRoot", candidateRoot).
 			Bool("hasExtraFiles", hasExtraFiles).
@@ -4155,7 +4155,7 @@ func matchTypePriority(matchType string) int {
 	case "size":
 		return 1
 	default:
-		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
+		// Unknown/unsupported match types (e.g. "release-match")
 		// intentionally receive priority 0 so callers treat them as unusable unless
 		// explicitly handled above. Add new match types here when they become valid.
 		return 0
