@@ -54,7 +54,9 @@ export function LicenseManager() {
   const primaryLicense = licenses?.[0]
   const provider = primaryLicense?.provider ?? "dodo"
   const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
-  const portalLabel = provider === "polar" ? "Polar portal" : "Dodo portal"
+  const selectedLicense = selectedLicenseKey ? licenses?.find((l) => l.licenseKey === selectedLicenseKey) : undefined
+  const selectedPortalUrl = (selectedLicense?.provider ?? provider) === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
+  const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar" ? "Polar portal" : "Dodo portal"
 
   // Check if we have an invalid license (exists but not active)
   const hasInvalidLicense = licenses && licenses.length > 0 && licenses[0].status !== "active"
@@ -279,12 +281,12 @@ export function LicenseManager() {
               <div className="text-sm text-muted-foreground">
                 If needed, you can recover it later from your{" "}
                 <a
-                  href={portalUrl}
+                  href={selectedPortalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
                 >
-                  {portalLabel}
+                  {selectedPortalLabel}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>

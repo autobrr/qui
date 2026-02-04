@@ -84,7 +84,7 @@ export const useDeleteLicense = () => {
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to remove license")
+      toast.error(getLicenseErrorMessage(error))
     },
   })
 }

@@ -47,6 +47,10 @@ type LicenseInfo struct {
 const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
+)
+
+// LicenseProvider constants
+const (
 	LicenseProviderDodo  = "dodo"
 	LicenseProviderPolar = "polar"
 )
