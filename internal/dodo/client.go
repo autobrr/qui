@@ -25,9 +25,11 @@ var (
 
 const (
 	// Dodo "live" base URL per vendor docs.
-	dodoAPIBaseURL  = "https://live.dodopayments.com"
-	dodoTestBaseURL = "https://test.dodopayments.com"
-	requestTimeout  = 30 * time.Second
+	dodoAPIBaseURL      = "https://live.dodopayments.com"
+	dodoTestBaseURL     = "https://test.dodopayments.com"
+	requestTimeout      = 30 * time.Second
+	maxErrorBodyBytes   = 64 * 1024
+	truncatedBodySuffix = " (truncated)"
 )
 
 type APIError struct {
@@ -211,7 +213,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, requestBody
 }
 
 func parseError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
+	truncated := len(body) > maxErrorBodyBytes
+	if truncated {
+		body = body[:maxErrorBodyBytes]
+	}
+
 	message := strings.TrimSpace(string(body))
 
 	var payload errorResponse
@@ -223,6 +230,14 @@ func parseError(resp *http.Response) error {
 			message = payload.Detail
 		case payload.Error != "":
 			message = payload.Error
+		}
+	}
+
+	if truncated {
+		if message == "" {
+			message = strings.TrimSpace(truncatedBodySuffix)
+		} else {
+			message += truncatedBodySuffix
 		}
 	}
 

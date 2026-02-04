@@ -11,12 +11,15 @@ import (
 	"github.com/autobrr/qui/internal/polar"
 )
 
+var ErrDodoClientNotConfigured = errors.New("dodo client not configured")
+
 func normalizeProvider(provider string) string {
 	return strings.TrimSpace(strings.ToLower(provider))
 }
 
 func isDodoFallbackError(err error) bool {
-	return errors.Is(err, dodo.ErrLicenseNotFound) ||
+	return errors.Is(err, ErrDodoClientNotConfigured) ||
+		errors.Is(err, dodo.ErrLicenseNotFound) ||
 		errors.Is(err, dodo.ErrInvalidLicenseKey)
 }
 
