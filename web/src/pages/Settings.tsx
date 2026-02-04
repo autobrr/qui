@@ -439,7 +439,7 @@ interface InstancesManagerProps {
 const INSTANCE_FORM_ID = "instance-form"
 
 function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
-  const { instances, isLoading, reorderInstances, isReordering, isCreating, isUpdating } = useInstances()
+  const { instances, isLoading, reorderInstances, isReordering, isCreating } = useInstances()
   const [titleBarSpeedsEnabled, setTitleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
@@ -550,7 +550,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
         </div>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenAddDialog() : handleCloseDialog()}>
         <DialogContent className="sm:max-w-[425px] max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Add Instance</DialogTitle>
