@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ConditionOperator, RuleCondition } from "@/types";
@@ -139,7 +144,7 @@ export function ConditionGroup({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3",
+        "rounded-lg border p-2 sm:p-3",
         depth === 0 && "border-border bg-card",
         depth > 0 && "border-border/50 bg-muted/30",
         depth > 1 && "border-dashed"

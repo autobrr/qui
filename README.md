@@ -73,6 +73,7 @@ Donate what you want (minimum $4.99) to unlock premium themes:
 - **soup**
   - [GitHub Sponsors](https://github.com/sponsors/s0up4200)
   - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
+  - [Ko-fi](https://ko-fi.com/s0up4200)
 - **zze0s**
   - [GitHub Sponsors](https://github.com/sponsors/zze0s)
   - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)

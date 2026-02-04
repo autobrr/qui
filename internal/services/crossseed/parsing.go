@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -523,11 +523,11 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 	}
 
 	name := infoVal.Name
-	hashV1 := strings.ToUpper(mi.HashInfoBytes().HexString())
+	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
 		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
-		hashV2 = strings.ToUpper(h.HexString())
+		hashV2 = strings.ToLower(h.HexString())
 	}
 
 	if name == "" {

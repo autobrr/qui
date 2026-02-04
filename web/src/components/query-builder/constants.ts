@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {
   // String fields
@@ -287,3 +292,5 @@ export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
 } as const;
 
+// Uncategorized sentinel (Radix Select requires non-empty values)
+export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";

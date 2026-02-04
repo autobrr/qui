@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -49,6 +49,7 @@ function SpeedLimitInput({
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
 }) {
+  const inputId = React.useId()
   const [localValue, setLocalValue] = React.useState("")
   const [isFocused, setIsFocused] = React.useState(false)
 
@@ -63,11 +64,12 @@ function SpeedLimitInput({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <Label className="text-sm font-medium">{label}</Label>
+        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <Label htmlFor={inputId} className="text-sm font-medium">{label}</Label>
       </div>
       <div className="flex items-center gap-2">
         <Input
+          id={inputId}
           type="number"
           min="0"
           step="0.1"
@@ -83,8 +85,9 @@ function SpeedLimitInput({
           onBlur={() => setIsFocused(false)}
           placeholder="0 (Unlimited)"
           className="flex-1"
+          aria-describedby={`${inputId}-unit`}
         />
-        <span className="text-sm text-muted-foreground min-w-12">MiB/s</span>
+        <span id={`${inputId}-unit`} className="text-sm text-muted-foreground min-w-12">MiB/s</span>
       </div>
     </div>
   )
@@ -96,15 +99,17 @@ function TimeInput({
   onHourChange,
   onMinuteChange,
   disabled = false,
+  labelPrefix = "Schedule",
 }: {
   hour: number
   minute: number
   onHourChange: (hour: number) => void
   onMinuteChange: (minute: number) => void
   disabled?: boolean
+  labelPrefix?: string
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" role="group" aria-label={`${labelPrefix} time`}>
       <Input
         type="number"
         min="0"
@@ -118,8 +123,9 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
+        aria-label={`${labelPrefix} hour (0-23)`}
       />
-      <span className="text-muted-foreground">:</span>
+      <span className="text-muted-foreground" aria-hidden="true">:</span>
       <Input
         type="number"
         min="0"
@@ -133,6 +139,7 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
+        aria-label={`${labelPrefix} minute (0-59)`}
       />
     </div>
   )
@@ -195,11 +202,12 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       form.setFieldValue("schedule_to_min", memoizedPreferences.schedule_to_min)
       form.setFieldValue("scheduler_days", memoizedPreferences.scheduler_days)
     }
-  }, [memoizedPreferences, form, isFormDirty])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [memoizedPreferences, isFormDirty])
 
   if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading speed limits...</p>
       </div>
     )
@@ -207,7 +215,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
 
   if (!memoizedPreferences) {
     return (
-      <div className="text-center py-8">
+      <div className="flex items-center justify-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
@@ -222,15 +230,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       className="space-y-6"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <form.Field 
+        <form.Field
           name="dl_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Global download rate limit must be greater than 0 or disabled'
+                return "Global download rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -245,21 +253,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Download}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="up_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Global upload rate limit must be greater than 0 or disabled'
+                return "Global upload rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -274,21 +282,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Upload}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="alt_dl_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Alternative download rate limit must be greater than 0 or disabled'
+                return "Alternative download rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -303,21 +311,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Download}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="alt_up_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Alternative upload rate limit must be greater than 0 or disabled'
+                return "Alternative upload rate limit must be greater than 0 or disabled"
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
@@ -332,7 +340,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 icon={Upload}
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
               )}
             </div>
           )}
@@ -384,6 +392,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                   setIsFormDirty(true)
                                   minField.handleChange(minute)
                                 }}
+                                labelPrefix="Start"
                               />
                             )}
                           </form.Field>
@@ -410,6 +419,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                   setIsFormDirty(true)
                                   minField.handleChange(minute)
                                 }}
+                                labelPrefix="End"
                               />
                             )}
                           </form.Field>
