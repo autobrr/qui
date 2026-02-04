@@ -2380,6 +2380,8 @@ export function Dashboard() {
   const settings = dashboardSettings || DEFAULT_DASHBOARD_SETTINGS
 
   // Use safe hook that always calls the same number of hooks
+  // Query handoff: when the dashboard is visible we run full stats; after the
+  // delayed hide, we stop heavy stats and only poll transfer info for title bar speeds.
   const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
   const globalStats = useGlobalStats(statsData)
   const transferInfoQueries = useQueries({
