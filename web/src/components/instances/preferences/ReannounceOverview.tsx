@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -374,11 +374,11 @@ export function ReannounceOverview({
                             </p>
                           </div>
                         ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
+                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
                             <p className="text-sm text-muted-foreground">Loading activity...</p>
                           </div>
                         ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
+                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
                             <p className="text-sm text-muted-foreground">
                               {searchTerm ? "No matching events found." : "No activity recorded yet."}
                             </p>

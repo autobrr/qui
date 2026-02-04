@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package database provides a SQLite database layer with string interning.
@@ -277,9 +277,7 @@ func (t *Tx) promoteStatementsToCache() {
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
-			// Log but don't fail - caching is an optimization
-			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
-			continue
+			continue // silently skip - caching is best-effort
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)

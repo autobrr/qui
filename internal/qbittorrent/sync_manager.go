@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -455,6 +455,13 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	sm.trackerHealthMu.Unlock()
 
 	sm.setValidatedTrackerMapping(instanceID, mapping)
+
+	// Queue icon fetches for discovered tracker domains. We do this here (in the
+	// background refresh) so icons get fetched even when API requests use the
+	// validated mapping path (which doesn't walk MainData.Trackers).
+	for domain := range mapping.DomainToHashes {
+		trackericons.QueueFetch(domain, "")
+	}
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -1065,6 +1072,24 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Treat infinity ETA (8640000) as the largest value, placing it at the end
 	if sort == "eta" {
 		sm.sortTorrentsByETA(filteredTorrents, order == "desc")
+	}
+
+	// Apply custom sorting for timestamp fields with fallback to state, name, hash
+	if sort == "last_activity" {
+		// LastActivity doesn't always update every tick for active torrents, so truncate to 60s to ensure sort stability
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.LastActivity / 60 })
+	}
+
+	if sort == "added_on" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.AddedOn })
+	}
+
+	if sort == "completion_on" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.CompletionOn })
+	}
+
+	if sort == "seen_complete" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.SeenComplete })
 	}
 
 	// Calculate stats from filtered torrents
@@ -4508,6 +4533,39 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 			return 1
 		}
 		return 0
+	})
+}
+
+// compareByStateThenName provides deterministic ordering by state priority, name, then hash.
+func compareByStateThenName(a, b qbt.Torrent) int {
+	priorityA := stateSortPriority(a.State)
+	priorityB := stateSortPriority(b.State)
+	if priorityA != priorityB {
+		return cmp.Compare(priorityA, priorityB)
+	}
+
+	nameA := strings.ToLower(a.Name)
+	nameB := strings.ToLower(b.Name)
+	if result := strings.Compare(nameA, nameB); result != 0 {
+		return result
+	}
+
+	return strings.Compare(a.Hash, b.Hash)
+}
+
+// sortTorrentsByTimestamp sorts torrents by a timestamp field with fallback to state, name, and hash.
+// The getTimestamp function extracts the timestamp value from a torrent.
+// Special values (0 or -1 meaning "never") are treated as infinitely old and sort naturally.
+func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool, getTimestamp func(qbt.Torrent) int64) {
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		tsA, tsB := getTimestamp(a), getTimestamp(b)
+		if tsA != tsB {
+			if desc {
+				return cmp.Compare(tsB, tsA)
+			}
+			return cmp.Compare(tsA, tsB)
+		}
+		return compareByStateThenName(a, b)
 	})
 }
 

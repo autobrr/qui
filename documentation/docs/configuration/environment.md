@@ -45,6 +45,12 @@ QUI__DATA_DIR=...        # Optional: custom data directory (default: next to con
 QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remote tracker icon fetching (default: true)
 ```
 
+## Updates
+
+```bash
+QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicators (default: true)
+```
+
 ## Metrics
 
 ```bash

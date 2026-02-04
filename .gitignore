@@ -71,6 +71,7 @@ backups/*
 .golangci-cache/*
 torrentfiles/*
 analyses/*
+.envrc
 
 # Local reference dumps
 dodopayments.txt

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -27,8 +27,9 @@ import {
   resolveTrackerDisplay,
   type TrackerCustomizationLookup
 } from "@/lib/tracker-customizations"
+import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
-import type { AppPreferences, Torrent } from "@/types"
+import type { AppPreferences, CrossInstanceTorrent, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   AlertCircle,
@@ -72,15 +73,29 @@ function formatEta(seconds: number): string {
 }
 
 function formatReannounce(seconds: number): string {
+  // Negative values mean "never" or "not applicable"
   if (seconds < 0) return "-"
 
+  // Zero means "now" (just announced or about to announce)
+  if (seconds === 0) return "now"
+
   const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
 
   if (minutes < 1) {
     return "< 1m"
   }
 
-  return `${minutes}m`
+  if (hours < 1) {
+    return `${minutes}m`
+  }
+
+  const remainingMinutes = minutes % 60
+  if (remainingMinutes === 0) {
+    return `${hours}h`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
 }
 
 // Calculate minimum column width based on header text
@@ -402,6 +417,23 @@ export const createColumns = (
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
 
+  const instanceColumn: ColumnDef<Torrent> = {
+    id: "instance",
+    accessorKey: "instanceName",
+    header: "Instance",
+    cell: ({ row }) => {
+      const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
+          <Badge variant="outline" className="text-xs">
+            {instanceName}
+          </Badge>
+        </div>
+      )
+    },
+    size: calculateMinWidth("Instance"),
+  }
+
   return [
     {
       id: "select",
@@ -553,22 +585,7 @@ export const createColumns = (
       },
       size: 200,
     },
-    ...(showInstanceColumn ? [{
-      id: "instance",
-      accessorKey: "instanceName",
-      header: "Instance",
-      cell: ({ row }: { row: any }) => {
-        const instanceName = row.original.instanceName || ""
-        return (
-          <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
-            <Badge variant="outline" className="text-xs">
-              {instanceName}
-            </Badge>
-          </div>
-        )
-      },
-      size: calculateMinWidth("Instance"),
-    }] : []),
+    ...(showInstanceColumn ? [instanceColumn] : []),
     {
       accessorKey: "size",
       header: "Size",
@@ -847,7 +864,7 @@ export const createColumns = (
         // Use primary domain from customization for icon lookup (if customized)
         const trackerDisplayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : null
         const iconDomain = trackerDisplayInfo?.primaryDomain || host
-        const iconSrc = iconDomain ? trackerIcons?.[iconDomain] ?? null : null
+        const iconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, host)
 
         return (
           <TrackerIconCell

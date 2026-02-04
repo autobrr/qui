@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package crossseed provides intelligent cross-seeding functionality for torrents.
@@ -20,10 +20,8 @@ import (
 	"maps"
 	"math"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -42,11 +40,11 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/autobrr/qui/internal/externalprograms"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -270,7 +268,8 @@ type Service struct {
 	arrService               *arr.Service // ARR service for ID lookup
 
 	// External program execution
-	externalProgramStore *models.ExternalProgramStore
+	externalProgramStore   *models.ExternalProgramStore
+	externalProgramService *externalprograms.Service
 
 	// Per-instance completion settings
 	completionStore *models.InstanceCrossSeedCompletionStore
@@ -338,6 +337,7 @@ func NewService(
 	jackettService *jackett.Service,
 	arrService *arr.Service,
 	externalProgramStore *models.ExternalProgramStore,
+	externalProgramService *externalprograms.Service,
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
 	recoverErroredTorrents bool,
@@ -370,6 +370,7 @@ func NewService(
 		jackettService:                jackettService,
 		arrService:                    arrService,
 		externalProgramStore:          externalProgramStore,
+		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
 		automationWake:                make(chan struct{}, 1),
@@ -1511,7 +1512,10 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return err
 	}
 
-	requestedIndexerIDs := uniquePositiveInts(settings.TargetIndexerIDs)
+	var requestedIndexerIDs []int
+	if completionSettings != nil {
+		requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
+	}
 
 	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
 	var allowedIndexerIDs []int
@@ -3632,7 +3636,10 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
-	alignmentSucceeded := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
+	alignmentSucceeded, activeHash := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, matchedTorrent, sourceFiles, candidateFiles)
+	if activeHash == "" {
+		activeHash = torrentHash
+	}
 
 	// Determine if we need to wait for verification and resume at threshold:
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
@@ -3680,9 +3687,9 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, 1.0)
 			} else {
-				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, activeHash)
 			}
 			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
@@ -3705,7 +3712,7 @@ func (s *Service) processCrossSeedCandidate(
 			result.Message += " - auto-resume skipped per settings"
 		} else {
 			// Resume immediately since there's nothing to wait for
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{activeHash}, "resume"); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", candidate.InstanceID).
@@ -3719,7 +3726,7 @@ func (s *Service) processCrossSeedCandidate(
 		// Alignment failed - pause torrent to prevent unwanted downloads
 		if !startPaused {
 			// Torrent was added running - need to actually pause it
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "pause"); err != nil {
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", candidate.InstanceID).
@@ -3766,6 +3773,30 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	return result
+}
+
+func dedupeHashes(hashes ...string) []string {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+
+	for _, hash := range hashes {
+		trimmed := strings.TrimSpace(hash)
+		if trimmed == "" {
+			continue
+		}
+		canonical := strings.ToLower(trimmed)
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, trimmed)
+	}
+
+	return out
 }
 
 func normalizeHash(hash string) string {
@@ -4093,10 +4124,14 @@ func matchTypePriority(matchType string) int {
 		return 3
 	case "partial-in-pack":
 		return 2
+	case "partial-contains":
+		// Allows cross-seeding when folder structures differ but content matches
+		// (e.g., /movie1/movie1.mkv vs /movie1.mkv)
+		return 1
 	case "size":
 		return 1
 	default:
-		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
+		// Unknown/unsupported match types (e.g. "release-match")
 		// intentionally receive priority 0 so callers treat them as unusable unless
 		// explicitly handled above. Add new match types here when they become valid.
 		return 0
@@ -7872,16 +7907,28 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 	return contentPath
 }
 
-// appendCrossSuffix adds the .cross suffix to a category name.
-// Returns empty string for empty input, and avoids double-suffixing.
-func appendCrossSuffix(category string) string {
-	if category == "" {
-		return ""
-	}
-	if strings.HasSuffix(category, ".cross") {
+// applyCategoryAffix applies a prefix or suffix to a category based on the affix mode.
+// Returns the category unchanged if affixMode is empty or affix is empty.
+func applyCategoryAffix(category, affixMode, affix string) string {
+	if category == "" || affix == "" || affixMode == "" {
 		return category
 	}
-	return category + ".cross"
+	switch affixMode {
+	case models.CategoryAffixModePrefix:
+		// Avoid double-prefixing
+		if strings.HasPrefix(category, affix) {
+			return category
+		}
+		return affix + category
+	case models.CategoryAffixModeSuffix:
+		// Avoid double-suffixing
+		if strings.HasSuffix(category, affix) {
+			return category
+		}
+		return category + affix
+	default:
+		return category
+	}
 }
 
 // ensureCrossCategory ensures a .cross suffixed category exists with the correct save_path.
@@ -7964,32 +8011,32 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 		settings, _ = s.GetAutomationSettings(ctx)
 	}
 
-	// Custom category takes priority - use exact category without any suffix
+	// Custom category takes priority - use exact category without any affix
 	if settings != nil && settings.UseCustomCategory && settings.CustomCategory != "" {
 		return settings.CustomCategory, settings.CustomCategory
 	}
 
-	// Helper to apply .cross suffix only if enabled in settings
-	applySuffix := func(cat string) string {
-		if settings != nil && !settings.UseCrossCategorySuffix {
-			return cat
+	// Helper to apply category affix (prefix or suffix) based on settings
+	applyAffix := func(cat string) string {
+		if settings != nil && settings.UseCrossCategoryAffix && settings.CategoryAffixMode != "" && settings.CategoryAffix != "" {
+			return applyCategoryAffix(cat, settings.CategoryAffixMode, settings.CategoryAffix)
 		}
-		return appendCrossSuffix(cat)
+		return cat
 	}
 
 	if req == nil {
-		return matchedCategory, applySuffix(matchedCategory)
+		return matchedCategory, applyAffix(matchedCategory)
 	}
 
 	if req.Category != "" {
-		return req.Category, applySuffix(req.Category)
+		return req.Category, applyAffix(req.Category)
 	}
 
 	if req.IndexerName != "" && settings != nil && settings.UseCategoryFromIndexer {
-		return req.IndexerName, applySuffix(req.IndexerName)
+		return req.IndexerName, applyAffix(req.IndexerName)
 	}
 
-	return matchedCategory, applySuffix(matchedCategory)
+	return matchedCategory, applyAffix(matchedCategory)
 }
 
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
@@ -8356,10 +8403,18 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-// executeExternalProgram runs the configured external program for a successfully injected torrent
+// executeExternalProgram runs the configured external program for a successfully injected torrent.
+//
+// WARNING: No rate limiting is applied. Rapid injections can spawn many concurrent processes.
 func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
-	if s.externalProgramStore == nil {
+	if s.externalProgramService == nil {
 		return
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
 	}
 
 	// Get current settings to check if external program is configured
@@ -8375,33 +8430,10 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 
 	programID := *settings.RunExternalProgramID
 
-	// Get the external program configuration
-	program, err := s.externalProgramStore.GetByID(ctx, programID)
-	if err != nil {
-		if errors.Is(err, models.ErrExternalProgramNotFound) {
-			log.Warn().Int("programId", programID).Msg("Configured external program not found")
-			return
-		}
-		log.Error().Err(err).Int("programId", programID).Msg("Failed to get external program configuration")
-		return
-	}
-
-	if !program.Enabled {
-		log.Debug().Int("programId", programID).Str("programName", program.Name).Msg("External program is disabled, skipping execution")
-		return
-	}
-
 	// Execute in a separate goroutine to avoid blocking the cross-seed operation
 	go func() {
-		log.Debug().
-			Int("instanceId", instanceID).
-			Str("torrentHash", torrentHash).
-			Int("programId", programID).
-			Str("programName", program.Name).
-			Msg("Executing external program for cross-seed injection")
-
 		// Get torrent data from sync manager
-		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(context.Background(), instanceID, []string{torrentHash})
+		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{torrentHash})
 		if err != nil {
 			log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
 			return
@@ -8412,125 +8444,35 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 			return
 		}
 
-		// Execute the external program - simplified version of handler logic
-		launched, outcomeKnown := s.executeExternalProgramSimple(program, targetTorrent)
+		log.Debug().
+			Int("instanceId", instanceID).
+			Str("torrentHash", torrentHash).
+			Int("programId", programID).
+			Msg("Executing external program for cross-seed injection")
 
-		switch {
-		case !launched:
+		// Execute using the shared external programs service
+		result := s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+			ProgramID:  programID,
+			Torrent:    targetTorrent,
+			InstanceID: instanceID,
+		})
+
+		if !result.Success {
 			log.Error().
+				Err(result.Error).
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
-				Str("programName", program.Name).
-				Msg("External program failed to launch for cross-seed injection")
-		case outcomeKnown:
+				Msg("External program failed for cross-seed injection")
+		} else {
 			log.Debug().
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
-				Str("programName", program.Name).
-				Msg("External program executed successfully for cross-seed injection")
-		default:
-			log.Debug().
-				Int("instanceId", instanceID).
-				Str("torrentHash", torrentHash).
-				Int("programId", programID).
-				Str("programName", program.Name).
-				Msg("External program launched for cross-seed injection (outcome unknown)")
+				Str("message", result.Message).
+				Msg("External program executed for cross-seed injection")
 		}
 	}()
-}
-
-// executeExternalProgramSimple runs an external program for a torrent using simplified logic.
-// Returns (launched, outcomeKnown):
-//   - launched: true if the process was started successfully
-//   - outcomeKnown: true if we can determine success/failure (false on Windows with 'start')
-func (s *Service) executeExternalProgramSimple(program *models.ExternalProgram, torrent *qbt.Torrent) (launched, outcomeKnown bool) {
-	// Build torrent data map for variable substitution
-	torrentData := map[string]string{
-		"hash":         torrent.Hash,
-		"name":         torrent.Name,
-		"save_path":    externalprograms.ApplyPathMappings(torrent.SavePath, program.PathMappings),
-		"category":     torrent.Category,
-		"tags":         torrent.Tags,
-		"state":        string(torrent.State),
-		"size":         strconv.FormatInt(torrent.Size, 10),
-		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-		"content_path": externalprograms.ApplyPathMappings(torrent.ContentPath, program.PathMappings),
-	}
-
-	// Build command arguments
-	args := externalprograms.BuildArguments(program.ArgsTemplate, torrentData)
-
-	// Build command
-	var cmd *exec.Cmd
-	if program.UseTerminal {
-		if runtime.GOOS == "windows" {
-			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
-			cmdArgs = append(cmdArgs, args...)
-			cmd = exec.Command("cmd.exe", cmdArgs...)
-		} else {
-			// Simple Unix terminal execution
-			allArgs := append([]string{program.Path}, args...)
-			cmd = exec.Command("xterm", append([]string{"-e"}, allArgs...)...)
-		}
-	} else {
-		if runtime.GOOS == "windows" {
-			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
-			cmdArgs = append(cmdArgs, args...)
-			cmd = exec.Command("cmd.exe", cmdArgs...)
-		} else {
-			if len(args) > 0 {
-				cmd = exec.Command(program.Path, args...)
-			} else {
-				cmd = exec.Command(program.Path)
-			}
-		}
-	}
-
-	// Log the command
-	log.Debug().
-		Str("program", program.Name).
-		Str("hash", torrent.Hash).
-		Str("command", fmt.Sprintf("%v", cmd.Args)).
-		Msg("External program launched")
-
-	if runtime.GOOS == "windows" {
-		// Windows uses 'start' which spawns a detached process - we can't know
-		// the child's exit status, only whether the 'start' command itself succeeded.
-		if err := cmd.Run(); err != nil {
-			log.Error().
-				Err(err).
-				Str("program", program.Name).
-				Str("hash", torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("Failed to launch external program via cmd.exe")
-			return false, false
-		}
-		return true, false // launched, but outcome unknown
-	}
-
-	if err := cmd.Start(); err != nil {
-		log.Error().
-			Err(err).
-			Str("program", program.Name).
-			Str("hash", torrent.Hash).
-			Str("command", fmt.Sprintf("%v", cmd.Args)).
-			Msg("External program failed to start")
-		return false, true
-	}
-
-	if err := cmd.Wait(); err != nil {
-		log.Debug().
-			Err(err).
-			Str("program", program.Name).
-			Str("hash", torrent.Hash).
-			Str("command", fmt.Sprintf("%v", cmd.Args)).
-			Msg("External program exited with error")
-		return false, true
-	}
-
-	return true, true
 }
 
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.

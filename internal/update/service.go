@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package update
@@ -126,4 +126,11 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 // SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
 	s.isEnabled = enabled
+	if !enabled {
+		s.mu.Lock()
+		s.latestRelease = nil
+		s.lastTag = ""
+		s.lastChecked = time.Time{}
+		s.mu.Unlock()
+	}
 }

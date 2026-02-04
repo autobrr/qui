@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package database
@@ -26,9 +26,9 @@ func NewLicenseRepo(db *DB) *LicenseRepo {
 // GetLicenseByKey retrieves a license by its key
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
-		SELECT id, license_key, product_name,  status, activated_at, expires_at, 
+		SELECT id, license_key, product_name,  status, activated_at, expires_at,
 		       last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
-		FROM licenses 
+		FROM licenses
 		WHERE license_key = ?
 	`
 
@@ -72,9 +72,9 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 // GetAllLicenses retrieves all licenses
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
 	query := `
-		SELECT id, license_key, product_name, status, activated_at, expires_at, 
+		SELECT id, license_key, product_name, status, activated_at, expires_at,
 		       last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
-		FROM licenses 
+		FROM licenses
 		ORDER BY created_at DESC
 	`
 
@@ -130,9 +130,9 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 // HasPremiumAccess checks if the user has purchased premium access (one-time unlock)
 func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 	query := `
-		SELECT COUNT(*) 
-		FROM licenses 
-		WHERE product_name = 'premium-access' 
+		SELECT COUNT(*)
+		FROM licenses
+		WHERE product_name = 'premium-access'
 		AND status = ?
 		AND (expires_at IS NULL OR expires_at > datetime('now'))
 	`
@@ -189,7 +189,7 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 	defer tx.Rollback()
 
 	query := `
-		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at, 
+		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at,
 		                           last_validated, provider, dodo_instance_id, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -230,7 +230,7 @@ func (r *LicenseRepo) UpdateLicenseStatus(ctx context.Context, licenseID int, st
 	defer tx.Rollback()
 
 	query := `
-		UPDATE licenses 
+		UPDATE licenses
 		SET status = ?, last_validated = ?, updated_at = ?
 		WHERE id = ?
 	`
