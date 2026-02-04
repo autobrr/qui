@@ -64,6 +64,12 @@ jobs:
             # Stage changes and exclude lockfile
             git add .
             git reset HEAD web/pnpm-lock.yaml 2>/dev/null || true
+
+            if git diff --staged --quiet; then
+              echo "No staged changes after excluding web/pnpm-lock.yaml; skipping commit/PR creation"
+              exit 0
+            fi
+
             git commit -m "chore(fmt): auto-format code"
 
             # Force push to ensure clean state (removes any unwanted previous commits)
