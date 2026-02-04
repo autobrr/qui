@@ -4122,7 +4122,7 @@ func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
 		return 3
-	case "partial-in-pack", "partial-contains":
+	case "partial-in-pack":
 		return 2
 	case "partial-contains":
 		// Allows cross-seeding when folder structures differ but content matches
@@ -4131,7 +4131,7 @@ func matchTypePriority(matchType string) int {
 	case "size":
 		return 1
 	default:
-		// Unknown/unsupported match types (e.g. "release-match")
+		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
 		// intentionally receive priority 0 so callers treat them as unusable unless
 		// explicitly handled above. Add new match types here when they become valid.
 		return 0
