@@ -25,8 +25,8 @@ import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ImperativePanelHandle } from "react-resizable-panels"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
 
 interface TorrentsProps {
   instanceId: number
@@ -153,8 +153,17 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   // Mobile detection for responsive layout
   const isMobile = useIsMobile()
 
+  const panelIds = useMemo(
+    () => (selectedTorrent ? ["torrent-list", "torrent-details"] : ["torrent-list"]),
+    [selectedTorrent]
+  )
+  const { defaultLayout, onLayoutChange } = useDefaultLayout({
+    id: "qui-torrent-details-panel",
+    panelIds,
+  })
+
   // Ref for controlling the details panel imperatively (auto-expand/collapse)
-  const detailsPanelRef = useRef<ImperativePanelHandle>(null)
+  const detailsPanelRef = usePanelRef()
 
   // Navigation is handled by parent component via onSearchChange prop
 
@@ -410,9 +419,11 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           <div className="flex flex-col h-full">
             <ResizablePanelGroup
               direction="vertical"
-              autoSaveId="qui-torrent-details-panel"
+              defaultLayout={defaultLayout}
+              onLayoutChange={onLayoutChange}
             >
               <ResizablePanel
+                id="torrent-list"
                 defaultSize={selectedTorrent ? 60 : 100}
                 minSize={30}
               >
@@ -436,15 +447,21 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                 <>
                   <ResizableHandle withHandle />
                   <ResizablePanel
-                    ref={detailsPanelRef}
+                    id="torrent-details"
+                    panelRef={detailsPanelRef}
                     defaultSize={40}
                     minSize={15}
                     maxSize={70}
                     collapsible
                     collapsedSize={0}
-                    onCollapse={() => {
-                      // When user collapses the panel, deselect the torrent
-                      setSelectedTorrent(null)
+                    onResize={(panelSize) => {
+                      if (!selectedTorrent) {
+                        return
+                      }
+                      if (panelSize.asPercentage <= 0 || panelSize.inPixels <= 0) {
+                        // When user collapses the panel, deselect the torrent
+                        setSelectedTorrent(null)
+                      }
                     }}
                   >
                     <div className="h-full border-t bg-background">
