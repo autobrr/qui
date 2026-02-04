@@ -3186,7 +3186,7 @@ func (s *Service) processCrossSeedCandidate(
 				Str("instanceName", candidate.InstanceName).
 				Str("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
-				Str("matchType", string(matchType)).
+				Str("matchType", matchType).
 				Strs("mismatchedFiles", mismatchedFiles).
 				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
 			return false
