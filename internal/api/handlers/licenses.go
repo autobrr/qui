@@ -159,7 +159,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 
 	username, ok := r.Context().Value(ctxkeys.Username).(string)
 	if !ok || username == "" {
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
 		})

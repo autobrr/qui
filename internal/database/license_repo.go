@@ -23,6 +23,16 @@ func NewLicenseRepo(db *DB) *LicenseRepo {
 	return &LicenseRepo{db: db}
 }
 
+type rollbacker interface {
+	Rollback() error
+}
+
+func rollbackTx(tx rollbacker) {
+	if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+		log.Error().Err(rollbackErr).Msg("failed to rollback transaction")
+	}
+}
+
 // GetLicenseByKey retrieves a license by its key
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
@@ -152,7 +162,7 @@ func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) erro
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	query := `DELETE FROM licenses WHERE license_key = ?`
 
@@ -186,7 +196,7 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	query := `
 		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at,
@@ -227,7 +237,7 @@ func (r *LicenseRepo) UpdateLicenseStatus(ctx context.Context, licenseID int, st
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	query := `
 		UPDATE licenses
@@ -252,7 +262,7 @@ func (r *LicenseRepo) UpdateLicenseValidation(ctx context.Context, license *mode
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	query := `
 		UPDATE licenses
@@ -278,7 +288,7 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	query := `
 		UPDATE licenses
@@ -317,11 +327,7 @@ func (r *LicenseRepo) UpdateLicenseProvider(ctx context.Context, licenseID int, 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			log.Error().Err(rollbackErr).Msg("failed to rollback transaction")
-		}
-	}()
+	defer rollbackTx(tx)
 
 	query := `
 		UPDATE licenses
