@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -14,6 +14,11 @@ export interface User {
 export interface AuthResponse {
   user: User
   message?: string
+}
+
+// Generic warning response for operations that succeed with caveats
+export interface WarningResponse {
+  warning?: string
 }
 
 export interface Instance {
@@ -90,6 +95,7 @@ export interface InstanceCrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
 }
 
 /**
@@ -269,6 +275,19 @@ export interface CategoryAction {
   condition?: RuleCondition
 }
 
+export interface MoveAction {
+  enabled: boolean
+  path: string
+  blockIfCrossSeed?: boolean
+  condition?: RuleCondition
+}
+
+export interface ExternalProgramAction {
+  enabled: boolean
+  programId: number
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -277,6 +296,8 @@ export interface ActionConditions {
   delete?: DeleteAction
   tag?: TagAction
   category?: CategoryAction
+  move?: MoveAction
+  externalProgram?: ExternalProgramAction
 }
 
 export type FreeSpaceSource =
@@ -325,7 +346,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved" | "external_program"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -347,8 +368,34 @@ export interface AutomationActivity {
     categories?: Record<string, number> // category -> count of torrents
     // Speed/share limit activity details
     limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
+    // Move activity details
+    paths?: Record<string, number> // path -> count of torrents
+    // External program activity details
+    programName?: string
   }
   createdAt: string
+}
+
+export interface AutomationActivityRunItem {
+  hash: string
+  name: string
+  trackerDomain?: string
+  tagsAdded?: string[]
+  tagsRemoved?: string[]
+  category?: string
+  movePath?: string
+  size?: number
+  ratio?: number
+  addedOn?: number
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingMinutes?: number
+}
+
+export interface AutomationActivityRun {
+  total: number
+  items: AutomationActivityRunItem[]
 }
 
 export interface AutomationPreviewTorrent {
@@ -423,6 +470,7 @@ export interface InstanceCapabilities {
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
   supportsFreeSpacePathSource: boolean
+  supportsSetRSSFeedURL: boolean
   webAPIVersion?: string
 }
 
@@ -1706,7 +1754,9 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
-  useCrossCategorySuffix: boolean
+  useCrossCategoryAffix: boolean
+  categoryAffixMode: "prefix" | "suffix"
+  categoryAffix: string
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
@@ -1751,7 +1801,9 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
-  useCrossCategorySuffix?: boolean
+  useCrossCategoryAffix?: boolean
+  categoryAffixMode?: "prefix" | "suffix"
+  categoryAffix?: string
   useCustomCategory?: boolean
   customCategory?: string
   runExternalProgramId?: number | null
@@ -1966,6 +2018,7 @@ export interface DirScanSettings {
   matchMode: DirScanMatchMode
   sizeTolerancePercent: number
   minPieceRatio: number
+  maxSearcheesPerRun: number
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
@@ -1980,6 +2033,7 @@ export interface DirScanSettingsUpdate {
   matchMode?: DirScanMatchMode
   sizeTolerancePercent?: number
   minPieceRatio?: number
+  maxSearcheesPerRun?: number
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean
@@ -2070,4 +2124,124 @@ export interface DirScanFile {
   matchedTorrentHash?: string
   matchedIndexerId?: number
   lastProcessedAt?: string
+}
+
+// RSS Types
+
+export interface RSSArticle {
+  id: string
+  date: string
+  title: string
+  author?: string
+  description?: string
+  torrentURL?: string
+  link?: string
+  isRead: boolean
+}
+
+export interface RSSFeed {
+  uid: string
+  url: string
+  title?: string
+  lastBuildDate?: string
+  hasError: boolean
+  isLoading: boolean
+  articles?: RSSArticle[]
+}
+
+// Hierarchical structure returned by qBittorrent
+export interface RSSItems {
+  [key: string]: RSSFeed | RSSItems
+}
+
+// Helper type to distinguish feeds from folders
+export function isRSSFeed(item: RSSFeed | RSSItems): item is RSSFeed {
+  return "url" in item && typeof item.url === "string"
+}
+
+export interface RSSRuleTorrentParams {
+  category?: string
+  tags?: string[]
+  save_path?: string
+  download_path?: string
+  content_layout?: string
+  operating_mode?: string
+  skip_checking?: boolean
+  upload_limit?: number
+  download_limit?: number
+  seeding_time_limit?: number
+  inactive_seeding_time_limit?: number
+  share_limit_action?: string
+  ratio_limit?: number
+  stopped?: boolean
+  stop_condition?: string
+  use_auto_tmm?: boolean
+  use_download_path?: boolean
+  add_to_top_of_queue?: boolean
+}
+
+export interface RSSAutoDownloadRule {
+  enabled: boolean
+  priority: number
+  useRegex: boolean
+  mustContain: string
+  mustNotContain: string
+  episodeFilter?: string
+  affectedFeeds: string[]
+  lastMatch?: string
+  ignoreDays: number
+  smartFilter: boolean
+  previouslyMatchedEpisodes?: string[]
+  torrentParams?: RSSRuleTorrentParams
+  // Legacy fields
+  addPaused?: boolean | null
+  savePath?: string
+  assignedCategory?: string
+  torrentContentLayout?: string
+}
+
+export type RSSRules = Record<string, RSSAutoDownloadRule>
+
+export type RSSMatchingArticles = Record<string, string[]>
+
+// Request types for RSS API
+export interface AddRSSFolderRequest {
+  path: string
+}
+
+export interface AddRSSFeedRequest {
+  url: string
+  path?: string
+}
+
+export interface SetRSSFeedURLRequest {
+  path: string
+  url: string
+}
+
+export interface MoveRSSItemRequest {
+  itemPath: string
+  destPath?: string // Optional: empty moves item to root
+}
+
+export interface RemoveRSSItemRequest {
+  path: string
+}
+
+export interface RefreshRSSItemRequest {
+  itemPath: string
+}
+
+export interface MarkRSSAsReadRequest {
+  itemPath: string
+  articleId?: string
+}
+
+export interface SetRSSRuleRequest {
+  name: string
+  rule: RSSAutoDownloadRule
+}
+
+export interface RenameRSSRuleRequest {
+  newName: string
 }

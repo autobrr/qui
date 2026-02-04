@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -290,7 +290,7 @@ export function OrphanScanSettingsForm({
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
+          <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">

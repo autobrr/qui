@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -97,6 +97,17 @@ export function useDeleteDirScanDirectory() {
     mutationFn: (directoryId: number) => api.deleteDirScanDirectory(directoryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dir-scan", "directories"] })
+    },
+  })
+}
+
+export function useResetDirScanFiles(directoryId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.resetDirScanFiles(directoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dir-scan", "directory", directoryId, "files"] })
     },
   })
 }

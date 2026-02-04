@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -360,6 +360,9 @@ export function InstanceBackups() {
 
   const lastRun = summaryRuns.length > 0 ? summaryRuns[0] : undefined
   const hasRuns = summaryRuns.length > 0
+  const latestCompletedRun = useMemo(() => {
+    return summaryRuns.find(run => run.status === "success")
+  }, [summaryRuns])
 
   const hasActiveCadence = useMemo(() => {
     if (!formState) return false
@@ -1702,6 +1705,14 @@ export function InstanceBackups() {
                 <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
                   <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
                 </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => latestCompletedRun && openRestore(latestCompletedRun)}
+                  disabled={!latestCompletedRun || executeRestore.isPending || runsLoading}
+                >
+                  <Undo2 className="mr-2 h-4 w-4" /> Restore from latest
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -1742,112 +1753,132 @@ export function InstanceBackups() {
                           <TableCell className="text-right">{run.torrentCount}</TableCell>
                           <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
                           <TableCell className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openManifest(run.id)}
-                              aria-label="View manifest"
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openRestore(run)}
-                              aria-label="Restore from backup"
-                            >
-                              <Undo2 className="h-4 w-4" />
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openManifest(run.id)}
+                                  aria-label="View manifest"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View backup manifest</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openRestore(run)}
+                                  aria-label="Restore from backup"
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Restore torrents from this backup</TooltipContent>
+                            </Tooltip>
                             {run.status === "success" && run.torrentCount > 0 ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" aria-label="Download backup">
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      Download as ZIP
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      Download as TAR.GZ
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      Download as TAR.ZST
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      Download as TAR.BR
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      Download as TAR.XZ
-                                    </a>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
-                                      rel="noreferrer"
-                                      download
-                                    >
-                                      Download as TAR
-                                    </a>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <Tooltip>
+                                <DropdownMenu>
+                                  <TooltipTrigger asChild>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" aria-label="Download backup">
+                                        <Download className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Download backup archive</TooltipContent>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        Download as ZIP
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        Download as TAR.GZ
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        Download as TAR.ZST
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        Download as TAR.BR
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        Download as TAR.XZ
+                                      </a>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
+                                        rel="noreferrer"
+                                        download
+                                      >
+                                        Download as TAR
+                                      </a>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </Tooltip>
                             ) : (
                               <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
                                 <Download className="h-4 w-4" />
                               </Button>
                             )}
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Delete backup">
-                                  <Trash className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete backup?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This will remove the backup archive and manifest from disk. This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDelete(run)}>
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            <Tooltip>
+                              <AlertDialog>
+                                <TooltipTrigger asChild>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" aria-label="Delete backup">
+                                      <Trash className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete this backup</TooltipContent>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete backup?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will remove the backup archive and manifest from disk. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(run)}>
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </Tooltip>
                           </TableCell>
                         </TableRow>
                       ))}
