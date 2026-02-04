@@ -5,7 +5,7 @@ package collector
 
 import (
 	"context"
-	"slices"
+	"maps"
 	"strings"
 	"time"
 
@@ -299,31 +299,11 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			}
 
 			if counts.TrackerTransfers != nil {
-				trackerStats := map[string]*qbittorrent.TrackerTransferStats{}
-
-				for domain, stats := range counts.TrackerTransfers {
-					displayName, shouldInclude := resolveTrackerForStats(domain, trackerCustomizations)
-
-					if !shouldInclude {
+				trackerStats := groupTrackerTransfersForMetrics(counts.TrackerTransfers, trackerCustomizations)
+				for trackerName, stats := range trackerStats {
+					if strings.TrimSpace(trackerName) == "" {
 						continue
 					}
-
-					if existing, ok := trackerStats[displayName]; ok {
-						existing.Count += stats.Count
-						existing.Uploaded += stats.Uploaded
-						existing.Downloaded += stats.Downloaded
-						existing.TotalSize += stats.TotalSize
-					} else {
-						trackerStats[displayName] = &qbittorrent.TrackerTransferStats{
-							Count:      stats.Count,
-							Uploaded:   stats.Uploaded,
-							Downloaded: stats.Downloaded,
-							TotalSize:  stats.TotalSize,
-						}
-					}
-				}
-
-				for trackerName, stats := range trackerStats {
 					ch <- prometheus.MustNewConstMetric(
 						c.trackerTorrentsDesc,
 						prometheus.GaugeValue,
@@ -399,23 +379,112 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-// resolveTrackerForStats determines the display name for a domain and whether it should be included in stats.
-// https://github.com/autobrr/qui/blob/7466a98023aa4ca1e531d47c661e2701fb8dc3cf/web/src/pages/Dashboard.tsx#L990-L1011
-func resolveTrackerForStats(domain string, customizations []*models.TrackerCustomization) (displayName string, shouldInclude bool) {
-	for _, c := range customizations {
-		isPrimary := len(c.Domains) > 0 && strings.EqualFold(c.Domains[0], domain)
-		if isPrimary {
-			return c.DisplayName, true
-		}
-
-		isIncluded := slices.ContainsFunc(c.IncludedInStats, func(d string) bool {
-			return strings.EqualFold(d, domain)
-		})
-
-		if isIncluded {
-			return c.DisplayName, true
+func groupTrackerTransfersForMetrics(transfers map[string]qbittorrent.TrackerTransferStats, customizations []*models.TrackerCustomization) map[string]qbittorrent.TrackerTransferStats {
+	domainToCustomization := make(map[string]*models.TrackerCustomization)
+	for _, custom := range customizations {
+		for _, domain := range custom.Domains {
+			domain = strings.ToLower(strings.TrimSpace(domain))
+			if domain == "" {
+				continue
+			}
+			domainToCustomization[domain] = custom
 		}
 	}
 
-	return domain, true
+	displayNameFor := func(custom *models.TrackerCustomization, domain string) string {
+		if custom == nil {
+			return strings.TrimSpace(domain)
+		}
+		if name := strings.TrimSpace(custom.DisplayName); name != "" {
+			return name
+		}
+		return strings.TrimSpace(domain)
+	}
+
+	isPrimaryDomain := func(custom *models.TrackerCustomization, domain string) bool {
+		if custom == nil || len(custom.Domains) == 0 {
+			return false
+		}
+		return strings.EqualFold(custom.Domains[0], domain)
+	}
+
+	isIncludedInStats := func(custom *models.TrackerCustomization, domain string) bool {
+		if custom == nil {
+			return false
+		}
+		for _, d := range custom.IncludedInStats {
+			if strings.EqualFold(d, domain) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Mirrors tracker breakdown grouping rules in the dashboard (3-pass approach).
+	processed := make(map[string]qbittorrent.TrackerTransferStats)
+
+	// Pass 1: primary domains and standalone domains.
+	for domain, stats := range transfers {
+		trimmedDomain := strings.TrimSpace(domain)
+		if trimmedDomain == "" {
+			continue
+		}
+		custom := domainToCustomization[strings.ToLower(trimmedDomain)]
+		if custom == nil {
+			processed[trimmedDomain] = stats
+			continue
+		}
+		if isPrimaryDomain(custom, trimmedDomain) {
+			processed[displayNameFor(custom, trimmedDomain)] = stats
+		}
+	}
+
+	// Pass 2: explicitly included secondary domains contribute to the group.
+	for domain, stats := range transfers {
+		trimmedDomain := strings.TrimSpace(domain)
+		if trimmedDomain == "" {
+			continue
+		}
+		custom := domainToCustomization[strings.ToLower(trimmedDomain)]
+		if custom == nil {
+			continue
+		}
+		if isPrimaryDomain(custom, trimmedDomain) || !isIncludedInStats(custom, trimmedDomain) {
+			continue
+		}
+
+		name := displayNameFor(custom, trimmedDomain)
+		existing := processed[name]
+		existing.Uploaded += stats.Uploaded
+		existing.Downloaded += stats.Downloaded
+		existing.TotalSize += stats.TotalSize
+		existing.Count += stats.Count
+		processed[name] = existing
+	}
+
+	// Pass 3: ensure merged groups remain visible even if primary/included domains have no torrents.
+	fallbackByDisplayName := make(map[string]qbittorrent.TrackerTransferStats)
+	for domain, stats := range transfers {
+		trimmedDomain := strings.TrimSpace(domain)
+		if trimmedDomain == "" {
+			continue
+		}
+		custom := domainToCustomization[strings.ToLower(trimmedDomain)]
+		if custom == nil {
+			continue
+		}
+		name := displayNameFor(custom, trimmedDomain)
+		if _, exists := processed[name]; exists {
+			continue
+		}
+
+		existing, ok := fallbackByDisplayName[name]
+		if !ok || stats.Count > existing.Count || (stats.Count == existing.Count && stats.Uploaded > existing.Uploaded) {
+			fallbackByDisplayName[name] = stats
+		}
+	}
+
+	maps.Copy(processed, fallbackByDisplayName)
+
+	return processed
 }
