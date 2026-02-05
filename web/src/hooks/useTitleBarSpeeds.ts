@@ -10,6 +10,8 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 
+const DEFAULT_DOCUMENT_TITLE = "qui"
+
 interface UseTitleBarSpeedsOptions {
   mode: "dashboard" | "instance"
   enabled?: boolean
@@ -89,10 +91,11 @@ export function useTitleBarSpeeds({
   }, [isHidden])
 
   useEffect(() => {
-    if (foregroundSpeeds) {
+    // Mark foreground as fresh when speeds update or when visibility returns.
+    if (!isHidden && foregroundSpeeds) {
       lastForegroundUpdateAtRef.current = Date.now()
     }
-  }, [foregroundSpeeds?.dl, foregroundSpeeds?.up])
+  }, [foregroundSpeeds, foregroundSpeeds?.dl, foregroundSpeeds?.up, isHidden])
 
   useEffect(() => {
     if (backgroundSpeeds) {
@@ -101,27 +104,28 @@ export function useTitleBarSpeeds({
   }, [backgroundSpeeds])
 
   useEffect(() => {
+    return () => {
+      // Avoid leaving a stale route-specific title after this hook unmounts.
+      document.title = DEFAULT_DOCUMENT_TITLE
+    }
+  }, [])
+
+  useEffect(() => {
     if (!enabled) {
       document.title = baseTitle
-      return () => {
-        document.title = baseTitle
-      }
+      return
     }
 
     if (!shouldSetTitle) {
       if (lastSpeedTitleRef.current) {
         document.title = lastSpeedTitleRef.current
       }
-      return () => {
-        document.title = baseTitle
-      }
+      return
     }
 
     if (!effectiveSpeeds) {
       document.title = lastSpeedTitleRef.current ?? baseTitle
-      return () => {
-        document.title = baseTitle
-      }
+      return
     }
 
     const downloadSpeed = effectiveSpeeds.dl ?? 0
@@ -137,10 +141,6 @@ export function useTitleBarSpeeds({
       const nextTitle = `${speedTitle}${instanceSuffix}`
       document.title = nextTitle
       lastSpeedTitleRef.current = nextTitle
-    }
-
-    return () => {
-      document.title = baseTitle
     }
   }, [baseTitle, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
 }
