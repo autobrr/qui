@@ -1039,10 +1039,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	if err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
+	if err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
 		return err
 	}
-	if err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
+	if err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
 		return err
 	}
 
