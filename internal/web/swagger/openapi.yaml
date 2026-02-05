@@ -4985,12 +4985,14 @@ components:
           type: string
         url:
           type: string
+          format: uri
         enabled:
           type: boolean
         eventTypes:
           type: array
           items:
             type: string
+          description: List of event types this target subscribes to (empty means all events)
         createdAt:
           type: string
           format: date-time
@@ -5008,12 +5010,14 @@ components:
           type: string
         url:
           type: string
+          format: uri
         enabled:
           type: boolean
         eventTypes:
           type: array
           items:
             type: string
+          description: List of event types this target subscribes to (empty means all events)
 
     NotificationTestRequest:
       type: object
@@ -7138,6 +7142,8 @@ tags:
     description: User authentication and session management
   - name: API Keys
     description: API key management
+  - name: Notifications
+    description: Notification-related endpoints for targets and events
   - name: ARR Integrations
     description: Sonarr/Radarr instance management for external ID lookups
   - name: Client API Keys

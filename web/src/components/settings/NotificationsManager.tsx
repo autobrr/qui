@@ -56,7 +56,7 @@ const maskNotificationUrl = (rawUrl: string) => {
     if (!scheme) {
       return redacted
     }
-    if (scheme === "notifiarr") {
+    if (scheme === "notifiarr" || scheme === "notifiarrapi") {
       return `${scheme}://${redacted}`
     }
     const hasUserInfo = parsed.username !== "" || parsed.password !== ""
