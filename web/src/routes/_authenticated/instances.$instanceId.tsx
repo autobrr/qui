@@ -21,6 +21,9 @@ const instanceSearchSchema = z.object({
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
+  staticData: {
+    title: "Torrents",
+  },
 })
 
 function InstanceTorrents() {

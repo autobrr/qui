@@ -772,7 +772,7 @@ func (app *Application) runServer() {
 	}
 
 	if cfg.Config.MetricsEnabled {
-		metricsManager := metrics.NewMetricsManager(syncManager, clientPool)
+		metricsManager := metrics.NewMetricsManager(syncManager, clientPool, trackerCustomizationStore)
 
 		// Start metrics server on separate port
 		go func() {
