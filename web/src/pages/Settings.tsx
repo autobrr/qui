@@ -39,16 +39,18 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
+import { Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { api } from "@/lib/api"
+
 import { withBasePath } from "@/lib/base-url"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
@@ -438,6 +440,7 @@ const INSTANCE_FORM_ID = "instance-form"
 
 function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
   const { instances, isLoading, reorderInstances, isReordering, isCreating } = useInstances()
+  const [titleBarSpeedsEnabled, setTitleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const editingInstance = instances?.find(instance => instance.id === editingInstanceId)
@@ -532,7 +535,21 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
         )}
       </div>
 
-      {/* Add Instance Dialog */}
+      <div className="rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label className="text-sm font-medium">Title bar speeds</Label>
+            <p className="text-xs text-muted-foreground">
+              Show download and upload speeds in the browser title bar.
+            </p>
+          </div>
+          <Switch
+            checked={titleBarSpeedsEnabled}
+            onCheckedChange={(checked) => setTitleBarSpeedsEnabled(Boolean(checked))}
+          />
+        </div>
+      </div>
+
       <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenAddDialog() : handleCloseDialog()}>
         <DialogContent className="sm:max-w-[425px] max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
