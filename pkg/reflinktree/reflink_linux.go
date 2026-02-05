@@ -16,13 +16,14 @@ import (
 )
 
 const (
-	reflinkCloneRetryAttempts  = 3
+	reflinkCloneRetryAttempts  = 5
 	reflinkCloneRetryBaseDelay = 25 * time.Millisecond
 )
 
 var (
 	ioctlFileClone      = unix.IoctlFileClone
 	ioctlFileCloneRange = unix.IoctlFileCloneRange
+	sleepForRetry       = time.Sleep
 )
 
 // SupportsReflink tests whether the given directory supports reflinks
@@ -102,32 +103,29 @@ func cloneFile(src, dst string) (retErr error) {
 			return nil
 		}
 		if errors.Is(cloneErr, unix.EAGAIN) {
-			if attempt < reflinkCloneRetryAttempts-1 {
-				time.Sleep(reflinkCloneRetryBaseDelay * time.Duration(attempt+1))
-				continue
+			if attempt == reflinkCloneRetryAttempts-1 {
+				return fmt.Errorf("ioctl FICLONE: %w (retries exhausted)", cloneErr)
 			}
-			return fmt.Errorf("ioctl FICLONE: %w (retries exhausted)", cloneErr)
+			sleepForRetry(reflinkCloneRetryBaseDelay * time.Duration(1<<attempt))
+			continue
 		}
 		break
 	}
 
-	if cloneErr != nil {
-		if shouldTryCloneRange(cloneErr) {
-			cloneRange := unix.FileCloneRange{
-				Src_fd:      int64(srcFd),
-				Src_offset:  0,
-				Src_length:  0,
-				Dest_offset: 0,
-			}
-			if rangeErr := ioctlFileCloneRange(dstFd, &cloneRange); rangeErr != nil {
-				return fmt.Errorf("ioctl FICLONERANGE: %w", rangeErr)
-			}
-			return nil
+	if shouldTryCloneRange(cloneErr) {
+		cloneRange := unix.FileCloneRange{
+			Src_fd:      int64(srcFd),
+			Src_offset:  0,
+			Src_length:  0,
+			Dest_offset: 0,
 		}
-		return fmt.Errorf("ioctl FICLONE: %w", cloneErr)
+		if rangeErr := ioctlFileCloneRange(dstFd, &cloneRange); rangeErr != nil {
+			return fmt.Errorf("ioctl FICLONERANGE: %w", rangeErr)
+		}
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf("ioctl FICLONE: %w", cloneErr)
 }
 
 func shouldTryCloneRange(err error) bool {
