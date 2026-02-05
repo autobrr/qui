@@ -2388,7 +2388,7 @@ export function Dashboard() {
     queries: activeInstances.map(instance => ({
       queryKey: ["transfer-info", instance.id],
       queryFn: () => api.getTransferInfo(instance.id),
-      enabled: titleBarSpeedsEnabled && isHiddenDelayed,
+      enabled: titleBarSpeedsEnabled && isHiddenDelayed && hasActiveInstances,
       refetchInterval: 3000,
       refetchIntervalInBackground: true,
       staleTime: 0,
@@ -2413,7 +2413,7 @@ export function Dashboard() {
     : undefined
   useTitleBarSpeeds({
     mode: "dashboard",
-    enabled: titleBarSpeedsEnabled,
+    enabled: titleBarSpeedsEnabled && hasActiveInstances,
     foregroundSpeeds: hasActiveInstances
       ? {
         dl: globalStats.totalDownload ?? 0,
