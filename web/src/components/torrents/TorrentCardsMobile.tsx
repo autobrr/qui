@@ -1210,7 +1210,7 @@ export function TorrentCardsMobile({
     previousSortRef.current = sortState
   }, [filters, instanceId, effectiveSearch, sortState])
 
-  const { isVisibleDelayed: isTabVisibleDelayed } = useDelayedVisibility(3000)
+  const { isVisible: isTabVisible } = useDelayedVisibility(3000)
 
   // Fetch data
   const {
@@ -1227,7 +1227,7 @@ export function TorrentCardsMobile({
     hasLoadedAll,
     loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
-    enabled: isTabVisibleDelayed,
+    enabled: isTabVisible,
     search: effectiveSearch,
     filters: effectiveFilters,
     sort: backendSortField,

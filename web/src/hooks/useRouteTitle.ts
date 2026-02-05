@@ -8,8 +8,22 @@ import { useMemo } from "react"
 
 const DEFAULT_TITLE = "qui"
 
-type RouteStaticData = {
-  title?: string
+function getStaticTitle(staticData: unknown): string | undefined {
+  if (!staticData || typeof staticData !== "object") {
+    return undefined
+  }
+
+  if (!("title" in staticData)) {
+    return undefined
+  }
+
+  const title = (staticData as { title?: unknown }).title
+  if (typeof title !== "string") {
+    return undefined
+  }
+
+  const trimmed = title.trim()
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 /**
@@ -18,15 +32,14 @@ type RouteStaticData = {
  */
 export function useRouteTitle(fallback: string = DEFAULT_TITLE) {
   const matches = useRouterState({
-    select: (state: { matches: unknown[] }) => state.matches,
+    select: (state) => state.matches,
   })
 
   return useMemo(() => {
     for (let index = matches.length - 1; index >= 0; index -= 1) {
       const match = matches[index]
-      const routeOptions = (match as { route?: { options?: { staticData?: RouteStaticData } } }).route?.options
-      const staticTitle = routeOptions?.staticData?.title
-      if (typeof staticTitle === "string" && staticTitle.trim().length > 0) {
+      const staticTitle = getStaticTitle(match.staticData)
+      if (staticTitle) {
         return staticTitle
       }
     }

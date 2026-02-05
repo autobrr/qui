@@ -2394,27 +2394,31 @@ export function Dashboard() {
       staleTime: 0,
     })),
   })
-  const backgroundSpeeds = transferInfoQueries.reduce(
-    (totals, query) => {
+  const backgroundSpeedsState = transferInfoQueries.reduce(
+    (state, query) => {
       const info = query.data
       if (!info) {
-        return totals
+        return state
       }
       return {
-        dl: totals.dl + (info.dl_info_speed ?? 0),
-        up: totals.up + (info.up_info_speed ?? 0),
+        hasData: true,
+        dl: state.dl + (info.dl_info_speed ?? 0),
+        up: state.up + (info.up_info_speed ?? 0),
       }
     },
-    { dl: 0, up: 0 }
+    { dl: 0, up: 0, hasData: false }
   )
+  const backgroundSpeeds = backgroundSpeedsState.hasData
+    ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }
+    : undefined
   useTitleBarSpeeds({
     mode: "dashboard",
     enabled: titleBarSpeedsEnabled,
     foregroundSpeeds: hasActiveInstances
       ? {
-          dl: globalStats.totalDownload ?? 0,
-          up: globalStats.totalUpload ?? 0,
-        }
+        dl: globalStats.totalDownload ?? 0,
+        up: globalStats.totalUpload ?? 0,
+      }
       : undefined,
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })

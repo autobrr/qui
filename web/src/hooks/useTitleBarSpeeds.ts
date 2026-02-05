@@ -64,7 +64,7 @@ export function useTitleBarSpeeds({
   const lastHiddenAtRef = useRef(0)
   const lastForegroundUpdateAtRef = useRef(0)
   const wasHiddenRef = useRef(false)
-  const { isHidden, isHiddenDelayed, isVisibleDelayed } = useDelayedVisibility(3000)
+  const { isHidden, isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
 
   const isForegroundStale = !isHidden && lastHiddenAtRef.current > lastForegroundUpdateAtRef.current
   const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds || isForegroundStale)
@@ -79,7 +79,7 @@ export function useTitleBarSpeeds({
     : (isForegroundStale
       ? (cachedBackgroundSpeeds ?? backgroundSpeeds)
       : (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
-  const shouldSetTitle = enabled && (isHiddenDelayed || isVisibleDelayed || !isHidden)
+  const shouldSetTitle = enabled && (isHiddenDelayed || isVisible)
 
   useEffect(() => {
     if (isHidden && !wasHiddenRef.current) {
