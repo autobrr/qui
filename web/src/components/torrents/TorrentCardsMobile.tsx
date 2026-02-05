@@ -30,6 +30,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Switch } from "@/components/ui/switch"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDebounce } from "@/hooks/useDebounce"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -1212,6 +1213,8 @@ export function TorrentCardsMobile({
     previousSortRef.current = sortState
   }, [filters, instanceId, effectiveSearch, sortState])
 
+  const { isVisible: isTabVisible } = useDelayedVisibility(3000)
+
   // Fetch data
   const {
     torrents,
@@ -1227,6 +1230,7 @@ export function TorrentCardsMobile({
     hasLoadedAll,
     loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
+    enabled: isTabVisible,
     search: effectiveSearch,
     filters: effectiveFilters,
     sort: backendSortField,

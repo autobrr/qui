@@ -967,6 +967,30 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/transfer-info:
+    get:
+      tags:
+        - Instances
+      summary: Get transfer info
+      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Transfer info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferInfo'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get transfer info
+        '503':
+          description: Instance unavailable
+
   /api/instances/{instanceID}/getDirectoryContent:
     get:
       tags:
@@ -4981,6 +5005,26 @@ components:
           type: string
           nullable: true
           description: Reported qBittorrent Web API version for the instance.
+
+    TransferInfo:
+      type: object
+      properties:
+        connection_status:
+          type: string
+        dht_nodes:
+          type: integer
+        dl_info_data:
+          type: integer
+        dl_info_speed:
+          type: integer
+        dl_rate_limit:
+          type: integer
+        up_info_data:
+          type: integer
+        up_info_speed:
+          type: integer
+        up_rate_limit:
+          type: integer
 
 
     Torrent:
