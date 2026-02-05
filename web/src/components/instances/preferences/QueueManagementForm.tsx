@@ -6,7 +6,6 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
@@ -24,16 +23,27 @@ function SwitchSetting({
   onCheckedChange: (checked: boolean) => void
   description?: string
 }) {
+  const switchId = React.useId()
+  const descriptionId = description ? `${switchId}-desc` : undefined
+
   return (
-    <div className="flex items-center gap-3">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    <label
+      htmlFor={switchId}
+      className="flex items-center gap-3 cursor-pointer"
+    >
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-describedby={descriptionId}
+      />
       <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
+        <span className="text-sm font-medium">{label}</span>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-    </div>
+    </label>
   )
 }
 
@@ -75,9 +85,9 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
     }
   }, [preferences, form])
 
-  if (isLoading || !preferences) {
+  if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading queue settings...</p>
       </div>
     )
@@ -85,7 +95,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
 
   if (!preferences) {
     return (
-      <div className="text-center py-8">
+      <div className="flex items-center justify-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
@@ -134,7 +144,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   allowUnlimited={true}
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -162,7 +172,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   allowUnlimited={true}
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -190,7 +200,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   allowUnlimited={true}
                 />
                 {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}

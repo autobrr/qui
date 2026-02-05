@@ -37,9 +37,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
+import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
@@ -137,7 +140,7 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
+function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
       // Use same query key pattern as useTorrentsList for first page with no filters
@@ -148,8 +151,9 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         sort: "added_on",
         order: "desc" as const,
       }),
-      enabled: true,
+      enabled: options.enabled,
       refetchInterval: 5000, // Match TorrentTable polling
+      refetchIntervalInBackground: false,
       staleTime: 2000,
       gcTime: 300000, // Match TorrentTable cache time
       placeholderData: (previousData: TorrentResponse | undefined) => previousData,
@@ -323,6 +327,7 @@ function InstanceCard({
               <InstanceSettingsButton
                 instanceId={instance.id}
                 instanceName={instance.name}
+                instance={instance}
                 showButton={showSettingsButton}
               />
             </div>
@@ -335,9 +340,7 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled
-                    ? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`
-                    : `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
+                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -623,9 +626,8 @@ function InstanceCard({
   )
 }
 
-function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
+function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useGlobalStats(statsData)
 
   return (
     <Card className="sm:hidden">
@@ -679,9 +681,10 @@ function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStat
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
+type GlobalStats = ReturnType<typeof useGlobalStats>
+
+function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useGlobalStats(statsData)
 
   return (
     <>
@@ -2368,6 +2371,8 @@ export function Dashboard() {
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
+  const { isHiddenDelayed } = useDelayedVisibility(3000)
+  const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   // Dashboard settings
   const { data: dashboardSettings } = useDashboardSettings()
@@ -2375,7 +2380,48 @@ export function Dashboard() {
   const settings = dashboardSettings || DEFAULT_DASHBOARD_SETTINGS
 
   // Use safe hook that always calls the same number of hooks
-  const statsData = useAllInstanceStats(activeInstances)
+  // Query handoff: when the dashboard is visible we run full stats; after the
+  // delayed hide, we stop heavy stats and only poll transfer info for title bar speeds.
+  const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
+  const globalStats = useGlobalStats(statsData)
+  const transferInfoQueries = useQueries({
+    queries: activeInstances.map(instance => ({
+      queryKey: ["transfer-info", instance.id],
+      queryFn: () => api.getTransferInfo(instance.id),
+      enabled: titleBarSpeedsEnabled && isHiddenDelayed && hasActiveInstances,
+      refetchInterval: 3000,
+      refetchIntervalInBackground: true,
+      staleTime: 0,
+    })),
+  })
+  const backgroundSpeedsState = transferInfoQueries.reduce(
+    (state, query) => {
+      const info = query.data
+      if (!info) {
+        return state
+      }
+      return {
+        hasData: true,
+        dl: state.dl + (info.dl_info_speed ?? 0),
+        up: state.up + (info.up_info_speed ?? 0),
+      }
+    },
+    { dl: 0, up: 0, hasData: false }
+  )
+  const backgroundSpeeds = backgroundSpeedsState.hasData
+    ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }
+    : undefined
+  useTitleBarSpeeds({
+    mode: "dashboard",
+    enabled: titleBarSpeedsEnabled && hasActiveInstances,
+    foregroundSpeeds: hasActiveInstances
+      ? {
+        dl: globalStats.totalDownload ?? 0,
+        up: globalStats.totalUpload ?? 0,
+      }
+      : undefined,
+    backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
+  })
 
   // Handler for TrackerBreakdownCard to update settings
   const handleTrackerSettingsChange = (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => {
@@ -2470,10 +2516,10 @@ export function Dashboard() {
                     return (
                       <div key={sectionId} className="space-y-4">
                         {/* Mobile: Single combined card */}
-                        <MobileGlobalStatsCard statsData={statsData} />
+                        <MobileGlobalStatsCard globalStats={globalStats} />
                         {/* Tablet/Desktop: Separate cards */}
                         <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                          <GlobalStatsCards statsData={statsData} />
+                          <GlobalStatsCards globalStats={globalStats} />
                         </div>
                       </div>
                     )

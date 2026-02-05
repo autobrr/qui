@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
@@ -57,6 +58,7 @@ type Server struct {
 	reannounceService                *reannounce.Service
 	clientAPIKeyStore                *models.ClientAPIKeyStore
 	externalProgramStore             *models.ExternalProgramStore
+	externalProgramService           *externalprograms.Service
 	clientPool                       *qbittorrent.ClientPool
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
@@ -92,6 +94,7 @@ type Dependencies struct {
 	ReannounceService                *reannounce.Service
 	ClientAPIKeyStore                *models.ClientAPIKeyStore
 	ExternalProgramStore             *models.ExternalProgramStore
+	ExternalProgramService           *externalprograms.Service
 	ClientPool                       *qbittorrent.ClientPool
 	SyncManager                      *qbittorrent.SyncManager
 	WebHandler                       *web.Handler
@@ -134,6 +137,7 @@ func NewServer(deps *Dependencies) *Server {
 		instanceReannounce:               deps.InstanceReannounce,
 		clientAPIKeyStore:                deps.ClientAPIKeyStore,
 		externalProgramStore:             deps.ExternalProgramStore,
+		externalProgramService:           deps.ExternalProgramService,
 		reannounceCache:                  deps.ReannounceCache,
 		clientPool:                       deps.ClientPool,
 		syncManager:                      deps.SyncManager,
@@ -244,7 +248,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// Global middleware
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
-	//r.Use(middleware.Logger(s.logger))
+	// r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 
@@ -285,7 +289,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
-	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool, s.config.Config)
+	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
@@ -294,7 +298,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
-	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.automationService)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
@@ -457,6 +461,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
+					r.Get("/transfer-info", instancesHandler.GetTransferInfo)
 					r.Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 					r.Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 
@@ -491,6 +496,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/preview", automationsHandler.PreviewDeleteRule)
 						r.Post("/validate-regex", automationsHandler.ValidateRegex)
 						r.Get("/activity", automationsHandler.ListActivity)
+						r.Get("/activity/{activityId}", automationsHandler.GetActivityRun)
 						r.Delete("/activity", automationsHandler.DeleteActivity)
 
 						r.Route("/{ruleID}", func(r chi.Router) {
@@ -577,7 +583,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Route("/torrents", func(r chi.Router) {
 				r.Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
 			})
-
 		})
 	})
 
