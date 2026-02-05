@@ -20,11 +20,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { api } from "@/lib/api"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -49,7 +49,6 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
-import { toast } from "sonner"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   AddTagsDialog,
@@ -181,24 +180,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     torrents: selectedTorrents,
   })
 
-  const hasCrossSeedTag = useMemo(() => anyTorrentHasTag(selectedTorrents, "cross-seed"), [selectedTorrents])
+  const hasCrossSeedTag = useMemo(
+    () => anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
+    [selectedTorrents, crossSeedWarning.affectedTorrents]
+  )
   const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-
-  const blockCrossSeedHashes = useCallback(async (hashes: string[]) => {
-    if (safeInstanceId <= 0 || hashes.length === 0) return
-    const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)))
-    if (uniqueHashes.length === 0) return
-
-    const results = await Promise.allSettled(
-      uniqueHashes.map((infoHash) => api.addCrossSeedBlocklist({ instanceId: safeInstanceId, infoHash }))
-    )
-    const failed = results.filter((result) => result.status === "rejected").length
-    if (failed > 0) {
-      toast.error(`Failed to block ${failed} of ${uniqueHashes.length} cross-seed torrents`)
-      return
-    }
-    toast.success(`Blocked ${uniqueHashes.length} cross-seed ${uniqueHashes.length === 1 ? "torrent" : "torrents"}`)
-  }, [safeInstanceId])
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(safeInstanceId)
 
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
@@ -240,12 +227,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
       const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-      try {
-        await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to block cross-seed torrents"
-        toast.error(message)
-      }
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
     }
 
     // Include cross-seed hashes if user opted to delete them

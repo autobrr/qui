@@ -3126,6 +3126,8 @@ paths:
                 $ref: '#/components/schemas/CrossSeedBlocklistEntry'
         '400':
           description: Invalid request body
+        '404':
+          description: Instance not found
         '500':
           description: Failed to add blocklist entry
 

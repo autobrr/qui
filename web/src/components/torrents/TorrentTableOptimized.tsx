@@ -4,6 +4,7 @@
  */
 
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
@@ -106,7 +107,6 @@ import {
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { toast } from "sonner"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -820,24 +820,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     torrents: contextTorrents,
   })
 
-  const hasCrossSeedTag = useMemo(() => anyTorrentHasTag(contextTorrents, "cross-seed"), [contextTorrents])
+  const hasCrossSeedTag = useMemo(
+    () => anyTorrentHasTag(contextTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
+    [contextTorrents, crossSeedWarning.affectedTorrents]
+  )
   const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-
-  const blockCrossSeedHashes = useCallback(async (hashes: string[]) => {
-    if (instanceId <= 0 || hashes.length === 0) return
-    const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)))
-    if (uniqueHashes.length === 0) return
-
-    const results = await Promise.allSettled(
-      uniqueHashes.map((infoHash) => api.addCrossSeedBlocklist({ instanceId, infoHash }))
-    )
-    const failed = results.filter((result) => result.status === "rejected").length
-    if (failed > 0) {
-      toast.error(`Failed to block ${failed} of ${uniqueHashes.length} cross-seed torrents`)
-      return
-    }
-    toast.success(`Blocked ${uniqueHashes.length} cross-seed ${uniqueHashes.length === 1 ? "torrent" : "torrents"}`)
-  }, [instanceId])
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
@@ -1952,12 +1940,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
       const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-      try {
-        await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to block cross-seed torrents"
-        toast.error(message)
-      }
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
     }
 
     // Include cross-seed hashes if user opted to delete them

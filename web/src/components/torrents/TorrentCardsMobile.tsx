@@ -29,6 +29,7 @@ import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
@@ -72,7 +73,6 @@ import {
   Trash2,
   X
 } from "lucide-react"
-import { toast } from "sonner"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
@@ -1314,24 +1314,12 @@ export function TorrentCardsMobile({
     torrents: deleteTorrents,
   })
 
-  const hasCrossSeedTag = useMemo(() => anyTorrentHasTag(deleteTorrents, "cross-seed"), [deleteTorrents])
+  const hasCrossSeedTag = useMemo(
+    () => anyTorrentHasTag(deleteTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
+    [deleteTorrents, crossSeedWarning.affectedTorrents]
+  )
   const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-
-  const blockCrossSeedHashes = useCallback(async (hashes: string[]) => {
-    if (instanceId <= 0 || hashes.length === 0) return
-    const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)))
-    if (uniqueHashes.length === 0) return
-
-    const results = await Promise.allSettled(
-      uniqueHashes.map((infoHash) => api.addCrossSeedBlocklist({ instanceId, infoHash }))
-    )
-    const failed = results.filter((result) => result.status === "rejected").length
-    if (failed > 0) {
-      toast.error(`Failed to block ${failed} of ${uniqueHashes.length} cross-seed torrents`)
-      return
-    }
-    toast.success(`Blocked ${uniqueHashes.length} cross-seed ${uniqueHashes.length === 1 ? "torrent" : "torrents"}`)
-  }, [instanceId])
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
@@ -1590,12 +1578,7 @@ export function TorrentCardsMobile({
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(deleteTorrents, "cross-seed")
       const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-      try {
-        await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to block cross-seed torrents"
-        toast.error(message)
-      }
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
     }
 
     let hashes: string[]
