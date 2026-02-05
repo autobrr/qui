@@ -43,7 +43,7 @@ type AutomationPayload struct {
 	TrackerDomains  []string                 `json:"trackerDomains"`
 	Enabled         *bool                    `json:"enabled"`
 	SortOrder       *int                     `json:"sortOrder"`
-	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m); 0 = run once on finish
 	Conditions      *models.ActionConditions `json:"conditions"`
 	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	PreviewLimit    *int                     `json:"previewLimit"`
@@ -286,9 +286,9 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Validate intervalSeconds minimum
-	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
-		return http.StatusBadRequest, "intervalSeconds must be at least 60", errors.New("interval too short")
+	// Validate intervalSeconds: 0 = run once on finish; otherwise must be >= 60
+	if payload.IntervalSeconds != nil && *payload.IntervalSeconds != 0 && *payload.IntervalSeconds < 60 {
+		return http.StatusBadRequest, "intervalSeconds must be 0 (run once on finish) or at least 60", errors.New("interval too short")
 	}
 
 	// Validate regex patterns are valid RE2 (only when enabling the workflow)

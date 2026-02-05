@@ -59,7 +59,7 @@ type Automation struct {
 	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	Enabled         bool              `json:"enabled"`
 	SortOrder       int               `json:"sortOrder"`
-	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
+	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m); 0 = run once when torrent completes
 	CreatedAt       time.Time         `json:"createdAt"`
 	UpdatedAt       time.Time         `json:"updatedAt"`
 }
@@ -429,8 +429,8 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate        ConditionField = "PRIVATE"
-	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldPrivate         ConditionField = "PRIVATE"
+	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields
