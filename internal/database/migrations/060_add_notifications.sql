@@ -11,4 +11,10 @@ CREATE TABLE IF NOT EXISTS notification_targets (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TRIGGER IF NOT EXISTS trg_notification_targets_updated
+AFTER UPDATE ON notification_targets
+BEGIN
+    UPDATE notification_targets SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
 CREATE INDEX IF NOT EXISTS idx_notification_targets_enabled ON notification_targets(enabled);
