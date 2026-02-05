@@ -4,7 +4,14 @@
  */
 
 import { Button } from "@/components/ui/button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -290,6 +297,7 @@ function ValueInput({
           </Command>
           {selectedValues.length > 0 && (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() => onChange("")}
@@ -524,7 +532,7 @@ export function ColumnFilterPopover({
           size="icon"
           ref={triggerRef}
           className={`h-6 w-6 p-0 transition-opacity ${hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
-            }`}
+          }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)
