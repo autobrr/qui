@@ -153,6 +153,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   // Mobile detection for responsive layout
   const isMobile = useIsMobile()
 
+  const [detailsPanelReady, setDetailsPanelReady] = useState(false)
+
   const panelIds = useMemo(
     () => (selectedTorrent ? ["torrent-list", "torrent-details"] : ["torrent-list"]),
     [selectedTorrent]
@@ -304,13 +306,18 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     return () => window.removeEventListener("qui-open-mobile-filters", handler)
   }, [])
 
+  useEffect(() => {
+    if (!selectedTorrent || isMobile) {
+      setDetailsPanelReady(false)
+    }
+  }, [isMobile, selectedTorrent])
 
   // Auto-expand details panel when a torrent is selected on desktop
   useEffect(() => {
-    if (!isMobile && selectedTorrent && detailsPanelRef.current?.isCollapsed()) {
+    if (!isMobile && selectedTorrent && detailsPanelReady && detailsPanelRef.current?.isCollapsed()) {
       detailsPanelRef.current.expand()
     }
-  }, [selectedTorrent, isMobile])
+  }, [detailsPanelReady, detailsPanelRef, selectedTorrent, isMobile])
 
   // Unified Escape handler: close panel and clear selection atomically
   useEffect(() => {
@@ -424,8 +431,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             >
               <ResizablePanel
                 id="torrent-list"
-                defaultSize={selectedTorrent ? 60 : 100}
-                minSize={30}
+                defaultSize={selectedTorrent ? "60%" : "100%"}
               >
                 <div className="h-full">
                   <TorrentTableResponsive
@@ -449,13 +455,17 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                   <ResizablePanel
                     id="torrent-details"
                     panelRef={detailsPanelRef}
-                    defaultSize={40}
-                    minSize={15}
-                    maxSize={70}
+                    defaultSize="40%"
                     collapsible
                     collapsedSize={0}
-                    onResize={(panelSize) => {
+                    onResize={(panelSize, _panelId, prevPanelSize) => {
+                      if (!detailsPanelReady) {
+                        setDetailsPanelReady(true)
+                      }
                       if (!selectedTorrent) {
+                        return
+                      }
+                      if (prevPanelSize === undefined) {
                         return
                       }
                       if (panelSize.asPercentage <= 0 || panelSize.inPixels <= 0) {
