@@ -83,15 +83,15 @@ function AddTorrentHandler() {
 
   // Handle files from file handler (launchQueue API)
   useEffect(() => {
-    if (magnet) return
+    if (authLoading || !isAuthenticated || magnet) return
 
-    const pending = consumeLaunchQueueEvent()
-    if (pending) {
-      handleLaunchQueueEvent(pending)
+    const pendingEvent = consumeLaunchQueueEvent()
+    if (pendingEvent) {
+      handleLaunchQueueEvent(pendingEvent)
     }
 
     return subscribeLaunchQueueEvents(handleLaunchQueueEvent)
-  }, [handleLaunchQueueEvent, magnet])
+  }, [authLoading, handleLaunchQueueEvent, isAuthenticated, magnet])
 
   // Check if running as installed PWA (file-handler launches only happen in standalone mode)
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
