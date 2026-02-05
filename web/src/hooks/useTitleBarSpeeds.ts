@@ -137,7 +137,7 @@ export function useTitleBarSpeeds({
       document.title = nextTitle
       lastSpeedTitleRef.current = nextTitle
     } else {
-      const instanceSuffix = instanceName ? ` | ${instanceName}` : ""
+      const instanceSuffix = ` | ${instanceName || baseTitle}`
       const nextTitle = `${speedTitle}${instanceSuffix}`
       document.title = nextTitle
       lastSpeedTitleRef.current = nextTitle
