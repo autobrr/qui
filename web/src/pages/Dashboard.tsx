@@ -5,6 +5,7 @@
 
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
@@ -2485,6 +2486,9 @@ export function Dashboard() {
 
       {/* Show banner if any instances have decryption errors */}
       <PasswordIssuesBanner instances={instances || []} />
+
+      {/* Show banner to register as magnet handler (Firefox support) */}
+      <MagnetHandlerBanner />
 
       {hasInstances ? (
         <div className="space-y-6">
