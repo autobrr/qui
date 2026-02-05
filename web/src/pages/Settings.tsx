@@ -6,6 +6,7 @@
 import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
+import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
@@ -38,17 +39,20 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
+import { Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { api } from "@/lib/api"
+
 import { withBasePath } from "@/lib/base-url"
+import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
@@ -56,7 +60,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
@@ -270,91 +274,91 @@ function ApiKeysManager() {
             </DialogHeader>
 
             <div className="flex-1 overflow-y-auto min-h-0">
-            {newKey ? (
-              <div className="space-y-4">
-                <div>
-                  <Label>Your new API key</Label>
-                  <div className="mt-2 flex items-center gap-2">
-                    <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
-                      {newKey.key}
-                    </code>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={async () => {
-                        try {
-                          await copyTextToClipboard(newKey.key)
-                          toast.success("API key copied to clipboard")
-                        } catch {
-                          toast.error("Failed to copy to clipboard")
-                        }
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-sm text-destructive">
-                    Save this key now. You won't be able to see it again.
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    setNewKey(null)
-                    setShowCreateDialog(false)
-                  }}
-                  className="w-full"
-                >
-                  Done
-                </Button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  form.handleSubmit()
-                }}
-                className="space-y-4"
-              >
-                <form.Field
-                  name="name"
-                  validators={{
-                    onChange: ({ value }) => !value ? "Name is required" : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="e.g., Automation Script"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        data-1p-ignore
-                        autoComplete="off"
-                      />
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
+              {newKey ? (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Your new API key</Label>
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
+                        {newKey.key}
+                      </code>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await copyTextToClipboard(newKey.key)
+                            toast.success("API key copied to clipboard")
+                          } catch {
+                            toast.error("Failed to copy to clipboard")
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
-                </form.Field>
-
-                <form.Subscribe
-                  selector={(state) => [state.canSubmit, state.isSubmitting]}
+                    <p className="mt-2 text-sm text-destructive">
+                      Save this key now. You won't be able to see it again.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setNewKey(null)
+                      setShowCreateDialog(false)
+                    }}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    form.handleSubmit()
+                  }}
+                  className="space-y-4"
                 >
-                  {([canSubmit, isSubmitting]) => (
-                    <Button
-                      type="submit"
-                      disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                      className="w-full"
-                    >
-                      {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
-                    </Button>
-                  )}
-                </form.Subscribe>
-              </form>
-            )}
+                  <form.Field
+                    name="name"
+                    validators={{
+                      onChange: ({ value }) => !value ? "Name is required" : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Name</Label>
+                        <Input
+                          id="name"
+                          placeholder="e.g., Automation Script"
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          data-1p-ignore
+                          autoComplete="off"
+                        />
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+
+                  <form.Subscribe
+                    selector={(state) => [state.canSubmit, state.isSubmitting]}
+                  >
+                    {([canSubmit, isSubmitting]) => (
+                      <Button
+                        type="submit"
+                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
+                        className="w-full"
+                      >
+                        {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
+                      </Button>
+                    )}
+                  </form.Subscribe>
+                </form>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -436,18 +440,29 @@ interface InstancesManagerProps {
 const INSTANCE_FORM_ID = "instance-form"
 
 function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
-  const { instances, isLoading, reorderInstances, isReordering, isCreating, isUpdating } = useInstances()
+  const { instances, isLoading, reorderInstances, isReordering, isCreating } = useInstances()
+  const [titleBarSpeedsEnabled, setTitleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
-  const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
+  const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
+  const editingInstance = instances?.find(instance => instance.id === editingInstanceId)
 
-  const handleOpenDialog = (instance?: Instance) => {
-    setEditingInstance(instance)
+  // Close edit dialog if instance was deleted
+  useEffect(() => {
+    if (editingInstanceId !== null && !editingInstance && !isLoading) {
+      setEditingInstanceId(null)
+    }
+  }, [editingInstanceId, editingInstance, isLoading])
+
+  const handleOpenAddDialog = () => {
     onSearchChange({ ...search, tab: "instances", modal: "add-instance" })
   }
 
   const handleCloseDialog = () => {
-    setEditingInstance(undefined)
     onSearchChange({ tab: "instances" })
+  }
+
+  const handleEditInstance = (instance: Instance) => {
+    setEditingInstanceId(instance.id)
   }
 
   const handleReorder = (instanceId: number, direction: -1 | 1) => {
@@ -475,7 +490,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Button onClick={() => handleOpenDialog()} size="sm" className="w-full sm:w-auto">
+        <Button onClick={handleOpenAddDialog} size="sm" className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           Add Instance
         </Button>
@@ -496,7 +511,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
-                    onEdit={() => handleOpenDialog(instance)}
+                    onEdit={() => handleEditInstance(instance)}
                     onMoveUp={index > 0 ? () => handleReorder(instance.id, -1) : undefined}
                     onMoveDown={index < instances.length - 1 ? () => handleReorder(instance.id, 1) : undefined}
                     disableMoveUp={isReordering}
@@ -508,7 +523,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
               <div className="rounded-lg border border-dashed p-12 text-center">
                 <p className="text-muted-foreground">No instances configured</p>
                 <Button
-                  onClick={() => handleOpenDialog()}
+                  onClick={handleOpenAddDialog}
                   className="mt-4"
                   variant="outline"
                 >
@@ -521,19 +536,31 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
         )}
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
+      <div className="rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label className="text-sm font-medium">Title bar speeds</Label>
+            <p className="text-xs text-muted-foreground">
+              Show download and upload speeds in the browser title bar.
+            </p>
+          </div>
+          <Switch
+            checked={titleBarSpeedsEnabled}
+            onCheckedChange={(checked) => setTitleBarSpeedsEnabled(Boolean(checked))}
+          />
+        </div>
+      </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenAddDialog() : handleCloseDialog()}>
         <DialogContent className="sm:max-w-[425px] max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle>
-              {editingInstance ? "Edit Instance" : "Add Instance"}
-            </DialogTitle>
+            <DialogTitle>Add Instance</DialogTitle>
             <DialogDescription>
-              {editingInstance ? "Update your qBittorrent instance configuration" : "Add a new qBittorrent instance to manage"}
+              Add a new qBittorrent instance to manage
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto min-h-0">
             <InstanceForm
-              instance={editingInstance}
               onSuccess={handleCloseDialog}
               onCancel={handleCloseDialog}
               formId={INSTANCE_FORM_ID}
@@ -543,12 +570,23 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
             <Button type="button" variant="outline" onClick={handleCloseDialog}>
               Cancel
             </Button>
-            <Button type="submit" form={INSTANCE_FORM_ID} disabled={isCreating || isUpdating}>
-              {(isCreating || isUpdating) ? "Saving..." : editingInstance ? "Update Instance" : "Add Instance"}
+            <Button type="submit" form={INSTANCE_FORM_ID} disabled={isCreating}>
+              {isCreating ? "Adding..." : "Add Instance"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Instance Preferences Dialog */}
+      {editingInstanceId && editingInstance && (
+        <InstancePreferencesDialog
+          open={true}
+          onOpenChange={(open) => !open && setEditingInstanceId(null)}
+          instanceId={editingInstance.id}
+          instanceName={editingInstance.name}
+          instance={editingInstance}
+        />
+      )}
     </div>
   )
 }
@@ -566,7 +604,7 @@ function TorznabSearchCachePanel() {
   const stats: TorznabSearchCacheStats | undefined = statsQuery.data
   const [ttlInput, setTtlInput] = useState("")
 
-  const formatCacheTimestamp = (value?: string | null) => {
+  const formatCacheTimestamp = useCallback((value?: string | null) => {
     if (!value) {
       return "—"
     }
@@ -575,7 +613,7 @@ function TorznabSearchCachePanel() {
       return "—"
     }
     return formatDate(parsed)
-  }
+  }, [formatDate])
 
   useEffect(() => {
     if (stats?.ttlMinutes !== undefined) {
@@ -631,7 +669,7 @@ function TorznabSearchCachePanel() {
       { label: "Newest entry", value: formatCacheTimestamp(stats?.newestCachedAt) },
       { label: "Last used", value: formatCacheTimestamp(stats?.lastUsedAt) },
     ],
-    [approxSize, formatDate, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+    [approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
   return (
@@ -1057,6 +1095,41 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ChangePasswordForm />
                 </CardContent>
               </Card>
+
+              {canRegisterProtocolHandler() && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Browser Integration</CardTitle>
+                    <CardDescription>
+                      Configure how your browser handles magnet links
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Register qui as your browser's handler for magnet links.
+                        This allows you to open magnet links directly in qui.
+                      </p>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          const success = registerMagnetHandler()
+                          if (success) {
+                            toast.success("Magnet handler registration requested", {
+                              description: getMagnetHandlerRegistrationGuidance(),
+                            })
+                          } else {
+                            toast.error("Failed to register magnet handler")
+                          }
+                        }}
+                        className="w-fit"
+                      >
+                        Register as Handler
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
 

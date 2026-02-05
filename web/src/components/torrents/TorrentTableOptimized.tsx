@@ -6,6 +6,7 @@
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
@@ -948,6 +949,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
   const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
 
+  const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
+  const isVisibilitySettled = isHiddenDelayed || isVisible
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -967,6 +971,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     loadMore: backendLoadMore,
     isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
+    enabled: true,
+    pollingEnabled: isVisibilitySettled,
     search: effectiveSearch,
     filters: {
       status: filters?.status || [],
