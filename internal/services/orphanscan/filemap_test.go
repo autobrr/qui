@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
@@ -57,6 +58,24 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 				t.Fatalf("expected torrent file map to match canonical-equivalent path: %q", p2)
 			}
 		})
+	}
+}
+
+func TestNormalizePath_InvalidUTF8Preserved(t *testing.T) {
+	t.Parallel()
+
+	// On Unix, filenames are arbitrary bytes; ensure we don't replace invalid
+	// sequences with U+FFFD during normalization.
+	bad := string([]byte{0xff, 0xfe})
+	if utf8.ValidString(bad) {
+		t.Fatalf("expected test string to be invalid UTF-8")
+	}
+
+	p := filepath.Join("downloads", bad, "file.mkv")
+	want := filepath.Clean(p)
+	got := normalizePath(p)
+	if got != want {
+		t.Fatalf("expected invalid UTF-8 path preserved:\n  %q\n  %q", got, want)
 	}
 }
 

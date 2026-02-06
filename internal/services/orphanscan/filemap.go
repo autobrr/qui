@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -109,6 +110,11 @@ func normalizePath(path string) string {
 	p := filepath.Clean(path)
 	if runtime.GOOS == goosWindows {
 		p = strings.ToLower(p)
+	}
+	// On Unix, paths can contain arbitrary bytes (not always valid UTF-8).
+	// Avoid normalizing invalid UTF-8 to prevent replacing bytes with U+FFFD.
+	if !utf8.ValidString(p) {
+		return p
 	}
 	if !norm.NFC.IsNormalString(p) {
 		p = norm.NFC.String(p)
