@@ -17,15 +17,10 @@ import (
 	"github.com/autobrr/qui/internal/polar"
 )
 
-var (
-	ErrLicenseNotFound = errors.New("license not found")
-)
-
 const offlineGracePeriod = 7 * 24 * time.Hour
 
 // Service handles license operations
 type Service struct {
-	db          *database.DB
 	licenseRepo *database.LicenseRepo
 	polarClient *polar.Client
 	dodoClient  *dodo.Client
@@ -416,6 +411,7 @@ func (s *Service) ensurePolarActivation(ctx context.Context, license *models.Pro
 	license.PolarProductID = &activateResp.LicenseKey.BenefitID
 	license.ActivatedAt = time.Now()
 	license.ExpiresAt = activateResp.LicenseKey.ExpiresAt
+	license.Status = models.LicenseStatusActive
 
 	if err := s.licenseRepo.UpdateLicenseActivation(ctx, license); err != nil {
 		return err
@@ -658,11 +654,6 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			continue
 		}
 
-		// Skip recently validated licenses (within 1 hour)
-		//if time.Since(license.LastValidated) < time.Hour {
-		//	continue
-		//}
-
 		if license.Username == "" {
 			log.Error().Msg("no username found for license, skipping refresh")
 			continue
@@ -860,6 +851,8 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		}
 	}
 
+	// Invalid state has priority over transient backend failures: report
+	// deterministic invalid result and suppress soft-fail errors.
 	if !allValid && transientErr != nil {
 		return allValid, nil
 	}
@@ -885,7 +878,10 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 	case models.LicenseProviderDodo:
 		if license.DodoInstanceID != "" {
 			if s.dodoClient == nil {
-				return ErrDodoClientNotConfigured
+				log.Warn().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Dodo client not configured, skipping remote deactivation")
+				break
 			}
 			_, err := s.dodoClient.Deactivate(ctx, dodo.DeactivateRequest{
 				LicenseKey:           license.LicenseKey,

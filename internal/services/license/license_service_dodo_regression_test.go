@@ -280,3 +280,35 @@ func TestRefreshAllLicenses_ContinuesAfterDodoClientError(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, models.LicenseStatusActive, storedPolar.Status)
 }
+
+func TestDeleteLicense_DodoProviderWithoutDodoClientStillDeletesLocalLicense(t *testing.T) {
+	ctx := context.Background()
+
+	dbPath := filepath.Join(t.TempDir(), "licenses.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := database.NewLicenseRepo(db)
+
+	now := time.Now()
+	license := &models.ProductLicense{
+		LicenseKey:     "LIC-DODO-DELETE",
+		ProductName:    ProductNamePremium,
+		Status:         models.LicenseStatusActive,
+		ActivatedAt:    now.Add(-time.Hour),
+		LastValidated:  now.Add(-2 * time.Hour),
+		Provider:       models.LicenseProviderDodo,
+		DodoInstanceID: "inst-delete",
+		Username:       "tester",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	require.NoError(t, repo.StoreLicense(ctx, license))
+
+	service := NewLicenseService(repo, nil, nil, t.TempDir())
+	require.NoError(t, service.DeleteLicense(ctx, license.LicenseKey))
+
+	_, err = repo.GetLicenseByKey(ctx, license.LicenseKey)
+	require.ErrorIs(t, err, models.ErrLicenseNotFound)
+}

@@ -174,7 +174,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 			Msg("Failed to validate license")
 
-		if errors.Is(err, models.ErrLicenseNotFound) || errors.Is(err, license.ErrLicenseNotFound) {
+		if errors.Is(err, models.ErrLicenseNotFound) {
 			RespondJSON(w, http.StatusNotFound, ValidateLicenseResponse{
 				Valid: false,
 				Error: err.Error(),
