@@ -1234,7 +1234,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	if len(rules) == 0 {
 		return nil
 	}
-	summary := newAutomationSummary()
 
 	var liveRules []*models.Automation
 	var dryRunRules []*models.Automation
@@ -1283,6 +1282,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if len(eligibleRules) == 0 {
 		return nil
 	}
+
+	summary := newAutomationSummary()
 
 	// Check FREE_SPACE delete cooldown for this instance
 	// This prevents overly aggressive deletion while qBittorrent updates its disk free space reading
