@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 const goosWindows = "windows"
@@ -98,13 +100,18 @@ func (m *TorrentFileMap) MergeFrom(other *TorrentFileMap) int {
 }
 
 // normalizePath cleans and normalizes a path for consistent comparison.
-// Uses filepath.Clean (OS-specific separators).
+// Uses filepath.Clean (OS-specific separators) and NFC unicode normalization to
+// avoid mismatches between canonically-equivalent strings (e.g. composed vs
+// decomposed forms on some platforms).
 // On Windows, we also case-fold to lower to match filesystem semantics and
 // avoid false orphans from drive-letter/path casing differences.
 func normalizePath(path string) string {
 	p := filepath.Clean(path)
 	if runtime.GOOS == goosWindows {
 		p = strings.ToLower(p)
+	}
+	if !norm.NFC.IsNormalString(p) {
+		p = norm.NFC.String(p)
 	}
 	return p
 }
