@@ -531,14 +531,14 @@ function HardlinkModeSettings() {
 
                           <div className="space-y-4">
                             <div className="space-y-2">
-                              <Label>Base directory</Label>
+                              <Label>Base directories</Label>
                               <Input
-                                placeholder="/path/to/crossseed-data"
+                                placeholder="/path/to/crossseed-data, /other/path/to/crossseed-data"
                                 value={form.hardlinkBaseDir}
                                 onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                Must be on the same filesystem as download paths.
+                                Comma-separated paths. The first directory on the same filesystem as the source will be used.
                               </p>
                             </div>
 

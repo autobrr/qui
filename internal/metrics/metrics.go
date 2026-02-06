@@ -10,6 +10,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/metrics/collector"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -18,7 +19,7 @@ type MetricsManager struct {
 	torrentCollector *collector.TorrentCollector
 }
 
-func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool) *MetricsManager {
+func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool, trackerCustomizationStore *models.TrackerCustomizationStore) *MetricsManager {
 	registry := prometheus.NewRegistry()
 
 	// Register standard Go collectors like autobrr does
@@ -26,7 +27,7 @@ func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittor
 	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	// Register custom collectors
-	torrentCollector := collector.NewTorrentCollector(syncManager, clientPool)
+	torrentCollector := collector.NewTorrentCollector(syncManager, clientPool, trackerCustomizationStore)
 	registry.MustRegister(torrentCollector)
 	registry.MustRegister(database.NewMetricsCollector())
 

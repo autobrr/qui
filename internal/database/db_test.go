@@ -196,6 +196,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "activated_at", Type: "DATETIME"},
 		{Name: "expires_at", Type: "DATETIME"},
 		{Name: "last_validated", Type: "DATETIME"},
+		{Name: "provider", Type: "TEXT"},
+		{Name: "dodo_instance_id", Type: "TEXT"},
 		{Name: "polar_customer_id", Type: "TEXT"},
 		{Name: "polar_product_id", Type: "TEXT"},
 		{Name: "polar_activation_id", Type: "TEXT"},

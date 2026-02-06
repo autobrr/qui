@@ -107,6 +107,7 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
+  TransferInfo,
   User,
   WarningResponse,
   WebSeed
@@ -485,6 +486,10 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getTransferInfo(id: number): Promise<TransferInfo> {
+    return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
   }
 
   async getInstanceReannounceActivity(
@@ -1719,11 +1724,11 @@ class ApiClient {
     licenseKey: string
     productName: string
     status: string
+    provider?: string
     createdAt: string
   }>> {
     return this.request("/license/licenses")
   }
-
 
   async deleteLicense(licenseKey: string): Promise<{ message: string }> {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })
