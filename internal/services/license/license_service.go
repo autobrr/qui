@@ -268,6 +268,9 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 		LicenseKeyInstanceID: license.DodoInstanceID,
 	})
 	if err != nil {
+		if errors.Is(err, dodo.ErrLicenseNotFound) {
+			return models.ErrLicenseNotFound
+		}
 		return fmt.Errorf("failed to validate license: %w", err)
 	}
 
