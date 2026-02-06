@@ -5,6 +5,8 @@ package automations
 
 import (
 	"math"
+	"net"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -324,7 +326,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
-		return compareString(torrent.Tracker, cond)
+		return compareTracker(torrent.Tracker, cond, ctx)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -590,6 +592,137 @@ func compareString(value string, cond *RuleCondition) bool {
 	default:
 		return false
 	}
+}
+
+func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bool {
+	// Candidates: raw URL, extracted domain, optional customization display name.
+	raw := strings.TrimSpace(trackerURL)
+	domain := extractTrackerDomain(raw)
+	displayName := ""
+	if ctx != nil && ctx.TrackerDisplayNameByDomain != nil && domain != "" {
+		if name, ok := ctx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
+			displayName = strings.TrimSpace(name)
+		}
+	}
+
+	candidates := make([]string, 0, 3)
+	if raw != "" {
+		candidates = append(candidates, raw)
+	}
+	if domain != "" && !strings.EqualFold(domain, raw) {
+		candidates = append(candidates, domain)
+	}
+	if displayName != "" && !strings.EqualFold(displayName, domain) && !strings.EqualFold(displayName, raw) {
+		candidates = append(candidates, displayName)
+	}
+
+	// Preserve existing empty-string behavior (e.g., equals "").
+	if len(candidates) == 0 {
+		return compareString("", cond)
+	}
+
+	// Important: negative operators must apply to the combined candidate set.
+	// Example: NOT_EQUAL "BHD" must be false if any candidate equals "BHD".
+	if cond.Operator == OperatorNotEqual {
+		for _, c := range candidates {
+			if compareStringPositive(c, cond, OperatorEqual) {
+				return false
+			}
+		}
+		return true
+	}
+	if cond.Operator == OperatorNotContains {
+		for _, c := range candidates {
+			if compareStringPositive(c, cond, OperatorContains) {
+				return false
+			}
+		}
+		return true
+	}
+
+	for _, c := range candidates {
+		if compareString(c, cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareStringPositive(value string, cond *RuleCondition, positiveOp ConditionOperator) bool {
+	// Regex matching ignores operator in compareString; treat as "matches" here.
+	if cond.Regex || cond.Operator == OperatorMatches {
+		if cond.Compiled == nil {
+			return false
+		}
+		return cond.Compiled.MatchString(value)
+	}
+
+	if positiveOp == OperatorEqual {
+		return strings.EqualFold(value, cond.Value)
+	}
+	if positiveOp == OperatorContains {
+		return strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+	}
+	if positiveOp == OperatorStartsWith {
+		return strings.HasPrefix(strings.ToLower(value), strings.ToLower(cond.Value))
+	}
+	if positiveOp == OperatorEndsWith {
+		return strings.HasSuffix(strings.ToLower(value), strings.ToLower(cond.Value))
+	}
+
+	// Fall back to existing behavior for operators that don't need special casing here.
+	return compareString(value, cond)
+}
+
+func extractTrackerDomain(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	// URL parsing with scheme (http/https/udp/etc).
+	if u, err := url.Parse(raw); err == nil {
+		if h := u.Hostname(); h != "" {
+			return strings.ToLower(h)
+		}
+	}
+
+	// Scheme-less input (tracker.example.com/announce).
+	if !strings.Contains(raw, "://") {
+		if u, err := url.Parse("//" + raw); err == nil {
+			if h := u.Hostname(); h != "" {
+				return strings.ToLower(h)
+			}
+		}
+	}
+
+	// Manual fallback: host[:port][/path]
+	candidate := raw
+	if idx := strings.IndexAny(candidate, "/?#"); idx != -1 {
+		candidate = candidate[:idx]
+	}
+	candidate = strings.TrimPrefix(candidate, "//")
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return ""
+	}
+
+	// Try to split host:port (IPv6 requires brackets for SplitHostPort).
+	if host, _, err := net.SplitHostPort(candidate); err == nil {
+		return strings.ToLower(strings.Trim(host, "[]"))
+	}
+
+	// If it's a plain IP (including IPv6 without port), keep it.
+	if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
+		return strings.ToLower(candidate)
+	}
+
+	// Strip :port for hostnames/IPv4.
+	if idx := strings.Index(candidate, ":"); idx != -1 {
+		candidate = candidate[:idx]
+	}
+	candidate = strings.Trim(candidate, "[]")
+	return strings.ToLower(strings.TrimSpace(candidate))
 }
 
 // compareTags compares tags against the condition, treating tags as a set.

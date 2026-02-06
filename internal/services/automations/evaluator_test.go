@@ -229,6 +229,59 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_TrackerField_DisplayNameAndNegation(t *testing.T) {
+	torrent := qbt.Torrent{Tracker: "https://beyond-hd.me/announce"}
+	ctx := &EvalContext{
+		TrackerDisplayNameByDomain: map[string]string{
+			"beyond-hd.me": "BHD",
+		},
+	}
+
+	t.Run("equals display name", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("not equals display name", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("domain still matches without ctx", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "beyond-hd.me",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, nil, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("display name does not match without ctx", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, nil, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+}
+
 func TestEvaluateCondition_NumericFields(t *testing.T) {
 	tests := []struct {
 		name     string

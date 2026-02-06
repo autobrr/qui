@@ -1216,8 +1216,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName
-	if rulesUseTrackerDisplayName(eligibleRules) && s.trackerCustomizationStore != nil {
+	// Load tracker display names when needed by tagging OR by TRACKER conditions.
+	// KISS: only load customizations when a rule actually references them.
+	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker)) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
