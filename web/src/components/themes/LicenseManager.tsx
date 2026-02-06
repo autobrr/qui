@@ -22,13 +22,14 @@ import {
   useHasPremiumAccess,
   useLicenseDetails
 } from "@/hooks/useLicense"
+import { withBasePath } from "@/lib/base-url"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
 import { SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { DODO_CHECKOUT_URL, DODO_PORTAL_URL } from "@/lib/dodo-constants"
 
@@ -40,7 +41,24 @@ function maskLicenseKey(key: string): string {
   return key.slice(0, 8) + "-***-***-***-***"
 }
 
-export function LicenseManager() {
+type LicenseManagerProps = {
+  checkoutStatus?: "success"
+  checkoutPaymentStatus?: string
+  onCheckoutConsumed?: () => void
+}
+
+function buildCheckoutUrlWithReturn(returnUrl: string): string {
+  try {
+    const checkoutUrl = new URL(DODO_CHECKOUT_URL)
+    checkoutUrl.searchParams.set("redirect_url", returnUrl)
+    return checkoutUrl.toString()
+  } catch {
+    const separator = DODO_CHECKOUT_URL.includes("?") ? "&" : "?"
+    return `${DODO_CHECKOUT_URL}${separator}redirect_url=${encodeURIComponent(returnUrl)}`
+  }
+}
+
+export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onCheckoutConsumed }: LicenseManagerProps) {
   const [showAddLicense, setShowAddLicense] = useState(false)
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const { formatDate } = useDateTimeFormatters()
@@ -52,6 +70,7 @@ export function LicenseManager() {
   // const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteLicense()
   const primaryLicense = licenses?.[0]
+  const hasStoredLicense = Boolean(primaryLicense)
   const provider = primaryLicense?.provider ?? "dodo"
   const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
   const selectedLicense = selectedLicenseKey ? licenses?.find((l) => l.licenseKey === selectedLicenseKey) : undefined
@@ -59,7 +78,44 @@ export function LicenseManager() {
   const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar" ? "Polar portal" : "Dodo portal"
 
   // Check if we have an invalid license (exists but not active)
-  const hasInvalidLicense = licenses && licenses.length > 0 && licenses[0].status !== "active"
+  const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
+  let accessTitle = "Unlock Premium Themes"
+  let accessDescription = "Pay what you want (min $4.99) • Lifetime license • All themes"
+  if (hasPremiumAccess) {
+    accessTitle = "Premium Access Active"
+    accessDescription = "You have access to all current and future premium themes"
+  } else if (hasInvalidLicense) {
+    accessTitle = "License Activation Required"
+    accessDescription = "Your license needs to be activated on this machine"
+  }
+  const checkoutUrl = useMemo(() => {
+    const returnPath = withBasePath("settings?tab=themes&checkout=success")
+    const returnUrl = new URL(returnPath, window.location.origin).toString()
+    return buildCheckoutUrlWithReturn(returnUrl)
+  }, [])
+  const openAddLicenseDialog = useCallback(() => {
+    setShowPaymentDialog(false)
+    setShowAddLicense(true)
+  }, [])
+
+  useEffect(() => {
+    if (checkoutStatus !== "success") {
+      return
+    }
+
+    const normalizedPaymentStatus = checkoutPaymentStatus?.toLowerCase()
+
+    if (normalizedPaymentStatus === "succeeded" || normalizedPaymentStatus === "success") {
+      openAddLicenseDialog()
+      toast.success("Payment completed. Enter your license key to activate premium.")
+    } else if (normalizedPaymentStatus) {
+      toast.error("Payment was not completed. Try checkout again.")
+    } else {
+      toast.success("Returned from checkout. Enter your license key if payment succeeded.")
+    }
+
+    onCheckoutConsumed?.()
+  }, [checkoutPaymentStatus, checkoutStatus, onCheckoutConsumed, openAddLicenseDialog])
 
   const form = useForm({
     defaultValues: {
@@ -121,7 +177,7 @@ export function LicenseManager() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              {(!licenses || licenses.length === 0) && (
+              {!hasStoredLicense && (
                 <Button
                   size="sm"
                   onClick={() => setShowAddLicense(true)}
@@ -141,12 +197,8 @@ export function LicenseManager() {
               <div className="flex items-start gap-3 flex-1">
                 <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
                 <div className="min-w-0 space-y-1 flex-1">
-                  <p className="font-medium text-base">
-                    {hasPremiumAccess ? "Premium Access Active" :hasInvalidLicense ? "License Activation Required" :"Unlock Premium Themes"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"Pay what you want (min $4.99) • Lifetime license • All themes"}
-                  </p>
+                  <p className="font-medium text-base">{accessTitle}</p>
+                  <p className="text-sm text-muted-foreground">{accessDescription}</p>
                   {!hasPremiumAccess && !hasInvalidLicense && (
                     <p className="text-xs text-muted-foreground">
                       Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the{" "}
@@ -163,13 +215,13 @@ export function LicenseManager() {
                   )}
 
                   {/* License Key Details - Show for both active and invalid licenses */}
-                  {licenses && licenses.length > 0 && (
+                  {primaryLicense && (
                     <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
                       <div className="font-mono text-xs break-all text-muted-foreground">
-                        {maskLicenseKey(licenses[0].licenseKey)}
+                        {maskLicenseKey(primaryLicense.licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt))}
+                        {primaryLicense.productName} • Status: {primaryLicense.status} • Added {formatDate(new Date(primaryLicense.createdAt))}
                       </div>
                       {hasInvalidLicense && (
                         <div className="space-y-2">
@@ -198,8 +250,8 @@ export function LicenseManager() {
                             variant="outline"
                             onClick={() => {
                               // Re-attempt activation with the existing license key
-                              if (licenses && licenses[0]) {
-                                activateLicense.mutate(licenses[0].licenseKey)
+                              if (primaryLicense) {
+                                activateLicense.mutate(primaryLicense.licenseKey)
                               }
                             }}
                             disabled={activateLicense.isPending}
@@ -216,12 +268,12 @@ export function LicenseManager() {
               </div>
 
               <div className="flex gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
-                {licenses && licenses.length > 0 && (
+                {primaryLicense && (
                   <>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDeleteLicense(licenses[0].licenseKey)}
+                      onClick={() => handleDeleteLicense(primaryLicense.licenseKey)}
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
@@ -421,15 +473,13 @@ export function LicenseManager() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-8">
                 <a
-                  href={DODO_CHECKOUT_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={checkoutUrl}
                   className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <Sparkles className="h-5 w-5 text-primary" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">DodoPayments checkout</p>
-                    <p className="text-xs text-muted-foreground">Card & local methods</p>
+                    <p className="text-xs text-muted-foreground">Card & local methods, returns to qui after payment</p>
                   </div>
                   <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
@@ -474,9 +524,15 @@ export function LicenseManager() {
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>
                 <p className="text-sm font-semibold">Activate your license</p>
               </div>
-              <p className="text-sm text-muted-foreground pl-8 mt-2">
-                Close this dialog and click <span className="font-medium text-foreground">Add License</span> to enter your key.
-              </p>
+              <div className="pl-8 mt-2 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  After checkout returns here, use Add License to activate your key.
+                </p>
+                <Button size="sm" variant="outline" onClick={openAddLicenseDialog}>
+                  <Key className="h-4 w-4 mr-2" />
+                  Add License
+                </Button>
+              </div>
             </div>
           </div>
 
