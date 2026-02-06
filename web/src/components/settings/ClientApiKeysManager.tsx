@@ -165,14 +165,20 @@ export function ClientApiKeysManager() {
       instanceId: "",
     },
     onSubmit: async ({ value }) => {
-      const instanceId = parseInt(value.instanceId)
+      const clientName = value.clientName.trim()
+      if (clientName === "") {
+        toast.error("Client name is required")
+        return
+      }
+
+      const instanceId = parseInt(value.instanceId, 10)
       if (!instanceId) {
         toast.error("Please select an instance")
         return
       }
 
       await createMutation.mutateAsync({
-        clientName: value.clientName,
+        clientName,
         instanceId,
       })
       form.reset()
@@ -274,7 +280,7 @@ export function ClientApiKeysManager() {
                     <form.Field
                       name="clientName"
                       validators={{
-                        onChange: ({ value }) => !value ? "Client name is required" : undefined,
+                        onChange: ({ value }) => value.trim() === "" ? "Client name is required" : undefined,
                       }}
                     >
                       {(field) => (
@@ -301,7 +307,7 @@ export function ClientApiKeysManager() {
                     <form.Field
                       name="instanceId"
                       validators={{
-                        onChange: ({ value }) => !value ? "Instance is required" : undefined,
+                        onChange: ({ value }) => value.trim() === "" ? "Instance is required" : undefined,
                       }}
                     >
                       {(field) => (
