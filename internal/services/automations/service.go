@@ -1019,20 +1019,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// Pre-filter rules by interval eligibility
+	// Rules with IntervalSeconds == 0 ("run once on finish") are always eligible; they are not throttled by interval.
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
 	for _, rule := range rules {
 		if !force {
-			interval := DefaultRuleInterval
-			if rule.IntervalSeconds != nil {
-				interval = time.Duration(*rule.IntervalSeconds) * time.Second
-			}
-			key := ruleKey{instanceID, rule.ID}
-			s.mu.RLock()
-			lastRun := s.lastRuleRun[key]
-			s.mu.RUnlock()
-			if now.Sub(lastRun) < interval {
-				continue // skip, interval not elapsed
+			if rule.IntervalSeconds != nil && *rule.IntervalSeconds == 0 {
+				// Run once on finish: always eligible, no interval check
+			} else {
+				interval := DefaultRuleInterval
+				if rule.IntervalSeconds != nil {
+					interval = time.Duration(*rule.IntervalSeconds) * time.Second
+				}
+				key := ruleKey{instanceID, rule.ID}
+				s.mu.RLock()
+				lastRun := s.lastRuleRun[key]
+				s.mu.RUnlock()
+				if now.Sub(lastRun) < interval {
+					continue // skip, interval not elapsed
+				}
 			}
 		}
 		eligibleRules = append(eligibleRules, rule)
@@ -1264,9 +1269,20 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	// Update lastRuleRun only for rules that matched at least one non-skipped torrent
+	// Update lastRuleRun only for interval-based rules that matched at least one non-skipped torrent.
+	// Rules with IntervalSeconds == 0 ("run once on finish") are not throttled by interval, so we do not update lastRuleRun for them.
 	s.mu.Lock()
 	for ruleID := range rulesUsed {
+		var rule *models.Automation
+		for _, r := range eligibleRules {
+			if r.ID == ruleID {
+				rule = r
+				break
+			}
+		}
+		if rule != nil && rule.IntervalSeconds != nil && *rule.IntervalSeconds == 0 {
+			continue // do not update lastRuleRun for run-once-on-finish rules
+		}
 		key := ruleKey{instanceID, ruleID}
 		s.lastRuleRun[key] = now
 	}

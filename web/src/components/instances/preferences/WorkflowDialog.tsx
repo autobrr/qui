@@ -13,6 +13,7 @@ import {
   type DisabledStateValue,
 } from "@/components/query-builder/constants"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -2201,19 +2202,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   />
                   <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Label htmlFor="rule-interval" className="text-sm font-normal text-muted-foreground whitespace-nowrap">Run every</Label>
                   <Select
-                    value={formState.intervalSeconds === null ? "default" : String(formState.intervalSeconds)}
+                    value={formState.intervalSeconds === 0 ? "run-once" : formState.intervalSeconds === null ? "default" : String(formState.intervalSeconds)}
                     onValueChange={(value) => {
+                      if (value === "run-once") return
                       const intervalSeconds = value === "default" ? null : Number(value)
                       setFormState(prev => ({ ...prev, intervalSeconds }))
                     }}
+                    disabled={formState.intervalSeconds === 0}
                   >
-                    <SelectTrigger id="rule-interval" className="w-fit h-8">
+                    <SelectTrigger id="rule-interval" className={cn("w-fit h-8", formState.intervalSeconds === 0 && "opacity-60")}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="run-once" disabled>—</SelectItem>
                       <SelectItem value="default">Default (15m)</SelectItem>
                       <SelectItem value="60" disabled={deleteUsesFreeSpace}>1 minute</SelectItem>
                       <SelectItem value="300">5 minutes</SelectItem>
@@ -2227,6 +2231,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <SelectItem value="86400">24 hours</SelectItem>
                       {/* Show custom option if current value is non-preset */}
                       {formState.intervalSeconds !== null &&
+                        formState.intervalSeconds !== 0 &&
                         ![60, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400].includes(formState.intervalSeconds) && (
                         <SelectItem value={String(formState.intervalSeconds)}>
                           Custom ({formState.intervalSeconds}s)
@@ -2234,6 +2239,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       )}
                     </SelectContent>
                   </Select>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="rule-run-once-on-finish"
+                      checked={formState.intervalSeconds === 0}
+                      onCheckedChange={(checked) => {
+                        setFormState(prev => ({
+                          ...prev,
+                          intervalSeconds: checked ? 0 : null,
+                        }))
+                      }}
+                    />
+                    <Label htmlFor="rule-run-once-on-finish" className="text-sm font-normal text-muted-foreground cursor-pointer whitespace-nowrap">
+                      Run once on finish
+                    </Label>
+                  </div>
                   {deleteUsesFreeSpace && (
                     <TooltipProvider delayDuration={150}>
                       <Tooltip>

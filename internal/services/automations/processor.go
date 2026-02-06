@@ -103,6 +103,7 @@ func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *rul
 }
 
 // selectMatchingRules returns all enabled rules that match the torrent, in sort order.
+// For rules with IntervalSeconds == 0 ("run once on finish"), a rule matches only when torrent.Progress >= 1.0.
 func selectMatchingRules(torrent qbt.Torrent, rules []*models.Automation, sm *qbittorrent.SyncManager) []*models.Automation {
 	trackerDomains := collectTrackerDomains(torrent, sm)
 	var matching []*models.Automation
@@ -113,6 +114,12 @@ func selectMatchingRules(torrent qbt.Torrent, rules []*models.Automation, sm *qb
 		}
 		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 			continue
+		}
+		// Run once on finish: only match completed torrents
+		if rule.IntervalSeconds != nil && *rule.IntervalSeconds == 0 {
+			if torrent.Progress < 1.0 {
+				continue
+			}
 		}
 
 		matching = append(matching, rule)

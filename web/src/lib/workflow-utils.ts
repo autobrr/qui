@@ -9,7 +9,7 @@ import type { Automation, AutomationInput, ActionConditions } from "@/types"
  * Export format for workflows. This is the clipboard JSON format.
  * - Includes trackerDomains (primary) and derived trackerPattern
  * - Omits id, instanceId, sortOrder, enabled
- * - Omits intervalSeconds when it equals default 900
+ * - Omits intervalSeconds when it equals default 900; includes 0 (run once on finish)
  */
 export interface WorkflowExport {
   name: string
@@ -37,8 +37,8 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
     conditions: workflow.conditions,
   }
 
-  // Only include intervalSeconds if it differs from default
-  if (workflow.intervalSeconds && workflow.intervalSeconds !== DEFAULT_INTERVAL_SECONDS) {
+  // Include intervalSeconds if it differs from default or is 0 (run once on finish)
+  if (workflow.intervalSeconds != null && (workflow.intervalSeconds === 0 || workflow.intervalSeconds !== DEFAULT_INTERVAL_SECONDS)) {
     exported.intervalSeconds = workflow.intervalSeconds
   }
 
@@ -79,8 +79,8 @@ export function fromImportFormat(
     enabled: false, // Always start disabled
   }
 
-  // Include intervalSeconds if specified and differs from default
-  if (data.intervalSeconds && data.intervalSeconds !== DEFAULT_INTERVAL_SECONDS) {
+  // Include intervalSeconds if specified and differs from default or is 0 (run once on finish)
+  if (data.intervalSeconds != null && (data.intervalSeconds === 0 || data.intervalSeconds !== DEFAULT_INTERVAL_SECONDS)) {
     input.intervalSeconds = data.intervalSeconds
   }
 
@@ -174,8 +174,8 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
     conditions: obj.conditions as ActionConditions,
   }
 
-  // Optional intervalSeconds
-  if (typeof obj.intervalSeconds === "number" && obj.intervalSeconds >= 60) {
+  // Optional intervalSeconds: 0 = run once on finish, otherwise must be >= 60
+  if (typeof obj.intervalSeconds === "number" && (obj.intervalSeconds === 0 || obj.intervalSeconds >= 60)) {
     data.intervalSeconds = obj.intervalSeconds
   }
 
