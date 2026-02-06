@@ -66,3 +66,75 @@ logLevel = "INFO"
 		t.Fatalf("logLevel not updated in place:\n%s", updated)
 	}
 }
+
+func TestUpdateLogSettingsInTOMLDoesNotDuplicateWhenActiveAndCommented(t *testing.T) {
+	content := `logPath = "/existing/qui.log"
+#logPath = "log/qui.log"
+logLevel = "INFO"
+logMaxSize = 10
+logMaxBackups = 2
+`
+	updated := updateLogSettingsInTOML(content, "DEBUG", "/config/qui.log", 50, 3)
+
+	if got := countTrimmedPrefix(updated, "logPath = "); got != 1 {
+		t.Fatalf("expected exactly one active logPath, got %d:\n%s", got, updated)
+	}
+	if !strings.Contains(updated, `#logPath = "log/qui.log"`) {
+		t.Fatalf("commented logPath should remain untouched:\n%s", updated)
+	}
+	if strings.Contains(updated, "# Log settings") {
+		t.Fatalf("unexpected appended settings:\n%s", updated)
+	}
+}
+
+func TestUpdateLogSettingsInTOMLPreservesCommentWhenActiveComesLater(t *testing.T) {
+	content := `#logPath = "log/qui.log"
+logPath = "/existing/qui.log"
+logLevel = "INFO"
+logMaxSize = 10
+logMaxBackups = 2
+`
+	updated := updateLogSettingsInTOML(content, "DEBUG", "/config/qui.log", 50, 3)
+
+	if got := countTrimmedPrefix(updated, "logPath = "); got != 1 {
+		t.Fatalf("expected exactly one active logPath, got %d:\n%s", got, updated)
+	}
+	if !strings.Contains(updated, `#logPath = "log/qui.log"`) {
+		t.Fatalf("commented logPath should remain untouched:\n%s", updated)
+	}
+}
+
+func TestUpdateLogSettingsInTOMLPromotesCommentedKeysWhenNoActiveExists(t *testing.T) {
+	content := `#logPath = "log/qui.log"
+#logLevel = "INFO"
+#logMaxSize = 50
+#logMaxBackups = 3
+`
+	updated := updateLogSettingsInTOML(content, "DEBUG", "/config/qui.log", 99, 7)
+
+	if strings.Contains(updated, "# Log settings") {
+		t.Fatalf("unexpected appended settings:\n%s", updated)
+	}
+	if !strings.Contains(updated, `logPath = "/config/qui.log"`) {
+		t.Fatalf("expected promoted logPath:\n%s", updated)
+	}
+	if !strings.Contains(updated, `logLevel = "DEBUG"`) {
+		t.Fatalf("expected promoted logLevel:\n%s", updated)
+	}
+	if !strings.Contains(updated, "logMaxSize = 99") {
+		t.Fatalf("expected promoted logMaxSize:\n%s", updated)
+	}
+	if !strings.Contains(updated, "logMaxBackups = 7") {
+		t.Fatalf("expected promoted logMaxBackups:\n%s", updated)
+	}
+}
+
+func countTrimmedPrefix(content, prefix string) int {
+	count := 0
+	for line := range strings.SplitSeq(content, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			count++
+		}
+	}
+	return count
+}
