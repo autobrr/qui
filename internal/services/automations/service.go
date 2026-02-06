@@ -2804,18 +2804,18 @@ func (s *Service) recordDryRunActivities(
 		})
 	}
 
-	// Pause
-	if len(pauseHashes) > 0 {
-		uniqueHashes := dedupeHashes(pauseHashes)
-		createActivity(models.ActivityActionPaused, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-			return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
-		})
-	}
-
-	// Resume
-	if len(resumeHashes) > 0 {
-		uniqueHashes := dedupeHashes(resumeHashes)
-		createActivity(models.ActivityActionResumed, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+	for _, a := range []struct {
+		action string
+		hashes []string
+	}{
+		{action: models.ActivityActionPaused, hashes: pauseHashes},
+		{action: models.ActivityActionResumed, hashes: resumeHashes},
+	} {
+		if len(a.hashes) == 0 {
+			continue
+		}
+		uniqueHashes := dedupeHashes(a.hashes)
+		createActivity(a.action, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
 			return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 		})
 	}

@@ -1326,6 +1326,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		pending,
 		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
