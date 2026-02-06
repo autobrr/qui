@@ -126,20 +126,21 @@ func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fi
 	}
 
 	productName := ProductNamePremium
+	now := time.Now()
 
 	if existingLicense != nil {
 		existingLicense.ProductName = productName
 		existingLicense.Status = models.LicenseStatusActive
-		existingLicense.ActivatedAt = time.Now()
+		existingLicense.ActivatedAt = now
 		existingLicense.ExpiresAt = activateResp.ExpiresAt
-		existingLicense.LastValidated = time.Now()
+		existingLicense.LastValidated = now
 		existingLicense.Provider = models.LicenseProviderDodo
 		existingLicense.DodoInstanceID = instanceID
 		existingLicense.PolarCustomerID = nil
 		existingLicense.PolarProductID = nil
 		existingLicense.PolarActivationID = ""
 		existingLicense.Username = username
-		existingLicense.UpdatedAt = time.Now()
+		existingLicense.UpdatedAt = now
 
 		if err := s.licenseRepo.UpdateLicenseActivation(ctx, existingLicense); err != nil {
 			return nil, fmt.Errorf("failed to update license activation: %w", err)
@@ -157,14 +158,14 @@ func (s *Service) activateWithDodo(ctx context.Context, licenseKey, username, fi
 		LicenseKey:     licenseKey,
 		ProductName:    productName,
 		Status:         models.LicenseStatusActive,
-		ActivatedAt:    time.Now(),
+		ActivatedAt:    now,
 		ExpiresAt:      activateResp.ExpiresAt,
-		LastValidated:  time.Now(),
+		LastValidated:  now,
 		Provider:       models.LicenseProviderDodo,
 		DodoInstanceID: instanceID,
 		Username:       username,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := s.licenseRepo.StoreLicense(ctx, license); err != nil {
@@ -201,20 +202,21 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 	log.Info().Msgf("license successfully activated!")
 
 	productName := mapBenefitToProduct(activateResp.LicenseKey.BenefitID, "activation")
+	now := time.Now()
 
 	if existingLicense != nil {
 		existingLicense.ProductName = productName
 		existingLicense.Status = models.LicenseStatusActive
-		existingLicense.ActivatedAt = time.Now()
+		existingLicense.ActivatedAt = now
 		existingLicense.ExpiresAt = activateResp.LicenseKey.ExpiresAt
-		existingLicense.LastValidated = time.Now()
+		existingLicense.LastValidated = now
 		existingLicense.Provider = models.LicenseProviderPolar
 		existingLicense.DodoInstanceID = ""
 		existingLicense.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 		existingLicense.PolarProductID = &activateResp.LicenseKey.BenefitID
 		existingLicense.PolarActivationID = activateResp.Id
 		existingLicense.Username = username
-		existingLicense.UpdatedAt = time.Now()
+		existingLicense.UpdatedAt = now
 
 		if err := s.licenseRepo.UpdateLicenseActivation(ctx, existingLicense); err != nil {
 			return nil, fmt.Errorf("failed to update license activation: %w", err)
@@ -232,16 +234,16 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 		LicenseKey:        licenseKey,
 		ProductName:       productName,
 		Status:            models.LicenseStatusActive,
-		ActivatedAt:       time.Now(),
+		ActivatedAt:       now,
 		ExpiresAt:         activateResp.LicenseKey.ExpiresAt,
-		LastValidated:     time.Now(),
+		LastValidated:     now,
 		Provider:          models.LicenseProviderPolar,
 		PolarCustomerID:   &activateResp.LicenseKey.CustomerID,
 		PolarProductID:    &activateResp.LicenseKey.BenefitID,
 		PolarActivationID: activateResp.Id,
 		Username:          username,
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if err := s.licenseRepo.StoreLicense(ctx, license); err != nil {
@@ -527,6 +529,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			}
 		case models.LicenseProviderPolar:
 			if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
+				// Polar is legacy during migration to Dodo. Missing Polar config
+				// should not fail the overall refresh loop.
 				log.Warn().Msg("Polar client not configured, skipping license refresh")
 				continue
 			}
@@ -729,6 +733,8 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			}
 		case models.LicenseProviderPolar:
 			if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
+				// Polar is legacy during migration to Dodo. Keep this as a soft
+				// skip and let Dodo-backed licenses drive strict refresh errors.
 				log.Warn().Msg("Polar client not configured, skipping license refresh")
 				allValid = false
 				continue
