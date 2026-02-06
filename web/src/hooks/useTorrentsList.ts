@@ -11,6 +11,8 @@ import { useEffect, useMemo, useState } from "react"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
+  pollingEnabled?: boolean
+  refetchIntervalInBackground?: boolean
   search?: string
   filters?: TorrentFilters
   sort?: string
@@ -23,7 +25,16 @@ export function useTorrentsList(
   instanceId: number,
   options: UseTorrentsListOptions = {}
 ) {
-  const { enabled = true, search, filters, sort = "added_on", order = "desc" } = options
+  const {
+    enabled = true,
+    pollingEnabled = true,
+    refetchIntervalInBackground = false,
+    search,
+    filters,
+    sort = "added_on",
+    order = "desc",
+  } = options
+  const shouldEnableQuery = enabled
 
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
@@ -83,12 +94,15 @@ export function useTorrentsList(
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
     // Reduce polling frequency for cross-instance calls since they're more expensive
-    refetchInterval: currentPage === 0 ? (isCrossSeedFiltering ? 10000 : 3000) : false,
-    refetchIntervalInBackground: false, // Don't poll when tab is not active
-    enabled,
+    refetchInterval: currentPage === 0
+      ? (pollingEnabled ? (isCrossSeedFiltering ? 10000 : 3000) : false)
+      : false,
+    refetchIntervalInBackground, // Controls background polling behavior
+    refetchOnWindowFocus: currentPage === 0,
+    enabled: shouldEnableQuery,
   })
 
-  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled })
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: shouldEnableQuery })
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -254,3 +268,4 @@ export function useTorrentsList(
     cacheAge: data?.cacheMetadata?.age,
   }
 }
+

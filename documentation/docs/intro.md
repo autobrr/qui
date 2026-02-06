@@ -23,6 +23,7 @@ A web interface for qBittorrent. Manage multiple qBittorrent instances from a si
 - **Backups & Restore**: Scheduled snapshots with incremental, overwrite, and complete restore modes
 - **Cross-Seed**: Automatically find and add matching torrents across trackers with autobrr webhook integration
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps like autobrr, Sonarr, and Radarr—no credential sharing needed
+- **Incognito Mode**: Disguise torrents as Linux ISOs for screen sharing and screenshots
 
 ## Browser Extensions
 

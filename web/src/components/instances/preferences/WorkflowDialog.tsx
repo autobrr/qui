@@ -46,6 +46,7 @@ import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
@@ -60,7 +61,7 @@ import type {
   RegexValidationError,
   RuleCondition
 } from "@/types"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
@@ -82,10 +83,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -95,6 +96,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   tag: "Tag",
   category: "Category",
   move: "Move",
+  externalProgram: "Run external program",
 }
 
 function getDisabledFields(capabilities: Capabilities): DisabledField[] {
@@ -143,6 +145,7 @@ type FormState = {
   tagEnabled: boolean
   categoryEnabled: boolean
   moveEnabled: boolean
+  externalProgramEnabled: boolean
   // Speed limits settings (mode-based)
   exprUploadMode: SpeedLimitMode
   exprUploadValue?: number // KiB/s, only used when mode is "custom"
@@ -171,6 +174,8 @@ type FormState = {
   // Move action settings
   exprMovePath: string
   exprMoveBlockIfCrossSeed: boolean
+  // External program action settings
+  exprExternalProgramId: number | null
 }
 
 const emptyFormState: FormState = {
@@ -188,6 +193,7 @@ const emptyFormState: FormState = {
   tagEnabled: false,
   categoryEnabled: false,
   moveEnabled: false,
+  externalProgramEnabled: false,
   exprUploadMode: "no_change",
   exprUploadValue: undefined,
   exprDownloadMode: "no_change",
@@ -209,6 +215,7 @@ const emptyFormState: FormState = {
   exprBlockIfCrossSeedInCategories: [],
   exprMovePath: "",
   exprMoveBlockIfCrossSeed: false,
+  exprExternalProgramId: null,
 }
 
 // Helper to get enabled actions from form state
@@ -221,6 +228,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
+  if (state.externalProgramEnabled) actions.push("externalProgram")
   return actions
 }
 
@@ -228,6 +236,39 @@ function getEnabledActions(state: FormState): ActionType[] {
 function setActionEnabled(action: ActionType, enabled: boolean): Partial<FormState> {
   const key = `${action}Enabled` as keyof FormState
   return { [key]: enabled }
+}
+
+// Hydration helpers for converting stored values to form state
+type SpeedLimitHydration = {
+  mode: SpeedLimitMode
+  value?: number
+  inferredUnit: number
+}
+
+function hydrateSpeedLimit(storedValue: number | undefined): SpeedLimitHydration {
+  if (storedValue === undefined) {
+    return { mode: "no_change", inferredUnit: 1024 }
+  }
+  if (storedValue === 0) {
+    return { mode: "unlimited", inferredUnit: 1024 }
+  }
+  return {
+    mode: "custom",
+    value: storedValue,
+    inferredUnit: storedValue % 1024 === 0 ? 1024 : 1,
+  }
+}
+
+type ShareLimitHydration = {
+  mode: "no_change" | "global" | "unlimited" | "custom"
+  value?: number
+}
+
+function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration {
+  if (storedValue === undefined) return { mode: "no_change" }
+  if (storedValue === -2) return { mode: "global" }
+  if (storedValue === -1) return { mode: "unlimited" }
+  return { mode: "custom", value: storedValue }
 }
 
 
@@ -266,6 +307,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances } = useInstances()
+  const {
+    data: allExternalPrograms,
+    isError: externalProgramsError,
+    isLoading: externalProgramsLoading,
+  } = useQuery({
+    queryKey: ["externalPrograms"],
+    queryFn: () => api.listExternalPrograms(),
+    enabled: open,
+  })
+  // Show enabled programs + the currently selected program (even if disabled) so users can see what's configured
+  const externalPrograms = useMemo(() => {
+    if (!allExternalPrograms) return undefined
+    const selectedId = formState.exprExternalProgramId
+    return allExternalPrograms.filter(p => p.enabled || p.id === selectedId)
+  }, [allExternalPrograms, formState.exprExternalProgramId])
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
@@ -439,6 +495,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let tagEnabled = false
         let categoryEnabled = false
         let moveEnabled = false
+        let externalProgramEnabled = false
         let exprUploadMode: SpeedLimitMode = "no_change"
         let exprUploadValue: number | undefined
         let exprDownloadMode: SpeedLimitMode = "no_change"
@@ -460,6 +517,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprBlockIfCrossSeedInCategories: string[] = []
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
+        let exprExternalProgramId: number | null = null
 
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
@@ -478,60 +536,30 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
             ?? conditions.move?.condition
+            ?? conditions.externalProgram?.condition
             ?? null
 
           if (conditions.speedLimits?.enabled) {
             speedLimitsEnabled = true
-            // Map upload value to mode
-            const uploadKiB = conditions.speedLimits.uploadKiB
-            if (uploadKiB === undefined) {
-              exprUploadMode = "no_change"
-            } else if (uploadKiB === 0) {
-              exprUploadMode = "unlimited"
-            } else {
-              exprUploadMode = "custom"
-              exprUploadValue = uploadKiB
-              // Infer units from existing value - use MiB/s if divisible by 1024
-              setUploadSpeedUnit(uploadKiB % 1024 === 0 ? 1024 : 1)
-            }
-            // Map download value to mode
-            const downloadKiB = conditions.speedLimits.downloadKiB
-            if (downloadKiB === undefined) {
-              exprDownloadMode = "no_change"
-            } else if (downloadKiB === 0) {
-              exprDownloadMode = "unlimited"
-            } else {
-              exprDownloadMode = "custom"
-              exprDownloadValue = downloadKiB
-              // Infer units from existing value - use MiB/s if divisible by 1024
-              setDownloadSpeedUnit(downloadKiB % 1024 === 0 ? 1024 : 1)
-            }
+            const upload = hydrateSpeedLimit(conditions.speedLimits.uploadKiB)
+            exprUploadMode = upload.mode
+            exprUploadValue = upload.value
+            if (upload.mode === "custom") setUploadSpeedUnit(upload.inferredUnit)
+
+            const download = hydrateSpeedLimit(conditions.speedLimits.downloadKiB)
+            exprDownloadMode = download.mode
+            exprDownloadValue = download.value
+            if (download.mode === "custom") setDownloadSpeedUnit(download.inferredUnit)
           }
           if (conditions.shareLimits?.enabled) {
             shareLimitsEnabled = true
-            // Convert stored values to mode/value format
-            const ratio = conditions.shareLimits.ratioLimit
-            if (ratio === undefined) {
-              exprRatioLimitMode = "no_change"
-            } else if (ratio === -2) {
-              exprRatioLimitMode = "global"
-            } else if (ratio === -1) {
-              exprRatioLimitMode = "unlimited"
-            } else {
-              exprRatioLimitMode = "custom"
-              exprRatioLimitValue = ratio
-            }
-            const seedTime = conditions.shareLimits.seedingTimeMinutes
-            if (seedTime === undefined) {
-              exprSeedingTimeMode = "no_change"
-            } else if (seedTime === -2) {
-              exprSeedingTimeMode = "global"
-            } else if (seedTime === -1) {
-              exprSeedingTimeMode = "unlimited"
-            } else {
-              exprSeedingTimeMode = "custom"
-              exprSeedingTimeValue = seedTime
-            }
+            const ratio = hydrateShareLimit(conditions.shareLimits.ratioLimit)
+            exprRatioLimitMode = ratio.mode
+            exprRatioLimitValue = ratio.value
+
+            const seedTime = hydrateShareLimit(conditions.shareLimits.seedingTimeMinutes)
+            exprSeedingTimeMode = seedTime.mode
+            exprSeedingTimeValue = seedTime.value
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true
@@ -559,6 +587,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprMovePath = conditions.move.path ?? ""
             exprMoveBlockIfCrossSeed = conditions.move.blockIfCrossSeed ?? false
           }
+          if (conditions.externalProgram?.enabled) {
+            externalProgramEnabled = true
+            exprExternalProgramId = conditions.externalProgram.programId ?? null
+          }
         }
 
         const newState: FormState = {
@@ -577,6 +609,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           tagEnabled,
           categoryEnabled,
           moveEnabled,
+          externalProgramEnabled,
           exprUploadMode,
           exprUploadValue,
           exprDownloadMode,
@@ -598,6 +631,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprMoveBlockIfCrossSeed,
           exprIncludeCrossSeeds,
           exprBlockIfCrossSeedInCategories,
+          exprExternalProgramId,
         }
         setFormState(newState)
       } else {
@@ -794,6 +828,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.externalProgramEnabled && input.exprExternalProgramId) {
+      conditions.externalProgram = {
+        enabled: true,
+        programId: input.exprExternalProgramId,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
 
     const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
@@ -841,6 +882,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.tagEnabled,
     formState.categoryEnabled,
     formState.moveEnabled,
+    formState.externalProgramEnabled,
   ].filter(Boolean).length
 
   const previewMutation = useMutation({
@@ -1081,6 +1123,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
+    if (submitState.externalProgramEnabled) {
+      if (!submitState.exprExternalProgramId) {
+        toast.error("Select an external program")
+        return
+      }
+    }
     if (submitState.deleteEnabled && !submitState.actionCondition) {
       toast.error("Delete requires at least one condition")
       return
@@ -1271,6 +1319,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             tagEnabled: false,
                             categoryEnabled: false,
                             moveEnabled: false,
+                            externalProgramEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -1289,6 +1338,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
+                        <SelectItem value="externalProgram">Run external program</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1728,6 +1778,74 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <Label htmlFor="include-crossseeds" className="text-sm cursor-pointer whitespace-nowrap">
                                 Include affected cross-seeds
                               </Label>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* External Program */}
+                    {formState.externalProgramEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Run external program</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, externalProgramEnabled: false, exprExternalProgramId: null }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Program</Label>
+                          {externalProgramsLoading ? (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Loading external programs...
+                            </div>
+                          ) : externalProgramsError ? (
+                            <div className="text-sm text-destructive p-2 border border-destructive/50 rounded-md bg-destructive/10">
+                              Failed to load external programs. Please try again.
+                            </div>
+                          ) : externalPrograms && externalPrograms.length > 0 ? (
+                            <Select
+                              value={formState.exprExternalProgramId?.toString() ?? ""}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprExternalProgramId: value ? parseInt(value, 10) : null,
+                              }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a program..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {externalPrograms.map(program => (
+                                  <SelectItem
+                                    key={program.id}
+                                    value={program.id.toString()}
+                                  >
+                                    {program.name}
+                                    {!program.enabled && (
+                                      <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
+                              No external programs configured.{" "}
+                              <a
+                                href={withBasePath("/settings?tab=external-programs")}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                Configure in Settings
+                              </a>
                             </div>
                           )}
                         </div>

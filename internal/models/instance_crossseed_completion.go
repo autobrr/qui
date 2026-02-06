@@ -21,6 +21,7 @@ type InstanceCrossSeedCompletionSettings struct {
 	Tags              []string  `json:"tags"`
 	ExcludeCategories []string  `json:"excludeCategories"`
 	ExcludeTags       []string  `json:"excludeTags"`
+	IndexerIDs        []int     `json:"indexerIds"`
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
@@ -61,13 +62,14 @@ func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSe
 		Tags:              []string{},
 		ExcludeCategories: []string{},
 		ExcludeTags:       []string{},
+		IndexerIDs:        []int{},
 	}
 }
 
 // Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID int) (*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
-		exclude_categories_json, exclude_tags_json, updated_at
+		exclude_categories_json, exclude_tags_json, indexer_ids_json, updated_at
 		FROM instance_crossseed_completion_settings WHERE instance_id = ?`
 
 	row := s.db.QueryRowContext(ctx, query, instanceID)
@@ -84,7 +86,7 @@ func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID i
 // List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceCrossSeedCompletionStore) List(ctx context.Context) ([]*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
-		exclude_categories_json, exclude_tags_json, updated_at
+		exclude_categories_json, exclude_tags_json, indexer_ids_json, updated_at
 		FROM instance_crossseed_completion_settings`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -132,16 +134,21 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 	if err != nil {
 		return nil, err
 	}
+	indexerJSON, err := encodeIntSlice(coerced.IndexerIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	const stmt = `INSERT INTO instance_crossseed_completion_settings (
-		instance_id, enabled, categories_json, tags_json, exclude_categories_json, exclude_tags_json)
-	VALUES (?, ?, ?, ?, ?, ?)
+		instance_id, enabled, categories_json, tags_json, exclude_categories_json, exclude_tags_json, indexer_ids_json)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		categories_json = excluded.categories_json,
 		tags_json = excluded.tags_json,
 		exclude_categories_json = excluded.exclude_categories_json,
-		exclude_tags_json = excluded.exclude_tags_json`
+		exclude_tags_json = excluded.exclude_tags_json,
+		indexer_ids_json = excluded.indexer_ids_json`
 
 	_, err = s.db.ExecContext(ctx, stmt,
 		coerced.InstanceID,
@@ -150,6 +157,7 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 		tagJSON,
 		excludeCatJSON,
 		excludeTagJSON,
+		indexerJSON,
 	)
 	if err != nil {
 		return nil, err
@@ -164,7 +172,27 @@ func sanitizeInstanceCrossSeedCompletionSettings(s *InstanceCrossSeedCompletionS
 	clone.Tags = SanitizeStringSlice(clone.Tags)
 	clone.ExcludeCategories = SanitizeStringSlice(clone.ExcludeCategories)
 	clone.ExcludeTags = SanitizeStringSlice(clone.ExcludeTags)
+	clone.IndexerIDs = sanitizePositiveInts(clone.IndexerIDs)
 	return &clone
+}
+
+func sanitizePositiveInts(values []int) []int {
+	if len(values) == 0 {
+		return []int{}
+	}
+	seen := make(map[int]struct{}, len(values))
+	normalized := make([]int, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
 }
 
 func scanInstanceCrossSeedCompletionSettings(scanner interface {
@@ -177,6 +205,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		tagJSON        sql.NullString
 		excludeCatJSON sql.NullString
 		excludeTagJSON sql.NullString
+		indexerJSON    sql.NullString
 		updatedAt      sql.NullTime
 	)
 
@@ -187,6 +216,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		&tagJSON,
 		&excludeCatJSON,
 		&excludeTagJSON,
+		&indexerJSON,
 		&updatedAt,
 	); err != nil {
 		return nil, err
@@ -208,6 +238,10 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 	if err != nil {
 		return nil, fmt.Errorf("decode exclude tags: %w", err)
 	}
+	indexerIDs, err := decodeIntSliceJSON(indexerJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode indexer ids: %w", err)
+	}
 
 	settings := &InstanceCrossSeedCompletionSettings{
 		InstanceID:        instanceID,
@@ -216,6 +250,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		Tags:              tags,
 		ExcludeCategories: excludeCategories,
 		ExcludeTags:       excludeTags,
+		IndexerIDs:        indexerIDs,
 	}
 
 	if updatedAt.Valid {
@@ -223,4 +258,12 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 	}
 
 	return settings, nil
+}
+
+func decodeIntSliceJSON(src sql.NullString) ([]int, error) {
+	var values []int
+	if err := decodeIntSlice(src, &values); err != nil {
+		return nil, err
+	}
+	return sanitizePositiveInts(values), nil
 }

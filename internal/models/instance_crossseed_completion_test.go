@@ -82,6 +82,7 @@ func TestInstanceCrossSeedCompletionStore_GetReturnsDefaults(t *testing.T) {
 	assert.Empty(t, settings.Tags)
 	assert.Empty(t, settings.ExcludeCategories)
 	assert.Empty(t, settings.ExcludeTags)
+	assert.Empty(t, settings.IndexerIDs)
 }
 
 func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
@@ -99,6 +100,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 		Tags:              []string{"scene", "internal"},
 		ExcludeCategories: []string{"XXX"},
 		ExcludeTags:       []string{"skip"},
+		IndexerIDs:        []int{3, 9},
 	})
 	require.NoError(t, err)
 
@@ -108,6 +110,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 	assert.ElementsMatch(t, []string{"scene", "internal"}, saved.Tags)
 	assert.ElementsMatch(t, []string{"XXX"}, saved.ExcludeCategories)
 	assert.ElementsMatch(t, []string{"skip"}, saved.ExcludeTags)
+	assert.ElementsMatch(t, []int{3, 9}, saved.IndexerIDs)
 
 	// Get persisted settings
 	retrieved, err := store.Get(ctx, instanceID)
@@ -119,6 +122,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 	assert.ElementsMatch(t, saved.Tags, retrieved.Tags)
 	assert.ElementsMatch(t, saved.ExcludeCategories, retrieved.ExcludeCategories)
 	assert.ElementsMatch(t, saved.ExcludeTags, retrieved.ExcludeTags)
+	assert.ElementsMatch(t, saved.IndexerIDs, retrieved.IndexerIDs)
 }
 
 func TestInstanceCrossSeedCompletionStore_UpsertUpdatesExisting(t *testing.T) {
@@ -142,12 +146,14 @@ func TestInstanceCrossSeedCompletionStore_UpsertUpdatesExisting(t *testing.T) {
 		Enabled:    false,
 		Categories: []string{"TV", "Documentaries"},
 		Tags:       []string{"new-tag"},
+		IndexerIDs: []int{7},
 	})
 	require.NoError(t, err)
 
 	assert.False(t, updated.Enabled)
 	assert.ElementsMatch(t, []string{"TV", "Documentaries"}, updated.Categories)
 	assert.ElementsMatch(t, []string{"new-tag"}, updated.Tags)
+	assert.ElementsMatch(t, []int{7}, updated.IndexerIDs)
 }
 
 func TestInstanceCrossSeedCompletionStore_UpsertSanitizesInput(t *testing.T) {
@@ -165,6 +171,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertSanitizesInput(t *testing.T) {
 		Tags:              []string{"tag1", "TAG1", "  tag2  "},
 		ExcludeCategories: []string{"", "   "},
 		ExcludeTags:       []string{},
+		IndexerIDs:        []int{3, 0, -2, 3, 11},
 	})
 	require.NoError(t, err)
 
@@ -173,6 +180,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertSanitizesInput(t *testing.T) {
 	assert.ElementsMatch(t, []string{"tag1", "tag2"}, saved.Tags)
 	assert.Empty(t, saved.ExcludeCategories)
 	assert.Empty(t, saved.ExcludeTags)
+	assert.ElementsMatch(t, []int{3, 11}, saved.IndexerIDs)
 }
 
 func TestInstanceCrossSeedCompletionStore_UpsertRejectsNil(t *testing.T) {
