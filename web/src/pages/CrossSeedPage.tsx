@@ -870,18 +870,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildAutomationPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const automationSource = formInitialized
-      ? automationForm
-      : {
-        enabled: settings.enabled,
-        runIntervalMinutes: settings.runIntervalMinutes,
-        targetInstanceIds: settings.targetInstanceIds,
-        targetIndexerIds: settings.targetIndexerIds,
-        rssSourceCategories: settings.rssSourceCategories ?? [],
-        rssSourceTags: settings.rssSourceTags ?? [],
-        rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
-        rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
-      }
+    const automationSource = formInitialized? automationForm: {
+      enabled: settings.enabled,
+      runIntervalMinutes: settings.runIntervalMinutes,
+      targetInstanceIds: settings.targetInstanceIds,
+      targetIndexerIds: settings.targetIndexerIds,
+      rssSourceCategories: settings.rssSourceCategories ?? [],
+      rssSourceTags: settings.rssSourceTags ?? [],
+      rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
+      rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
+    }
 
     return {
       enabled: automationSource.enabled,
@@ -1076,13 +1074,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const automationStatus: CrossSeedAutomationStatus | undefined = status
   const latestRun: CrossSeedRun | null | undefined = automationStatus?.lastRun
   const automationRunning = automationStatus?.running ?? false
-  const effectiveRunIntervalMinutes = formInitialized
-    ? automationForm.runIntervalMinutes
-    : settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES
+  const effectiveRunIntervalMinutes = formInitialized? automationForm.runIntervalMinutes: settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES
   const enforcedRunIntervalMinutes = Math.max(effectiveRunIntervalMinutes, MIN_RSS_INTERVAL_MINUTES)
-  const automationTargetInstanceCount = formInitialized
-    ? automationForm.targetInstanceIds.length
-    : settings?.targetInstanceIds?.length ?? 0
+  const automationTargetInstanceCount = formInitialized? automationForm.targetInstanceIds.length: settings?.targetInstanceIds?.length ?? 0
   const hasAutomationTargets = automationTargetInstanceCount > 0
 
   const nextManualRunAt = useMemo(() => {
@@ -1437,11 +1431,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Next run</span>
               <span className="font-medium">
-                {automationEnabled
-                  ? automationStatus?.nextRunAt
-                    ? formatDateValue(automationStatus.nextRunAt)
-                    : "—"
-                  : "Disabled"}
+                {automationEnabled? automationStatus?.nextRunAt? formatDateValue(automationStatus.nextRunAt): "—": "Disabled"}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -1477,11 +1467,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Now</span>
               <span className="font-medium">
-                {searchRunning
-                  ? activeSearchRun
-                    ? `${activeSearchRun.processed}/${activeSearchRun.totalTorrents ?? "?"} scanned`
-                    : "Running..."
-                  : "Idle"}
+                {searchRunning? activeSearchRun? `${activeSearchRun.processed}/${activeSearchRun.totalTorrents ?? "?"} scanned`: "Running...": "Idle"}
               </span>
             </div>
           </CardContent>
@@ -1586,11 +1572,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     disabled={!instanceOptions.length}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {instanceOptions.length === 0
-                      ? "No instances available."
-                      : automationForm.targetInstanceIds.length === 0
-                        ? "Pick at least one instance to receive cross-seeds."
-                        : `${automationForm.targetInstanceIds.length} instance${automationForm.targetInstanceIds.length === 1 ? "" : "s"} selected.`}
+                    {instanceOptions.length === 0? "No instances available.": automationForm.targetInstanceIds.length === 0? "Pick at least one instance to receive cross-seeds.": `${automationForm.targetInstanceIds.length} instance${automationForm.targetInstanceIds.length === 1 ? "" : "s"} selected.`}
                   </p>
                   {validationErrors.targetInstanceIds && (
                     <p className="text-sm text-destructive">{validationErrors.targetInstanceIds}</p>
@@ -1610,11 +1592,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     disabled={!indexerOptions.length}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {indexerOptions.length === 0
-                      ? "No Torznab indexers configured."
-                      : automationForm.targetIndexerIds.length === 0
-                        ? "All enabled Torznab indexers are eligible for RSS automation."
-                        : `Only ${automationForm.targetIndexerIds.length} selected indexer${automationForm.targetIndexerIds.length === 1 ? "" : "s"} will be polled.`}
+                    {indexerOptions.length === 0? "No Torznab indexers configured.": automationForm.targetIndexerIds.length === 0? "All enabled Torznab indexers are eligible for RSS automation.": `Only ${automationForm.targetIndexerIds.length} selected indexer${automationForm.targetIndexerIds.length === 1 ? "" : "s"} will be polled.`}
                   </p>
                 </div>
               </div>
@@ -1627,17 +1605,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceCategories}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceCategories: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? rssSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"
-                        : "Select target instances to load categories"
+                      automationForm.targetInstanceIds.length > 0? rssSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories": "Select target instances to load categories"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceCategories.length === 0
-                      ? "All categories will be included."
-                      : `Only ${automationForm.rssSourceCategories.length} selected categor${automationForm.rssSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                    {automationForm.rssSourceCategories.length === 0? "All categories will be included.": `Only ${automationForm.rssSourceCategories.length} selected categor${automationForm.rssSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
                   </p>
                 </div>
 
@@ -1648,17 +1622,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceTags}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceTags: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? rssSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"
-                        : "Select target instances to load tags"
+                      automationForm.targetInstanceIds.length > 0? rssSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags": "Select target instances to load tags"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceTags.length === 0
-                      ? "All tags will be included."
-                      : `Only ${automationForm.rssSourceTags.length} selected tag${automationForm.rssSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                    {automationForm.rssSourceTags.length === 0? "All tags will be included.": `Only ${automationForm.rssSourceTags.length} selected tag${automationForm.rssSourceTags.length === 1 ? "" : "s"} will be matched.`}
                   </p>
                 </div>
               </div>
@@ -1671,17 +1641,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceExcludeCategories}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeCategories: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? "None"
-                        : "Select target instances to load categories"
+                      automationForm.targetInstanceIds.length > 0? "None": "Select target instances to load categories"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceExcludeCategories.length === 0
-                      ? "No categories excluded."
-                      : `${automationForm.rssSourceExcludeCategories.length} categor${automationForm.rssSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                    {automationForm.rssSourceExcludeCategories.length === 0? "No categories excluded.": `${automationForm.rssSourceExcludeCategories.length} categor${automationForm.rssSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
                   </p>
                 </div>
 
@@ -1692,17 +1658,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceExcludeTags}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeTags: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? "None"
-                        : "Select target instances to load tags"
+                      automationForm.targetInstanceIds.length > 0? "None": "Select target instances to load tags"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceExcludeTags.length === 0
-                      ? "No tags excluded."
-                      : `${automationForm.rssSourceExcludeTags.length} tag${automationForm.rssSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                    {automationForm.rssSourceExcludeTags.length === 0? "No tags excluded.": `${automationForm.rssSourceExcludeTags.length} tag${automationForm.rssSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
                   </p>
                 </div>
               </div>
@@ -1870,9 +1832,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceCategories.length === 0
-                      ? "All categories will be included."
-                      : `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                    {globalSettings.webhookSourceCategories.length === 0? "All categories will be included.": `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
                   </p>
                 </div>
 
@@ -1886,9 +1846,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceTags.length === 0
-                      ? "All tags will be included."
-                      : `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                    {globalSettings.webhookSourceTags.length === 0? "All tags will be included.": `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
                   </p>
                 </div>
               </div>
@@ -1904,9 +1862,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceExcludeCategories.length === 0
-                      ? "No categories excluded."
-                      : `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                    {globalSettings.webhookSourceExcludeCategories.length === 0? "No categories excluded.": `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
                   </p>
                 </div>
 
@@ -1920,9 +1876,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceExcludeTags.length === 0
-                      ? "No tags excluded."
-                      : `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                    {globalSettings.webhookSourceExcludeTags.length === 0? "No tags excluded.": `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
                   </p>
                 </div>
               </div>
@@ -2012,20 +1966,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={searchCategories}
                     onChange={values => setSearchCategories(normalizeStringList(values))}
                     placeholder={
-                      searchInstanceId
-                        ? searchCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"
-                        : "Select an instance to load categories"
+                      searchInstanceId? searchCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories": "Select an instance to load categories"
                     }
                     creatable
                     onCreateOption={value => setSearchCategories(prev => normalizeStringList([...prev, value]))}
                     disabled={!searchInstanceId}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {searchInstanceId && searchCategorySelectOptions.length === 0
-                      ? "Categories load after selecting an instance; you can still type a category name."
-                      : searchCategories.length === 0
-                        ? "All categories will be included in the scan."
-                        : `Only ${searchCategories.length} selected categor${searchCategories.length === 1 ? "y" : "ies"} will be scanned.`}
+                    {searchInstanceId && searchCategorySelectOptions.length === 0? "Categories load after selecting an instance; you can still type a category name.": searchCategories.length === 0? "All categories will be included in the scan.": `Only ${searchCategories.length} selected categor${searchCategories.length === 1 ? "y" : "ies"} will be scanned.`}
                   </p>
                 </div>
 
@@ -2036,20 +1984,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={searchTags}
                     onChange={values => setSearchTags(normalizeStringList(values))}
                     placeholder={
-                      searchInstanceId
-                        ? searchTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"
-                        : "Select an instance to load tags"
+                      searchInstanceId? searchTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags": "Select an instance to load tags"
                     }
                     creatable
                     onCreateOption={value => setSearchTags(prev => normalizeStringList([...prev, value]))}
                     disabled={!searchInstanceId}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {searchInstanceId && searchTagSelectOptions.length === 0
-                      ? "Tags load after selecting an instance; you can still type a tag."
-                      : searchTags.length === 0
-                        ? "All tags will be included in the scan."
-                        : `Only ${searchTags.length} selected tag${searchTags.length === 1 ? "" : "s"} will be scanned.`}
+                    {searchInstanceId && searchTagSelectOptions.length === 0? "Tags load after selecting an instance; you can still type a tag.": searchTags.length === 0? "All tags will be included in the scan.": `Only ${searchTags.length} selected tag${searchTags.length === 1 ? "" : "s"} will be scanned.`}
                   </p>
                 </div>
               </div>
@@ -2088,11 +2030,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     disabled={!indexerOptions.length}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {indexerOptions.length === 0
-                      ? "No Torznab indexers configured."
-                      : searchIndexerIds.length === 0
-                        ? "All enabled Torznab indexers will be queried for matches."
-                        : `Only ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
+                    {indexerOptions.length === 0? "No Torznab indexers configured.": searchIndexerIds.length === 0? "All enabled Torznab indexers will be queried for matches.": `Only ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
                   </p>
                 </div>
               </div>
@@ -2161,16 +2099,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
                   <CollapsibleContent>
                     <div className="px-4 pb-3 space-y-2">
-	                      {searchRuns && searchRuns.length > 0 ? (
-	                        <div className="space-y-1">
-	                          {searchRuns.map(run => {
-	                            const successResults = run.results?.filter(r => r.added) ?? []
-	                            const failedResults = run.results?.filter(r => !r.added) ?? []
-	                            const hasResults = (run.results?.length ?? 0) > 0
-	                            return (
-	                              <Collapsible key={run.id}>
-	                                <CollapsibleTrigger asChild disabled={!hasResults}>
-	                                  <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                      {searchRuns && searchRuns.length > 0 ? (
+                        <div className="space-y-1">
+                          {searchRuns.map(run => {
+                            const successResults = run.results?.filter(r => r.added) ?? []
+                            const failedResults = run.results?.filter(r => !r.added) ?? []
+                            const hasResults = (run.results?.length ?? 0) > 0
+                            return (
+                              <Collapsible key={run.id}>
+                                <CollapsibleTrigger asChild disabled={!hasResults}>
+                                  <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
                                     <div className="flex items-center gap-2 min-w-0">
                                       {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
                                       {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
@@ -2190,34 +2128,34 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                     </div>
                                   </div>
                                 </CollapsibleTrigger>
-	                                {hasResults && (
-	                                  <CollapsibleContent>
-	                                    <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-	                                      {successResults.map((result, i) => (
-	                                        <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-	                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
-	                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
-	                                        </div>
-	                                      ))}
-	                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
-	                                        <span className="text-xs text-muted-foreground">No results with details</span>
-	                                      )}
-	                                      {failedResults.length > 0 && (
-	                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-	                                          <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
-	                                          {failedResults.map((result, i) => (
-	                                            <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
-	                                              <div className="flex items-center gap-2">
-	                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
-	                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
-	                                              </div>
-	                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
-	                                            </div>
-	                                          ))}
-	                                        </div>
-	                                      )}
-	                                    </div>
-	                                  </CollapsibleContent>
+                                {hasResults && (
+                                  <CollapsibleContent>
+                                    <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+                                      {successResults.map((result, i) => (
+                                        <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
+                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                        </div>
+                                      ))}
+                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+                                        <span className="text-xs text-muted-foreground">No results with details</span>
+                                      )}
+                                      {failedResults.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                                          <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
+                                          {failedResults.map((result, i) => (
+                                            <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                                              <div className="flex items-center gap-2">
+                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                              </div>
+                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
                                 )}
                               </Collapsible>
                             )
@@ -2304,7 +2242,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.sizeMismatchTolerancePercent}
                     onChange={event => setGlobalSettings(prev => ({
                       ...prev,
-                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0))
+                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
                     }))}
                   />
                   <p className="text-xs text-muted-foreground">
@@ -2350,9 +2288,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       {globalSettings.skipPieceBoundarySafetyCheck ? "Piece boundary safety check currently disabled" : "Piece boundary safety check enabled"}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      {globalSettings.skipPieceBoundarySafetyCheck
-                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead."
-                        : "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
+                      {globalSettings.skipPieceBoundarySafetyCheck? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead.": "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
                     </p>
                   </div>
                   <Switch
@@ -2656,15 +2592,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.runExternalProgramId ? String(globalSettings.runExternalProgramId) : "none"}
                     onValueChange={(value) => setGlobalSettings(prev => ({
                       ...prev,
-                      runExternalProgramId: value === "none" ? null : Number(value)
+                      runExternalProgramId: value === "none" ? null : Number(value),
                     }))}
                     disabled={!enabledExternalPrograms.length}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder={
-                        !enabledExternalPrograms.length
-                          ? "No external programs available"
-                          : "Select external program (optional)"
+                        !enabledExternalPrograms.length? "No external programs available": "Select external program (optional)"
                       } />
                     </SelectTrigger>
                     <SelectContent>

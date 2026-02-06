@@ -70,9 +70,7 @@ function AddTorrentHandler() {
   const handleLaunchQueueEvent = useCallback((event: LaunchQueueEvent) => {
     if (event.kind === "payload") {
       hasReceivedPayload.current = true
-      setDropPayload(event.payload.type === "file"
-        ? { type: "file", files: event.payload.files }
-        : { type: "url", urls: event.payload.urls })
+      setDropPayload(event.payload.type === "file"? { type: "file", files: event.payload.files }: { type: "url", urls: event.payload.urls })
       return
     }
 
@@ -245,7 +243,7 @@ function InstanceSelector({ instances, onSelect, onCancel }: InstanceSelectorPro
             >
               <div className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${instance.connected ? "bg-green-500" : "bg-red-500"
-                  }`} />
+                }`} />
                 <span>{instance.name || `Instance ${instance.id}`}</span>
               </div>
             </Button>

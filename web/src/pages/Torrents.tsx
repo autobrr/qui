@@ -59,9 +59,9 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     instanceName: instance?.name,
     foregroundSpeeds: serverState
       ? {
-          dl: serverState.dl_info_speed ?? 0,
-          up: serverState.up_info_speed ?? 0,
-        }
+        dl: serverState.dl_info_speed ?? 0,
+        up: serverState.up_info_speed ?? 0,
+      }
       : undefined,
   })
 
