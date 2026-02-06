@@ -200,7 +200,7 @@ function formatTagsChangedSummary(details: AutomationActivity["details"], outcom
 
 function formatCategoryChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.categories)
-  const verb = outcome === "dry-run" ? "would move" : "moved"
+  const verb = outcome === "dry-run" ? "would be moved" : "moved"
   return formatCountWithVerb(total, "torrent", verb)
 }
 
@@ -218,7 +218,7 @@ function formatShareLimitsSummary(details: AutomationActivity["details"], outcom
 
 function formatPausedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would pause" : "paused"
+  const verb = outcome === "dry-run" ? "would be paused" : "paused"
   return formatCountWithVerb(count, "torrent", verb)
 }
 
@@ -227,7 +227,7 @@ function formatMovedSummary(details: AutomationActivity["details"], outcome?: Au
   if (outcome === "failed") {
     return formatCountWithVerb(count, "torrent", "failed to move")
   }
-  const verb = outcome === "dry-run" ? "would move" : "moved"
+  const verb = outcome === "dry-run" ? "would be moved" : "moved"
   return formatCountWithVerb(count, "torrent", verb)
 }
 
