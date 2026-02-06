@@ -95,6 +95,7 @@ export interface InstanceCrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
 }
 
 /**
@@ -286,6 +287,12 @@ export interface MoveAction {
   condition?: RuleCondition
 }
 
+export interface ExternalProgramAction {
+  enabled: boolean
+  programId: number
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -296,6 +303,7 @@ export interface ActionConditions {
   tag?: TagAction
   category?: CategoryAction
   move?: MoveAction
+  externalProgram?: ExternalProgramAction
 }
 
 export type FreeSpaceSource =
@@ -313,6 +321,7 @@ export interface Automation {
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   enabled: boolean
+  dryRun: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
@@ -326,6 +335,7 @@ export interface AutomationInput {
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   enabled?: boolean
+  dryRun?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
@@ -344,10 +354,10 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "moved"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "moved" | "external_program"
   ruleId?: number
   ruleName?: string
-  outcome: "success" | "failed"
+  outcome: "success" | "failed" | "dry-run"
   reason?: string
   details?: {
     ratio?: number
@@ -359,6 +369,8 @@ export interface AutomationActivity {
     limitKiB?: number
     count?: number
     type?: string
+    programId?: number
+    programName?: string
     // Tag activity details
     added?: Record<string, number>   // tag -> count of torrents
     removed?: Record<string, number> // tag -> count of torrents
@@ -370,6 +382,28 @@ export interface AutomationActivity {
     paths?: Record<string, number> // path -> count of torrents
   }
   createdAt: string
+}
+
+export interface AutomationActivityRunItem {
+  hash: string
+  name: string
+  trackerDomain?: string
+  tagsAdded?: string[]
+  tagsRemoved?: string[]
+  category?: string
+  movePath?: string
+  size?: number
+  ratio?: number
+  addedOn?: number
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingMinutes?: number
+}
+
+export interface AutomationActivityRun {
+  total: number
+  items: AutomationActivityRunItem[]
 }
 
 export interface AutomationPreviewTorrent {
@@ -758,6 +792,17 @@ export interface ServerState {
   write_cache_overload?: string
   last_external_address_v4?: string
   last_external_address_v6?: string
+}
+
+export interface TransferInfo {
+  connection_status: string
+  dht_nodes: number
+  dl_info_data: number
+  dl_info_speed: number
+  dl_rate_limit: number
+  up_info_data: number
+  up_info_speed: number
+  up_rate_limit: number
 }
 
 export interface TorrentPeer {
@@ -1670,6 +1715,7 @@ export interface CrossSeedApplyResult {
   title: string
   indexer: string
   torrentName?: string
+  infoHash?: string
   success: boolean
   instanceResults?: CrossSeedInstanceResult[]
   error?: string
@@ -1677,6 +1723,13 @@ export interface CrossSeedApplyResult {
 
 export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
+}
+
+export interface CrossSeedBlocklistEntry {
+  instanceId: number
+  infoHash: string
+  note?: string
+  createdAt: string
 }
 
 export interface CrossSeedRunResult {

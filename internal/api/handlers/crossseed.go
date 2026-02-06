@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,8 @@ type CrossSeedHandler struct {
 	completionStore *models.InstanceCrossSeedCompletionStore
 	instanceStore   *models.InstanceStore
 }
+
+var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 
 type automationSettingsRequest struct {
 	Enabled                      bool    `json:"enabled"`
@@ -322,6 +325,12 @@ type searchRunRequest struct {
 	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
 }
 
+type CrossSeedBlocklistRequest struct {
+	InstanceID int    `json:"instanceId"`
+	InfoHash   string `json:"infoHash"`
+	Note       string `json:"note"`
+}
+
 // NewCrossSeedHandler creates a new cross-seed handler
 func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
@@ -331,28 +340,37 @@ func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.Ins
 	}
 }
 
-// Routes registers the cross-seed routes
-func (h *CrossSeedHandler) Routes(r chi.Router) {
+// Routes registers the cross-seed routes with explicit middleware ordering.
+func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler) http.Handler, apiKeyQueryMiddleware func(http.Handler) http.Handler) {
 	// Register instance-scoped route at top level
-	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
+	r.With(authMiddleware).Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
-		r.Post("/apply", h.AutobrrApply)
-		r.Route("/torrents", func(r chi.Router) {
+		r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.AutobrrApply)
+		r.Route("/webhook", func(r chi.Router) {
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.WebhookCheck)
+		})
+
+		r.With(authMiddleware).Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
 			r.Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
-		r.Get("/settings", h.GetAutomationSettings)
-		r.Patch("/settings", h.PatchAutomationSettings)
-		r.Put("/settings", h.UpdateAutomationSettings)
-		r.Get("/status", h.GetAutomationStatus)
-		r.Get("/runs", h.ListAutomationRuns)
-		r.Post("/run", h.TriggerAutomationRun)
-		r.Post("/run/cancel", h.CancelAutomationRun)
-		r.Route("/search", func(r chi.Router) {
+		r.With(authMiddleware).Get("/settings", h.GetAutomationSettings)
+		r.With(authMiddleware).Patch("/settings", h.PatchAutomationSettings)
+		r.With(authMiddleware).Put("/settings", h.UpdateAutomationSettings)
+		r.With(authMiddleware).Get("/status", h.GetAutomationStatus)
+		r.With(authMiddleware).Get("/runs", h.ListAutomationRuns)
+		r.With(authMiddleware).Post("/run", h.TriggerAutomationRun)
+		r.With(authMiddleware).Post("/run/cancel", h.CancelAutomationRun)
+		r.With(authMiddleware).Route("/blocklist", func(r chi.Router) {
+			r.Get("/", h.ListBlocklist)
+			r.Post("/", h.AddBlocklistEntry)
+			r.Delete("/{instanceID}/{infohash}", h.DeleteBlocklistEntry)
+		})
+		r.With(authMiddleware).Route("/search", func(r chi.Router) {
 			r.Get("/settings", h.GetSearchSettings)
 			r.Patch("/settings", h.PatchSearchSettings)
 			r.Get("/status", h.GetSearchRunStatus)
@@ -360,12 +378,9 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
 		})
-		r.Route("/completion", func(r chi.Router) {
+		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
 			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
-		})
-		r.Route("/webhook", func(r chi.Router) {
-			r.Post("/check", h.WebhookCheck)
 		})
 	})
 }
@@ -387,6 +402,14 @@ func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int,
 	}
 
 	return id, h, true
+}
+
+func normalizeInfoHashInput(value string) (string, bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" || !infoHashRegex.MatchString(trimmed) {
+		return "", false
+	}
+	return trimmed, true
 }
 
 // AnalyzeTorrentForSearch godoc
@@ -1057,6 +1080,137 @@ func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ListBlocklist godoc
+// @Summary List cross-seed blocklist entries
+// @Description Returns the per-instance cross-seed blocklist entries.
+// @Tags cross-seed
+// @Produce json
+// @Param instanceId query int false "Instance ID"
+// @Success 200 {array} models.CrossSeedBlocklistEntry
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/blocklist [get]
+func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request) {
+	instanceID := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("instanceId")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+			return
+		}
+		instanceID = parsed
+	}
+
+	entries, err := h.service.ListBlocklist(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list cross-seed blocklist")
+		RespondError(w, http.StatusInternalServerError, "Failed to load blocklist")
+		return
+	}
+	if entries == nil {
+		entries = []*models.CrossSeedBlocklistEntry{}
+	}
+
+	RespondJSON(w, http.StatusOK, entries)
+}
+
+// AddBlocklistEntry godoc
+// @Summary Add cross-seed blocklist entry
+// @Description Adds or updates a blocked infohash for a specific instance.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body CrossSeedBlocklistRequest true "Blocklist entry"
+// @Success 201 {object} models.CrossSeedBlocklistEntry
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/blocklist [post]
+func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Request) {
+	var payload CrossSeedBlocklistRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.InstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+		return
+	}
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), payload.InstanceID)
+		switch {
+		case err == nil:
+		case errors.Is(err, models.ErrInstanceNotFound):
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		default:
+			log.Error().Err(err).Int("instanceID", payload.InstanceID).Msg("Failed to validate instance for cross-seed blocklist")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	infohash, ok := normalizeInfoHashInput(payload.InfoHash)
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "infoHash must be a valid hex infohash")
+		return
+	}
+
+	entry := &models.CrossSeedBlocklistEntry{
+		InstanceID: payload.InstanceID,
+		InfoHash:   infohash,
+		Note:       strings.TrimSpace(payload.Note),
+	}
+
+	created, err := h.service.UpsertBlocklistEntry(r.Context(), entry)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to add cross-seed blocklist entry")
+		RespondError(w, http.StatusInternalServerError, "Failed to add blocklist entry")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, created)
+}
+
+// DeleteBlocklistEntry godoc
+// @Summary Remove cross-seed blocklist entry
+// @Description Removes a blocked infohash for a specific instance.
+// @Tags cross-seed
+// @Success 204
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/blocklist/{instanceID}/{infohash} [delete]
+func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	infohash, ok := normalizeInfoHashInput(chi.URLParam(r, "infohash"))
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "infohash must be a valid hex infohash")
+		return
+	}
+
+	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, infohash); err != nil {
+		if errors.Is(err, crossseed.ErrBlocklistEntryNotFound) {
+			RespondError(w, http.StatusNotFound, "Blocklist entry not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to delete cross-seed blocklist entry")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete blocklist entry")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetSearchSettings godoc
 // @Summary Get seeded torrent search settings
 // @Description Returns the persisted defaults used by Seeded Torrent Search runs.
@@ -1339,6 +1493,7 @@ type instanceCompletionSettingsResponse struct {
 	Tags              []string `json:"tags"`
 	ExcludeCategories []string `json:"excludeCategories"`
 	ExcludeTags       []string `json:"excludeTags"`
+	IndexerIDs        []int    `json:"indexerIds"`
 }
 
 // toInstanceCompletionSettingsResponse converts model to API response.
@@ -1350,6 +1505,7 @@ func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionS
 		Tags:              s.Tags,
 		ExcludeCategories: s.ExcludeCategories,
 		ExcludeTags:       s.ExcludeTags,
+		IndexerIDs:        s.IndexerIDs,
 	}
 }
 
@@ -1360,6 +1516,7 @@ type instanceCompletionSettingsRequest struct {
 	Tags              []string `json:"tags"`
 	ExcludeCategories []string `json:"excludeCategories"`
 	ExcludeTags       []string `json:"excludeTags"`
+	IndexerIDs        []int    `json:"indexerIds"`
 }
 
 // GetInstanceCompletionSettings returns the completion settings for a specific instance.
@@ -1446,6 +1603,7 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		Tags:              req.Tags,
 		ExcludeCategories: req.ExcludeCategories,
 		ExcludeTags:       req.ExcludeTags,
+		IndexerIDs:        req.IndexerIDs,
 	}
 
 	saved, err := h.completionStore.Upsert(r.Context(), settings)

@@ -65,7 +65,7 @@ func (lc *Checker) validateLicense(ctx context.Context) {
 	if !isValid {
 		// Set grace period
 		if lc.graceUntil.IsZero() {
-			lc.graceUntil = time.Now().Add(7 * 24 * time.Hour) // 7 day grace
+			lc.graceUntil = time.Now().Add(offlineGracePeriod)
 			log.Warn().Time("grace_until", lc.graceUntil).Msg("License invalid - grace period started")
 		}
 	} else {
