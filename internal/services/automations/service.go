@@ -60,6 +60,7 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionSpeedLimitsChanged:  "Speed limits updated",
 	models.ActivityActionShareLimitsChanged:  "Share limits updated",
 	models.ActivityActionPaused:              "Paused torrents",
+	models.ActivityActionResumed:             "Resumed torrents",
 	models.ActivityActionMoved:               "Moved torrents",
 }
 
@@ -2037,21 +2038,25 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Record aggregated resume activity
-	if s.activityStore != nil && resumedCount > 0 {
+	if resumedCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionResumed,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		})
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
-		} else if s.activityRuns != nil {
-			items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
+		}
+		summary.recordActivity(activity, resumedCount)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
 			}
 		}
 	}
