@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -391,6 +392,36 @@ func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
 			assert.Contains(t, err.Error(), "no base directory")
 		})
 	}
+}
+
+func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	firstDir := filepath.Join(t.TempDir(), "first")
+	secondDir := filepath.Join(t.TempDir(), "second")
+
+	result, err := findMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, firstDir, result)
+	assert.DirExists(t, firstDir)
+}
+
+func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	invalidFilePath := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(invalidFilePath, []byte("file"), 0o600))
+
+	validDir := filepath.Join(t.TempDir(), "valid")
+
+	result, err := findMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, validDir, result)
+	assert.DirExists(t, validDir)
 }
 
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
