@@ -1283,8 +1283,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil
 	}
 
-	summary := newAutomationSummary()
-
 	// Check FREE_SPACE delete cooldown for this instance
 	// This prevents overly aggressive deletion while qBittorrent updates its disk free space reading
 	s.mu.RLock()
@@ -1874,6 +1872,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		)
 		return nil
 	}
+
+	summary := newAutomationSummary()
 
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
 	defer cancel()
