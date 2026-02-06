@@ -28,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
@@ -469,6 +470,19 @@ func (app *Application) runServer() {
 		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
 	}
 
+	dodoEnv := os.Getenv("DODO_PAYMENTS_ENVIRONMENT")
+	if dodoEnv == "" {
+		dodoEnv = os.Getenv("DODO_ENVIRONMENT")
+	}
+	dodoClient := dodo.NewClient(
+		dodo.WithUserAgent(buildinfo.UserAgent),
+		dodo.WithEnvironment(dodoEnv),
+	)
+	log.Info().
+		Str("environment", dodoEnv).
+		Str("base_url", dodoClient.BaseURL()).
+		Msg("Initialized Dodo Payments client")
+
 	// Initialize database
 	db, err := database.New(cfg.GetDatabasePath())
 	if err != nil {
@@ -504,7 +518,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db)
-	licenseService := license.NewLicenseService(licenseRepo, polarClient, cfg.GetConfigDir())
+	licenseService := license.NewLicenseService(licenseRepo, polarClient, dodoClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
@@ -589,7 +603,22 @@ func (app *Application) runServer() {
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, externalProgramService, instanceCrossSeedCompletionStore, trackerCustomizationStore, notificationService, cfg.Config.CrossSeedRecoverErroredTorrents)
+	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
+	crossSeedService := crossseed.NewService(
+		instanceStore,
+		syncManager,
+		filesManagerService,
+		crossSeedStore,
+		crossSeedBlocklistStore,
+		jackettService,
+		arrService,
+		externalProgramStore,
+		externalProgramService,
+		instanceCrossSeedCompletionStore,
+		trackerCustomizationStore,
+		notificationService,
+		cfg.Config.CrossSeedRecoverErroredTorrents,
+	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService)
 

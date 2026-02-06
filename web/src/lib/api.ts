@@ -26,6 +26,7 @@ import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
+  CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
   CrossSeedRun,
   CrossSeedSearchRun,
@@ -1184,6 +1185,7 @@ class ApiClient {
       title: string
       indexer: string
       torrent_name?: string
+      info_hash?: string
       success: boolean
       instance_results?: RawInstanceResult[]
       error?: string
@@ -1203,6 +1205,7 @@ class ApiClient {
         title: result.title,
         indexer: result.indexer,
         torrentName: result.torrent_name ?? undefined,
+        infoHash: result.info_hash ?? undefined,
         success: result.success,
         instanceResults: (result.instance_results ?? []).map((instance): CrossSeedInstanceResult => ({
           instanceId: instance.instance_id,
@@ -1237,6 +1240,27 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedBlocklist(instanceId?: number): Promise<CrossSeedBlocklistEntry[]> {
+    const search = new URLSearchParams()
+    if (instanceId !== undefined) search.set("instanceId", instanceId.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedBlocklistEntry[]>(`/cross-seed/blocklist${suffix}`)
+  }
+
+  async addCrossSeedBlocklist(payload: { instanceId: number; infoHash: string; note?: string }): Promise<CrossSeedBlocklistEntry> {
+    return this.request<CrossSeedBlocklistEntry>("/cross-seed/blocklist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteCrossSeedBlocklist(instanceId: number, infoHash: string): Promise<void> {
+    await this.request(`/cross-seed/blocklist/${instanceId}/${infoHash}`, {
+      method: "DELETE",
     })
   }
 
@@ -1728,11 +1752,11 @@ class ApiClient {
     licenseKey: string
     productName: string
     status: string
+    provider?: string
     createdAt: string
   }>> {
     return this.request("/license/licenses")
   }
-
 
   async deleteLicense(licenseKey: string): Promise<{ message: string }> {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })

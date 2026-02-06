@@ -25,6 +25,7 @@ const (
 	ActivityActionSpeedLimitsChanged  = "speed_limits_changed" // Batch speed limit operation
 	ActivityActionShareLimitsChanged  = "share_limits_changed" // Batch share limit operation
 	ActivityActionPaused              = "paused"               // Batch pause operation
+	ActivityActionResumed             = "resumed"              // Batch resume operation
 	ActivityActionMoved               = "moved"                // Batch move operation
 )
 
@@ -32,6 +33,7 @@ const (
 const (
 	ActivityOutcomeSuccess = "success"
 	ActivityOutcomeFailed  = "failed"
+	ActivityOutcomeDryRun  = "dry-run"
 )
 
 type AutomationActivity struct {

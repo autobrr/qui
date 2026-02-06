@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from '@tanstack/react-router'
-import { Search } from '@/pages/Search'
+import { createFileRoute } from "@tanstack/react-router"
+import { Search } from "@/pages/Search"
 
-export const Route = createFileRoute('/_authenticated/search')({
+export const Route = createFileRoute("/_authenticated/search")({
   component: Search,
 })

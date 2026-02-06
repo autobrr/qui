@@ -12,6 +12,16 @@ import {
   type DisabledField,
   type DisabledStateValue,
 } from "@/components/query-builder/constants"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -82,16 +92,17 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
   shareLimits: "Share limits",
   pause: "Pause",
   delete: "Delete",
+  resume: "Resume",
   tag: "Tag",
   category: "Category",
   move: "Move",
@@ -132,6 +143,7 @@ type FormState = {
   trackerDomains: string[]
   applyToAllTrackers: boolean
   enabled: boolean
+  dryRun: boolean
   sortOrder?: number
   intervalSeconds: number | null // null = use global default (15m)
   // Shared condition for all actions
@@ -140,6 +152,7 @@ type FormState = {
   speedLimitsEnabled: boolean
   shareLimitsEnabled: boolean
   pauseEnabled: boolean
+  resumeEnabled: boolean
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -183,12 +196,14 @@ const emptyFormState: FormState = {
   trackerDomains: [],
   applyToAllTrackers: false,
   enabled: false,
+  dryRun: false,
   intervalSeconds: null,
   actionCondition: null,
   speedLimitsEnabled: false,
   shareLimitsEnabled: false,
   pauseEnabled: false,
   deleteEnabled: false,
+  resumeEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
   moveEnabled: false,
@@ -224,6 +239,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.shareLimitsEnabled) actions.push("shareLimits")
   if (state.pauseEnabled) actions.push("pause")
   if (state.deleteEnabled) actions.push("delete")
+  if (state.resumeEnabled) actions.push("resume")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
@@ -270,7 +286,6 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
   return { mode: "custom", value: storedValue }
 }
 
-
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
@@ -278,6 +293,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
+  const [showDryRunPrompt, setShowDryRunPrompt] = useState(false)
+  const [dryRunPromptedForNew, setDryRunPromptedForNew] = useState(false)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -291,6 +308,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const tagsInputRef = useRef<HTMLInputElement>(null)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
   const isHydrating = useRef(true)
+  const dryRunPromptKey = rule?.id ? `workflow-dry-run-prompted:${rule.id}` : null
+
+  const hasPromptedDryRun = useCallback(() => {
+    if (!rule?.id) return dryRunPromptedForNew
+    if (typeof window === "undefined" || !dryRunPromptKey) return true
+    return window.localStorage.getItem(dryRunPromptKey) === "1"
+  }, [dryRunPromptKey, dryRunPromptedForNew, rule?.id])
+
+  const markDryRunPrompted = useCallback(() => {
+    if (!rule?.id) {
+      setDryRunPromptedForNew(true)
+      return
+    }
+    if (typeof window !== "undefined" && dryRunPromptKey) {
+      window.localStorage.setItem(dryRunPromptKey, "1")
+    }
+  }, [dryRunPromptKey, rule?.id])
 
   const commitPendingTags = () => {
     if (tagsInputRef.current) {
@@ -490,6 +524,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let speedLimitsEnabled = false
         let shareLimitsEnabled = false
         let pauseEnabled = false
+        let resumeEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
@@ -531,6 +566,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           actionCondition = conditions.speedLimits?.condition
             ?? conditions.shareLimits?.condition
             ?? conditions.pause?.condition
+            ?? conditions.resume?.condition
             ?? conditions.delete?.condition
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
@@ -562,6 +598,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true
+          }
+          if (conditions.resume?.enabled) {
+            resumeEnabled = true
           }
           if (conditions.delete?.enabled) {
             deleteEnabled = true
@@ -598,12 +637,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           trackerDomains: mappedDomains,
           applyToAllTrackers: isAllTrackers,
           enabled: rule.enabled,
+          dryRun: rule.dryRun ?? false,
           sortOrder: rule.sortOrder,
           intervalSeconds: rule.intervalSeconds ?? null,
           actionCondition,
           speedLimitsEnabled,
           shareLimitsEnabled,
           pauseEnabled,
+          resumeEnabled,
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -650,6 +691,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
+
+  useEffect(() => {
+    if (!open) {
+      setShowDryRunPrompt(false)
+      return
+    }
+    if (!rule) {
+      setDryRunPromptedForNew(false)
+    }
+  }, [open, rule])
+
+  useEffect(() => {
+    if (!open || !rule?.id || !rule.enabled) {
+      return
+    }
+    if (typeof window !== "undefined" && dryRunPromptKey) {
+      window.localStorage.setItem(dryRunPromptKey, "1")
+    }
+  }, [dryRunPromptKey, open, rule?.enabled, rule?.id])
 
   // Auto-switch delete mode from keep-files to deleteWithFiles when FREE_SPACE is used
   // This prevents users from creating invalid combinations that the backend would reject
@@ -790,6 +850,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.resumeEnabled) {
+      conditions.resume = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.deleteEnabled) {
       conditions.delete = {
         enabled: true,
@@ -853,6 +919,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       trackerDomains,
       trackerPattern: input.applyToAllTrackers ? "*" : trackerDomains.join(","),
       enabled: input.enabled,
+      dryRun: input.dryRun,
       sortOrder: input.sortOrder,
       intervalSeconds: input.intervalSeconds,
       conditions,
@@ -877,6 +944,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.speedLimitsEnabled,
     formState.shareLimitsEnabled,
     formState.pauseEnabled,
+    formState.resumeEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
@@ -942,6 +1010,48 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     loadMorePreview.mutate()
   }
+
+  const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
+    if (checked && isDeleteRule && !formState.actionCondition) {
+      toast.error("Delete requires at least one condition")
+      return
+    }
+
+    if (checked && (isDeleteRule || isCategoryRule)) {
+      const nextState = {
+        ...formState,
+        enabled: true,
+        dryRun: options?.forceDryRun ? true : formState.dryRun,
+      }
+      if (!validateFreeSpaceSource(nextState)) {
+        return
+      }
+      setEnabledBeforePreview(formState.enabled)
+      setFormState(nextState)
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      // Open dialog immediately with loading state
+      setPreviewResult(null)
+      setIsInitialLoading(true)
+      setShowConfirmDialog(true)
+      previewMutation.mutate({ input: nextState, view: "needed" })
+      return
+    }
+
+    setFormState(prev => ({
+      ...prev,
+      enabled: checked,
+      dryRun: options?.forceDryRun ? true : prev.dryRun,
+    }))
+  }, [formState, isCategoryRule, isDeleteRule, previewMutation, validateFreeSpaceSource])
+
+  const handleEnabledToggle = useCallback((checked: boolean) => {
+    if (checked && !formState.dryRun && !hasPromptedDryRun()) {
+      setShowDryRunPrompt(true)
+      return
+    }
+    applyEnabledChange(checked)
+  }, [applyEnabledChange, formState.dryRun, hasPromptedDryRun])
 
   // Handler for switching preview view - refetches with new view and resets pagination
   const handlePreviewViewChange = async (newView: PreviewView) => {
@@ -1314,6 +1424,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             speedLimitsEnabled: false,
                             shareLimitsEnabled: false,
                             pauseEnabled: false,
+                            resumeEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
@@ -1334,6 +1445,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="speedLimits">Speed limits</SelectItem>
                         <SelectItem value="shareLimits">Share limits</SelectItem>
                         <SelectItem value="pause">Pause</SelectItem>
+                        <SelectItem value="resume">Resume</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
@@ -1633,7 +1745,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                       </div>
                     )}
-
+                    {/* Resume */}
+                    {formState.resumeEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Resume</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, resumeEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {/* Tag */}
                     {formState.tagEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
@@ -2174,32 +2302,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <Switch
                     id="rule-enabled"
                     checked={formState.enabled}
-                    onCheckedChange={(checked) => {
-                      if (checked && isDeleteRule && !formState.actionCondition) {
-                        toast.error("Delete requires at least one condition")
-                        return
-                      }
-                      // When enabling a delete or category rule, show preview first
-                      if (checked && (isDeleteRule || isCategoryRule)) {
-                        const nextState = { ...formState, enabled: true }
-                        if (!validateFreeSpaceSource(nextState)) {
-                          return
-                        }
-                        setEnabledBeforePreview(formState.enabled)
-                        setFormState(nextState)
-                        // Reset preview view to "needed" when starting a new preview
-                        setPreviewView("needed")
-                        // Open dialog immediately with loading state
-                        setPreviewResult(null)
-                        setIsInitialLoading(true)
-                        setShowConfirmDialog(true)
-                        previewMutation.mutate({ input: nextState, view: "needed" })
-                      } else {
-                        setFormState(prev => ({ ...prev, enabled: checked }))
-                      }
-                    }}
+                    onCheckedChange={handleEnabledToggle}
                   />
                   <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="rule-dry-run"
+                    checked={formState.dryRun}
+                    onCheckedChange={(checked) => setFormState(prev => ({ ...prev, dryRun: checked }))}
+                  />
+                  <Label htmlFor="rule-dry-run" className="text-sm font-normal cursor-pointer">Dry run</Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <Label htmlFor="rule-interval" className="text-sm font-normal text-muted-foreground whitespace-nowrap">Run every</Label>
@@ -2344,6 +2457,40 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isExporting={isExporting}
         isInitialLoading={isInitialLoading}
       />
+
+      <AlertDialog open={showDryRunPrompt} onOpenChange={setShowDryRunPrompt}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enable dry run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dry run simulates all actions without changing anything. You can review affected torrents in the activity log.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                markDryRunPrompted()
+                setShowDryRunPrompt(false)
+                applyEnabledChange(true)
+              }}
+            >
+              Enable without dry run
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                markDryRunPrompted()
+                setShowDryRunPrompt(false)
+                applyEnabledChange(true, { forceDryRun: true })
+              }}
+            >
+              Enable with dry run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
