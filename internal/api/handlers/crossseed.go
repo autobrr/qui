@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -1200,7 +1199,7 @@ func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.R
 	}
 
 	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, infohash); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, crossseed.ErrBlocklistEntryNotFound) {
 			RespondError(w, http.StatusNotFound, "Blocklist entry not found")
 			return
 		}

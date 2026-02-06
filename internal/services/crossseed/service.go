@@ -14,6 +14,7 @@ package crossseed
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -800,6 +801,9 @@ var ErrTorrentNotFound = errors.New("cross-seed torrent not found")
 // ErrTorrentNotComplete indicates the torrent is not 100% complete and cannot be used for cross-seeding yet.
 var ErrTorrentNotComplete = errors.New("cross-seed torrent not fully downloaded")
 
+// ErrBlocklistEntryNotFound indicates a requested blocklist entry does not exist.
+var ErrBlocklistEntryNotFound = errors.New("cross-seed blocklist entry not found")
+
 // AutomationRunOptions configures a manual automation run.
 type AutomationRunOptions struct {
 	RequestedBy string
@@ -956,7 +960,13 @@ func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, info
 	if s.blocklistStore == nil {
 		return errors.New("blocklist store unavailable")
 	}
-	return s.blocklistStore.Delete(ctx, instanceID, infoHash)
+	if err := s.blocklistStore.Delete(ctx, instanceID, infoHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBlocklistEntryNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // UpdateAutomationSettings persists automation configuration and wakes the scheduler.
