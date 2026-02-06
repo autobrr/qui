@@ -342,9 +342,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			}
 		})
 
-		// Protected routes
+		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
+		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager)
+
+		// Cross-seed routes (query param auth for select endpoints)
+		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
+
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
+			r.Use(authMiddleware)
 
 			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
 
@@ -354,9 +359,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Put("/auth/change-password", authHandler.ChangePassword)
 
 			r.Route("/license", licenseHandler.Routes)
-
-			// Cross-seed routes
-			crossSeedHandler.Routes(r)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {
@@ -606,7 +608,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	r.Get("/healthz/readiness", healthHandler.HandleReady)
 	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
 
-	r.Mount(baseURL+"api", apiRouter)
+	apiMount := "/api"
+	if baseURL != "/" {
+		apiMount = strings.TrimSuffix(baseURL, "/") + "/api"
+	}
+	r.Mount(apiMount, apiRouter)
 
 	// Initialize web handler (for embedded frontend)
 	// This MUST be registered AFTER API routes to avoid catch-all intercepting /api/* paths

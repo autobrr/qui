@@ -1748,11 +1748,11 @@ class ApiClient {
     licenseKey: string
     productName: string
     status: string
+    provider?: string
     createdAt: string
   }>> {
     return this.request("/license/licenses")
   }
-
 
   async deleteLicense(licenseKey: string): Promise<{ message: string }> {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })

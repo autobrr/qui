@@ -184,46 +184,72 @@ function sumRecordValues(values: Record<string, number> | undefined): number {
   }, 0)
 }
 
-function formatTagsChangedSummary(details: AutomationActivity["details"]): string {
+function formatCountWithVerb(count: number, noun: string, verb: string): string {
+  return `${count} ${noun}${count !== 1 ? "s" : ""} ${verb}`
+}
+
+function formatTagsChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const addedTotal = sumRecordValues(details?.added)
   const removedTotal = sumRecordValues(details?.removed)
   const parts: string[] = []
-  if (addedTotal > 0) parts.push(`+${addedTotal} tagged`)
-  if (removedTotal > 0) parts.push(`-${removedTotal} untagged`)
+  const prefix = outcome === "dry-run" ? "would be " : ""
+  if (addedTotal > 0) parts.push(`+${addedTotal} ${prefix}tagged`)
+  if (removedTotal > 0) parts.push(`-${removedTotal} ${prefix}untagged`)
   return parts.join(", ") || "Tag operation"
 }
 
-function formatCategoryChangedSummary(details: AutomationActivity["details"]): string {
+function formatCategoryChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.categories)
-  return `${total} torrent${total !== 1 ? "s" : ""} moved`
+  const verb = outcome === "dry-run" ? "would be moved" : "moved"
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
-function formatSpeedLimitsSummary(details: AutomationActivity["details"]): string {
+function formatSpeedLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
-  return `${total} torrent${total !== 1 ? "s" : ""} limited`
+  const verb = outcome === "dry-run" ? "would be limited" : "limited"
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
-function formatShareLimitsSummary(details: AutomationActivity["details"]): string {
+function formatShareLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
-  return `${total} torrent${total !== 1 ? "s" : ""} limited`
+  const verb = outcome === "dry-run" ? "would be limited" : "limited"
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
-function formatPausedSummary(details: AutomationActivity["details"]): string {
+function formatPausedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  return `${count} torrent${count !== 1 ? "s" : ""} paused`
+  const verb = outcome === "dry-run" ? "would be paused" : "paused"
+  return formatCountWithVerb(count, "torrent", verb)
 }
 
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
   if (outcome === "failed") {
-    return `${count} torrent${count !== 1 ? "s" : ""} failed to move`
+    return formatCountWithVerb(count, "torrent", "failed to move")
   }
-  return `${count} torrent${count !== 1 ? "s" : ""} moved`
+  const verb = outcome === "dry-run" ? "would be moved" : "moved"
+  return formatCountWithVerb(count, "torrent", verb)
 }
 
-function formatExternalProgramSummary(details: AutomationActivity["details"], failed: boolean): string {
-  const programName = details?.programName ?? "External program"
-  return failed ? `${programName} failed` : `${programName} executed`
+function formatExternalProgramSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const programName = details?.programName
+    ?? (typeof details?.programId === "number" ? `Program ${details.programId}` : "External program")
+  if (outcome === "dry-run") {
+    return `${programName} would run`
+  }
+  return outcome === "failed" ? `${programName} failed` : `${programName} executed`
+}
+
+function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
+  const count = details?.count ?? 0
+  const label = action === "deleted_ratio"
+    ? "ratio limit"
+    : action === "deleted_seeding"
+      ? "seeding limit"
+      : action === "deleted_unregistered"
+        ? "unregistered"
+        : "condition"
+  return `${count} torrent${count !== 1 ? "s" : ""} would be deleted (${label})`
 }
 
 const runSummaryActions = new Set<AutomationActivity["action"]>([
@@ -236,7 +262,9 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
-  return event.hash === "" && event.outcome === "success" && runSummaryActions.has(event.action)
+  if (event.hash !== "") return false
+  return event.outcome === "dry-run"
+    || (event.outcome === "success" && runSummaryActions.has(event.action))
 }
 
 interface WorkflowsOverviewProps {
@@ -690,6 +718,7 @@ export function WorkflowsOverview({
   const outcomeClasses: Record<AutomationActivity["outcome"], string> = {
     success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
+    "dry-run": "bg-sky-500/10 text-sky-500 border-sky-500/20",
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
@@ -779,7 +808,7 @@ export function WorkflowsOverview({
 
             // Filter events
             const allFilteredEvents = events.filter((e) => {
-              if (activityFilter === "success" && e.outcome !== "success") return false
+              if (activityFilter === "success" && e.outcome !== "success" && e.outcome !== "dry-run") return false
               if (activityFilter === "errors" && e.outcome !== "failed") return false
               if (activitySearchTerm) {
                 const nameMatch = e.torrentName?.toLowerCase().includes(activitySearchTerm)
@@ -1093,25 +1122,29 @@ export function WorkflowsOverview({
                                   <div className="flex flex-col gap-2">
                                     <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                                       <div className="min-w-0">
-                                        {event.action === "tags_changed" ? (
+                                        {event.outcome === "dry-run" && event.action.startsWith("deleted_") ? (
                                           <span className="font-medium text-sm block">
-                                            {formatTagsChangedSummary(event.details)}
+                                            {formatDeleteDryRunSummary(event.details, event.action)}
+                                          </span>
+                                        ) : event.action === "tags_changed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatTagsChangedSummary(event.details, event.outcome)}
                                           </span>
                                         ) : event.action === "category_changed" ? (
                                           <span className="font-medium text-sm block">
-                                            {formatCategoryChangedSummary(event.details)}
+                                            {formatCategoryChangedSummary(event.details, event.outcome)}
                                           </span>
                                         ) : event.action === "speed_limits_changed" ? (
                                           <span className="font-medium text-sm block">
-                                            {formatSpeedLimitsSummary(event.details)}
+                                            {formatSpeedLimitsSummary(event.details, event.outcome)}
                                           </span>
                                         ) : event.action === "share_limits_changed" ? (
                                           <span className="font-medium text-sm block">
-                                            {formatShareLimitsSummary(event.details)}
+                                            {formatShareLimitsSummary(event.details, event.outcome)}
                                           </span>
                                         ) : event.action === "paused" ? (
                                           <span className="font-medium text-sm block">
-                                            {formatPausedSummary(event.details)}
+                                            {formatPausedSummary(event.details, event.outcome)}
                                           </span>
                                         ) : event.action === "moved" ? (
                                           <span className="font-medium text-sm block">
@@ -1119,7 +1152,7 @@ export function WorkflowsOverview({
                                           </span>
                                         ) : event.action === "external_program" ? (
                                           <span className="font-medium text-sm block">
-                                            {formatExternalProgramSummary(event.details, event.outcome === "failed")}
+                                            {formatExternalProgramSummary(event.details, event.outcome)}
                                           </span>
                                         ) : (
                                           <TruncatedText className="font-medium text-sm block cursor-default">
@@ -1137,7 +1170,7 @@ export function WorkflowsOverview({
                                         >
                                           {formatAction(event.action)}
                                         </Badge>
-                                        {!runSummaryActions.has(event.action) && (
+                                        {(!runSummaryActions.has(event.action) || event.outcome === "dry-run") && (
                                           <Badge
                                             variant="outline"
                                             className={cn(
@@ -1145,9 +1178,11 @@ export function WorkflowsOverview({
                                               outcomeClasses[event.outcome]
                                             )}
                                           >
-                                            {event.action === "external_program"
-                                              ? (event.outcome === "success" ? "Executed" : "Failed")
-                                              : (event.outcome === "success" ? "Removed" : "Failed")}
+                                            {event.outcome === "dry-run"
+                                              ? "Dry run"
+                                              : event.action === "external_program"
+                                                ? (event.outcome === "success" ? "Executed" : "Failed")
+                                                : (event.outcome === "success" ? "Removed" : "Failed")}
                                           </Badge>
                                         )}
                                       </div>

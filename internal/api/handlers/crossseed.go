@@ -341,33 +341,37 @@ func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.Ins
 	}
 }
 
-// Routes registers the cross-seed routes
-func (h *CrossSeedHandler) Routes(r chi.Router) {
+// Routes registers the cross-seed routes with explicit middleware ordering.
+func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler) http.Handler, apiKeyQueryMiddleware func(http.Handler) http.Handler) {
 	// Register instance-scoped route at top level
-	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
+	r.With(authMiddleware).Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
-		r.Post("/apply", h.AutobrrApply)
-		r.Route("/torrents", func(r chi.Router) {
+		r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.AutobrrApply)
+		r.Route("/webhook", func(r chi.Router) {
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.WebhookCheck)
+		})
+
+		r.With(authMiddleware).Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
 			r.Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
-		r.Get("/settings", h.GetAutomationSettings)
-		r.Patch("/settings", h.PatchAutomationSettings)
-		r.Put("/settings", h.UpdateAutomationSettings)
-		r.Get("/status", h.GetAutomationStatus)
-		r.Get("/runs", h.ListAutomationRuns)
-		r.Post("/run", h.TriggerAutomationRun)
-		r.Post("/run/cancel", h.CancelAutomationRun)
-		r.Route("/blocklist", func(r chi.Router) {
+		r.With(authMiddleware).Get("/settings", h.GetAutomationSettings)
+		r.With(authMiddleware).Patch("/settings", h.PatchAutomationSettings)
+		r.With(authMiddleware).Put("/settings", h.UpdateAutomationSettings)
+		r.With(authMiddleware).Get("/status", h.GetAutomationStatus)
+		r.With(authMiddleware).Get("/runs", h.ListAutomationRuns)
+		r.With(authMiddleware).Post("/run", h.TriggerAutomationRun)
+		r.With(authMiddleware).Post("/run/cancel", h.CancelAutomationRun)
+		r.With(authMiddleware).Route("/blocklist", func(r chi.Router) {
 			r.Get("/", h.ListBlocklist)
 			r.Post("/", h.AddBlocklistEntry)
 			r.Delete("/{instanceID}/{infohash}", h.DeleteBlocklistEntry)
 		})
-		r.Route("/search", func(r chi.Router) {
+		r.With(authMiddleware).Route("/search", func(r chi.Router) {
 			r.Get("/settings", h.GetSearchSettings)
 			r.Patch("/settings", h.PatchSearchSettings)
 			r.Get("/status", h.GetSearchRunStatus)
@@ -375,12 +379,9 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
 		})
-		r.Route("/completion", func(r chi.Router) {
+		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
 			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
-		})
-		r.Route("/webhook", func(r chi.Router) {
-			r.Post("/check", h.WebhookCheck)
 		})
 	})
 }
