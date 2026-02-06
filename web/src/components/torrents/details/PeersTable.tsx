@@ -202,7 +202,7 @@ export const PeersTable = memo(function PeersTable({
 
   const handleCopyIp = (peer: SortedPeer) => {
     if (incognitoMode) return
-    copyTextToClipboard(`${peer.ip}:${peer.port}`)
+    copyTextToClipboard(`${peer.ip}`)
     toast.success("IP address copied to clipboard")
   }
 
