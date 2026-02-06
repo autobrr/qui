@@ -92,16 +92,17 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
   shareLimits: "Share limits",
   pause: "Pause",
   delete: "Delete",
+  resume: "Resume",
   tag: "Tag",
   category: "Category",
   move: "Move",
@@ -151,6 +152,7 @@ type FormState = {
   speedLimitsEnabled: boolean
   shareLimitsEnabled: boolean
   pauseEnabled: boolean
+  resumeEnabled: boolean
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -201,6 +203,7 @@ const emptyFormState: FormState = {
   shareLimitsEnabled: false,
   pauseEnabled: false,
   deleteEnabled: false,
+  resumeEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
   moveEnabled: false,
@@ -236,6 +239,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.shareLimitsEnabled) actions.push("shareLimits")
   if (state.pauseEnabled) actions.push("pause")
   if (state.deleteEnabled) actions.push("delete")
+  if (state.resumeEnabled) actions.push("resume")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
@@ -520,6 +524,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let speedLimitsEnabled = false
         let shareLimitsEnabled = false
         let pauseEnabled = false
+        let resumeEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
@@ -561,6 +566,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           actionCondition = conditions.speedLimits?.condition
             ?? conditions.shareLimits?.condition
             ?? conditions.pause?.condition
+            ?? conditions.resume?.condition
             ?? conditions.delete?.condition
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
@@ -592,6 +598,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true
+          }
+          if (conditions.resume?.enabled) {
+            resumeEnabled = true
           }
           if (conditions.delete?.enabled) {
             deleteEnabled = true
@@ -635,6 +644,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           speedLimitsEnabled,
           shareLimitsEnabled,
           pauseEnabled,
+          resumeEnabled,
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -840,6 +850,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.resumeEnabled) {
+      conditions.resume = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.deleteEnabled) {
       conditions.delete = {
         enabled: true,
@@ -928,6 +944,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.speedLimitsEnabled,
     formState.shareLimitsEnabled,
     formState.pauseEnabled,
+    formState.resumeEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
@@ -1407,6 +1424,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             speedLimitsEnabled: false,
                             shareLimitsEnabled: false,
                             pauseEnabled: false,
+                            resumeEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
@@ -1427,6 +1445,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="speedLimits">Speed limits</SelectItem>
                         <SelectItem value="shareLimits">Share limits</SelectItem>
                         <SelectItem value="pause">Pause</SelectItem>
+                        <SelectItem value="resume">Resume</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
@@ -1726,7 +1745,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                       </div>
                     )}
-
+                    {/* Resume */}
+                    {formState.resumeEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Resume</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, resumeEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {/* Tag */}
                     {formState.tagEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">

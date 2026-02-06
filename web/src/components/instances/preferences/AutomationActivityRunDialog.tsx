@@ -43,6 +43,7 @@ const actionLabels: Record<AutomationActivity["action"], string> = {
   speed_limits_changed: "Speed limits changed",
   share_limits_changed: "Share limits changed",
   paused: "Paused",
+  resumed: "Resumed",
   moved: "Moved",
   external_program: "External program",
 }

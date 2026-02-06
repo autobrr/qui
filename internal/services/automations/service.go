@@ -1319,6 +1319,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	uploadBatches := make(map[int64][]string)
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
+	resumeHashes := make([]string, 0)
 
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
@@ -1580,6 +1581,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			pauseHashes = append(pauseHashes, hash)
 		}
 
+		// Resume
+		if state.shouldResume {
+			resumeHashes = append(resumeHashes, hash)
+		}
+
 		// Tags
 		if len(state.tagActions) > 0 {
 			var toAdd, toRemove []string
@@ -1644,6 +1650,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			downloadBatches,
 			shareBatches,
 			pauseHashes,
+			resumeHashes,
 			tagChanges,
 			categoryBatches,
 			moveBatches,
@@ -1777,6 +1784,42 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
 		} else if s.activityRuns != nil {
 			items := buildRunItemsFromHashes(pausedHashesSuccess, torrentByHash, s.syncManager)
+			if len(items) > 0 {
+				s.activityRuns.Put(activityID, instanceID, items)
+			}
+		}
+	}
+
+	// Execute resume actions for expression-based rules
+	resumedCount := 0
+	resumedHashesSuccess := make([]string, 0)
+	if len(resumeHashes) > 0 {
+		limited := limitHashBatch(resumeHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "resume"); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resume action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resumed torrents")
+				resumedCount += len(batch)
+				resumedHashesSuccess = append(resumedHashesSuccess, batch...)
+			}
+		}
+	}
+
+	// Record aggregated resume activity
+	if s.activityStore != nil && resumedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
+		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionResumed,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		})
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
+		} else if s.activityRuns != nil {
+			items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
 			if len(items) > 0 {
 				s.activityRuns.Put(activityID, instanceID, items)
 			}
@@ -2548,6 +2591,9 @@ func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
 	if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, field) {
 		return true
 	}
+	if ac.Resume != nil && ConditionUsesField(ac.Resume.Condition, field) {
+		return true
+	}
 	if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
 		return true
 	}
@@ -2700,6 +2746,7 @@ func (s *Service) recordDryRunActivities(
 	downloadBatches map[int64][]string,
 	shareBatches map[shareKey][]string,
 	pauseHashes []string,
+	resumeHashes []string,
 	tagChanges map[string]*tagChange,
 	categoryBatches map[string][]string,
 	moveBatches map[string][]string,
@@ -2757,10 +2804,18 @@ func (s *Service) recordDryRunActivities(
 		})
 	}
 
-	// Pause
-	if len(pauseHashes) > 0 {
-		uniqueHashes := dedupeHashes(pauseHashes)
-		createActivity(models.ActivityActionPaused, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+	for _, a := range []struct {
+		action string
+		hashes []string
+	}{
+		{action: models.ActivityActionPaused, hashes: pauseHashes},
+		{action: models.ActivityActionResumed, hashes: resumeHashes},
+	} {
+		if len(a.hashes) == 0 {
+			continue
+		}
+		uniqueHashes := dedupeHashes(a.hashes)
+		createActivity(a.action, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
 			return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 		})
 	}
