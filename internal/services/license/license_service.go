@@ -69,16 +69,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 	case models.LicenseProviderPolar:
 		return s.activateWithPolar(ctx, licenseKey, username, fingerprint, existingLicense)
 	default:
-		license, dodoErr := s.activateWithDodo(ctx, licenseKey, username, fingerprint, existingLicense)
-		if dodoErr == nil {
-			return license, nil
-		}
-
-		if isDodoFallbackError(dodoErr) {
-			return s.activateWithPolar(ctx, licenseKey, username, fingerprint, existingLicense)
-		}
-
-		return nil, dodoErr
+		return s.activateWithDodo(ctx, licenseKey, username, fingerprint, existingLicense)
 	}
 }
 
@@ -106,17 +97,8 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 			return nil, err
 		}
 	default:
-		dodoErr := s.validateExistingDodoLicense(ctx, existingLicense)
-		if dodoErr == nil {
-			return existingLicense, nil
-		}
-
-		if isDodoFallbackError(dodoErr) {
-			if err := s.validateExistingPolarLicense(ctx, existingLicense, fingerprint); err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, dodoErr
+		if err := s.validateExistingDodoLicense(ctx, existingLicense); err != nil {
+			return nil, err
 		}
 	}
 
@@ -293,7 +275,7 @@ func (s *Service) validateExistingDodoLicense(ctx context.Context, license *mode
 	}
 
 	if !validationResp.Valid {
-		return errors.New("license is not active")
+		return ErrLicenseNotActive
 	}
 
 	license.LastValidated = time.Now()
@@ -585,62 +567,32 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			licenseInfo, err := s.dodoClient.Validate(ctx, dodo.ValidateRequest{
 				LicenseKey: license.LicenseKey,
 			})
-			if err == nil {
-				newStatus := models.LicenseStatusActive
-				if !licenseInfo.Valid {
-					newStatus = models.LicenseStatusInvalid
-				}
-				if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
-					log.Error().
-						Err(err).
-						Int("licenseId", license.ID).
-						Msg("Failed to update license status")
-				}
-				instanceID := licenseInfo.InstanceID
-				if instanceID == "" {
-					instanceID = license.DodoInstanceID
-				}
-				if updateErr := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, instanceID); updateErr != nil {
-					log.Error().Err(updateErr).Int("licenseId", license.ID).Msg("Failed to store Dodo provider")
-				}
-				continue
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Failed to validate Dodo license")
+				return err
 			}
 
-			if isDodoFallbackError(err) {
-				if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
-					return err
-				}
-				if err := s.ensurePolarActivation(ctx, license, fingerprint); err != nil {
-					return err
-				}
-
-				validationRequest := polar.ValidateRequest{Key: license.LicenseKey, ActivationID: license.PolarActivationID}
-				validationRequest.SetCondition("fingerprint", fingerprint)
-
-				licenseInfo, err := s.polarClient.Validate(ctx, validationRequest)
-				if err != nil {
-					return err
-				}
-
-				newStatus := models.LicenseStatusActive
-				if !licenseInfo.ValidLicense() {
-					newStatus = models.LicenseStatusInvalid
-				}
-
-				if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
-					log.Error().
-						Err(err).
-						Int("licenseId", license.ID).
-						Msg("Failed to update license status")
-				}
-
-				if updateErr := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderPolar, ""); updateErr != nil {
-					log.Error().Err(updateErr).Int("licenseId", license.ID).Msg("Failed to store Polar provider")
-				}
-				continue
+			newStatus := models.LicenseStatusActive
+			if !licenseInfo.Valid {
+				newStatus = models.LicenseStatusInvalid
 			}
-
-			return err
+			if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
+				log.Error().
+					Err(err).
+					Int("licenseId", license.ID).
+					Msg("Failed to update license status")
+			}
+			instanceID := licenseInfo.InstanceID
+			if instanceID == "" {
+				instanceID = license.DodoInstanceID
+			}
+			if updateErr := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, instanceID); updateErr != nil {
+				log.Error().Err(updateErr).Int("licenseId", license.ID).Msg("Failed to store Dodo provider")
+			}
+			continue
 		}
 	}
 
@@ -841,80 +793,43 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			licenseInfo, err := s.dodoClient.Validate(ctx, dodo.ValidateRequest{
 				LicenseKey: license.LicenseKey,
 			})
-			if err == nil {
-				newStatus := models.LicenseStatusActive
-				if !licenseInfo.Valid {
-					newStatus = models.LicenseStatusInvalid
+			if err != nil {
+				switch {
+				case errors.Is(err, dodo.ErrLicenseNotFound), errors.Is(err, dodo.ErrInvalidLicenseKey), errors.Is(err, dodo.ErrActivationLimitExceeded):
 					allValid = false
-				}
-
-				if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
-					log.Error().
-						Err(err).
-						Int("licenseId", license.ID).
-						Msg("Failed to update license status")
-				}
-
-				instanceID := licenseInfo.InstanceID
-				if instanceID == "" {
-					instanceID = license.DodoInstanceID
-				}
-				if updateErr := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, instanceID); updateErr != nil {
-					log.Error().Err(updateErr).Int("licenseId", license.ID).Msg("Failed to store Dodo provider")
-				}
-				continue
-			}
-
-			if isDodoFallbackError(err) {
-				if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
-					handleTransient(license, err)
-					continue
-				}
-
-				if err := s.ensurePolarActivation(ctx, license, fingerprint); err != nil {
-					handleTransient(license, err)
-					continue
-				}
-
-				validationRequest := polar.ValidateRequest{Key: license.LicenseKey, ActivationID: license.PolarActivationID}
-				validationRequest.SetCondition("fingerprint", fingerprint)
-
-				licenseInfo, err := s.polarClient.Validate(ctx, validationRequest)
-				if err != nil {
-					if isPolarDefinitiveError(err) {
-						allValid = false
-						if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
-							log.Error().
-								Err(updateErr).
-								Int("licenseId", license.ID).
-								Msg("Failed to update license status to invalid")
-						}
-					} else {
-						handleTransient(license, err)
+					if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
+						log.Error().
+							Err(updateErr).
+							Int("licenseId", license.ID).
+							Msg("Failed to update license status to invalid")
 					}
-					continue
-				}
-
-				newStatus := models.LicenseStatusActive
-				if !licenseInfo.ValidLicense() {
-					newStatus = models.LicenseStatusInvalid
-					allValid = false
-				}
-
-				if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
-					log.Error().
-						Err(err).
-						Int("licenseId", license.ID).
-						Msg("Failed to update license status")
-				}
-
-				if updateErr := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderPolar, ""); updateErr != nil {
-					log.Error().Err(updateErr).Int("licenseId", license.ID).Msg("Failed to store Polar provider")
+				default:
+					handleTransient(license, err)
 				}
 				continue
 			}
 
-			handleTransient(license, err)
+			newStatus := models.LicenseStatusActive
+			if !licenseInfo.Valid {
+				newStatus = models.LicenseStatusInvalid
+				allValid = false
+			}
+
+			if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
+				log.Error().
+					Err(err).
+					Int("licenseId", license.ID).
+					Msg("Failed to update license status")
+			}
+
+			instanceID := licenseInfo.InstanceID
+			if instanceID == "" {
+				instanceID = license.DodoInstanceID
+			}
+			if updateErr := s.licenseRepo.UpdateLicenseProvider(ctx, license.ID, models.LicenseProviderDodo, instanceID); updateErr != nil {
+				log.Error().Err(updateErr).Int("licenseId", license.ID).Msg("Failed to store Dodo provider")
+			}
+			continue
 		}
 	}
 
