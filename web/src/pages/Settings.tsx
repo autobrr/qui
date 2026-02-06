@@ -1077,7 +1077,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
           {activeTab === "themes" && (
             <div className="space-y-4">
-              <LicenseManager />
+              <LicenseManager
+                checkoutStatus={search.checkout}
+                checkoutPaymentStatus={search.status}
+                onCheckoutConsumed={() => onSearchChange({ tab: "themes" })}
+              />
               <ThemeSelector />
             </div>
           )}

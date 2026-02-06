@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/license"
 )
 
@@ -66,6 +67,7 @@ type LicenseInfo struct {
 	LicenseKey  string    `json:"licenseKey"`
 	ProductName string    `json:"productName"`
 	Status      string    `json:"status"`
+	Provider    string    `json:"provider,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -157,7 +159,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 
 	username, ok := r.Context().Value(ctxkeys.Username).(string)
 	if !ok || username == "" {
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
 		})
@@ -172,7 +174,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 			Msg("Failed to validate license")
 
-		if errors.Is(err, license.ErrLicenseNotFound) {
+		if errors.Is(err, models.ErrLicenseNotFound) {
 			RespondJSON(w, http.StatusNotFound, ValidateLicenseResponse{
 				Valid: false,
 				Error: err.Error(),
@@ -234,6 +236,7 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 			LicenseKey:  lic.LicenseKey,
 			ProductName: lic.ProductName,
 			Status:      lic.Status,
+			Provider:    lic.Provider,
 			CreatedAt:   lic.CreatedAt,
 		})
 	}
