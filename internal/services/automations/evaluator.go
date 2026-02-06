@@ -621,19 +621,31 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 		return compareString("", cond)
 	}
 
+	// Keep string-field semantics consistent: when regex is enabled, operator is ignored and we
+	// just test the regex against the value.
+	if cond.Regex || cond.Operator == OperatorMatches {
+		for _, c := range candidates {
+			if compareString(c, cond) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// Important: negative operators must apply to the combined candidate set.
 	// Example: NOT_EQUAL "BHD" must be false if any candidate equals "BHD".
 	if cond.Operator == OperatorNotEqual {
 		for _, c := range candidates {
-			if compareStringPositive(c, cond, OperatorEqual) {
+			if strings.EqualFold(c, cond.Value) {
 				return false
 			}
 		}
 		return true
 	}
 	if cond.Operator == OperatorNotContains {
+		condLower := strings.ToLower(cond.Value)
 		for _, c := range candidates {
-			if compareStringPositive(c, cond, OperatorContains) {
+			if strings.Contains(strings.ToLower(c), condLower) {
 				return false
 			}
 		}
@@ -646,32 +658,6 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 		}
 	}
 	return false
-}
-
-func compareStringPositive(value string, cond *RuleCondition, positiveOp ConditionOperator) bool {
-	// Regex matching ignores operator in compareString; treat as "matches" here.
-	if cond.Regex || cond.Operator == OperatorMatches {
-		if cond.Compiled == nil {
-			return false
-		}
-		return cond.Compiled.MatchString(value)
-	}
-
-	if positiveOp == OperatorEqual {
-		return strings.EqualFold(value, cond.Value)
-	}
-	if positiveOp == OperatorContains {
-		return strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
-	}
-	if positiveOp == OperatorStartsWith {
-		return strings.HasPrefix(strings.ToLower(value), strings.ToLower(cond.Value))
-	}
-	if positiveOp == OperatorEndsWith {
-		return strings.HasSuffix(strings.ToLower(value), strings.ToLower(cond.Value))
-	}
-
-	// Fall back to existing behavior for operators that don't need special casing here.
-	return compareString(value, cond)
 }
 
 func extractTrackerDomain(raw string) string {
