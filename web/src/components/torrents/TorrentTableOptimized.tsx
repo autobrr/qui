@@ -722,6 +722,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Column filters with persistence
   const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
 
+  // Remove filters for columns that are no longer visible
+  useEffect(() => {
+    setColumnFilters(prev => {
+      if (prev.length === 0) return prev
+      const filtered = prev.filter(f => columnVisibility[f.columnId] !== false)
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [columnVisibility, setColumnFilters])
+
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
