@@ -1709,6 +1709,7 @@ export interface CrossSeedApplyResult {
   title: string
   indexer: string
   torrentName?: string
+  infoHash?: string
   success: boolean
   instanceResults?: CrossSeedInstanceResult[]
   error?: string
@@ -1716,6 +1717,13 @@ export interface CrossSeedApplyResult {
 
 export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
+}
+
+export interface CrossSeedBlocklistEntry {
+  instanceId: number
+  infoHash: string
+  note?: string
+  createdAt: string
 }
 
 export interface CrossSeedRunResult {

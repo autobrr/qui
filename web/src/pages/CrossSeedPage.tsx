@@ -4,6 +4,7 @@
  */
 
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
+import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -215,8 +216,8 @@ function aggregateInstanceMetadata(
 }
 
 interface CrossSeedPageProps {
-  activeTab: "auto" | "scan" | "dir-scan" | "rules"
-  onTabChange: (tab: "auto" | "scan" | "dir-scan" | "rules") => void
+  activeTab: "auto" | "scan" | "dir-scan" | "rules" | "blocklist"
+  onTabChange: (tab: "auto" | "scan" | "dir-scan" | "rules" | "blocklist") => void
 }
 
 interface RSSRunItemProps {
@@ -1488,11 +1489,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 gap-2 md:w-auto">
-          <TabsTrigger value="auto">Auto</TabsTrigger>
-          <TabsTrigger value="scan">Scan</TabsTrigger>
-          <TabsTrigger value="dir-scan">Dir Scan</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
+        <TabsList className="w-full md:w-auto flex gap-2 overflow-x-auto">
+          <TabsTrigger className="shrink-0" value="auto">Auto</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="scan">Scan</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="dir-scan">Dir Scan</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="rules">Rules</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="blocklist">Blocklist</TabsTrigger>
         </TabsList>
 
         <TabsContent value="auto" className="space-y-6">
@@ -2716,6 +2718,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
         <TabsContent value="dir-scan" className="space-y-6">
           <DirScanTab instances={instances ?? []} />
+        </TabsContent>
+        <TabsContent value="blocklist" className="space-y-6">
+          <BlocklistTab instances={instances ?? []} />
         </TabsContent>
       </Tabs>
 
