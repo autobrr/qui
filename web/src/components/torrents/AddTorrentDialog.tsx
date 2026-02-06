@@ -535,6 +535,17 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
       return api.addTorrent(instanceId, submitData)
     },
+    onError: (error) => {
+      let description = "Please verify the torrent file or URL and try again."
+      if (error instanceof Error && error.message && !error.message.startsWith("HTTP error! status:")) {
+        description = error.message
+      }
+
+      toast.error("Failed to add torrent", {
+        description,
+        duration: 5000,
+      })
+    },
     onSuccess: (response: AddTorrentResponse) => {
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
@@ -624,24 +635,24 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     form.setFieldValue("tempPath", path)
   }, [form])
 
-  const { 
-    suggestions: saveSuggestions, 
-    handleInputChange: handleSaveInputChange, 
-    handleSelect: handleSaveInputSelect, 
-    handleKeyDown: handleSaveKeyDown, 
-    highlightedIndex: saveHighlightedIndex, 
-    showSuggestions: showSaveSuggestions, 
-    inputRef: savePathInputRef 
+  const {
+    suggestions: saveSuggestions,
+    handleInputChange: handleSaveInputChange,
+    handleSelect: handleSaveInputSelect,
+    handleKeyDown: handleSaveKeyDown,
+    highlightedIndex: saveHighlightedIndex,
+    showSuggestions: showSaveSuggestions,
+    inputRef: savePathInputRef
   } = usePathAutocomplete(setSavePath, instanceId);
 
-  const { 
-    suggestions: tempSuggestions, 
-    handleInputChange: handleTempInputChange, 
-    handleSelect: handleTempInputSelect, 
-    handleKeyDown: handleTempKeyDown, 
-    highlightedIndex: tempHighlightedIndex, 
-    showSuggestions: showTempSuggestions, 
-    inputRef: tempPathInputRef 
+  const {
+    suggestions: tempSuggestions,
+    handleInputChange: handleTempInputChange,
+    handleSelect: handleTempInputSelect,
+    handleKeyDown: handleTempKeyDown,
+    highlightedIndex: tempHighlightedIndex,
+    showSuggestions: showTempSuggestions,
+    inputRef: tempPathInputRef
   } = usePathAutocomplete(setTempPath, instanceId);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {

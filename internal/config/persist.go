@@ -85,10 +85,11 @@ func updateLogSettingsInTOML(content, level, path string, maxSize, maxBackups in
 	lines := strings.Split(content, "\n")
 	result := make([]string, 0, len(lines))
 	updated := make(map[string]bool)
+	active := findActiveLogSettings(lines)
 	settings := logSettings{level, path, maxSize, maxBackups}
 
 	for _, line := range lines {
-		result = append(result, processLogLine(line, settings, updated))
+		result = append(result, processLogLine(line, settings, updated, active))
 	}
 
 	// Append any settings that weren't in the file
@@ -101,34 +102,80 @@ func updateLogSettingsInTOML(content, level, path string, maxSize, maxBackups in
 	return strings.Join(result, "\n")
 }
 
+// findActiveLogSettings returns log setting keys that already have active entries.
+func findActiveLogSettings(lines []string) map[string]bool {
+	active := make(map[string]bool)
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		key := canonicalLogKey(extractKey(trimmed))
+		if key == "" {
+			continue
+		}
+		active[key] = true
+	}
+	return active
+}
+
 // processLogLine processes a single TOML line, updating log settings as needed.
-func processLogLine(line string, s logSettings, updated map[string]bool) string {
+func processLogLine(line string, s logSettings, updated map[string]bool, active map[string]bool) string {
 	trimmed := strings.TrimSpace(line)
 
-	// Preserve empty lines and comments as-is
-	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+	// Preserve empty lines as-is
+	if trimmed == "" {
 		return line
 	}
 
-	key := strings.ToLower(extractKey(trimmed))
+	key := canonicalLogKey(extractKey(trimmed))
+	if key == "" {
+		return line
+	}
+
+	if strings.HasPrefix(trimmed, "#") {
+		// Promote only when there is no active key and we have not already updated it.
+		if active[key] || updated[key] {
+			return line
+		}
+	}
+
+	return renderLogSettingLine(key, s, updated)
+}
+
+func renderLogSettingLine(key string, s logSettings, updated map[string]bool) string {
+	updated[key] = true
+
 	switch key {
-	case "loglevel":
-		updated["logLevel"] = true
+	case "logLevel":
 		return fmt.Sprintf("logLevel = %q", s.level)
-	case "logpath":
-		updated["logPath"] = true
+	case "logPath":
 		if s.path == "" {
 			return fmt.Sprintf("#logPath = %q", s.path)
 		}
 		return fmt.Sprintf("logPath = %q", s.path)
-	case "logmaxsize":
-		updated["logMaxSize"] = true
+	case "logMaxSize":
 		return fmt.Sprintf("logMaxSize = %d", s.maxSize)
-	case "logmaxbackups":
-		updated["logMaxBackups"] = true
+	case "logMaxBackups":
 		return fmt.Sprintf("logMaxBackups = %d", s.maxBackups)
 	default:
-		return line
+		return ""
+	}
+}
+
+func canonicalLogKey(key string) string {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "loglevel":
+		return "logLevel"
+	case "logpath":
+		return "logPath"
+	case "logmaxsize":
+		return "logMaxSize"
+	case "logmaxbackups":
+		return "logMaxBackups"
+	default:
+		return ""
 	}
 }
 
