@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -1287,6 +1288,55 @@ func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *te
 	// Verify second activity
 	assert.Equal(t, "def456", mockDB.activities[1].Hash)
 	assert.Equal(t, "Test Torrent 2", mockDB.activities[1].TorrentName)
+}
+
+func TestRecordDryRunActivities_Deletes(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	pending := map[string]pendingDeletion{
+		"abc123": {
+			hash:   "abc123",
+			action: models.ActivityActionDeletedCondition,
+		},
+	}
+
+	torrent := qbt.Torrent{
+		Hash:    "abc123",
+		Name:    "Test Torrent",
+		Tracker: "https://tracker.example.com/announce",
+	}
+
+	s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		pending,
+		nil,
+		map[string]qbt.Torrent{"abc123": torrent},
+		[]qbt.Torrent{torrent},
+		map[string]*torrentDesiredState{},
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Empty(t, mockDB.activities[0].Hash)
+	assert.Equal(t, models.ActivityActionDeletedCondition, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
 // mockQuerier implements dbinterface.Querier for testing activity logging

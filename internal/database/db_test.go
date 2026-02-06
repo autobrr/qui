@@ -254,6 +254,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "tracker_pattern", Type: "TEXT"},
 		{Name: "conditions", Type: "TEXT"},
 		{Name: "enabled", Type: "INTEGER"},
+		{Name: "dry_run", Type: "INTEGER"},
 		{Name: "sort_order", Type: "INTEGER"},
 		{Name: "interval_seconds", Type: "INTEGER"},
 		{Name: "free_space_source", Type: "TEXT"},

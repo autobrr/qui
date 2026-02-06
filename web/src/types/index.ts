@@ -315,6 +315,7 @@ export interface Automation {
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   enabled: boolean
+  dryRun: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
@@ -328,6 +329,7 @@ export interface AutomationInput {
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
   enabled?: boolean
+  dryRun?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
@@ -349,7 +351,7 @@ export interface AutomationActivity {
   action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved" | "external_program"
   ruleId?: number
   ruleName?: string
-  outcome: "success" | "failed"
+  outcome: "success" | "failed" | "dry-run"
   reason?: string
   details?: {
     ratio?: number
@@ -361,6 +363,8 @@ export interface AutomationActivity {
     limitKiB?: number
     count?: number
     type?: string
+    programId?: number
+    programName?: string
     // Tag activity details
     added?: Record<string, number>   // tag -> count of torrents
     removed?: Record<string, number> // tag -> count of torrents
@@ -370,8 +374,6 @@ export interface AutomationActivity {
     limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
     // Move activity details
     paths?: Record<string, number> // path -> count of torrents
-    // External program activity details
-    programName?: string
   }
   createdAt: string
 }
