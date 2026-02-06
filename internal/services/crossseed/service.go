@@ -2354,7 +2354,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		case "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped", "rejected":
+		case "no_match", "skipped", "rejected", "requires_hardlink_reflink":
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
@@ -3186,7 +3186,7 @@ func (s *Service) processCrossSeedCandidate(
 				Str("instanceName", candidate.InstanceName).
 				Str("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
-				Str("matchType", string(matchType)).
+				Str("matchType", matchType).
 				Strs("mismatchedFiles", mismatchedFiles).
 				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
 			return false
@@ -3411,6 +3411,30 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Regular mode: continue with reuse+rename alignment
+
+	// SAFETY: Guard against partial-contains with extra files when converting from folder to rootless.
+	// When the incoming torrent has a top-level folder, the existing torrent is rootless,
+	// and the incoming torrent has extra files (sample, nfo, srr), using contentLayout=NoSubfolder
+	// would cause those extra files to be downloaded into the base directory (e.g., /downloads/)
+	// instead of being contained in a folder (e.g., /downloads/Movie/). This creates a messy
+	// directory structure and can cause collisions across torrents.
+	//
+	// Hardlink/reflink modes are safe because they use contentLayout=Original and preserve
+	// the incoming torrent's layout exactly via hardlink/reflink tree creation.
+	if matchType == "partial-contains" && sourceRoot != "" && candidateRoot == "" && hasExtraFiles {
+		result.Status = "requires_hardlink_reflink"
+		result.Message = "Skipped: partial cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("matchType", matchType).
+			Str("sourceRoot", sourceRoot).
+			Str("candidateRoot", candidateRoot).
+			Bool("hasExtraFiles", hasExtraFiles).
+			Msg("[CROSSSEED] Skipped partial-contains: would use NoSubfolder layout and scatter extra files in base directory. Enable hardlink or reflink mode to allow this match type.")
+		return result
+	}
 
 	if crossCategory != "" {
 		options["category"] = crossCategory
