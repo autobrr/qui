@@ -3,9 +3,9 @@
 
 package ctxkeys
 
-// Key is a typed context key to avoid collisions and appease linters.
-type Key string
+// Key is a typed context key to avoid collisions across packages.
+type Key int
 
 const (
-	Username Key = "username"
+	Username Key = iota
 )
