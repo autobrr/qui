@@ -447,6 +447,13 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		return nil
 	}
 
+	var refreshErr error
+	recordRefreshErr := func(err error) {
+		if err != nil && refreshErr == nil {
+			refreshErr = err
+		}
+	}
+
 	for _, license := range licenses {
 		// Only refresh active licenses. Invalid licenses require an explicit user
 		// action (re-activate) and should not be auto-activated in the background.
@@ -474,7 +481,11 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		switch normalizeProvider(license.Provider) {
 		case models.LicenseProviderDodo:
 			if s.dodoClient == nil {
-				return ErrDodoClientNotConfigured
+				log.Warn().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Dodo client not configured, skipping license refresh")
+				recordRefreshErr(ErrDodoClientNotConfigured)
+				continue
 			}
 			if err := s.ensureDodoActivation(ctx, license, fingerprint); err != nil {
 				log.Error().
@@ -488,6 +499,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 							Int("licenseId", license.ID).
 							Msg("Failed to update license status to invalid")
 					}
+				} else {
+					recordRefreshErr(err)
 				}
 				continue
 			}
@@ -501,7 +514,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 					Err(err).
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("Failed to validate Dodo license")
-				return err
+				recordRefreshErr(err)
+				continue
 			}
 
 			newStatus := models.LicenseStatusActive
@@ -533,6 +547,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 							Int("licenseId", license.ID).
 							Msg("Failed to update license status to invalid")
 					}
+				} else {
+					recordRefreshErr(err)
 				}
 				continue
 			}
@@ -546,7 +562,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 					Err(err).
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg(polar.LicenseFailedMsg)
-				return err
+				recordRefreshErr(err)
+				continue
 			}
 
 			newStatus := models.LicenseStatusActive
@@ -562,7 +579,11 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			}
 		default:
 			if s.dodoClient == nil {
-				return ErrDodoClientNotConfigured
+				log.Warn().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Dodo client not configured, skipping license refresh")
+				recordRefreshErr(ErrDodoClientNotConfigured)
+				continue
 			}
 			licenseInfo, err := s.dodoClient.Validate(ctx, dodo.ValidateRequest{
 				LicenseKey: license.LicenseKey,
@@ -572,7 +593,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 					Err(err).
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("Failed to validate Dodo license")
-				return err
+				recordRefreshErr(err)
+				continue
 			}
 
 			newStatus := models.LicenseStatusActive
@@ -596,7 +618,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return refreshErr
 }
 
 // ValidateLicenses validates all stored licenses against Polar API
@@ -655,6 +677,11 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 
 		switch normalizeProvider(license.Provider) {
 		case models.LicenseProviderDodo:
+			if s.dodoClient == nil {
+				handleTransient(license, ErrDodoClientNotConfigured)
+				continue
+			}
+
 			if err := s.ensureDodoActivation(ctx, license, fingerprint); err != nil {
 				log.Error().
 					Err(err).
