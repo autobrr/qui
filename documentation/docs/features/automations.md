@@ -82,10 +82,12 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 #### Tracker/Status Fields
 | Field | Description |
 |-------|-------------|
-| Tracker | Primary tracker URL |
+| Tracker | Primary tracker (URL, domain, or customization display name) |
 | Private | Boolean - is private tracker |
 | Is Unregistered | Boolean - tracker reports unregistered |
 | Comment | Torrent comment field |
+
+Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
 
 #### Advanced Fields
 | Field | Description |
