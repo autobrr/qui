@@ -44,6 +44,7 @@ func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T)
 
 	sqlDB, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	q := &testDBQuerier{db: sqlDB}
