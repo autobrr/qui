@@ -315,6 +315,14 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
+	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
+	// We intentionally don't enforce "either present" here since indexer titles often omit it.
+	sourceBitDepth := s.stringNormalizer.Normalize(rlsBitDepth(source))
+	candidateBitDepth := s.stringNormalizer.Normalize(rlsBitDepth(candidate))
+	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
+		return false
+	}
+
 	// NOTE: Audio codec and channel checks are intentionally omitted here.
 	// Indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the
 	// actual file is DDP5.1). The downstream file size matching in
@@ -1037,6 +1045,11 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	// Fill in missing HDR info from torrent.
 	if len(enriched.HDR) == 0 && len(torrentRelease.HDR) > 0 {
 		enriched.HDR = torrentRelease.HDR
+	}
+
+	// Fill in missing bit depth from torrent.
+	if rlsBitDepth(&enriched) == "" {
+		rlsSetBitDepth(&enriched, rlsBitDepth(torrentRelease))
 	}
 
 	// Fill in missing season from torrent (for season packs).
