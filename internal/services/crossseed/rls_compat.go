@@ -5,9 +5,28 @@ package crossseed
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/moistari/rls"
 )
+
+var (
+	rlsBitDepthOnce  sync.Once
+	rlsBitDepthIndex []int
+	rlsHasBitDepth   bool
+)
+
+func initRLSBitDepthField() {
+	t := reflect.TypeOf(rls.Release{})
+	f, ok := t.FieldByName("BitDepth")
+	if !ok || f.Type.Kind() != reflect.String {
+		rlsHasBitDepth = false
+		return
+	}
+
+	rlsHasBitDepth = true
+	rlsBitDepthIndex = f.Index
+}
 
 // rlsBitDepth extracts Release.BitDepth when available.
 //
@@ -16,6 +35,11 @@ import (
 // (and qui bumps the dependency), this can be replaced with a direct field read.
 func rlsBitDepth(r *rls.Release) string {
 	if r == nil {
+		return ""
+	}
+
+	rlsBitDepthOnce.Do(initRLSBitDepthField)
+	if !rlsHasBitDepth {
 		return ""
 	}
 
@@ -28,7 +52,7 @@ func rlsBitDepth(r *rls.Release) string {
 		return ""
 	}
 
-	f := v.FieldByName("BitDepth")
+	f := v.FieldByIndex(rlsBitDepthIndex)
 	if !f.IsValid() || f.Kind() != reflect.String {
 		return ""
 	}
@@ -41,6 +65,11 @@ func rlsSetBitDepth(r *rls.Release, bitDepth string) {
 		return
 	}
 
+	rlsBitDepthOnce.Do(initRLSBitDepthField)
+	if !rlsHasBitDepth {
+		return
+	}
+
 	v := reflect.ValueOf(r)
 	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return
@@ -50,7 +79,7 @@ func rlsSetBitDepth(r *rls.Release, bitDepth string) {
 		return
 	}
 
-	f := v.FieldByName("BitDepth")
+	f := v.FieldByIndex(rlsBitDepthIndex)
 	if !f.IsValid() || f.Kind() != reflect.String || !f.CanSet() {
 		return
 	}
