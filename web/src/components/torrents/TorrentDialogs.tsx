@@ -629,7 +629,7 @@ export const SetLocationDialog = memo(function SetLocationDialog({
     if (supportsPathAutocomplete) {
       handleAutocompleteKeyDown(e)
     }
-    if (e.key === "Enter" && !isPending && location.trim()) {
+    if (e.key === "Enter" && !e.defaultPrevented && !isPending && location.trim()) {
       e.preventDefault()
       handleConfirm()
     }
