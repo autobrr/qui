@@ -2534,53 +2534,53 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Auto-resume (when disabled, torrents remain paused for manual review)</p>
+                  <p className="text-xs font-medium text-muted-foreground">Auto-resume after injection (when off, torrents stay paused for review)</p>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-rss" className="font-medium">Skip for RSS</Label>
-                        <p className="text-xs text-muted-foreground">Keep RSS automation torrents paused</p>
+                        <Label htmlFor="auto-resume-rss" className="font-medium">RSS</Label>
+                        <p className="text-xs text-muted-foreground">Resume RSS automation torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-rss"
-                        checked={globalSettings.skipAutoResumeRss}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !!value }))}
+                        id="auto-resume-rss"
+                        checked={!globalSettings.skipAutoResumeRss}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-seeded" className="font-medium">Skip for Seeded Search</Label>
-                        <p className="text-xs text-muted-foreground">Keep seeded search & interactive dialog torrents paused</p>
+                        <Label htmlFor="auto-resume-seeded-search" className="font-medium">Seeded Search</Label>
+                        <p className="text-xs text-muted-foreground">Resume seeded search and dialog-injected torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-seeded"
-                        checked={globalSettings.skipAutoResumeSeededSearch}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !!value }))}
+                        id="auto-resume-seeded-search"
+                        checked={!globalSettings.skipAutoResumeSeededSearch}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-completion" className="font-medium">Skip for Completion</Label>
-                        <p className="text-xs text-muted-foreground">Keep completion-triggered torrents paused</p>
+                        <Label htmlFor="auto-resume-completion" className="font-medium">Completion</Label>
+                        <p className="text-xs text-muted-foreground">Resume completion-triggered torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-completion"
-                        checked={globalSettings.skipAutoResumeCompletion}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !!value }))}
+                        id="auto-resume-completion"
+                        checked={!globalSettings.skipAutoResumeCompletion}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-webhook" className="font-medium">Skip for Webhook</Label>
-                        <p className="text-xs text-muted-foreground">Keep /apply webhook torrents paused</p>
+                        <Label htmlFor="auto-resume-webhook" className="font-medium">Webhook</Label>
+                        <p className="text-xs text-muted-foreground">Resume /apply webhook torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-webhook"
-                        checked={globalSettings.skipAutoResumeWebhook}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !!value }))}
+                        id="auto-resume-webhook"
+                        checked={!globalSettings.skipAutoResumeWebhook}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !value }))}
                       />
                     </div>
                   </div>
