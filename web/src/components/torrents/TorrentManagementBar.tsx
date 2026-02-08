@@ -727,6 +727,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetLocationWrapper}
         isPending={isPending}
         initialLocation={getCommonSavePath(selectedTorrents)}
+        instanceId={safeInstanceId}
+        capabilities={capabilities}
       />
 
       <ShareLimitDialog
