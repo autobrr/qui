@@ -317,8 +317,8 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
 	// We intentionally don't enforce "either present" here since indexer titles often omit it.
-	sourceBitDepth := s.stringNormalizer.Normalize(rlsBitDepth(source))
-	candidateBitDepth := s.stringNormalizer.Normalize(rlsBitDepth(candidate))
+	sourceBitDepth := s.stringNormalizer.Normalize(source.BitDepth)
+	candidateBitDepth := s.stringNormalizer.Normalize(candidate.BitDepth)
 	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
 		return false
 	}
@@ -1048,8 +1048,8 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	}
 
 	// Fill in missing bit depth from torrent.
-	if rlsBitDepth(&enriched) == "" {
-		rlsSetBitDepth(&enriched, rlsBitDepth(torrentRelease))
+	if enriched.BitDepth == "" && torrentRelease.BitDepth != "" {
+		enriched.BitDepth = torrentRelease.BitDepth
 	}
 
 	// Fill in missing season from torrent (for season packs).
