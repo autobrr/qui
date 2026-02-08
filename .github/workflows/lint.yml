@@ -35,7 +35,7 @@ jobs:
         run: |
           webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
           if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
-    
+
   backend:
     runs-on: ubuntu-latest
 
@@ -53,4 +53,5 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.6
+          verify: false
           only-new-issues: true
