@@ -193,9 +193,9 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       form.setFieldValue("temp_path_enabled", preferences.temp_path_enabled)
       form.setFieldValue("temp_path", preferences.temp_path)
       form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
-      form.setFieldValue("autorun_on_torrent_added_enabled", preferences.autorun_on_torrent_added_enabled)
+      form.setFieldValue("autorun_on_torrent_added_enabled", preferences.autorun_on_torrent_added_enabled ?? false)
       form.setFieldValue("autorun_on_torrent_added_program", preferences.autorun_on_torrent_added_program ?? "")
-      form.setFieldValue("autorun_enabled", preferences.autorun_enabled)
+      form.setFieldValue("autorun_enabled", preferences.autorun_enabled ?? false)
       form.setFieldValue("autorun_program", preferences.autorun_program ?? "")
     }
   }, [preferences, form, supportsSubcategories])
