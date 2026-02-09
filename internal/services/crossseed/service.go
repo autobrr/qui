@@ -5205,11 +5205,25 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 }
 
 // resolveTorznabIndexerIDs expands "all enabled" selections (empty slice) into an explicit list,
-// then excludes OPS/RED Torznab indexers to ensure Gazelle-only behaviour for those trackers.
+// then excludes OPS/RED Torznab indexers only when Gazelle is configured (to avoid removing
+// the only usable search path when Gazelle keys are missing).
 func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int) ([]int, error) {
 	requested = uniquePositiveInts(requested)
+
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
+	hasGazelle := settings.GazelleEnabled && (strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
+
 	if len(requested) > 0 {
-		return s.filterOutGazelleTorznabIndexers(ctx, requested), nil
+		if hasGazelle {
+			return s.filterOutGazelleTorznabIndexers(ctx, requested), nil
+		}
+		return requested, nil
 	}
 	if s.jackettService == nil {
 		return []int{}, nil
@@ -5223,7 +5237,10 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int)
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
-	return s.filterOutGazelleTorznabIndexers(ctx, ids), nil
+	if hasGazelle {
+		return s.filterOutGazelleTorznabIndexers(ctx, ids), nil
+	}
+	return ids, nil
 }
 
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
