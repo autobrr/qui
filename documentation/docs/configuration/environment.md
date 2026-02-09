@@ -44,7 +44,7 @@ QUI__DATA_DIR=...        # Optional: custom data directory (default: next to con
 ## Cross-Seed
 
 ```bash
-QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=false  # Optional: attempt recovery for errored/missingFiles torrents (default: false)
+QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=false  # Optional: recover errored/missingFiles torrents; can add ~25+ minutes per torrent (default: false)
 ```
 
 ## Tracker Icons
