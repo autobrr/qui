@@ -145,8 +145,21 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
-// Session storage key used to guard against recovery loops when backend is truly down.
+// Session storage keys for SSO recovery loop prevention.
 const SSO_RECOVERY_GUARD_KEY = "qui_sso_recovery_attempted"
+const SSO_RECOVERY_TS_KEY = "qui_sso_recovery_ts"
+const SSO_RECOVERY_COOLDOWN_MS = 10_000 // 10 seconds between recovery attempts
+
+// On module init, clear the guard if enough time has passed since the last
+// recovery attempt. This lets a fresh page load (after SSO re-authentication)
+// try recovery again, while preventing rapid navigation loops.
+if (typeof sessionStorage !== "undefined") {
+  const lastAttempt = parseInt(sessionStorage.getItem(SSO_RECOVERY_TS_KEY) || "0", 10)
+  if (Date.now() - lastAttempt > SSO_RECOVERY_COOLDOWN_MS) {
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
+  }
+}
 
 /**
  * Detect network errors that indicate an SSO redirect was blocked by CORS.
@@ -278,39 +291,51 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
 
 /**
  * Attempt a single hard navigation to let the browser follow the SSO redirect
- * at the top level. Uses sessionStorage to prevent infinite reload loops.
- * Skips reload when offline or in background tabs to avoid pointless refreshes.
+ * at the top level. Uses sessionStorage to prevent infinite navigation loops.
+ * Skips navigation when offline or in background tabs to avoid pointless refreshes.
+ * Returns true if navigation was triggered, false if blocked.
  */
-function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): void {
+async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
   if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
-    return
+    return false
   }
-  // Don't reload if we're offline - it's not an SSO issue
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return
+    return false
   }
-  // Don't reload from background tabs - wait for user to return
   if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-    return
+    return false
   }
   if (!options?.bypassGuard && sessionStorage.getItem(SSO_RECOVERY_GUARD_KEY)) {
-    // Already tried once this session; don't loop.
-    return
+    return false
   }
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
-  const target = options?.target ?? withBasePath("/")
-  const targetUrl = new URL(target, window.location.origin)
-  if (window.location.href === targetUrl.href) {
-    window.location.reload()
-    return
+  sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
+
+  // Clear all caches (including the service worker's precache) so the next
+  // navigation goes to the network. The SW stays registered but will fall back
+  // to the network on cache miss, letting the SSO proxy intercept the request.
+  // Unregistering the SW entirely can break the SSO proxy's auth flow.
+  if ("caches" in window) {
+    try {
+      const names = await caches.keys()
+      await Promise.all(names.map(name => caches.delete(name)))
+    } catch {
+      // ignore cache clear errors
+    }
   }
-  window.location.assign(targetUrl.href)
+
+  sessionStorage.setItem("qui_sso_recovered", "1")
+
+  const target = options?.target ?? withBasePath("/")
+  window.location.assign(new URL(target, window.location.origin).href)
+  return true
 }
 
 /** Clear the SSO recovery guard after a successful request. */
 function clearSSORecoveryGuard(): void {
   if (typeof sessionStorage !== "undefined") {
     sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
   }
 }
 
@@ -319,6 +344,8 @@ function clearSSORecoveryGuard(): void {
  * an expired SSO session by triggering a top-level navigation.
  */
 async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
+  const isLoginRequest = url.includes("/api/auth/login")
+
   let response: Response
   try {
     response = await fetch(url, {
@@ -332,8 +359,9 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   } catch (error) {
     // Only attempt SSO recovery for API endpoints (not other fetches)
     if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
-      const isLoginRequest = url.includes("/api/auth/login")
-      attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })
+      if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+        return new Promise<Response>(() => {})
+      }
     }
     throw error
   }
@@ -341,8 +369,14 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   // If we got an HTML response on an API endpoint, it's likely an SSO login page.
   // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
   if (await isLikelySSOHTMLResponse(response)) {
-    attemptSSORecoveryNavigation()
-    throw new Error("Received HTML instead of JSON - SSO session may have expired")
+    if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+      return new Promise<Response>(() => {})
+    }
+    throw new Error(
+      "Received an HTML response instead of JSON from the API. " +
+      "If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), " +
+      "try refreshing the page or re-opening the URL in a new tab."
+    )
   }
 
   clearSSORecoveryGuard()
