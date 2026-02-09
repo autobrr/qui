@@ -285,3 +285,86 @@ Click a run to see details including failure reasons for individual items.
 - Consider reducing scan frequency or limiting to fewer indexers.
 
 For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](troubleshooting).
+
+---
+sidebar_position: 5
+title: Network & Remote Filesystems
+description: Limitations and risks when using SSHFS, NFS, or other remote/FUSE mounts with Dir Scan.
+---
+
+# Network & Remote Filesystems
+
+Dir Scan is designed to work with local filesystems. Using network-mounted or FUSE-based filesystems like SSHFS, NFS, CIFS/SMB, or mergerfs introduces several issues that range from degraded performance to broken functionality.
+
+:::danger Not recommended
+Mounting a remote server via SSHFS (or similar FUSE mount) and pointing Dir Scan at it is **not a supported configuration**. While it may appear to work for small libraries, it is unreliable and will break important features.
+:::
+
+## What breaks and why
+
+### Inode-based already-seeding detection fails
+
+Dir Scan tracks files using a FileID composed of the filesystem device ID and inode number (the `dev` + `ino` pair from `stat(2)` on Unix). This is how it detects files already being seeded by qBittorrent and avoids redundant searches.
+
+SSHFS and other FUSE mounts present **synthetic inodes** that don't match the real inodes on the remote server. If qBittorrent is running on the remote machine and sees the real device/inode values, while qui sees the FUSE-translated values, the FileID index will never match. This causes:
+
+- Already-seeding files being re-searched every scan
+- Duplicate torrent additions that qBittorrent rejects or double-seeds
+- The `SkippedFiles` counter staying at zero even for fully-seeded content
+
+### Hardlink mode is impossible
+
+Hardlinks cannot cross filesystem boundaries. An SSHFS mount is a separate filesystem from your local disk, so the `SameFilesystem` check will always fail. If hardlink mode is enabled on the target instance, every injection attempt will fail with `"hardlinks cannot cross filesystems"` unless **Fallback to regular mode** is enabled.
+
+Reflink mode has the same limitation — FUSE mounts do not support copy-on-write cloning.
+
+### Scan performance is drastically slower
+
+Dir Scan calls `os.ReadDir`, `filepath.WalkDir`, `os.Stat`, and `d.Info()` for every file it encounters. Each of these becomes a network round-trip over SSHFS. For a library with thousands of files, this turns a scan that completes in seconds locally into one that takes minutes or hours.
+
+The FileID index build phase (`buildFileIDIndex`) also calls `os.Stat` on every file in every completed qBittorrent torrent. Over a network mount, this can generate thousands of additional round-trips before the actual scan even begins.
+
+### File modification time inconsistencies
+
+Dir Scan uses file size and modification time (`ModTime`) to detect whether a file has changed between scan runs. SSHFS may report different modification time precision or timezone handling than the underlying filesystem, causing qui to see files as "changed" on every scan and re-process them instead of skipping already-finalized entries.
+
+## What about NFS or SMB/CIFS?
+
+NFS and SMB mounts share some of the same problems but behave slightly differently:
+
+| Filesystem | Inode fidelity | Hardlinks | Performance | Overall |
+|------------|---------------|-----------|-------------|--------|
+| Local (ext4, XFS, BTRFS) | Real | Supported | Fast | Recommended |
+| NFS | Usually preserved | Cross-mount | Moderate latency | Partial |
+| SMB/CIFS | Synthetic | Cross-mount | Moderate latency | Not recommended |
+| SSHFS | Synthetic | Cross-mount | High latency | Not recommended |
+| mergerfs | Pass-through | Same pool only | Near-local | Depends on setup |
+
+NFS *can* preserve real inode numbers from the server (NFSv3/v4 typically do), so already-seeding detection may work if both qui and qBittorrent access the same NFS export. However, hardlinks still cannot span from a local filesystem to an NFS mount.
+
+## Recommended alternatives
+
+### Run qui on the same machine as qBittorrent
+
+The simplest solution. If your media lives on a remote server, install qui on that server alongside qBittorrent. Both processes see the same local filesystem with real inodes, hardlinks work natively, and there's zero network overhead for file operations.
+
+### Use shared Docker volumes
+
+If qui and qBittorrent run in separate containers on the same host, mount the same host path into both containers:
+
+```yaml title="docker-compose.yml"
+services:
+  qui:
+    volumes:
+      - /mnt/storage:/mnt/storage
+
+  qbittorrent:
+    volumes:
+      - /mnt/storage:/mnt/storage
+```
+
+See [Docker and Path Mapping](dir-scan#docker-and-path-mapping) for details on path prefix configuration when mount points differ.
+
+### Use NFS if you must use a remote filesystem
+
+If qui and qBittorrent are on different machines but both NFS-mount the same server export, inode numbers are typically preserved and already-seeding detection should work. Use **regular mode** (not hardlink/reflink) since cross-mount links are not possible. Expect slower scan performance compared to local storage.
