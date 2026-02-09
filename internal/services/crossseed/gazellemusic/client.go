@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -29,6 +30,10 @@ var sharedTransport = func() *http.Transport {
 	t.ForceAttemptHTTP2 = true
 	return t
 }()
+
+// sharedLimiters ensures we don't create one rate limiter per qBittorrent instance/client.
+// Rate limits are per tracker host and must be shared across the whole qui process.
+var sharedLimiters sync.Map // map[string]*rate.Limiter
 
 type TrackerSpec struct {
 	Host       string
@@ -135,6 +140,26 @@ type Client struct {
 	spec       TrackerSpec
 }
 
+func sharedLimiterForTracker(spec TrackerSpec) (*rate.Limiter, error) {
+	if spec.Host == "" || spec.RateLimit <= 0 || spec.RatePeriod <= 0 {
+		return nil, fmt.Errorf("invalid tracker rate limits: host=%q limit=%d period=%d", spec.Host, spec.RateLimit, spec.RatePeriod)
+	}
+
+	hostKey := strings.ToLower(strings.TrimSpace(spec.Host))
+	if hostKey == "" {
+		return nil, fmt.Errorf("invalid tracker host: %q", spec.Host)
+	}
+
+	if v, ok := sharedLimiters.Load(hostKey); ok {
+		return v.(*rate.Limiter), nil
+	}
+
+	interval := time.Duration(spec.RatePeriod) * time.Second / time.Duration(spec.RateLimit)
+	lim := rate.NewLimiter(rate.Every(interval), 1)
+	actual, _ := sharedLimiters.LoadOrStore(hostKey, lim)
+	return actual.(*rate.Limiter), nil
+}
+
 func NewClient(serverURL, apiKey string) (*Client, error) {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
@@ -145,7 +170,10 @@ func NewClient(serverURL, apiKey string) (*Client, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported gazelle host: %s", host)
 	}
-	limiter := rate.NewLimiter(rate.Every(time.Duration(spec.RatePeriod)*time.Second/time.Duration(spec.RateLimit)), 1)
+	limiter, err := sharedLimiterForTracker(spec)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Client{
 		baseURL: serverURL,
