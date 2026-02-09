@@ -62,6 +62,8 @@ type Client struct {
 	backend    models.TorznabBackend
 	baseURL    string
 	apiKey     string
+	basicUser  string
+	basicPass  string
 	jackett    *gojackett.Client
 	prowlarr   *prowlarr.Client
 	httpClient *http.Client
@@ -69,7 +71,7 @@ type Client struct {
 }
 
 // NewClient creates a new Torznab client for the desired backend
-func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSeconds int) *Client {
+func NewClient(baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, timeoutSeconds int) *Client {
 	if backend == "" {
 		backend = models.TorznabBackendJackett
 	}
@@ -78,10 +80,12 @@ func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSec
 	}
 
 	c := &Client{
-		backend: backend,
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		timeout: time.Duration(timeoutSeconds) * time.Second,
+		backend:   backend,
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		apiKey:    apiKey,
+		basicUser: strings.TrimSpace(stringOrEmpty(basicUsername)),
+		basicPass: strings.TrimSpace(stringOrEmpty(basicPassword)),
+		timeout:   time.Duration(timeoutSeconds) * time.Second,
 	}
 
 	switch backend {
@@ -91,6 +95,8 @@ func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSec
 		c.prowlarr = prowlarr.NewClient(prowlarr.Config{
 			Host:       baseURL,
 			APIKey:     apiKey,
+			BasicUser:  c.basicUser,
+			BasicPass:  c.basicPass,
 			Timeout:    timeoutSeconds,
 			HTTPClient: httpClient,
 			UserAgent:  buildinfo.UserAgent,
@@ -100,14 +106,18 @@ func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSec
 		c.jackett = gojackett.NewClient(gojackett.Config{
 			Host:       baseURL,
 			APIKey:     apiKey,
+			BasicUser:  c.basicUser,
+			BasicPass:  c.basicPass,
 			Timeout:    timeoutSeconds,
 			DirectMode: true,
 		})
 	default: // jackett + fallback
 		c.jackett = gojackett.NewClient(gojackett.Config{
-			Host:    baseURL,
-			APIKey:  apiKey,
-			Timeout: timeoutSeconds,
+			Host:      baseURL,
+			APIKey:    apiKey,
+			BasicUser: c.basicUser,
+			BasicPass: c.basicPass,
+			Timeout:   timeoutSeconds,
 		})
 	}
 
@@ -254,6 +264,9 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*t
 	if err != nil {
 		return nil, fmt.Errorf("build jackett caps request: %w", err)
 	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 	query := req.URL.Query()
 	query.Set("t", "caps")
 	if c.apiKey != "" {
@@ -288,6 +301,9 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build prowlarr caps request: %w", err)
+	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
 	}
 	query := req.URL.Query()
 	query.Set("t", "caps")
@@ -329,6 +345,9 @@ func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("build native caps request: %w", err)
+	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -377,6 +396,9 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 	}
 	req.Header.Set("Accept", "application/x-bittorrent, application/octet-stream")
 	req.Header.Set("User-Agent", buildinfo.UserAgent)
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 
 	// Ensure API key is present for backends that require it
 	if c.apiKey != "" && !strings.Contains(downloadURL, "apikey=") {
@@ -413,6 +435,13 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 	}
 
 	return data, nil
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // convertRssToResults converts go-jackett RSS response to our Result format
@@ -508,7 +537,7 @@ type DiscoveryResult struct {
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance.
 // The context is used to cancel in-flight capability fetches if the request is cancelled.
 // Returns a DiscoveryResult containing indexers and any warnings about partial failures.
-func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) (DiscoveryResult, error) {
+func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string) (DiscoveryResult, error) {
 	if ctx == nil {
 		log.Warn().Msg("DiscoverJackettIndexers called with nil context - this is a programming error")
 		ctx = context.Background()
@@ -517,7 +546,7 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) (Disco
 		return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("base url is required")
 	}
 
-	jackettIndexers, failedIDs, jackettErr := discoverJackettIndexers(ctx, baseURL, apiKey)
+	jackettIndexers, failedIDs, jackettErr := discoverJackettIndexers(ctx, baseURL, apiKey, basicUsername, basicPassword)
 	if jackettErr == nil {
 		var warnings []string
 		if len(failedIDs) > 0 {
@@ -529,6 +558,8 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) (Disco
 	prowlarrClient := prowlarr.NewClient(prowlarr.Config{
 		Host:      baseURL,
 		APIKey:    apiKey,
+		BasicUser: strings.TrimSpace(stringOrEmpty(basicUsername)),
+		BasicPass: strings.TrimSpace(stringOrEmpty(basicPassword)),
 		Timeout:   15,
 		UserAgent: buildinfo.UserAgent,
 		Version:   buildinfo.Version,
@@ -574,7 +605,7 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) (Disco
 		}
 
 		// Fetch capabilities and categories for all indexers in parallel with retries
-		capsMap, failedIDs := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendProwlarr, indexerIDs)
+		capsMap, failedIDs := fetchCapsParallel(ctx, baseURL, apiKey, basicUsername, basicPassword, models.TorznabBackendProwlarr, indexerIDs)
 
 		// Apply capabilities and categories to indexers
 		for i := range indexers {
@@ -594,11 +625,13 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) (Disco
 	return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("jackett discovery failed: %v; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
 }
 
-func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, []string, error) {
+func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string) ([]JackettIndexer, []string, error) {
 	// Use the go-jackett library
 	client := gojackett.NewClient(gojackett.Config{
-		Host:   baseURL,
-		APIKey: apiKey,
+		Host:      baseURL,
+		APIKey:    apiKey,
+		BasicUser: strings.TrimSpace(stringOrEmpty(basicUsername)),
+		BasicPass: strings.TrimSpace(stringOrEmpty(basicPassword)),
 	})
 
 	// Get all configured indexers
@@ -630,7 +663,7 @@ func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]Jac
 	}
 
 	// Fetch capabilities and categories for all configured indexers in parallel with retries
-	capsMap, failedIDs := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendJackett, configuredIDs)
+	capsMap, failedIDs := fetchCapsParallel(ctx, baseURL, apiKey, basicUsername, basicPassword, models.TorznabBackendJackett, configuredIDs)
 
 	// Apply capabilities and categories to indexers
 	for i := range indexers {
@@ -654,7 +687,7 @@ type capsFetchResult struct {
 // Returns a map of indexerID -> torznabCaps and a slice of failed indexer IDs.
 // Failed fetches are logged but don't fail the overall operation.
 // The parent context is used to cancel all in-flight requests if the caller's context is cancelled.
-func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend models.TorznabBackend, indexerIDs []string) (map[string]*torznabCaps, []string) {
+func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, indexerIDs []string) (map[string]*torznabCaps, []string) {
 	if len(indexerIDs) == 0 {
 		return nil, nil
 	}
@@ -695,7 +728,7 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend mode
 			}
 			defer func() { <-sem }()
 
-			caps, err := fetchCapsWithRetry(ctx, baseURL, apiKey, backend, indexerID, maxRetries, retryDelay, fetchTimeout)
+			caps, err := fetchCapsWithRetry(ctx, baseURL, apiKey, basicUsername, basicPassword, backend, indexerID, maxRetries, retryDelay, fetchTimeout)
 			resultsChan <- capsFetchResult{
 				indexerID: indexerID,
 				caps:      caps,
@@ -740,8 +773,8 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend mode
 
 // fetchCapsWithRetry attempts to fetch capabilities with retries and exponential backoff.
 // The parent context is used as the base for per-attempt timeouts, allowing cancellation.
-func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*torznabCaps, error) {
-	client := NewClient(baseURL, apiKey, backend, int(timeout.Seconds()))
+func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*torznabCaps, error) {
+	client := NewClient(baseURL, apiKey, basicUsername, basicPassword, backend, int(timeout.Seconds()))
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {

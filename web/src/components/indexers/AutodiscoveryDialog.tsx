@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Switch } from "@/components/ui/switch"
 import type { JackettIndexer, TorznabIndexer, TorznabIndexerFormData, TorznabIndexerUpdate } from "@/types"
 import { api } from "@/lib/api"
 
@@ -32,6 +33,9 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const [baseUrl, setBaseUrl] = useState("http://localhost:9696")
   const [baseUrlError, setBaseUrlError] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState("")
+  const [showBasicAuth, setShowBasicAuth] = useState(false)
+  const [basicUsername, setBasicUsername] = useState("")
+  const [basicPassword, setBasicPassword] = useState("")
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
   const [existingIndexersMap, setExistingIndexersMap] = useState<Map<string, TorznabIndexer>>(new Map())
@@ -51,12 +55,24 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       return
     }
 
+    const trimmedBasicUser = basicUsername.trim()
+    const trimmedBasicPass = basicPassword
+    if (showBasicAuth && (!trimmedBasicUser || !trimmedBasicPass)) {
+      toast.error("Basic auth requires username and password")
+      return
+    }
+
     setBaseUrlError(null)
     setLoading(true)
 
     try {
       const [response, existing] = await Promise.all([
-        api.discoverJackettIndexers(normalizedBaseUrl, apiKey),
+        api.discoverJackettIndexers(
+          normalizedBaseUrl,
+          apiKey,
+          showBasicAuth ? trimmedBasicUser : undefined,
+          showBasicAuth ? trimmedBasicPass : undefined,
+        ),
         api.listTorznabIndexers(),
       ])
 
@@ -111,6 +127,13 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       return
     }
 
+    const trimmedBasicUser = basicUsername.trim()
+    const trimmedBasicPass = basicPassword
+    if (showBasicAuth && (!trimmedBasicUser || !trimmedBasicPass)) {
+      toast.error("Basic auth requires username and password")
+      return
+    }
+
     setBaseUrlError(null)
     setLoading(true)
     let createdCount = 0
@@ -139,6 +162,10 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
+          if (showBasicAuth) {
+            updateData.basic_username = trimmedBasicUser
+            updateData.basic_password = trimmedBasicPass
+          }
           const response = await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
           if (response.warnings?.length) {
@@ -155,6 +182,10 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
+          }
+          if (showBasicAuth) {
+            createData.basic_username = trimmedBasicUser
+            createData.basic_password = trimmedBasicPass
           }
           const response = await api.createTorznabIndexer(createData)
           createdCount++
@@ -220,6 +251,9 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setBaseUrl("http://localhost:9696")
     setBaseUrlError(null)
     setApiKey("")
+    setShowBasicAuth(false)
+    setBasicUsername("")
+    setBasicPassword("")
     setDiscoveredIndexers([])
     setSelectedIndexers(new Set())
     onClose()
@@ -279,6 +313,54 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   required
                 />
               </div>
+              <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="torznab-basic-auth">Basic Auth</Label>
+                  <p className="text-sm text-muted-foreground max-w-prose">
+                    Use HTTP basic authentication for Jackett/Prowlarr behind a reverse proxy.
+                  </p>
+                </div>
+                <Switch
+                  id="torznab-basic-auth"
+                  checked={showBasicAuth}
+                  onCheckedChange={(checked) => {
+                    setShowBasicAuth(checked)
+                    if (!checked) {
+                      setBasicUsername("")
+                      setBasicPassword("")
+                    }
+                  }}
+                />
+              </div>
+              {showBasicAuth && (
+                <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="torznab-basic-username">Basic Username</Label>
+                    <Input
+                      id="torznab-basic-username"
+                      value={basicUsername}
+                      onChange={(e) => setBasicUsername(e.target.value)}
+                      placeholder="Username"
+                      autoComplete="off"
+                      data-1p-ignore
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="torznab-basic-password">Basic Password</Label>
+                    <Input
+                      id="torznab-basic-password"
+                      type="password"
+                      value={basicPassword}
+                      onChange={(e) => setBasicPassword(e.target.value)}
+                      placeholder="Password"
+                      autoComplete="off"
+                      data-1p-ignore
+                      required
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter className="flex-shrink-0">
               <Button type="button" variant="outline" onClick={handleClose}>

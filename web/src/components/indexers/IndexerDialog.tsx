@@ -33,6 +33,8 @@ const DEFAULT_FORM: TorznabIndexerFormData = {
   base_url: "",
   indexer_id: "",
   api_key: "",
+  basic_username: "",
+  basic_password: "",
   backend: "jackett",
   enabled: true,
   priority: 0,
@@ -42,24 +44,30 @@ const DEFAULT_FORM: TorznabIndexerFormData = {
 export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TorznabIndexerFormData>(DEFAULT_FORM)
+  const [showBasicAuth, setShowBasicAuth] = useState(false)
   const backend = formData.backend ?? "jackett"
   const baseUrlPlaceholder = backend === "prowlarr" ? "http://localhost:9696" : "http://localhost:9117"
   const requiresIndexerId = backend === "prowlarr"
 
   useEffect(() => {
     if (mode === "edit" && indexer) {
+      const hasBasic = !!indexer.basic_username
       setFormData({
         name: indexer.name,
         base_url: indexer.base_url,
         indexer_id: indexer.indexer_id,
         api_key: "", // API key not returned from backend for security
+        basic_username: indexer.basic_username ?? "",
+        basic_password: hasBasic ? "<redacted>" : "",
         backend: indexer.backend,
         enabled: indexer.enabled,
         priority: indexer.priority,
         timeout_seconds: indexer.timeout_seconds,
       })
+      setShowBasicAuth(hasBasic)
     } else {
       setFormData({ ...DEFAULT_FORM })
+      setShowBasicAuth(false)
     }
   }, [mode, indexer, open])
 
@@ -70,6 +78,19 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
     try {
       const backendValue = formData.backend ?? "jackett"
       const trimmedIndexerId = formData.indexer_id !== undefined ? formData.indexer_id.trim() : undefined
+      const trimmedBasicUser = (formData.basic_username ?? "").trim()
+      const basicPass = formData.basic_password ?? ""
+
+      if (showBasicAuth) {
+        if (!trimmedBasicUser) {
+          toast.error("Basic auth username is required")
+          return
+        }
+        if (mode === "create" && !basicPass) {
+          toast.error("Basic auth password is required")
+          return
+        }
+      }
 
       if (mode === "create") {
         const createPayload: TorznabIndexerFormData = {
@@ -83,6 +104,10 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
         }
         if (trimmedIndexerId) {
           createPayload.indexer_id = trimmedIndexerId
+        }
+        if (showBasicAuth) {
+          createPayload.basic_username = trimmedBasicUser
+          createPayload.basic_password = basicPass
         }
 
         const response = await api.createTorznabIndexer(createPayload)
@@ -108,6 +133,17 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
         const trimmedApiKey = formData.api_key.trim()
         if (trimmedApiKey) {
           updatePayload.api_key = trimmedApiKey
+        }
+
+        if (showBasicAuth) {
+          updatePayload.basic_username = trimmedBasicUser
+          if (basicPass !== "<redacted>") {
+            updatePayload.basic_password = basicPass
+          }
+        } else {
+          // Explicit clear.
+          updatePayload.basic_username = ""
+          updatePayload.basic_password = ""
         }
 
         const response = await api.updateTorznabIndexer(indexer.id, updatePayload)
@@ -225,6 +261,60 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 required={mode === "create"}
               />
             </div>
+            <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="indexer-basic-auth">Basic Auth</Label>
+                <p className="text-sm text-muted-foreground max-w-prose">
+                  Use HTTP basic authentication for Torznab behind a reverse proxy.
+                </p>
+              </div>
+              <Switch
+                id="indexer-basic-auth"
+                checked={showBasicAuth}
+                onCheckedChange={(checked) => {
+                  setShowBasicAuth(checked)
+                  if (!checked) {
+                    setFormData(prev => ({ ...prev, basic_username: "", basic_password: "" }))
+                  } else if ((formData.basic_username ?? "").trim() === "") {
+                    setFormData(prev => ({ ...prev, basic_username: "", basic_password: "" }))
+                  }
+                }}
+              />
+            </div>
+            {showBasicAuth && (
+              <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="basicUsername">Basic Username</Label>
+                  <Input
+                    id="basicUsername"
+                    value={formData.basic_username ?? ""}
+                    onChange={(e) => setFormData({ ...formData, basic_username: e.target.value })}
+                    placeholder="Username"
+                    autoComplete="off"
+                    data-1p-ignore
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="basicPassword">Basic Password</Label>
+                  <Input
+                    id="basicPassword"
+                    type="password"
+                    value={formData.basic_password ?? ""}
+                    onChange={(e) => setFormData({ ...formData, basic_password: e.target.value })}
+                    placeholder={mode === "edit" ? "<redacted>" : "Password"}
+                    autoComplete="off"
+                    data-1p-ignore
+                    required={mode === "create"}
+                  />
+                  {mode === "edit" && (
+                    <p className="text-xs text-muted-foreground">
+                      Leave as <span className="font-mono">&lt;redacted&gt;</span> to keep existing password.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="priority">Priority</Label>

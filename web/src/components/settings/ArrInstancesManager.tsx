@@ -322,6 +322,9 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
   const [name, setName] = useState(instance?.name || "")
   const [baseUrl, setBaseUrl] = useState(instance?.base_url || "")
   const [apiKey, setApiKey] = useState("")
+  const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basic_username)
+  const [basicUsername, setBasicUsername] = useState(instance?.basic_username ?? "")
+  const [basicPassword, setBasicPassword] = useState(instance?.basic_username ? "<redacted>" : "")
   const [enabled, setEnabled] = useState(instance?.enabled !== false)
   const [priority, setPriority] = useState(instance?.priority ?? 0)
   const [timeoutSeconds, setTimeoutSeconds] = useState(instance?.timeout_seconds ?? 15)
@@ -336,6 +339,19 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       return
     }
 
+    const trimmedBasicUser = basicUsername.trim()
+    const trimmedBasicPass = basicPassword
+    if (showBasicAuth) {
+      if (!trimmedBasicUser) {
+        toast.error("Basic auth username is required")
+        return
+      }
+      if (!trimmedBasicPass || trimmedBasicPass === "<redacted>") {
+        toast.error("Enter the basic auth password to test connection")
+        return
+      }
+    }
+
     setIsTesting(true)
     setTestResult(null)
 
@@ -344,6 +360,8 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
         type,
         base_url: baseUrl.trim(),
         api_key: apiKey.trim(),
+        basic_username: showBasicAuth ? trimmedBasicUser : undefined,
+        basic_password: showBasicAuth ? trimmedBasicPass : undefined,
       })
       setTestResult(result)
       if (result.success) {
@@ -373,6 +391,23 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       return
     }
 
+    const trimmedBasicUser = basicUsername.trim()
+    const trimmedBasicPass = basicPassword
+    if (showBasicAuth) {
+      if (!trimmedBasicUser) {
+        toast.error("Basic auth username is required")
+        return
+      }
+      if (!isEdit && !trimmedBasicPass) {
+        toast.error("Basic auth password is required")
+        return
+      }
+      if (isEdit && trimmedBasicPass === "") {
+        toast.error("Basic auth password is required (or keep <redacted>)")
+        return
+      }
+    }
+
     if (!isEdit && !apiKey.trim()) {
       toast.error("API Key is required")
       return
@@ -389,9 +424,18 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       if (apiKey.trim()) {
         updateData.api_key = apiKey.trim()
       }
+      if (showBasicAuth) {
+        updateData.basic_username = trimmedBasicUser
+        if (trimmedBasicPass !== "<redacted>") {
+          updateData.basic_password = trimmedBasicPass
+        }
+      } else {
+        updateData.basic_username = ""
+        updateData.basic_password = ""
+      }
       onSubmit(updateData)
     } else {
-      onSubmit({
+      const createData: ArrInstanceFormData = {
         type,
         name: name.trim(),
         base_url: baseUrl.trim(),
@@ -399,7 +443,12 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
         enabled,
         priority,
         timeout_seconds: timeoutSeconds,
-      })
+      }
+      if (showBasicAuth) {
+        createData.basic_username = trimmedBasicUser
+        createData.basic_password = trimmedBasicPass
+      }
+      onSubmit(createData)
     }
   }
 
@@ -459,6 +508,63 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           Found in Settings &gt; General in {type === "sonarr" ? "Sonarr" : "Radarr"}
         </p>
       </div>
+
+      <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
+        <div className="space-y-1">
+          <Label htmlFor="arr-basic-auth">Basic Auth</Label>
+          <p className="text-sm text-muted-foreground max-w-prose">
+            Use HTTP basic authentication for ARR behind a reverse proxy.
+          </p>
+        </div>
+        <Switch
+          id="arr-basic-auth"
+          checked={showBasicAuth}
+          onCheckedChange={(checked) => {
+            setShowBasicAuth(checked)
+            if (!checked) {
+              setBasicUsername("")
+              setBasicPassword("")
+            } else if (!basicUsername.trim()) {
+              setBasicPassword("")
+            }
+          }}
+        />
+      </div>
+
+      {showBasicAuth && (
+        <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
+          <div className="grid gap-2">
+            <Label htmlFor="basicUsername">Basic Username</Label>
+            <Input
+              id="basicUsername"
+              value={basicUsername}
+              onChange={(e) => setBasicUsername(e.target.value)}
+              placeholder="Username"
+              autoComplete="off"
+              data-1p-ignore
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="basicPassword">Basic Password</Label>
+            <Input
+              id="basicPassword"
+              type="password"
+              value={basicPassword}
+              onChange={(e) => setBasicPassword(e.target.value)}
+              placeholder={isEdit ? "<redacted>" : "Password"}
+              autoComplete="off"
+              data-1p-ignore
+              required={!isEdit}
+            />
+            {isEdit && (
+              <p className="text-xs text-muted-foreground">
+                Leave as <span className="font-mono">&lt;redacted&gt;</span> to keep existing password.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
