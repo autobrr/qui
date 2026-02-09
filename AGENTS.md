@@ -89,7 +89,7 @@ Follow the conventional commit style in history (`feat(scope):`, `fix(scope):`, 
 - "Co-Authored-By: Claude" or any AI co-author credits
 - Any advertising or attribution in commit messages
 
-PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm `make lint-full`, `make test`, and a fresh `make build` succeed before requesting review.
+PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm `make lint`, `make test`, and a fresh `make build` succeed before requesting review.
 
 ## Pre-Commit Checklist
 
