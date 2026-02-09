@@ -2574,6 +2574,10 @@ func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 	return result, nil
 }
 
+func (f *fakeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
 	if torrents, ok := f.all[instanceID]; ok {
 		targets := make(map[string]struct{}, len(hashes))
@@ -3136,6 +3140,10 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 	return nil
 }
 
+func (m *mockRecoverSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 // Simulate state progression after recheck
 func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgress float64, finalState qbt.TorrentState) {
 	if torrent, ok := m.torrents[hash]; ok {
@@ -3518,6 +3526,10 @@ func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instan
 		}
 	}
 	return result, nil
+}
+
+func (f *infohashTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
@@ -5055,6 +5067,10 @@ func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, insta
 		}
 	}
 	return result, nil
+}
+
+func (m *rssFilterTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (m *rssFilterTestSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {

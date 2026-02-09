@@ -592,7 +592,10 @@ func (app *Application) runServer() {
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
 
 	// Initialize cross-seed automation store and service
-	crossSeedStore := models.NewCrossSeedStore(db)
+	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
+	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, crossSeedBlocklistStore, jackettService, arrService, externalProgramStore, externalProgramService, instanceCrossSeedCompletionStore, trackerCustomizationStore, cfg.Config.CrossSeedRecoverErroredTorrents)

@@ -267,11 +267,13 @@ qui includes intelligent cross-seeding capabilities that help you automatically 
 > [!NOTE]
 > qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks.
 >
-> For detailed information about category behavior, save paths, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
+> For detailed information about category behavior, save paths, and best practices, see the Cross-Seed docs in `documentation/docs/features/cross-seed/` (start at `documentation/docs/features/cross-seed/overview.md`).
 
 ### Prerequisites
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
+
+Optional: for OPS/RED torrents, qui can cross-seed via the trackers' Gazelle JSON APIs (no Torznab). Configure in **Cross-Seed → Global rules → Gazelle (OPS/RED)**.
 
 ### Discovery Methods
 
@@ -296,6 +298,8 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 - **Interval** - Delay between processing each torrent (minimum 60 seconds)
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
 
+For OPS/RED torrents, seeded search uses Gazelle matching based on the source torrent's tracker; the Torznab indexer picker is ignored for OPS/RED.
+
 > [!WARNING]
 > Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve seeded search for occasional catch-up passes.
 
@@ -306,12 +310,16 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 - **Categories/Tags** - Filter which completed torrents trigger searches
 - **Exclude categories/tags** - Skip torrents matching these filters
 
+OPS/RED completion searches use Gazelle matching (no Torznab).
+
 #### Manual Search
 
 Right-click any torrent in the list to access cross-seed actions:
 
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+OPS/RED manual searches use Gazelle matching (no Torznab).
 
 ### How qui Differs from cross-seed
 

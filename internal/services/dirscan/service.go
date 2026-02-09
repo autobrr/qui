@@ -11,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1305,6 +1308,25 @@ func (s *Service) processSearchee(
 	contentType := normalizeContentType(contentInfo.ContentType)
 
 	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
+	if len(filteredIndexers) == 0 && s.jackettService != nil {
+		enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+		if err == nil && len(enabledInfo) > 0 {
+			filteredIndexers = make([]int, 0, len(enabledInfo))
+			for id := range enabledInfo {
+				filteredIndexers = append(filteredIndexers, id)
+			}
+			sort.Ints(filteredIndexers)
+		}
+	}
+	filteredIndexers = s.filterOutGazelleTorznabIndexers(ctx, filteredIndexers, l)
+	if len(filteredIndexers) == 0 {
+		if l != nil {
+			l.Debug().Msg("dirscan: no eligible indexers after OPS/RED exclusion")
+		}
+		// Don't mark this as searched: if the user later enables non-OPS/RED indexers,
+		// we want this searchee to be retried rather than finalized as no_match.
+		return nil, searcheeOutcome{}
+	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
 	s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
@@ -1405,6 +1427,81 @@ func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *cro
 		l.Debug().Int("indexers", len(filteredIndexers)).Msg("dirscan: filtered indexers by capabilities")
 	}
 	return filteredIndexers
+}
+
+func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerIDs []int, l *zerolog.Logger) []int {
+	if s.jackettService == nil || len(indexerIDs) == 0 {
+		return indexerIDs
+	}
+
+	resp, err := s.jackettService.GetIndexers(ctx)
+	if err != nil || resp == nil || len(resp.Indexers) == 0 {
+		return indexerIDs
+	}
+
+	opsOrRedName := regexp.MustCompile(`\b(ops|orpheus|red|redacted)\b`)
+	opsOrRedURL := regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)`)
+
+	disallowed := make(map[int]struct{}, 8)
+	for _, idx := range resp.Indexers {
+		id, convErr := strconv.Atoi(strings.TrimSpace(idx.ID))
+		if convErr != nil || id <= 0 {
+			continue
+		}
+
+		name := strings.ToLower(strings.TrimSpace(idx.Name))
+		rawURL := strings.TrimSpace(idx.Description)
+		rawLower := strings.ToLower(rawURL)
+
+		host := ""
+		pathLower := ""
+		if parsed, err := url.Parse(rawURL); err == nil {
+			host = strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+			pathLower = strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
+		}
+
+		// Prefer URL-derived signals; fall back to name.
+		urlHit := false
+		switch {
+		case host == "redacted.sh" || strings.HasSuffix(host, ".redacted.sh"):
+			urlHit = true
+		case host == "orpheus.network" || strings.HasSuffix(host, ".orpheus.network"):
+			urlHit = true
+		case strings.Contains(rawLower, "redacted.sh") || strings.Contains(rawLower, "orpheus.network"):
+			urlHit = true
+		case opsOrRedURL.MatchString(rawLower):
+			urlHit = true
+		case pathLower != "" && opsOrRedURL.MatchString(pathLower):
+			urlHit = true
+		}
+
+		if urlHit || opsOrRedName.MatchString(name) {
+			disallowed[id] = struct{}{}
+		}
+	}
+
+	if len(disallowed) == 0 {
+		return indexerIDs
+	}
+
+	filtered := make([]int, 0, len(indexerIDs))
+	removed := 0
+	for _, id := range indexerIDs {
+		if _, ok := disallowed[id]; ok {
+			removed++
+			continue
+		}
+		filtered = append(filtered, id)
+	}
+
+	if removed > 0 && l != nil {
+		l.Debug().
+			Int("removed", removed).
+			Int("requested", len(indexerIDs)).
+			Msg("dirscan: excluded OPS/RED Torznab indexers (Gazelle-only)")
+	}
+
+	return filtered
 }
 
 // searchForSearchee searches indexers and waits for results.

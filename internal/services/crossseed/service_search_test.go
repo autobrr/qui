@@ -5,11 +5,14 @@ package crossseed
 
 import (
 	"context"
+	"errors"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/anacrolix/torrent/bencode"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -19,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
 func TestComputeAutomationSearchTimeout(t *testing.T) {
@@ -127,7 +131,12 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 		require.NoError(t, db.Close())
 	})
 
-	store := models.NewCrossSeedStore(db)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
@@ -187,7 +196,12 @@ func TestPropagateDuplicateSearchHistory(t *testing.T) {
 		require.NoError(t, db.Close())
 	})
 
-	store := models.NewCrossSeedStore(db)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
@@ -219,6 +233,62 @@ func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	}
 }
 
+func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-start-gazelle-only.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	// Seeded Torrent Search should be able to start even with no Torznab indexers configured,
+	// as long as Gazelle matching is enabled.
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	run, err := svc.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID: instance.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, run)
+
+	require.Eventually(t, func() bool {
+		loaded, err := store.GetSearchRun(ctx, run.ID)
+		if err != nil || loaded == nil {
+			return false
+		}
+		return loaded.Status != models.CrossSeedSearchRunStatusRunning
+	}, 3*time.Second, 25*time.Millisecond)
+
+	loaded, err := store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, models.CrossSeedSearchRunStatusSuccess, loaded.Status)
+}
+
 type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }
@@ -231,6 +301,10 @@ func (f *queueTestSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.Torre
 
 func (f *queueTestSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 	return map[string]qbt.TorrentFiles{}, nil
+}
+
+func (*queueTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*queueTestSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -287,4 +361,177 @@ func (*queueTestSyncManager) GetCategories(_ context.Context, _ int) (map[string
 
 func (*queueTestSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
 	return nil
+}
+
+type gazelleSkipHashSyncManager struct {
+	torrents           []qbt.Torrent
+	filesByHash        map[string]qbt.TorrentFiles
+	exportedTorrent    []byte
+	expectedTargetHash string
+}
+
+func (g *gazelleSkipHashSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	copied := make([]qbt.Torrent, len(g.torrents))
+	copy(copied, g.torrents)
+	return copied, nil
+}
+
+func (g *gazelleSkipHashSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	out := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, h := range hashes {
+		key := strings.ToLower(strings.TrimSpace(h))
+		if files, ok := g.filesByHash[key]; ok {
+			out[key] = files
+		}
+	}
+	return out, nil
+}
+
+func (g *gazelleSkipHashSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return g.exportedTorrent, "", "", nil
+}
+
+func (g *gazelleSkipHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+	for _, h := range hashes {
+		if strings.EqualFold(strings.TrimSpace(h), strings.TrimSpace(g.expectedTargetHash)) {
+			return &qbt.Torrent{Hash: g.expectedTargetHash, Name: "already-there"}, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+func (*gazelleSkipHashSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
+	return nil, nil
+}
+
+func (*gazelleSkipHashSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
+func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
+	return nil
+}
+
+func (*gazelleSkipHashSyncManager) BulkAction(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (*gazelleSkipHashSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (*gazelleSkipHashSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+func (*gazelleSkipHashSyncManager) ExtractDomainFromURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	return strings.ToLower(host)
+}
+
+func (*gazelleSkipHashSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+	return nil, nil
+}
+
+func (*gazelleSkipHashSyncManager) RenameTorrent(context.Context, int, string, string) error {
+	return nil
+}
+
+func (*gazelleSkipHashSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (*gazelleSkipHashSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (*gazelleSkipHashSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (*gazelleSkipHashSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
+	return nil
+}
+
+func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-skip-hash.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	// Enable Gazelle and set OPS key (needed when source is RED and target is OPS).
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		OrpheusAPIKey:  "ops-key",
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+
+	// Minimal torrent bytes; "source" flag hashing is based on info dict.
+	torrentDict := map[string]any{
+		"announce": "https://flacsfor.me/abc/announce",
+		"info": map[string]any{
+			"length": int64(123),
+			"name":   "test",
+		},
+	}
+	torrentBytes, err := bencode.Marshal(torrentDict)
+	require.NoError(t, err)
+
+	hashes, err := gazellemusic.CalculateHashesWithSources(torrentBytes, []string{"OPS"})
+	require.NoError(t, err)
+	expectedTargetHash := hashes["OPS"]
+	require.NotEmpty(t, expectedTargetHash)
+
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{
+				{
+					Hash:     sourceHash,
+					Name:     "Durante - LMK (2024 WF)",
+					Progress: 1.0,
+					Size:     123,
+					Tracker:  "https://flacsfor.me/abc/announce",
+				},
+			},
+			filesByHash: map[string]qbt.TorrentFiles{
+				sourceHashNorm: {
+					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+			exportedTorrent:    torrentBytes,
+			expectedTargetHash: expectedTargetHash,
+		},
+	}
+
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, instance.ID, resp.SourceTorrent.InstanceID)
+	require.Empty(t, resp.Results, "should skip Gazelle search when target hash already exists locally")
 }

@@ -50,6 +50,10 @@ type automationSettingsRequest struct {
 	CustomCategory               string  `json:"customCategory"`
 	RunExternalProgramID         *int    `json:"runExternalProgramId"`
 	SkipRecheck                  bool    `json:"skipRecheck"`
+	// Gazelle (OPS/RED) cross-seed settings.
+	GazelleEnabled bool   `json:"gazelleEnabled"`
+	RedactedAPIKey string `json:"redactedApiKey"`
+	OrpheusAPIKey  string `json:"orpheusApiKey"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -92,6 +96,10 @@ type automationSettingsPatchRequest struct {
 	SkipAutoResumeWebhook        *bool `json:"skipAutoResumeWebhook,omitempty"`
 	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
 	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
+	// Gazelle (OPS/RED) cross-seed settings.
+	GazelleEnabled *bool   `json:"gazelleEnabled,omitempty"`
+	RedactedAPIKey *string `json:"redactedApiKey,omitempty"`
+	OrpheusAPIKey  *string `json:"orpheusApiKey,omitempty"`
 }
 
 type optionalString struct {
@@ -185,7 +193,10 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
 		r.SkipRecheck == nil &&
-		r.SkipPieceBoundarySafetyCheck == nil
+		r.SkipPieceBoundarySafetyCheck == nil &&
+		r.GazelleEnabled == nil &&
+		r.RedactedAPIKey == nil &&
+		r.OrpheusAPIKey == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -306,6 +317,15 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipPieceBoundarySafetyCheck != nil {
 		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
+	}
+	if patch.GazelleEnabled != nil {
+		settings.GazelleEnabled = *patch.GazelleEnabled
+	}
+	if patch.RedactedAPIKey != nil {
+		settings.RedactedAPIKey = *patch.RedactedAPIKey
+	}
+	if patch.OrpheusAPIKey != nil {
+		settings.OrpheusAPIKey = *patch.OrpheusAPIKey
 	}
 }
 
@@ -824,6 +844,9 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
+		GazelleEnabled:               req.GazelleEnabled,
+		RedactedAPIKey:               req.RedactedAPIKey,
+		OrpheusAPIKey:                req.OrpheusAPIKey,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
