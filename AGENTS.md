@@ -108,16 +108,16 @@ The agent may need to read from sibling repositories to work effectively:
 
 | Path | Purpose |
 |------|---------|
-| `/Users/soup/github/autobrr/go-qbittorrent` | Go qBittorrent API client library |
-| `/Users/soup/github/autobrr/autobrr` | autobrr source |
-| `/Users/soup/github/autobrr/rls` | Release name parser |
-| `/Users/soup/github/oss/go-jackett` | Jackett API client |
-| `/Users/soup/github/oss/qBittorrent` | qBittorrent source (API reference) |
-| `/Users/soup/github/oss/cross-seed`  | cross-seed.org |
-| `/Users/soup/github/oss/Prowlarr` | Prowlarr source |
-| `/Users/soup/github/oss/Jackett` | Jackett source |
-| `/Users/soup/github/oss/Sonarr`  | Sonarr source |
-| `/Users/soup/github/oss/Radarr` | Radarr source |
+| `~/github/autobrr/go-qbittorrent` | Go qBittorrent API client library |
+| `~/github/autobrr/autobrr` | autobrr source |
+| `~/github/autobrr/rls` | Release name parser |
+| `~/github/oss/go-jackett` | Jackett API client |
+| `~/github/oss/qBittorrent` | qBittorrent source (API reference) |
+| `~/github/oss/cross-seed`  | cross-seed.org |
+| `~/github/oss/Prowlarr` | Prowlarr source |
+| `~/github/oss/Jackett` | Jackett source |
+| `~/github/oss/Sonarr`  | Sonarr source |
+| `~/github/oss/Radarr` | Radarr source |
 
 Keep those paths available on disk so the agent can inspect them when diagnosing qBittorrent integration issues or cross-referencing API behavior.
 

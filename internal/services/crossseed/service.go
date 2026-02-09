@@ -5131,6 +5131,15 @@ func (s *Service) gazelleClientForHost(ctx context.Context, host string) (*gazel
 	if s.automationStore == nil {
 		return nil, false, nil
 	}
+
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if settings == nil || !settings.GazelleEnabled {
+		return nil, false, nil
+	}
+
 	key, ok, err := s.automationStore.GetDecryptedGazelleAPIKey(ctx, host)
 	if err != nil {
 		return nil, false, err

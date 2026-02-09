@@ -1219,6 +1219,22 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     [enabledIndexers]
   )
 
+  const seededSearchHasOnlyGazelleIndexers = useMemo(() => (
+    enabledIndexers.length > 0 &&
+    seededSearchIndexerOptions.length === 0 &&
+    seededSearchIndexerExclusions.size > 0
+  ), [enabledIndexers.length, seededSearchIndexerOptions.length, seededSearchIndexerExclusions.size])
+
+  const seededSearchIndexerPlaceholder = useMemo(() => {
+    if (seededSearchIndexerOptions.length > 0) {
+      return "All enabled indexers (leave empty for all)"
+    }
+    if (seededSearchHasOnlyGazelleIndexers) {
+      return "Only OPS/RED enabled (Gazelle)"
+    }
+    return "No Torznab indexers configured"
+  }, [seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length])
+
   const seededSearchEffectiveIndexerIds = useMemo(() => {
     if (searchIndexerIds.length === 0) {
       return []
@@ -1228,6 +1244,27 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     }
     return searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
   }, [searchIndexerIds, seededSearchIndexerExclusions])
+
+  const seededSearchIndexerHelpText = useMemo(() => {
+    if (seededSearchIndexerOptions.length === 0) {
+      if (seededSearchHasOnlyGazelleIndexers) {
+        if (gazelleSavedConfigured) {
+          return "Only OPS/RED indexers enabled. Gazelle will be used for OPS/RED torrents; other torrents will be skipped."
+        }
+        return "Only OPS/RED indexers enabled. Configure Gazelle (OPS+RED API keys) to cross-seed those torrents."
+      }
+
+      if (gazelleSavedConfigured) {
+        return "No Torznab indexers. Gazelle will be used for OPS/RED torrents; other torrents will be skipped."
+      }
+      return "No Torznab indexers configured."
+    }
+
+    if (seededSearchEffectiveIndexerIds.length === 0) {
+      return "All enabled Torznab indexers will be queried for matches."
+    }
+    return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length])
 
   const seededSearchGazelleStatus = useMemo(() => {
     if (!settings) {
@@ -2104,16 +2141,11 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     options={seededSearchIndexerOptions}
                     selected={seededSearchEffectiveIndexerIds.map(String)}
                     onChange={values => setSearchIndexerIds(normalizeNumberList(values))}
-                    placeholder={seededSearchIndexerOptions.length ? "All enabled indexers (leave empty for all)" : "No Torznab indexers configured"}
+                    placeholder={seededSearchIndexerPlaceholder}
                     disabled={!seededSearchIndexerOptions.length}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {seededSearchIndexerOptions.length === 0
-                      ? gazelleSavedConfigured
-                        ? "No Torznab indexers configured. Seeded Torrent Search will only attempt OPS/RED torrents via Gazelle; all other torrents will be skipped."
-                        : "No Torznab indexers configured."
-                      : seededSearchEffectiveIndexerIds.length === 0 ? "All enabled Torznab indexers will be queried for matches." : `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
-                    }
+                    {seededSearchIndexerHelpText}
                   </p>
                   <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                     <span>OPS/RED torrents are matched via Gazelle (based on the source torrent's tracker). Torznab is used for everything else.</span>

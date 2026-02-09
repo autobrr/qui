@@ -143,17 +143,50 @@ func filesConflict(localFiles, remoteFiles map[string]int64) bool {
 		return true
 	}
 
-	localSizes := make(map[int64]int)
-	for _, size := range localFiles {
-		localSizes[size]++
-	}
-	remoteSizes := make(map[int64]int)
-	for _, size := range remoteFiles {
-		remoteSizes[size]++
+	type fileSig struct {
+		size int64
+		name string // normalized base filename
 	}
 
-	for size, count := range localSizes {
-		if remoteSizes[size] != count {
+	normalize := func(name string) string {
+		name = strings.ReplaceAll(name, "\\", "/")
+		name = path.Base(name)
+		if name == "." {
+			name = ""
+		}
+		return normalizeFilenameForCompare(name)
+	}
+
+	localSigs := make([]fileSig, 0, len(localFiles))
+	for name, size := range localFiles {
+		localSigs = append(localSigs, fileSig{
+			size: size,
+			name: normalize(name),
+		})
+	}
+	remoteSigs := make([]fileSig, 0, len(remoteFiles))
+	for name, size := range remoteFiles {
+		remoteSigs = append(remoteSigs, fileSig{
+			size: size,
+			name: normalize(name),
+		})
+	}
+
+	sort.Slice(localSigs, func(i, j int) bool {
+		if localSigs[i].size != localSigs[j].size {
+			return localSigs[i].size < localSigs[j].size
+		}
+		return localSigs[i].name < localSigs[j].name
+	})
+	sort.Slice(remoteSigs, func(i, j int) bool {
+		if remoteSigs[i].size != remoteSigs[j].size {
+			return remoteSigs[i].size < remoteSigs[j].size
+		}
+		return remoteSigs[i].name < remoteSigs[j].name
+	})
+
+	for i := range localSigs {
+		if localSigs[i] != remoteSigs[i] {
 			return true
 		}
 	}
@@ -214,6 +247,21 @@ var (
 	multipleSpaces = regexp.MustCompile(`\s+`)
 	zeroWidthChars = regexp.MustCompile("[\x00-\x1F\x7F\u200B-\u200D\uFEFF]")
 )
+
+func normalizeFilenameForCompare(name string) string {
+	name = strings.TrimSpace(strings.ToLower(name))
+	name = zeroWidthChars.ReplaceAllString(name, "")
+
+	// Common torrent name separators; keep extensions but make formatting differences match.
+	name = strings.NewReplacer(
+		".", " ",
+		"_", " ",
+		"-", " ",
+	).Replace(name)
+
+	name = multipleSpaces.ReplaceAllString(name, " ")
+	return name
+}
 
 var genericFilenames = map[string]bool{
 	"cover":    true,
