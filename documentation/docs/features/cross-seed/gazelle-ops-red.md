@@ -8,9 +8,9 @@ description: Cross-seed between Orpheus and Redacted via the Gazelle JSON APIs (
 
 qui can cross-seed between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs.
 
-This path is **Gazelle-only**:
+This path is **Gazelle-first**:
 
-- No Torznab searches for OPS/RED torrents
+- OPS/RED torrents use Gazelle matching when it's configured
 - Searches only the opposite site (RED -> OPS, OPS -> RED)
 
 ## When It Applies
@@ -21,6 +21,10 @@ Only when the **source torrent** is OPS or RED, detected from the announce/track
 - OPS announce host: `home.opsfet.ch`
 
 If the torrent isn't sourced from OPS/RED, qui uses Torznab like normal.
+
+## What Happens If Gazelle Isn't Configured
+
+If Gazelle is disabled or no API keys are set, qui falls back to Torznab like it did before.
 
 ## How It Matches
 
@@ -38,6 +42,10 @@ UI: **Cross-Seed -> Rules -> Gazelle (OPS/RED)**
 
 - Enable Gazelle matching
 - Set one or both API keys (keys are encrypted at rest and redacted in API/UI responses)
+
+## Rate Limiting
+
+Requests to OPS/RED are rate-limited and **shared across the whole qui process**, so running multiple qBittorrent instances does not multiply API pressure.
 
 ### Library Scan Without Torznab
 
