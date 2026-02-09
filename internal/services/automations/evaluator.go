@@ -573,7 +573,13 @@ func compareString(value string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(value)
+		matched := cond.Compiled.MatchString(value)
+		switch cond.Operator {
+		case OperatorNotContains, OperatorNotEqual:
+			return !matched
+		default:
+			return matched
+		}
 	}
 
 	switch cond.Operator {
@@ -720,7 +726,13 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(tagsRaw)
+		matched := cond.Compiled.MatchString(tagsRaw)
+		switch cond.Operator {
+		case OperatorNotContains, OperatorNotEqual:
+			return !matched
+		default:
+			return matched
+		}
 	}
 
 	tags := splitTags(tagsRaw)

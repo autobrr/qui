@@ -217,6 +217,72 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
 			expected: true,
 		},
+		{
+			name: "not_contains regex - false when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotContains,
+				Value:    "^Test.*2024$",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
+		{
+			name: "not_contains regex - true when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotContains,
+				Value:    "^Movie.*2024$",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "not_equal regex - false when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotEqual,
+				Value:    ".*Torrent.*",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
+		{
+			name: "not_equal regex - true when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotEqual,
+				Value:    "^Movie",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "contains regex - true when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorContains,
+				Value:    "Torrent",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "contains regex - false when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorContains,
+				Value:    "^Movie",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
