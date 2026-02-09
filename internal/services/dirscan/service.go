@@ -1463,13 +1463,11 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 		// Prefer URL-derived signals; fall back to name.
 		urlHit := false
 		switch {
-		case host == "redacted.sh" || strings.HasSuffix(host, ".redacted.sh") ||
-			host == "redacted.ch" || strings.HasSuffix(host, ".redacted.ch"):
+		case host == "redacted.sh" || strings.HasSuffix(host, ".redacted.sh"):
 			urlHit = true
 		case host == "orpheus.network" || strings.HasSuffix(host, ".orpheus.network"):
 			urlHit = true
-		case strings.Contains(rawLower, "redacted.sh") || strings.Contains(rawLower, "redacted.ch") ||
-			strings.Contains(rawLower, "orpheus.network"):
+		case strings.Contains(rawLower, "redacted.sh") || strings.Contains(rawLower, "orpheus.network"):
 			urlHit = true
 		case opsOrRedURL.MatchString(rawLower):
 			urlHit = true
