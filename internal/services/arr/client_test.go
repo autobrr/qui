@@ -88,7 +88,7 @@ func TestClient_Ping_WithBasicAuth(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUser, gotPass, ok := r.BasicAuth()
-		require.True(t, ok)
+		assert.True(t, ok)
 		assert.Equal(t, user, gotUser)
 		assert.Equal(t, pass, gotPass)
 
