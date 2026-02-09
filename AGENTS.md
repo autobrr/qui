@@ -123,7 +123,7 @@ Keep those paths available on disk so the agent can inspect them when diagnosing
 
 ## Architecture Quick Reference
 
-```
+```text
 cmd/qui/main.go              CLI entrypoint (serve, generate-config, create-user, etc.)
 internal/api/                HTTP handlers + middleware (chi router)
 internal/qbittorrent/        Client pool, sync manager
