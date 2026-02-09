@@ -5538,6 +5538,15 @@ components:
       properties:
         enabled:
           type: boolean
+        gazelleEnabled:
+          type: boolean
+          description: Enable Gazelle matching for OPS/RED torrents
+        redactedApiKey:
+          type: string
+          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+        orpheusApiKey:
+          type: string
+          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
         runIntervalMinutes:
           type: integer
         startPaused:
@@ -5626,6 +5635,15 @@ components:
       properties:
         enabled:
           type: boolean
+        gazelleEnabled:
+          type: boolean
+          description: Enable Gazelle matching for OPS/RED torrents
+        redactedApiKey:
+          type: string
+          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+        orpheusApiKey:
+          type: string
+          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
         runIntervalMinutes:
           type: integer
         startPaused:

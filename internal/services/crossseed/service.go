@@ -20,9 +20,11 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -880,6 +882,9 @@ type searchRunState struct {
 	recentResults    []models.CrossSeedSearchResult
 	nextWake         time.Time
 	lastError        error
+
+	resolvedTorznabIndexerIDs []int
+	resolvedTorznabIndexerErr error
 }
 
 // shouldSkipErroredTorrent returns true if the torrent should be excluded from
@@ -1606,7 +1611,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(ctx, torrent.Hash, asyncAnalysis.FilteringState, requestedIndexerIDs)
 		}
 
-		allowedIndexerIDs = s.filterOutGazelleTorznabIndexers(ctx, allowedIndexerIDs)
 		if len(allowedIndexerIDs) == 0 {
 			if skipReason == "" {
 				skipReason = "no eligible indexers"
@@ -1798,6 +1802,8 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		opts:          opts,
 		recentResults: make([]models.CrossSeedSearchResult, 0, 10),
 	}
+
+	state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	s.searchCancel = cancel
@@ -5154,6 +5160,11 @@ func (s *Service) gazelleClientForHost(ctx context.Context, host string) (*gazel
 	return client, true, nil
 }
 
+var (
+	opsOrRedNameRE = regexp.MustCompile(`\b(ops|orpheus|red|redacted)\b`)
+	opsOrRedURLRE  = regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)`)
+)
+
 func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerIDs []int) []int {
 	if s.jackettService == nil || len(indexerIDs) == 0 {
 		return indexerIDs
@@ -5172,12 +5183,32 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 		}
 
 		name := strings.ToLower(strings.TrimSpace(idx.Name))
-		baseURL := strings.ToLower(strings.TrimSpace(idx.Description))
+		rawURL := strings.TrimSpace(idx.Description)
+		rawLower := strings.ToLower(rawURL)
 
-		if strings.Contains(baseURL, "redacted.sh") || strings.Contains(baseURL, "orpheus.network") ||
-			strings.Contains(baseURL, "redacted") || strings.Contains(baseURL, "orpheus") ||
-			strings.Contains(name, "redacted") || strings.Contains(name, "orpheus") ||
-			strings.Contains(name, " ops") || strings.Contains(name, " red") {
+		host := ""
+		pathLower := ""
+		if parsed, err := url.Parse(rawURL); err == nil {
+			host = strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+			pathLower = strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
+		}
+
+		// Prefer URL-derived signals; fall back to name.
+		urlHit := false
+		switch {
+		case host == "redacted.sh" || strings.HasSuffix(host, ".redacted.sh"):
+			urlHit = true
+		case host == "orpheus.network" || strings.HasSuffix(host, ".orpheus.network"):
+			urlHit = true
+		case strings.Contains(rawLower, "redacted.sh") || strings.Contains(rawLower, "orpheus.network"):
+			urlHit = true
+		case opsOrRedURLRE.MatchString(rawLower):
+			urlHit = true
+		case pathLower != "" && opsOrRedURLRE.MatchString(pathLower):
+			urlHit = true
+		}
+
+		if urlHit || opsOrRedNameRE.MatchString(name) {
 			disallowed[id] = struct{}{}
 		}
 	}
@@ -6887,9 +6918,8 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	var requestedIndexerIDs []int
 	if !doGazelleOnly {
-		var resolveErr error
-		requestedIndexerIDs, resolveErr = s.resolveTorznabIndexerIDs(ctx, state.opts.IndexerIDs)
-		if resolveErr != nil {
+		requestedIndexerIDs = state.resolvedTorznabIndexerIDs
+		if state.resolvedTorznabIndexerErr != nil {
 			s.searchMu.Lock()
 			state.run.TorrentsFailed++
 			s.searchMu.Unlock()
@@ -6899,11 +6929,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
-				Message:      fmt.Sprintf("resolve indexers: %v", resolveErr),
+				Message:      fmt.Sprintf("resolve indexers: %v", state.resolvedTorznabIndexerErr),
 				ProcessedAt:  processedAt,
 			})
 			s.persistSearchRun(state)
-			return resolveErr
+			return state.resolvedTorznabIndexerErr
 		}
 		if len(requestedIndexerIDs) == 0 {
 			s.searchMu.Lock()
