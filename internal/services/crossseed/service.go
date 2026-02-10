@@ -824,6 +824,7 @@ type SearchRunOptions struct {
 	ExcludeTags                  []string // Tags to exclude from source filtering
 	IntervalSeconds              int
 	IndexerIDs                   []int
+	DisableTorznab               bool
 	CooldownMinutes              int
 	FindIndividualEpisodes       bool
 	RequestedBy                  string
@@ -1736,6 +1737,9 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 	hasGazelle := settings.GazelleEnabled && (strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
+	if opts.DisableTorznab && !hasGazelle {
+		return nil, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
+	}
 	if s.jackettService == nil {
 		if !hasGazelle {
 			return nil, errors.New("torznab search is not configured")
@@ -1774,6 +1778,10 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	}
 	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
 
+	if opts.DisableTorznab {
+		opts.IndexerIDs = []int{}
+	}
+
 	s.searchMu.Lock()
 	if s.searchCancel != nil && len(opts.SpecificHashes) == 0 {
 		s.searchMu.Unlock()
@@ -1803,7 +1811,11 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		recentResults: make([]models.CrossSeedSearchResult, 0, 10),
 	}
 
-	state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
+	if opts.DisableTorznab {
+		state.resolvedTorznabIndexerIDs = []int{}
+	} else {
+		state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
+	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	s.searchCancel = cancel

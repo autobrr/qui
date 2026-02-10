@@ -3234,6 +3234,9 @@ paths:
                   items:
                     type: integer
                   description: Specific indexers to search
+                disableTorznab:
+                  type: boolean
+                  description: Disable Torznab searches (Gazelle-only for OPS/RED torrents; other torrents will be skipped)
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent

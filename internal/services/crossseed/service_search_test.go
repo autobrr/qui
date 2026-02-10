@@ -289,6 +289,43 @@ func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 	require.Equal(t, models.CrossSeedSearchRunStatusSuccess, loaded.Status)
 }
 
+func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	_, err = svc.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID:     instance.ID,
+		DisableTorznab: true,
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidRequest)
+}
+
 type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }

@@ -339,6 +339,7 @@ type searchRunRequest struct {
 	Tags            []string `json:"tags"`
 	IntervalSeconds int      `json:"intervalSeconds"`
 	IndexerIDs      []int    `json:"indexerIds"`
+	DisableTorznab  bool     `json:"disableTorznab"`
 	CooldownMinutes int      `json:"cooldownMinutes"`
 
 	// TODO: Surface remaining crossseed.SearchRunOptions fields (e.g. FindIndividualEpisodes,
@@ -1326,6 +1327,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		Tags:            req.Tags,
 		IntervalSeconds: req.IntervalSeconds,
 		IndexerIDs:      req.IndexerIDs,
+		DisableTorznab:  req.DisableTorznab,
 		CooldownMinutes: req.CooldownMinutes,
 		RequestedBy:     "api",
 	})
