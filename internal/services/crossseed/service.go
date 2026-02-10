@@ -6948,6 +6948,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			return state.resolvedTorznabIndexerErr
 		}
 		if len(requestedIndexerIDs) == 0 {
+			msg := "no eligible Torznab indexers (OPS/RED are Gazelle-only)"
+			if state.opts.DisableTorznab {
+				msg = "Torznab disabled (Gazelle-only)"
+			}
 			s.searchMu.Lock()
 			state.run.TorrentsSkipped++
 			s.searchMu.Unlock()
@@ -6957,7 +6961,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
-				Message:      "no eligible Torznab indexers (OPS/RED are Gazelle-only)",
+				Message:      msg,
 				ProcessedAt:  processedAt,
 			})
 			s.persistSearchRun(state)
