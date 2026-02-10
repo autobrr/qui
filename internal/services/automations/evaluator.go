@@ -573,7 +573,11 @@ func compareString(value string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(value)
+		matched := cond.Compiled.MatchString(value)
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			return !matched
+		}
+		return matched
 	}
 
 	switch cond.Operator {
@@ -621,15 +625,23 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 		return compareString("", cond)
 	}
 
-	// Keep string-field semantics consistent: when regex is enabled, operator is ignored and we
-	// just test the regex against the value.
 	if cond.Regex || cond.Operator == OperatorMatches {
+		if cond.Compiled == nil {
+			return false
+		}
+		anyMatch := false
 		for _, c := range candidates {
-			if compareString(c, cond) {
-				return true
+			if cond.Compiled.MatchString(c) {
+				anyMatch = true
+				break
 			}
 		}
-		return false
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			// Negative operators apply to the combined candidate set: fail if any candidate matches.
+			return !anyMatch
+		}
+		// Regex-enabled string operators: succeed if any candidate matches.
+		return anyMatch
 	}
 
 	// Important: negative operators must apply to the combined candidate set.
@@ -720,7 +732,11 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(tagsRaw)
+		matched := cond.Compiled.MatchString(tagsRaw)
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			return !matched
+		}
+		return matched
 	}
 
 	tags := splitTags(tagsRaw)
