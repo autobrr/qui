@@ -249,6 +249,100 @@ func TestRefreshSearchQueue_TorznabDisabledCountsOnlyGazelleSources(t *testing.T
 	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("other-hash")])
 }
 
+func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-already-seeded.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	// Minimal torrent bytes; "source" flag hashing is based on info dict.
+	torrentDict := map[string]any{
+		"announce": "https://flacsfor.me/abc/announce",
+		"info": map[string]any{
+			"length": int64(123),
+			"name":   "test",
+		},
+	}
+	torrentBytes, err := bencode.Marshal(torrentDict)
+	require.NoError(t, err)
+
+	hashes, err := gazellemusic.CalculateHashesWithSources(torrentBytes, []string{"OPS"})
+	require.NoError(t, err)
+	expectedTargetHash := hashes["OPS"]
+	require.NotEmpty(t, expectedTargetHash)
+
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+
+	service := &Service{
+		automationStore:  store,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{
+				{
+					Hash:     sourceHash,
+					Name:     "Durante - LMK (2024 WF)",
+					Progress: 1.0,
+					Size:     123,
+					Tracker:  "https://flacsfor.me/abc/announce",
+				},
+			},
+			filesByHash: map[string]qbt.TorrentFiles{
+				sourceHashNorm: {
+					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+			exportedTorrent:    torrentBytes,
+			expectedTargetHash: expectedTargetHash,
+		},
+	}
+
+	now := time.Now().UTC()
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       now,
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{},
+		IntervalSeconds: 60,
+		CooldownMinutes: 0,
+		Results:         []models.CrossSeedSearchResult{},
+	})
+	require.NoError(t, err)
+
+	state := &searchRunState{
+		run: run,
+		opts: SearchRunOptions{
+			InstanceID:     instance.ID,
+			DisableTorznab: true,
+		},
+	}
+
+	require.NoError(t, service.refreshSearchQueue(ctx, state))
+
+	require.Equal(t, 0, state.run.TotalTorrents, "already cross-seeded torrents should be excluded from Gazelle-only runs")
+	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize(sourceHash)])
+
+	candidate, err := service.nextSearchCandidate(ctx, state)
+	require.NoError(t, err)
+	require.Nil(t, candidate)
+}
+
 func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "crossseed-duplicates.db")

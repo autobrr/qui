@@ -6875,12 +6875,35 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 
 	// Gazelle-only mode: only consider torrents that are sourced from OPS/RED.
 	if state != nil && state.opts.DisableTorznab {
-		_, isGazelleSource := s.detectGazelleSourceSite(torrent)
+		sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
 		if !isGazelleSource {
 			if cacheKey != "" && state.skipCache != nil {
 				state.skipCache[cacheKey] = true
 			}
 			return true, nil
+		}
+
+		// If both OPS and RED are already seeded, we don't need to attempt matching at all.
+		// gzlx behavior: compute the target-site infohash (source-flag swap) and skip when it exists locally.
+		targetHost := gazelleTargetForSource(sourceSite)
+		if targetHost != "" && s.syncManager != nil {
+			if spec, ok := gazellemusic.KnownTrackers[targetHost]; ok && strings.TrimSpace(spec.SourceFlag) != "" {
+				torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, state.opts.InstanceID, torrent.Hash)
+				if err == nil && len(torrentBytes) > 0 {
+					if hashes, err := gazellemusic.CalculateHashesWithSources(torrentBytes, []string{spec.SourceFlag}); err == nil {
+						targetHash := strings.TrimSpace(hashes[spec.SourceFlag])
+						if targetHash != "" {
+							_, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, state.opts.InstanceID, []string{targetHash})
+							if err == nil && exists {
+								if cacheKey != "" && state.skipCache != nil {
+									state.skipCache[cacheKey] = true
+								}
+								return true, nil
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
