@@ -187,6 +187,68 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("new-hash")])
 }
 
+func TestRefreshSearchQueue_TorznabDisabledCountsOnlyGazelleSources(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-only.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	service := &Service{
+		automationStore: store,
+		syncManager: &queueTestSyncManager{
+			torrents: []qbt.Torrent{
+				{Hash: "red-hash", Name: "Some.Release", Progress: 1.0, Tracker: "https://flacsfor.me/announce"},
+				{Hash: "ops-hash", Name: "Other.Release", Progress: 1.0, Tracker: "https://home.opsfet.ch/announce"},
+				{Hash: "other-hash", Name: "Non.Gazelle.Release", Progress: 1.0, Tracker: "https://tracker.example/announce"},
+			},
+		},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	now := time.Now().UTC()
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       now,
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{},
+		IntervalSeconds: 60,
+		CooldownMinutes: 0,
+		Results:         []models.CrossSeedSearchResult{},
+	})
+	require.NoError(t, err)
+
+	state := &searchRunState{
+		run: run,
+		opts: SearchRunOptions{
+			InstanceID:     instance.ID,
+			DisableTorznab: true,
+		},
+	}
+
+	require.NoError(t, service.refreshSearchQueue(ctx, state))
+
+	require.Equal(t, 2, state.run.TotalTorrents, "only OPS/RED-sourced torrents should be counted in Gazelle-only mode")
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("red-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("ops-hash")])
+	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("other-hash")])
+}
+
 func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "crossseed-duplicates.db")
@@ -372,8 +434,13 @@ func (*queueTestSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]
 	return nil, nil
 }
 
-func (*queueTestSyncManager) ExtractDomainFromURL(string) string {
-	return ""
+func (*queueTestSyncManager) ExtractDomainFromURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	return strings.ToLower(host)
 }
 
 func (*queueTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {

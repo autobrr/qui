@@ -6873,6 +6873,17 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return true, nil
 	}
 
+	// Gazelle-only mode: only consider torrents that are sourced from OPS/RED.
+	if state != nil && state.opts.DisableTorznab {
+		_, isGazelleSource := s.detectGazelleSourceSite(torrent)
+		if !isGazelleSource {
+			if cacheKey != "" && state.skipCache != nil {
+				state.skipCache[cacheKey] = true
+			}
+			return true, nil
+		}
+	}
+
 	if s.automationStore == nil {
 		if cacheKey != "" && state.skipCache != nil {
 			state.skipCache[cacheKey] = false

@@ -2417,7 +2417,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       disabled={!globalSettings.gazelleEnabled}
                       autoComplete="off"
                     />
-                    <p className="text-xs text-muted-foreground">Used for `redacted.sh` lookups. Paste to replace; clear to remove.</p>
+                    <p className="text-xs text-muted-foreground">Used for redacted.sh lookups. Paste to replace; clear to remove.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -2432,7 +2432,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       disabled={!globalSettings.gazelleEnabled}
                       autoComplete="off"
                     />
-                    <p className="text-xs text-muted-foreground">Used for `orpheus.network` lookups. Paste to replace; clear to remove.</p>
+                    <p className="text-xs text-muted-foreground">Used for orpheus.network lookups. Paste to replace; clear to remove.</p>
                   </div>
                 </div>
               </div>
