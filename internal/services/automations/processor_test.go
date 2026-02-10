@@ -1532,6 +1532,48 @@ func TestProcessTorrents_ExternalProgram_LastRuleWins(t *testing.T) {
 	require.Equal(t, "Second Rule", state.programRuleName, "expected last rule's name")
 }
 
+func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "abc123",
+			Name:    "Test Torrent",
+			Private: false,
+			Tags:    "TEST",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Remove Tag When Private False",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tag: &models.TagAction{
+				Enabled: true,
+				Tags:    []string{"TEST"},
+				Mode:    models.TagModeRemove,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldPrivate,
+					Operator: models.OperatorEqual,
+					Value:    "false",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+
+	action, hasTag := state.tagActions["TEST"]
+	require.True(t, hasTag, "expected tag action to be recorded")
+	require.Equal(t, "remove", action, "expected tag to be removed when condition matches")
+}
+
 func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
