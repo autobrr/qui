@@ -267,9 +267,13 @@ It then counts how many unique file paths across the entire qBittorrent torrent 
 
 | Scope | Condition | Meaning |
 |---|---|---|
-| `none` | All files have `nlink == 1` | No hardlinks at all — not cross-seeded, not imported into a library. |
-| `torrents_only` | All files have `nlink > 1`, but nlink equals the number of paths qui found within the torrent set | Hardlinks exist, but only between torrents in qBittorrent (e.g., cross-seeds). No external library links. |
+| `none` | No file has `nlink > 1` | No hardlinks detected. |
+| `torrents_only` | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links. |
 | `outside_qbittorrent` | Any file has `nlink > uniquePathCount` | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
+
+:::note
+`HARDLINK_SCOPE` only reflects hardlink metadata. Cross-seeds are detected separately (ContentPath matching), so a torrent can have `HARDLINK_SCOPE = none` and still be cross-seeded.
+:::
 
 #### Unknown scope and safety behavior
 
