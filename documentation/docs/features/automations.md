@@ -252,22 +252,121 @@ Automations detect cross-seeded torrents (same content/files) and can handle the
 - **Category Rules** - Enable "Include Cross-Seeds" to move related torrents together
 - **Blocking** - Prevent category moves if cross-seeds are in protected categories
 
-## Hardlink Detection
+### Hardlink Detection
 
-The `Hardlink Scope` field detects whether torrent files have hardlinks:
+The `HARDLINK_SCOPE` field lets automations distinguish between torrents whose files are hardlinked into an external library (Sonarr, Radarr, etc.) and torrents that exist only within qBittorrent. This is the foundation for safe "Remove Upgraded Torrents" automations.
 
-| Value | Description |
-|-------|-------------|
-| `none` | No hardlinks detected |
-| `torrents_only` | Hardlinks only within qBittorrent's download set |
-| `outside_qbittorrent` | Hardlinks to files outside qBittorrent (e.g., media library) |
+#### How scope is determined
+
+When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by calling `Lstat()` on every file of every torrent in qBittorrent. For each file it extracts:
+
+- The **inode** and **device ID** — uniquely identifying the file on disk.
+- The **nlink count** — the total number of hardlinks to that inode, as reported by the filesystem.
+
+It then counts how many unique file paths across the entire qBittorrent torrent set point to each inode. The scope for each torrent is determined by comparing these two numbers:
+
+| Scope | Condition | Meaning |
+|---|---|---|
+| `none` | No file has `nlink > 1` | No hardlinks detected. |
+| `torrents_only` | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links. |
+| `outside_qbittorrent` | Any file has `nlink > uniquePathCount` | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
 
 :::note
-Requires "Local filesystem access" enabled on the instance.
+`HARDLINK_SCOPE` only reflects hardlink metadata. Cross-seeds are detected separately (ContentPath matching), so a torrent can have `HARDLINK_SCOPE = none` and still be cross-seeded.
 :::
 
-Use case: Identify library imports vs pure cross-seeds for selective cleanup.
+#### Unknown scope and safety behavior
 
+If qui cannot `Lstat()` **any** file in a torrent — due to wrong paths, missing permissions, or inaccessible storage — that torrent receives no scope entry. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This is a safety measure to prevent unintended deletions of torrents qui cannot fully inspect.
+
+To diagnose this, enable debug logging and look for the "hardlink index built" log message, which reports an `inaccessible` count.
+
+#### Docker volume requirements
+
+For hardlink scope detection to work in Docker:
+
+1. **Paths must match exactly.** qui must be able to read files at the same paths qBittorrent reports. If qBittorrent says a torrent's save path is `/data/torrents/radarr/`, qui must be able to access `/data/torrents/radarr/` inside its container.
+
+2. **Same underlying storage.** Both containers must share the same host mount so that inode numbers are consistent. If qui and qBittorrent access the same files through different host mounts or different bind-mount configurations, inode numbers may not match.
+
+3. **Single mount, not subdivided.** Mount the common parent directory rather than mounting subdirectories separately. For example, if your data lives under `/mnt/media/data` on the host:
+
+```yaml
+services:
+  qui:
+    volumes:
+      - /home/user/docker/qui:/config
+      - /mnt/media/data:/data  # single mount covering both torrents and library
+```
+
+Avoid mounting both `/mnt/media/data/torrents:/data/torrents` **and** `/mnt/media/data:/data` — the overlapping mounts can cause inconsistent inode visibility. Use a single mount at the common parent.
+
+#### Filesystem limitations
+
+Hardlink scope detection depends on the kernel reporting accurate `nlink` values in stat results. Some filesystems do not do this:
+
+- **FUSE-based filesystems** (sshfs, mergerfs, rclone mount) may report `nlink = 1` for all files regardless of actual hardlink count.
+- **Some NAS appliance filesystems** and **overlay filesystems** (overlayfs) may behave similarly.
+- **Network filesystems** (NFS, CIFS/SMB) generally report accurate nlink values but behavior varies by server implementation.
+
+On affected filesystems, every torrent appears to have scope `none` because nlink is always 1. There is no workaround within qui — this is a kernel/filesystem limitation. If you suspect this issue, run `stat` on a file you know is hardlinked and check the "Links" count.
+
+Hardlinks also cannot span across different filesystems. If your torrent data and media library are on separate filesystems (or separate Docker volumes backed by different host paths), Sonarr/Radarr will copy instead of hardlink, and scope detection has nothing to detect.
+
+#### Example: Remove Upgraded Torrents
+
+This automation deletes torrents that have been replaced by an upgrade in Sonarr/Radarr. It targets torrents where the library hardlink no longer exists (the arr removed or re-linked it during upgrade), the torrent has been seeding for at least 7 days, and the category matches your arr categories.
+
+:::tip
+Use `HARDLINK_SCOPE` with `NOT_EQUAL` to `outside_qbittorrent` rather than `EQUAL` to `none`. This way torrents with scope `torrents_only` (cross-seeded but not in a library) are also eligible for cleanup, while any torrent still linked into your media library is protected.
+:::
+
+```json
+{
+  "name": "Remove Upgraded Torrents",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "delete": {
+      "enabled": true,
+      "mode": "deleteWithFilesPreserveCrossSeeds",
+      "condition": {
+        "operator": "AND",
+        "conditions": [
+          {
+            "operator": "OR",
+            "conditions": [
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "radarr" },
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "radarr.cross" },
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "tv-sonarr" },
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "tv-sonarr.cross" }
+            ]
+          },
+          {
+            "field": "HARDLINK_SCOPE",
+            "operator": "NOT_EQUAL",
+            "value": "outside_qbittorrent"
+          },
+          {
+            "field": "SEEDING_TIME",
+            "operator": "GREATER_THAN_OR_EQUAL",
+            "value": "604800"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+This works because when Sonarr/Radarr upgrades a release, the old library hardlink is removed. The old torrent's files then have `nlink == 1` (scope `none`) or are only linked to other torrents (scope `torrents_only`). Either way, the scope is not `outside_qbittorrent`, so the automation matches and deletes the torrent after the seeding time requirement is met.
+
+If the automation is matching torrents you expect to be protected, verify:
+
+1. qui can access all torrent files at the paths qBittorrent reports (check debug logs for inaccessible files).
+2. Your filesystem reports accurate nlink values (`stat <file>` should show Links > 1 for hardlinked files).
+3. Your Docker volume mounts do not overlap or subdivide the storage in a way that breaks inode consistency.
 ## Missing Files Detection
 
 The `Has Missing Files` field detects whether any files belonging to a completed torrent are missing from disk.
