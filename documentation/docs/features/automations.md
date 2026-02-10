@@ -82,10 +82,12 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 #### Tracker/Status Fields
 | Field | Description |
 |-------|-------------|
-| Tracker | Primary tracker URL |
+| Tracker | Primary tracker (URL, domain, or customization display name) |
 | Private | Boolean - is private tracker |
 | Is Unregistered | Boolean - tracker reports unregistered |
 | Comment | Torrent comment field |
+
+Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
 
 #### Advanced Fields
 | Field | Description |
@@ -130,7 +132,21 @@ The State field matches these status buckets:
 
 ### Regex Support
 
-Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default. The UI validates patterns and shows helpful error messages for invalid regex.
+Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default.
+
+Regex can be used either by selecting **matches regex** or by enabling the **Regex** toggle for a condition:
+
+- When regex is enabled, the condition checks whether the regex matches the field value.
+- `not equals` and `not contains` invert the regex result (true only if the regex does **not** match).
+- Operators like `equals`, `contains`, `starts with`, and `ends with` are treated as regex match when regex is enabled.
+- Regex is not implicitly anchored: use `^` and `$` if you want an exact/full-string match (example: `^BHD$`).
+
+Field notes:
+
+- **Tracker**: checked against multiple candidates (raw URL, extracted domain, and optional customization display name). Negative regex passes only if **none** of the candidates match.
+- **Tags**: without regex, string operators are applied per-tag. With regex enabled, the regex is matched against the full raw tags string.
+
+The UI validates patterns and shows helpful error messages for invalid regex.
 
 ## Tracker Matching
 

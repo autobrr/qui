@@ -391,6 +391,25 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 	return evalCtx, instance
 }
 
+func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
+	if evalCtx == nil || cond == nil || evalCtx.TrackerDisplayNameByDomain != nil {
+		return
+	}
+	if s == nil || s.trackerCustomizationStore == nil {
+		return
+	}
+	if !ConditionUsesField(cond, FieldTracker) {
+		return
+	}
+
+	customizations, err := s.trackerCustomizationStore.List(ctx)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for preview tracker matching")
+		return
+	}
+	evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
+}
+
 // setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
 func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rule *models.Automation, evalCtx *EvalContext, instance *models.Instance) error {
 	if instance == nil || !rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
@@ -437,6 +456,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cfg.normalize()
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
+		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
+	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 
@@ -849,6 +871,9 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	cfg.normalize()
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
+		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
+	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1216,8 +1241,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName
-	if rulesUseTrackerDisplayName(eligibleRules) && s.trackerCustomizationStore != nil {
+	// Load tracker display names when needed by tagging OR by TRACKER conditions.
+	// KISS: only load customizations when a rule actually references them.
+	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker)) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
