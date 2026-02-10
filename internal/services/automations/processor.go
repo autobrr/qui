@@ -582,13 +582,25 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 			hasTag = (pending == "add")
 		}
 
-		// Smart tagging logic:
-		// - ADD: doesn't have tag + matches + mode allows add
-		// - REMOVE: has tag + doesn't match + mode allows remove
-		if !hasTag && matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeAdd) {
-			state.tagActions[managedTag] = "add"
-		} else if hasTag && !matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeRemove) {
-			state.tagActions[managedTag] = "remove"
+		// Tagging semantics:
+		// - FULL: add to matches, remove from non-matches
+		// - ADD: add to matches only
+		// - REMOVE: remove from matches only
+		switch tagMode {
+		case models.TagModeAdd:
+			if !hasTag && matchesCondition {
+				state.tagActions[managedTag] = "add"
+			}
+		case models.TagModeRemove:
+			if hasTag && matchesCondition {
+				state.tagActions[managedTag] = "remove"
+			}
+		default: // full (incl. unknown/empty)
+			if !hasTag && matchesCondition {
+				state.tagActions[managedTag] = "add"
+			} else if hasTag && !matchesCondition {
+				state.tagActions[managedTag] = "remove"
+			}
 		}
 	}
 
