@@ -217,6 +217,72 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
 			expected: true,
 		},
+		{
+			name: "not_contains regex - false when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotContains,
+				Value:    "^Test.*2024$",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
+		{
+			name: "not_contains regex - true when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotContains,
+				Value:    "^Movie.*2024$",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "not_equal regex - false when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotEqual,
+				Value:    ".*Torrent.*",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
+		{
+			name: "not_equal regex - true when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotEqual,
+				Value:    "^Movie",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "contains regex - true when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorContains,
+				Value:    "Torrent",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "contains regex - false when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorContains,
+				Value:    "^Movie",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -227,6 +293,107 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEvaluateCondition_TrackerField_DisplayNameAndNegation(t *testing.T) {
+	torrent := qbt.Torrent{Tracker: "https://beyond-hd.me/announce"}
+	ctx := &EvalContext{
+		TrackerDisplayNameByDomain: map[string]string{
+			"beyond-hd.me": "BHD",
+		},
+	}
+
+	t.Run("equals display name", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("not equals display name", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("domain still matches without ctx", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "beyond-hd.me",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, nil, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("display name does not match without ctx", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, nil, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("not_equal regex - false when any candidate matches (display name)", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "^BHD$",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("not_contains regex - false when any candidate matches (display name)", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotContains,
+			Value:    "BHD",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("not_equal regex - true when no candidate matches", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "^XYZ$",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("not_contains regex - true when no candidate matches", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotContains,
+			Value:    "XYZ",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
 }
 
 func TestEvaluateCondition_NumericFields(t *testing.T) {
