@@ -132,26 +132,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	isTV := source.Series > 0 || candidate.Series > 0
-
-	if isTV {
-		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
-		// while still requiring the titles to be closely related.
-		if sourceTitleNorm != candidateTitleNorm &&
-			!strings.Contains(sourceTitleNorm, candidateTitleNorm) &&
-			!strings.Contains(candidateTitleNorm, sourceTitleNorm) {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
-	} else {
-		// For non-TV content (movies, music, audiobooks, etc.), require exact title
-		// match after normalization. This avoids very loose substring matches across
-		// unrelated content types.
-		if sourceTitleNorm != candidateTitleNorm {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
+	// Require exact title match after normalization.
+	//
+	// This is intentionally strict to avoid false positives between related-but-distinct
+	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
+	// would incorrectly treat them as the same show.
+	if sourceTitleNorm != candidateTitleNorm {
+		// Title mismatches are expected for most candidates - don't log to avoid noise
+		return false
 	}
+
+	isTV := source.Series > 0 || candidate.Series > 0
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
