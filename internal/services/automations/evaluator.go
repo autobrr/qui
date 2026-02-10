@@ -574,12 +574,10 @@ func compareString(value string, cond *RuleCondition) bool {
 			return false
 		}
 		matched := cond.Compiled.MatchString(value)
-		switch cond.Operator {
-		case OperatorNotContains, OperatorNotEqual:
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
 			return !matched
-		default:
-			return matched
 		}
+		return matched
 	}
 
 	switch cond.Operator {
@@ -638,14 +636,12 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 				break
 			}
 		}
-		switch cond.Operator {
-		case OperatorNotContains, OperatorNotEqual:
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
 			// Negative operators apply to the combined candidate set: fail if any candidate matches.
 			return !anyMatch
-		default:
-			// Regex-enabled string operators: succeed if any candidate matches.
-			return anyMatch
 		}
+		// Regex-enabled string operators: succeed if any candidate matches.
+		return anyMatch
 	}
 
 	// Important: negative operators must apply to the combined candidate set.
@@ -737,12 +733,10 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 			return false
 		}
 		matched := cond.Compiled.MatchString(tagsRaw)
-		switch cond.Operator {
-		case OperatorNotContains, OperatorNotEqual:
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
 			return !matched
-		default:
-			return matched
 		}
+		return matched
 	}
 
 	tags := splitTags(tagsRaw)
