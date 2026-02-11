@@ -129,6 +129,27 @@ export function getCommonTags(torrents: Torrent[]): string[] {
   return Object.keys(tagCounts).filter(tag => tagCounts[tag] === torrents.length)
 }
 
+export function parseTorrentTags(tags?: string | null): string[] {
+  if (!tags) return []
+  return tags.split(",").map(tag => tag.trim()).filter(Boolean)
+}
+
+export function torrentHasTag(torrent: Torrent, tag: string): boolean {
+  const normalized = tag.trim()
+  if (!normalized) return false
+  return parseTorrentTags(torrent.tags).includes(normalized)
+}
+
+export function anyTorrentHasTag(torrents: Torrent[], tag: string): boolean {
+  if (torrents.length === 0) return false
+  return torrents.some(torrent => torrentHasTag(torrent, tag))
+}
+
+export function getTorrentHashesWithTag(torrents: Torrent[], tag: string): string[] {
+  if (torrents.length === 0) return []
+  return torrents.filter(torrent => torrentHasTag(torrent, tag)).map(torrent => torrent.hash)
+}
+
 /**
  * Get common category from selected torrents (if all have the same category)
  */

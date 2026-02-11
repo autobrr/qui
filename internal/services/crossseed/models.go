@@ -282,6 +282,7 @@ type TorrentSearchAddResult struct {
 	Title           string                    `json:"title"`
 	Indexer         string                    `json:"indexer"`
 	TorrentName     string                    `json:"torrent_name,omitempty"`
+	InfoHash        string                    `json:"info_hash,omitempty"`
 	Success         bool                      `json:"success"`
 	InstanceResults []InstanceCrossSeedResult `json:"instance_results,omitempty"`
 	Error           string                    `json:"error,omitempty"`

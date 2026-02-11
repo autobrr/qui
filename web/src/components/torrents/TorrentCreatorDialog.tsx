@@ -72,9 +72,7 @@ function PathSuggestions({ suggestions, highlightedIndex, onSelect }: PathSugges
               title={entry}
               className={cn(
                 "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                highlightedIndex === idx
-                  ? "bg-accent text-accent-foreground"
-                  : "hover:bg-accent/70"
+                highlightedIndex === idx? "bg-accent text-accent-foreground": "hover:bg-accent/70"
               )}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onSelect(entry)}
@@ -103,9 +101,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
 
   const { versionInfo } = useQBittorrentAppInfo(instanceId)
   const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
-  const libtorrentVersionLabel = versionInfo.libtorrentMajorVersion
-    ? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`
-    : "libtorrent 1.x"
+  const libtorrentVersionLabel = versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
 
   // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useInstanceTrackers(instanceId, { enabled: open })
@@ -184,7 +180,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     handleKeyDown: handleSourcePathKeyDown,
     highlightedIndex: sourcePathHighlightedIndex,
     showSuggestions: showSourcePathSuggestions,
-    inputRef: sourcePathInputRef
+    inputRef: sourcePathInputRef,
   } = usePathAutocomplete(setSourcePath, instanceId)
 
   const {
@@ -194,7 +190,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     handleKeyDown: handleTorrentFilePathKeyDown,
     highlightedIndex: torrentFilePathHighlightedIndex,
     showSuggestions: showTorrentFilePathSuggestions,
-    inputRef: torrentFilePathInputRef
+    inputRef: torrentFilePathInputRef,
   } = usePathAutocomplete(setTorrentFilePath, instanceId)
 
   useEffect(() => {
@@ -232,228 +228,228 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             }}
             className="space-y-4"
           >
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Source Path */}
-          <form.Field name="sourcePath">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="sourcePath">
-                  Source Path <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="sourcePath"
-                  ref={supportsPathAutocomplete ? sourcePathInputRef : undefined}
-                  placeholder="/path/to/file/or/folder"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onKeyDown={supportsPathAutocomplete ? handleSourcePathKeyDown : undefined}
-                  onChange={(e) => {
-                    field.handleChange(e.target.value)
-                    if (supportsPathAutocomplete) {
-                      handleSourcePathInputChange(e.target.value)
-                    }
-                  }}
-                  required
-                />
-
-                {supportsPathAutocomplete && showSourcePathSuggestions && (
-                  <PathSuggestions
-                    suggestions={sourcePathSuggestions}
-                    highlightedIndex={sourcePathHighlightedIndex}
-                    onSelect={handleSourcePathSelect}
-                  />
-                )}
-
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>Full path on the server where qBittorrent is running</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-4 w-4 cursor-help shrink-0" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Windows users: use double backslashes (e.g., C:\\Data\\folder)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
-          </form.Field>
 
-          {/* Private */}
-          <form.Field name="private">
-            {(field) => (
-              <div className="flex items-center justify-between">
+            {/* Source Path */}
+            <form.Field name="sourcePath">
+              {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="private">Private torrent</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Disable DHT, PEX, and local peer discovery
-                  </p>
-                </div>
-                <Switch
-                  id="private"
-                  checked={field.state.value}
-                  onCheckedChange={field.handleChange}
-                />
-              </div>
-            )}
-          </form.Field>
+                  <Label htmlFor="sourcePath">
+                    Source Path <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="sourcePath"
+                    ref={supportsPathAutocomplete ? sourcePathInputRef : undefined}
+                    placeholder="/path/to/file/or/folder"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onKeyDown={supportsPathAutocomplete ? handleSourcePathKeyDown : undefined}
+                    onChange={(e) => {
+                      field.handleChange(e.target.value)
+                      if (supportsPathAutocomplete) {
+                        handleSourcePathInputChange(e.target.value)
+                      }
+                    }}
+                    required
+                  />
 
-          {/* Trackers */}
-          <form.Field name="trackers">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="trackers">Trackers</Label>
-                {activeTrackers && Object.keys(activeTrackers).length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Select from your active trackers or paste custom URLs below
-                    </p>
-                    <Select
-                      value=""
-                      onValueChange={(trackerUrl) => {
-                        const currentTrackers = field.state.value
-                        const newTrackers = currentTrackers? `${currentTrackers}\n${trackerUrl}`: trackerUrl
-                        field.handleChange(newTrackers)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Add tracker from your active torrents" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(activeTrackers)
-                          .sort(([domainA], [domainB]) => domainA.localeCompare(domainB))
-                          .map(([domain, url]) => (
-                            <SelectItem key={domain} value={url}>
-                              {domain}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                  {supportsPathAutocomplete && showSourcePathSuggestions && (
+                    <PathSuggestions
+                      suggestions={sourcePathSuggestions}
+                      highlightedIndex={sourcePathHighlightedIndex}
+                      onSelect={handleSourcePathSelect}
+                    />
+                  )}
+
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Full path on the server where qBittorrent is running</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 cursor-help shrink-0" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Windows users: use double backslashes (e.g., C:\\Data\\folder)</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  One tracker URL per line
-                </p>
-                <Textarea
-                  id="trackers"
-                  placeholder="https://tracker.example.com:443/announce&#10;udp://tracker.example2.com:6969/announce"
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  rows={4}
-                />
-              </div>
-            )}
-          </form.Field>
-
-          {/* Comment */}
-          <form.Field name="comment">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="comment">Comment</Label>
-                <Input
-                  id="comment"
-                  placeholder="Optional comment"
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-              </div>
-            )}
-          </form.Field>
-
-          {/* Source */}
-          <form.Field name="source">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="source">Source</Label>
-                <Input
-                  id="source"
-                  placeholder="Optional source tag"
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-              </div>
-            )}
-          </form.Field>
-
-          {/* Start Seeding */}
-          <form.Field name="startSeeding">
-            {(field) => (
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="startSeeding">Add to qBittorrent</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Add the created torrent to qBittorrent and start seeding. If disabled, only creates the .torrent file for download.
-                  </p>
                 </div>
-                <Switch
-                  id="startSeeding"
-                  checked={field.state.value}
-                  onCheckedChange={field.handleChange}
-                />
-              </div>
-            )}
-          </form.Field>
+              )}
+            </form.Field>
 
-          {/* Advanced Options */}
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-            <CollapsibleTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full justify-between p-0 hover:bg-transparent"
-              >
-                <span className="text-sm font-medium">Advanced Options</span>
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-                />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-4 pt-4">
-              {/* Torrent Format */}
-              {supportsFormatSelection ? (
-                <form.Field name="format">
-                  {(field) => (
+            {/* Private */}
+            <form.Field name="private">
+              {(field) => (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <Label htmlFor="private">Private torrent</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Disable DHT, PEX, and local peer discovery
+                    </p>
+                  </div>
+                  <Switch
+                    id="private"
+                    checked={field.state.value}
+                    onCheckedChange={field.handleChange}
+                  />
+                </div>
+              )}
+            </form.Field>
+
+            {/* Trackers */}
+            <form.Field name="trackers">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="trackers">Trackers</Label>
+                  {activeTrackers && Object.keys(activeTrackers).length > 0 && (
                     <div className="space-y-2">
-                      <Label htmlFor="format">Torrent Format</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Select from your active trackers or paste custom URLs below
+                      </p>
                       <Select
-                        value={field.state.value}
-                        onValueChange={(value) => field.handleChange(value as TorrentFormat)}
+                        value=""
+                        onValueChange={(trackerUrl) => {
+                          const currentTrackers = field.state.value
+                          const newTrackers = currentTrackers? `${currentTrackers}\n${trackerUrl}`: trackerUrl
+                          field.handleChange(newTrackers)
+                        }}
                       >
-                        <SelectTrigger id="format">
-                          <SelectValue />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Add tracker from your active torrents" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="v1">v1 (Compatible)</SelectItem>
-                          <SelectItem value="v2">v2 (Modern)</SelectItem>
-                          <SelectItem value="hybrid">Hybrid (v1 + v2)</SelectItem>
+                          {Object.entries(activeTrackers)
+                            .sort(([domainA], [domainB]) => domainA.localeCompare(domainB))
+                            .map(([domain, url]) => (
+                              <SelectItem key={domain} value={url}>
+                                {domain}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-sm text-muted-foreground">
-                        v1 for maximum compatibility, v2 for modern clients, hybrid for both
-                      </p>
                     </div>
                   )}
-                </form.Field>
-              ) : (
-                <Alert className="bg-muted/40 text-muted-foreground">
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Hybrid and v2 torrents are unavailable</AlertTitle>
-                  <AlertDescription>
-                    This qBittorrent build uses {libtorrentVersionLabel}, which only supports creating v1 torrents.
-                    Upgrade to a qBittorrent release built with libtorrent v2 to enable hybrid or v2 torrent creation.
-                  </AlertDescription>
-                </Alert>
+                  <p className="text-sm text-muted-foreground">
+                    One tracker URL per line
+                  </p>
+                  <Textarea
+                    id="trackers"
+                    placeholder="https://tracker.example.com:443/announce&#10;udp://tracker.example2.com:6969/announce"
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    rows={4}
+                  />
+                </div>
               )}
+            </form.Field>
 
-              {/* Piece Size
+            {/* Comment */}
+            <form.Field name="comment">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="comment">Comment</Label>
+                  <Input
+                    id="comment"
+                    placeholder="Optional comment"
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                  />
+                </div>
+              )}
+            </form.Field>
+
+            {/* Source */}
+            <form.Field name="source">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="source">Source</Label>
+                  <Input
+                    id="source"
+                    placeholder="Optional source tag"
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                  />
+                </div>
+              )}
+            </form.Field>
+
+            {/* Start Seeding */}
+            <form.Field name="startSeeding">
+              {(field) => (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="startSeeding">Add to qBittorrent</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Add the created torrent to qBittorrent and start seeding. If disabled, only creates the .torrent file for download.
+                    </p>
+                  </div>
+                  <Switch
+                    id="startSeeding"
+                    checked={field.state.value}
+                    onCheckedChange={field.handleChange}
+                  />
+                </div>
+              )}
+            </form.Field>
+
+            {/* Advanced Options */}
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full justify-between p-0 hover:bg-transparent"
+                >
+                  <span className="text-sm font-medium">Advanced Options</span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-4">
+                {/* Torrent Format */}
+                {supportsFormatSelection ? (
+                  <form.Field name="format">
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="format">Torrent Format</Label>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value as TorrentFormat)}
+                        >
+                          <SelectTrigger id="format">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="v1">v1 (Compatible)</SelectItem>
+                            <SelectItem value="v2">v2 (Modern)</SelectItem>
+                            <SelectItem value="hybrid">Hybrid (v1 + v2)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-sm text-muted-foreground">
+                          v1 for maximum compatibility, v2 for modern clients, hybrid for both
+                        </p>
+                      </div>
+                    )}
+                  </form.Field>
+                ) : (
+                  <Alert className="bg-muted/40 text-muted-foreground">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Hybrid and v2 torrents are unavailable</AlertTitle>
+                    <AlertDescription>
+                      This qBittorrent build uses {libtorrentVersionLabel}, which only supports creating v1 torrents.
+                      Upgrade to a qBittorrent release built with libtorrent v2 to enable hybrid or v2 torrent creation.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Piece Size
                   https://github.com/qbittorrent/qBittorrent/blob/master/src/gui/torrentcreatordialog.cpp#L86-L92
 
                   m_ui->comboPieceSize->addItem(tr("Auto"), 0);
@@ -464,97 +460,97 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       m_ui->comboPieceSize->addItem(displaySize, size);
                   }
               */}
-              <form.Field name="pieceSize">
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="pieceSize">Piece Size</Label>
-                    <Select
-                      value={field.state.value || TorrentPieceSize.Auto}
-                      onValueChange={field.handleChange}
-                    >
-                      <SelectTrigger id="pieceSize">
-                        <SelectValue placeholder="Auto (recommended)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pieceSizeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-muted-foreground">
-                      Auto calculates optimal size based on content
-                    </p>
-                  </div>
-                )}
-              </form.Field>
-
-              {/* Torrent File Path */}
-              <form.Field name="torrentFilePath">
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="torrentFilePath">Save .torrent to (optional)</Label>
-                    <Input
-                      id="torrentFilePath"
-                      ref={supportsPathAutocomplete ? torrentFilePathInputRef : undefined}
-                      placeholder="/path/to/save/file.torrent"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onKeyDown={supportsPathAutocomplete ? handleTorrentFilePathKeyDown : undefined}
-                      onChange={(e) => {
-                        field.handleChange(e.target.value)
-                        if (supportsPathAutocomplete) {
-                          handleTorrentFilePathInputChange(e.target.value)
-                        }
-                      }}
-                    />
-
-                    {supportsPathAutocomplete && showTorrentFilePathSuggestions && (
-                      <PathSuggestions
-                        suggestions={torrentFilePathSuggestions}
-                        highlightedIndex={torrentFilePathHighlightedIndex}
-                        onSelect={handleTorrentFilePathSelect}
-                      />
-                    )}
-
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>Where to save the .torrent file on the server</span>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-4 w-4 cursor-help shrink-0" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.</p>
-                        </TooltipContent>
-                      </Tooltip>
+                <form.Field name="pieceSize">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="pieceSize">Piece Size</Label>
+                      <Select
+                        value={field.state.value || TorrentPieceSize.Auto}
+                        onValueChange={field.handleChange}
+                      >
+                        <SelectTrigger id="pieceSize">
+                          <SelectValue placeholder="Auto (recommended)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pieceSizeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        Auto calculates optimal size based on content
+                      </p>
                     </div>
-                  </div>
-                )}
-              </form.Field>
+                  )}
+                </form.Field>
 
-              {/* URL Seeds */}
-              <form.Field name="urlSeeds">
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="urlSeeds">Web Seeds (HTTP/HTTPS)</Label>
-                    <Textarea
-                      id="urlSeeds"
-                      placeholder="https://mirror1.example.com/path&#10;https://mirror2.example.com/path"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      rows={3}
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      HTTP/HTTPS URLs where the content can be downloaded. One URL per line.
-                    </p>
-                  </div>
-                )}
-              </form.Field>
-            </CollapsibleContent>
-          </Collapsible>
+                {/* Torrent File Path */}
+                <form.Field name="torrentFilePath">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="torrentFilePath">Save .torrent to (optional)</Label>
+                      <Input
+                        id="torrentFilePath"
+                        ref={supportsPathAutocomplete ? torrentFilePathInputRef : undefined}
+                        placeholder="/path/to/save/file.torrent"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onKeyDown={supportsPathAutocomplete ? handleTorrentFilePathKeyDown : undefined}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value)
+                          if (supportsPathAutocomplete) {
+                            handleTorrentFilePathInputChange(e.target.value)
+                          }
+                        }}
+                      />
+
+                      {supportsPathAutocomplete && showTorrentFilePathSuggestions && (
+                        <PathSuggestions
+                          suggestions={torrentFilePathSuggestions}
+                          highlightedIndex={torrentFilePathHighlightedIndex}
+                          onSelect={handleTorrentFilePathSelect}
+                        />
+                      )}
+
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>Where to save the .torrent file on the server</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                  )}
+                </form.Field>
+
+                {/* URL Seeds */}
+                <form.Field name="urlSeeds">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="urlSeeds">Web Seeds (HTTP/HTTPS)</Label>
+                      <Textarea
+                        id="urlSeeds"
+                        placeholder="https://mirror1.example.com/path&#10;https://mirror2.example.com/path"
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        rows={3}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        HTTP/HTTPS URLs where the content can be downloaded. One URL per line.
+                      </p>
+                    </div>
+                  )}
+                </form.Field>
+              </CollapsibleContent>
+            </Collapsible>
           </form>
         </div>
 

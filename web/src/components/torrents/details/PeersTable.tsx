@@ -80,7 +80,7 @@ export const PeersTable = memo(function PeersTable({
       id: "address",
       header: "IP:Port",
       cell: (info) => {
-        const displayIp = incognitoMode ? "192.168.x.x" : info.row.original.ip
+        const displayIp = incognitoMode ? "192.168.x.x" : ( info.row.original.ip.match(/:/) ? `[${info.row.original.ip}]` : info.row.original.ip )
         const displayPort = incognitoMode ? "xxxxx" : info.row.original.port
         return (
           <span className="font-mono text-xs">
@@ -202,7 +202,7 @@ export const PeersTable = memo(function PeersTable({
 
   const handleCopyIp = (peer: SortedPeer) => {
     if (incognitoMode) return
-    copyTextToClipboard(`${peer.ip}:${peer.port}`)
+    copyTextToClipboard(`${peer.ip}`)
     toast.success("IP address copied to clipboard")
   }
 

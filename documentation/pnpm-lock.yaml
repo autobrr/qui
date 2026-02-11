@@ -11,6 +11,9 @@ importers:
       '@docusaurus/core':
         specifier: 3.9.2
         version: 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.7)(react@19.2.3))(debug@4.4.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.6.3)
+      '@docusaurus/plugin-content-docs':
+        specifier: 3.9.2
+        version: 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.7)(react@19.2.3))(debug@4.4.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.6.3)
       '@docusaurus/preset-classic':
         specifier: 3.9.2
         version: 3.9.2(@algolia/client-search@5.46.2)(@mdx-js/react@3.1.1(@types/react@19.2.7)(react@19.2.3))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(search-insights@2.17.3)(typescript@5.6.3)
@@ -29,6 +32,9 @@ importers:
       clsx:
         specifier: ^2.0.0
         version: 2.1.1
+      docusaurus-plugin-llms:
+        specifier: ^0.3.0
+        version: 0.3.0(@docusaurus/core@3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.7)(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.6.3))
       postcss:
         specifier: ^8.5.6
         version: 8.5.6
@@ -1408,24 +1414,28 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@node-rs/jieba-linux-arm64-musl@1.10.4':
     resolution: {integrity: sha512-Y/tiJ1+HeS5nnmLbZOE+66LbsPOHZ/PUckAYVeLlQfpygLEpLYdlh0aPpS5uiaWMjAXYZYdFkpZHhxDmSLpwpw==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@node-rs/jieba-linux-x64-gnu@1.10.4':
     resolution: {integrity: sha512-WZO8ykRJpWGE9MHuZpy1lu3nJluPoeB+fIJJn5CWZ9YTVhNDWoCF4i/7nxz1ntulINYGQ8VVuCU9LD86Mek97g==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@node-rs/jieba-linux-x64-musl@1.10.4':
     resolution: {integrity: sha512-uBBD4S1rGKcgCyAk6VCKatEVQb6EDD5I40v/DxODi5CuZVCANi9m5oee/MQbAoaX7RydA2f0OSCE9/tcwXEwUg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@node-rs/jieba-wasm32-wasi@1.10.4':
     resolution: {integrity: sha512-Y2umiKHjuIJy0uulNDz9SDYHdfq5Hmy7jY5nORO99B4pySKkcrMjpeVrmWXJLIsEKLJwcCXHxz8tjwU5/uhz0A==}
@@ -1647,24 +1657,28 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@tailwindcss/oxide-linux-arm64-musl@4.1.18':
     resolution: {integrity: sha512-1px92582HkPQlaaCkdRcio71p8bc8i/ap5807tPRDK/uw953cauQBT8c5tVGkOwrHMfc2Yh6UuxaH4vtTjGvHg==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@tailwindcss/oxide-linux-x64-gnu@4.1.18':
     resolution: {integrity: sha512-v3gyT0ivkfBLoZGF9LyHmts0Isc8jHZyVcbzio6Wpzifg/+5ZJpDiRiUhDLkcr7f/r38SWNe7ucxmGW3j3Kb/g==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@tailwindcss/oxide-linux-x64-musl@4.1.18':
     resolution: {integrity: sha512-bhJ2y2OQNlcRwwgOAGMY0xTFStt4/wyU6pvI6LSuZpRgKQwxTec0/3Scu91O8ir7qCR3AuepQKLU/kX99FouqQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@tailwindcss/oxide-wasm32-wasi@4.1.18':
     resolution: {integrity: sha512-LffYTvPjODiP6PT16oNeUQJzNVyJl1cjIebq/rWWBF+3eDst5JGEFSc5cWxyRCJ0Mxl+KyIkqRxk1XPEs9x8TA==}
@@ -2634,6 +2648,12 @@ packages:
     resolution: {integrity: sha512-l4gcSouhcgIKRvyy99RNVOgxXiicE+2jZoNmaNmZ6JXiGajBOJAesk1OBlJuM5k2c+eudGdLxDqXuPCKIj6kpw==}
     engines: {node: '>=6'}
 
+  docusaurus-plugin-llms@0.3.0:
+    resolution: {integrity: sha512-JuADAJA2fjTv1U4XQUoIu1LyjISDzxFhRK5HbCZiHum4HlmdPwyx8NBXsi+LfdUyjK9acbZgazGsHPhdwEZs0g==}
+    engines: {node: '>=18.0'}
+    peerDependencies:
+      '@docusaurus/core': ^3.0.0
+
   dom-converter@0.2.0:
     resolution: {integrity: sha512-gd3ypIPfOMr9h5jIKq8E3sHOTCjeirnl0WK5ZdS1AW0Odt0b1PaWaHdJ4Qk4klv+YB9aJBS7mESXjFoDQPu6DA==}
 
@@ -3537,24 +3557,28 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.30.2:
     resolution: {integrity: sha512-5Vh9dGeblpTxWHpOx8iauV02popZDsCYMPIgiuw97OJ5uaDsL86cnqSFs5LZkG3ghHoX5isLgWzMs+eD1YzrnA==}
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.30.2:
     resolution: {integrity: sha512-Cfd46gdmj1vQ+lR6VRTTadNHu6ALuw2pKR9lYq4FnhvgBc4zWY1EtZcAc6EffShbb1MFrIPfLDXD6Xprbnni4w==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.30.2:
     resolution: {integrity: sha512-XJaLUUFXb6/QG2lGIW6aIk6jKdtjtcffUT0NKvIqhSBY3hh9Ch+1LCeH80dR9q9LBjG3ewbDjnumefsLsP6aiA==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.30.2:
     resolution: {integrity: sha512-FZn+vaj7zLv//D/192WFFVA0RgHawIcHqLX9xuWiQt7P0PtdFEVaxgF9rjM/IRYHQXNnk61/H/gb2Ei+kUQ4xQ==}
@@ -3920,6 +3944,10 @@ packages:
   minimatch@5.1.6:
     resolution: {integrity: sha512-lKwV/1brpG6mBUFHtb7NUmtABCb2WZZmm2wNiOA5hAb8VdCS4B3dtMWyvcoViccwAW/COERjXLt0zP1zXUN26g==}
     engines: {node: '>=10'}
+
+  minimatch@9.0.5:
+    resolution: {integrity: sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow==}
+    engines: {node: '>=16 || 14 >=14.17'}
 
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
@@ -5616,6 +5644,11 @@ packages:
   yaml@1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
+
+  yaml@2.8.2:
+    resolution: {integrity: sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
 
   yargs-parser@21.1.1:
     resolution: {integrity: sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==}
@@ -9147,6 +9180,13 @@ snapshots:
     dependencies:
       '@leichtgewicht/ip-codec': 2.0.5
 
+  docusaurus-plugin-llms@0.3.0(@docusaurus/core@3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.7)(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.6.3)):
+    dependencies:
+      '@docusaurus/core': 3.9.2(@mdx-js/react@3.1.1(@types/react@19.2.7)(react@19.2.3))(debug@4.4.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.6.3)
+      gray-matter: 4.0.3
+      minimatch: 9.0.5
+      yaml: 2.8.2
+
   dom-converter@0.2.0:
     dependencies:
       utila: 0.4.0
@@ -10754,6 +10794,10 @@ snapshots:
       brace-expansion: 1.1.12
 
   minimatch@5.1.6:
+    dependencies:
+      brace-expansion: 2.0.2
+
+  minimatch@9.0.5:
     dependencies:
       brace-expansion: 2.0.2
 
@@ -12678,6 +12722,8 @@ snapshots:
   yaml-ast-parser@0.0.43: {}
 
   yaml@1.10.2: {}
+
+  yaml@2.8.2: {}
 
   yargs-parser@21.1.1: {}
 

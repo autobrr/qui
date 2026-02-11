@@ -3,35 +3,35 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { SearchResultCard } from '@/components/search/SearchResultCard'
-import { AddTorrentDialog, type AddTorrentDropPayload } from '@/components/torrents/AddTorrentDialog'
-import { ColumnFilterPopover } from '@/components/torrents/ColumnFilterPopover'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDateTimeFormatters } from '@/hooks/useDateTimeFormatters'
-import { useInstances } from '@/hooks/useInstances'
-import { api } from '@/lib/api'
-import type { ColumnFilter } from '@/lib/column-filter-utils'
-import { filterSearchResult } from '@/lib/column-filter-utils'
-import { getCategoriesForSearchType, getSearchTypeLabel, inferSearchTypeFromCategories, SEARCH_TYPE_OPTIONS, type SearchType } from '@/lib/search-derived-params'
-import { extractImdbId, extractTvdbId } from '@/lib/search-id-parsing'
-import { cn, formatBytes } from '@/lib/utils'
-import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
-import { Link } from '@tanstack/react-router'
-import { Check, ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { SearchResultCard } from "@/components/search/SearchResultCard"
+import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
+import { ColumnFilterPopover } from "@/components/torrents/ColumnFilterPopover"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstances } from "@/hooks/useInstances"
+import { api } from "@/lib/api"
+import type { ColumnFilter } from "@/lib/column-filter-utils"
+import { filterSearchResult } from "@/lib/column-filter-utils"
+import { getCategoriesForSearchType, getSearchTypeLabel, inferSearchTypeFromCategories, SEARCH_TYPE_OPTIONS, type SearchType } from "@/lib/search-derived-params"
+import { extractImdbId, extractTvdbId } from "@/lib/search-id-parsing"
+import { cn, formatBytes } from "@/lib/utils"
+import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from "@/types"
+import { Link } from "@tanstack/react-router"
+import { Check, ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 
 type AdvancedParamsState = {
   imdbId: string
@@ -49,66 +49,66 @@ type AdvancedParamConfig = {
   key: keyof AdvancedParamsState
   label: string
   placeholder?: string
-  type: 'text' | 'number'
+  type: "text" | "number"
   min?: number
 }
 
 const ADVANCED_PARAM_DEFAULTS: AdvancedParamsState = {
-  imdbId: '',
-  tvdbId: '',
-  year: '',
-  season: '',
-  episode: '',
-  artist: '',
-  album: '',
-  limit: '',
-  offset: ''
+  imdbId: "",
+  tvdbId: "",
+  year: "",
+  season: "",
+  episode: "",
+  artist: "",
+  album: "",
+  limit: "",
+  offset: "",
 }
 
 const SEARCH_PLACEHOLDERS: Record<SearchType, string> = {
-  auto: 'Try: "Sample Movie 2024", "tt1234567", "tvdb 123456", or "Example Artist – Example Album"',
-  movies: 'e.g., "Sample Movie 2024", "Another Film 1999", "tt1234567"',
-  tv: 'e.g., "Sample Show S01E01", "tvdb 123456", "Fictional Series S02"',
-  music: 'e.g., "Example Artist – Example Album", "Sample Band – Debut EP"',
-  books: 'e.g., "Example Book Title", "Fictional Series Book 1"',
-  apps: 'e.g., "Sample OS ISO", "Example App 2025"',
-  xxx: 'Enter a specific adult release name'
+  auto: "Try: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", or \"Example Artist – Example Album\"",
+  movies: "e.g., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\"",
+  tv: "e.g., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\"",
+  music: "e.g., \"Example Artist – Example Album\", \"Sample Band – Debut EP\"",
+  books: "e.g., \"Example Book Title\", \"Fictional Series Book 1\"",
+  apps: "e.g., \"Sample OS ISO\", \"Example App 2025\"",
+  xxx: "Enter a specific adult release name",
 }
 
 const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
-  { key: 'imdbId', label: 'IMDb ID', placeholder: 'tt1234567', type: 'text' },
-  { key: 'tvdbId', label: 'TVDb ID', placeholder: '12345', type: 'text' },
-  { key: 'year', label: 'Year', placeholder: '2024', type: 'number', min: 0 },
-  { key: 'season', label: 'Season', placeholder: '1', type: 'number', min: 0 },
-  { key: 'episode', label: 'Episode', placeholder: '2', type: 'number', min: 0 },
-  { key: 'artist', label: 'Artist', placeholder: 'Nine Inch Nails', type: 'text' },
-  { key: 'album', label: 'Album', placeholder: 'The Fragile', type: 'text' },
-  { key: 'limit', label: 'Limit', placeholder: '100', type: 'number', min: 1 },
-  { key: 'offset', label: 'Offset', placeholder: '0', type: 'number', min: 0 }
+  { key: "imdbId", label: "IMDb ID", placeholder: "tt1234567", type: "text" },
+  { key: "tvdbId", label: "TVDb ID", placeholder: "12345", type: "text" },
+  { key: "year", label: "Year", placeholder: "2024", type: "number", min: 0 },
+  { key: "season", label: "Season", placeholder: "1", type: "number", min: 0 },
+  { key: "episode", label: "Episode", placeholder: "2", type: "number", min: 0 },
+  { key: "artist", label: "Artist", placeholder: "Nine Inch Nails", type: "text" },
+  { key: "album", label: "Album", placeholder: "The Fragile", type: "text" },
+  { key: "limit", label: "Limit", placeholder: "100", type: "number", min: 1 },
+  { key: "offset", label: "Offset", placeholder: "0", type: "number", min: 0 },
 ]
 
-const LAST_USED_INSTANCE_KEY = 'qui:search:lastInstanceId'
+const LAST_USED_INSTANCE_KEY = "qui:search:lastInstanceId"
 
 export function Search() {
   const SUGGESTION_BLUR_DELAY_MS = 100
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<TorznabSearchResult[]>([])
   const [total, setTotal] = useState(0)
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
   const [indexerSheetOpen, setIndexerSheetOpen] = useState(false)
-  const [searchType, setSearchType] = useState<SearchType>('auto')
+  const [searchType, setSearchType] = useState<SearchType>("auto")
   const [loadingIndexers, setLoadingIndexers] = useState(true)
   const { instances, isLoading: loadingInstances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
   const [instanceMenuOpen, setInstanceMenuOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addDialogPayload, setAddDialogPayload] = useState<AddTorrentDropPayload | null>(null)
-  const [resultsFilter, setResultsFilter] = useState('')
+  const [resultsFilter, setResultsFilter] = useState("")
   const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilter>>({})
-  const [sortColumn, setSortColumn] = useState<'title' | 'indexer' | 'size' | 'seeders' | 'category' | 'published' | 'source' | 'collection' | 'group' | null>('seeders')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortColumn, setSortColumn] = useState<"title" | "indexer" | "size" | "seeders" | "category" | "published" | "source" | "collection" | "group" | null>("seeders")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [cacheMetadata, setCacheMetadata] = useState<TorznabSearchResponse["cache"] | null>(null)
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
   const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0)
@@ -119,7 +119,7 @@ export function Search() {
   const [advancedParams, setAdvancedParams] = useState<AdvancedParamsState>(() => ({ ...ADVANCED_PARAM_DEFAULTS }))
   const [selectedResultGuid, setSelectedResultGuid] = useState<string | null>(null)
   const searchPlaceholder = useMemo(() => SEARCH_PLACEHOLDERS[searchType], [searchType])
-  const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ''), [advancedParams])
+  const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ""), [advancedParams])
   const queryInputRef = useRef<HTMLInputElement | null>(null)
   const blurTimeoutRef = useRef<number | null>(null)
   const rafIdRef = useRef<number | null>(null)
@@ -134,7 +134,7 @@ export function Search() {
   }, [])
   const persistSelectedInstanceId = useCallback((instanceId: number | null) => {
     setSelectedInstanceId(instanceId)
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return
     }
     try {
@@ -144,7 +144,7 @@ export function Search() {
         window.sessionStorage.setItem(LAST_USED_INSTANCE_KEY, String(instanceId))
       }
     } catch (error) {
-      console.error('Failed to persist instance selection', error)
+      console.error("Failed to persist instance selection", error)
     }
   }, [])
 
@@ -186,11 +186,7 @@ export function Search() {
     return instances.find(instance => instance.id === selectedInstanceId) ?? null
   }, [instances, selectedInstanceId])
   const totalIndexers = indexers.length
-  const indexerSummaryText = totalIndexers === 0
-    ? 'No enabled indexers'
-    : selectedIndexers.size === totalIndexers
-      ? `All enabled (${totalIndexers})`
-      : `${selectedIndexers.size} of ${totalIndexers} selected`
+  const indexerSummaryText = totalIndexers === 0? "No enabled indexers": selectedIndexers.size === totalIndexers? `All enabled (${totalIndexers})`: `${selectedIndexers.size} of ${totalIndexers} selected`
 
   const REFRESH_COOLDOWN_MS = 30_000
   const refreshCooldownRemaining = Math.max(0, refreshCooldownUntil - Date.now())
@@ -215,14 +211,14 @@ export function Search() {
     return () => window.clearInterval(id)
   }, [refreshCooldownUntil, forceRefreshTick])
 
-  const formatBackend = (backend: TorznabIndexer['backend']) => {
+  const formatBackend = (backend: TorznabIndexer["backend"]) => {
     switch (backend) {
-      case 'prowlarr':
-        return 'Prowlarr'
-      case 'native':
-        return 'Native'
+      case "prowlarr":
+        return "Prowlarr"
+      case "native":
+        return "Native"
       default:
-        return 'Jackett'
+        return "Jackett"
     }
   }
 
@@ -231,17 +227,17 @@ export function Search() {
 
     // Allow search with either query or advanced parameters
     if (!normalizedQuery && !hasAdvancedParams) {
-      toast.error('Please enter a search query or fill in advanced parameters')
+      toast.error("Please enter a search query or fill in advanced parameters")
       return false
     }
 
     if (selectedIndexers.size === 0) {
-      toast.error('Please select at least one indexer')
+      toast.error("Please select at least one indexer")
       return false
     }
 
     if (indexers.length === 0) {
-      toast.error('No enabled indexers available. Please add and enable indexers first.')
+      toast.error("No enabled indexers available. Please add and enable indexers first.")
       return false
     }
 
@@ -263,7 +259,7 @@ export function Search() {
     async ({
       bypassCache = false,
       queryOverride,
-      searchTypeOverride
+      searchTypeOverride,
     }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType } = {}) => {
       const reqId = ++latestReqIdRef.current
       const searchQuery = (queryOverride ?? query).trim()
@@ -297,13 +293,13 @@ export function Search() {
         }
 
         const manualImdbId = advancedParams.imdbId.trim()
-        const imdbIdToUse = manualImdbId || detectedImdbId || ''
+        const imdbIdToUse = manualImdbId || detectedImdbId || ""
         if (imdbIdToUse) {
           payload.imdb_id = imdbIdToUse
         }
 
         const manualTvdbId = advancedParams.tvdbId.trim()
-        const tvdbIdToUse = manualTvdbId || detectedTvdbId || ''
+        const tvdbIdToUse = manualTvdbId || detectedTvdbId || ""
         if (tvdbIdToUse) {
           payload.tvdb_id = tvdbIdToUse
         }
@@ -354,16 +350,16 @@ export function Search() {
         setCacheMetadata(response.cache ?? null)
 
         if (response.results.length === 0) {
-          toast.info('No results found')
+          toast.info("No results found")
         } else {
-          const cacheSuffix = response.cache?.hit ? ' (cached)' : ''
+          const cacheSuffix = response.cache?.hit ? " (cached)" : ""
           toast.success(`Found ${response.total} results${cacheSuffix}`)
         }
         void refreshRecentSearches()
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        const errorMsg = error instanceof Error ? error.message : "Unknown error"
         toast.error(`Search failed: ${errorMsg}`)
-        console.error('Search error:', error)
+        console.error("Search error:", error)
       } finally {
         if (reqId === latestReqIdRef.current) setLoading(false)
       }
@@ -414,7 +410,7 @@ export function Search() {
     { value: "0.25", label: "25%" },
     { value: "0.5", label: "50%" },
     { value: "0.75", label: "75%" },
-    { value: "false", label: "Neutral" }
+    { value: "false", label: "Neutral" },
   ]
 
   useEffect(() => {
@@ -445,8 +441,8 @@ export function Search() {
         // Select all enabled indexers by default
         setSelectedIndexers(new Set(enabledIndexers.map(idx => idx.id)))
       } catch (error) {
-        toast.error('Failed to load indexers')
-        console.error('Load indexers error:', error)
+        toast.error("Failed to load indexers")
+        console.error("Load indexers error:", error)
       } finally {
         setLoadingIndexers(false)
       }
@@ -480,7 +476,7 @@ export function Search() {
 
     if (availableInstances.length === 1) {
       nextInstanceId = availableInstances[0].id
-    } else if (typeof window !== 'undefined') {
+    } else if (typeof window !== "undefined") {
       try {
         const storedValue = window.sessionStorage.getItem(LAST_USED_INSTANCE_KEY)
         if (storedValue) {
@@ -490,7 +486,7 @@ export function Search() {
           }
         }
       } catch (error) {
-        console.error('Failed to load instance selection', error)
+        console.error("Failed to load instance selection", error)
       }
     }
 
@@ -561,23 +557,23 @@ export function Search() {
 
   const handleSort = (column: Exclude<typeof sortColumn, null>) => {
     if (sortColumn === column) {
-      if (sortOrder === 'desc') {
-        setSortOrder('asc')
+      if (sortOrder === "desc") {
+        setSortOrder("asc")
       } else {
         // Reset sorting on third click
         setSortColumn(null)
-        setSortOrder('desc')
+        setSortOrder("desc")
       }
     } else {
       setSortColumn(column)
-      setSortOrder('desc')
+      setSortOrder("desc")
     }
   }
 
   const getSortIcon = (column: Exclude<typeof sortColumn, null>) => {
     if (sortColumn !== column) return null
 
-    return sortOrder === 'asc' ? <ChevronUp className="h-4 w-4 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 flex-shrink-0" />
+    return sortOrder === "asc" ? <ChevronUp className="h-4 w-4 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 flex-shrink-0" />
   }
 
   // Filter and sort results
@@ -598,10 +594,10 @@ export function Search() {
       filtered = filtered.filter(result =>
         result.title.toLowerCase().includes(filter) ||
         result.indexer.toLowerCase().includes(filter) ||
-        (categoryMap.get(result.categoryId) || result.categoryName || '').toLowerCase().includes(filter) ||
-        (result.source || '').toLowerCase().includes(filter) ||
-        (result.collection || '').toLowerCase().includes(filter) ||
-        (result.group || '').toLowerCase().includes(filter)
+        (categoryMap.get(result.categoryId) || result.categoryName || "").toLowerCase().includes(filter) ||
+        (result.source || "").toLowerCase().includes(filter) ||
+        (result.collection || "").toLowerCase().includes(filter) ||
+        (result.group || "").toLowerCase().includes(filter)
       )
     }
 
@@ -615,48 +611,48 @@ export function Search() {
       let bVal: string | number
 
       switch (sortColumn) {
-        case 'title':
+        case "title":
           aVal = a.title.toLowerCase()
           bVal = b.title.toLowerCase()
           break
-        case 'indexer':
+        case "indexer":
           aVal = a.indexer.toLowerCase()
           bVal = b.indexer.toLowerCase()
           break
-        case 'size':
+        case "size":
           aVal = a.size
           bVal = b.size
           break
-        case 'seeders':
+        case "seeders":
           aVal = a.seeders
           bVal = b.seeders
           break
-        case 'category':
-          aVal = (categoryMap.get(a.categoryId) || a.categoryName || '').toLowerCase()
-          bVal = (categoryMap.get(b.categoryId) || b.categoryName || '').toLowerCase()
+        case "category":
+          aVal = (categoryMap.get(a.categoryId) || a.categoryName || "").toLowerCase()
+          bVal = (categoryMap.get(b.categoryId) || b.categoryName || "").toLowerCase()
           break
-        case 'published':
+        case "published":
           aVal = new Date(a.publishDate).getTime()
           bVal = new Date(b.publishDate).getTime()
           break
-        case 'source':
-          aVal = (a.source || '').toLowerCase()
-          bVal = (b.source || '').toLowerCase()
+        case "source":
+          aVal = (a.source || "").toLowerCase()
+          bVal = (b.source || "").toLowerCase()
           break
-        case 'collection':
-          aVal = (a.collection || '').toLowerCase()
-          bVal = (b.collection || '').toLowerCase()
+        case "collection":
+          aVal = (a.collection || "").toLowerCase()
+          bVal = (b.collection || "").toLowerCase()
           break
-        case 'group':
-          aVal = (a.group || '').toLowerCase()
-          bVal = (b.group || '').toLowerCase()
+        case "group":
+          aVal = (a.group || "").toLowerCase()
+          bVal = (b.group || "").toLowerCase()
           break
         default:
           return 0
       }
 
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1
       return 0
     })
 
@@ -699,20 +695,20 @@ export function Search() {
 
   const cacheBadge = useMemo(() => {
     if (!cacheMetadata) {
-      return { label: '', variant: 'outline' as const }
+      return { label: "", variant: "outline" as const }
     }
-    if (cacheMetadata.source === 'hybrid') {
-      return { label: 'Cache + live', variant: 'secondary' as const }
+    if (cacheMetadata.source === "hybrid") {
+      return { label: "Cache + live", variant: "secondary" as const }
     }
     if (cacheMetadata.hit) {
-      return { label: 'Cache hit', variant: 'secondary' as const }
+      return { label: "Cache hit", variant: "secondary" as const }
     }
-    return { label: 'Live fetch', variant: 'outline' as const }
+    return { label: "Live fetch", variant: "outline" as const }
   }, [cacheMetadata])
 
   const handleSuggestionClick = useCallback((search: TorznabRecentSearch) => {
     setQuery(search.query)
-    const derivedType = inferSearchTypeFromCategories(search.categories) ?? 'auto'
+    const derivedType = inferSearchTypeFromCategories(search.categories) ?? "auto"
     setSearchType(derivedType)
     applyIndexerSelectionFromSuggestion(search.indexerIds)
     const normalized = search.query.trim()
@@ -724,7 +720,7 @@ export function Search() {
   }, [applyIndexerSelectionFromSuggestion, closeSuggestions, runSearch, validateSearchInputs])
 
   const handleDownload = (result: TorznabSearchResult) => {
-    window.open(result.downloadUrl, '_blank')
+    window.open(result.downloadUrl, "_blank")
   }
 
   const handleAddTorrent = useCallback((result: TorznabSearchResult, overrideInstanceId?: number) => {
@@ -732,41 +728,41 @@ export function Search() {
 
     if (!targetId) {
       if (!hasInstances) {
-        toast.error('Add a download instance under Settings -> Instances')
+        toast.error("Add a download instance under Settings -> Instances")
       } else {
-        toast.error('Choose an instance to add torrents')
+        toast.error("Choose an instance to add torrents")
         setInstanceMenuOpen(true)
       }
       return
     }
 
     if (!result.downloadUrl) {
-      toast.error('No download URL available for this result')
+      toast.error("No download URL available for this result")
       return
     }
 
     persistSelectedInstanceId(targetId)
-    setAddDialogPayload({ type: 'url', urls: [result.downloadUrl], indexerId: result.indexerId })
+    setAddDialogPayload({ type: "url", urls: [result.downloadUrl], indexerId: result.indexerId })
     setAddDialogOpen(true)
   }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen])
 
   const handleViewDetails = (result: TorznabSearchResult) => {
     if (!result.infoUrl) {
-      toast.error('No additional info available for this result')
+      toast.error("No additional info available for this result")
       return
     }
     try {
       const url = new URL(result.infoUrl)
-      if (!['http:', 'https:'].includes(url.protocol)) {
-        toast.error('Invalid URL protocol')
+      if (!["http:", "https:"].includes(url.protocol)) {
+        toast.error("Invalid URL protocol")
         return
       }
     } catch {
-      toast.error('Invalid URL format')
+      toast.error("Invalid URL format")
       return
     }
 
-    window.open(result.infoUrl, '_blank')
+    window.open(result.infoUrl, "_blank")
   }
 
   const toggleResultSelection = (result: TorznabSearchResult) => {
@@ -784,12 +780,8 @@ export function Search() {
     }
   }
 
-  const addButtonTitle = targetInstance
-    ? `Add to ${targetInstance.name}`
-    : hasInstances
-      ? 'Choose an instance to add torrents'
-      : 'Add a download instance under Settings -> Instances'
-  const primaryAddButtonLabel = targetInstance ? `Add to ${targetInstance.name}` : 'Add to instance'
+  const addButtonTitle = targetInstance? `Add to ${targetInstance.name}`: hasInstances? "Choose an instance to add torrents": "Add a download instance under Settings -> Instances"
+  const primaryAddButtonLabel = targetInstance ? `Add to ${targetInstance.name}` : "Add to instance"
   const instancesAvailable = hasInstances
 
   return (
@@ -842,10 +834,8 @@ export function Search() {
                             <label
                               key={indexer.id}
                               htmlFor={`indexer-${indexer.id}`}
-                              className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${isSelected
-                                ? 'bg-muted/40 border-muted-foreground/20'
-                                : 'hover:bg-muted/20'
-                                }`}
+                              className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${isSelected? "bg-muted/40 border-muted-foreground/20": "hover:bg-muted/20"
+                              }`}
                             >
                               <Checkbox
                                 id={`indexer-${indexer.id}`}
@@ -904,11 +894,7 @@ export function Search() {
                     className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start"
                   >
                     <span className="text-sm">
-                      {targetInstance
-                        ? `Target: ${targetInstance.name}${!targetInstance.connected ? ' (offline)' : ''}`
-                        : instancesAvailable
-                          ? 'Choose target instance'
-                          : 'No instances'}
+                      {targetInstance? `Target: ${targetInstance.name}${!targetInstance.connected ? " (offline)" : ""}`: instancesAvailable? "Choose target instance": "No instances"}
                     </span>
                     <ChevronDown className="h-3 w-3" />
                   </Button>
@@ -925,7 +911,7 @@ export function Search() {
                           }}
                         >
                           <Check
-                            className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? 'opacity-100' : 'opacity-0'}`}
+                            className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? "opacity-100" : "opacity-0"}`}
                           />
                           <div className="flex flex-col">
                             <span className="font-medium">{instance.name}</span>
@@ -953,7 +939,7 @@ export function Search() {
               </DropdownMenu>
               {!instancesAvailable && !loadingInstances && (
                 <p className="text-xs text-muted-foreground">
-                  Add a download instance under Settings {'>'} Instances.
+                  Add a download instance under Settings {">"} Instances.
                 </p>
               )}
             </div>
@@ -983,13 +969,11 @@ export function Search() {
                   <div className="flex flex-shrink-0 items-center gap-2">
                     <Button
                       type="button"
-                      variant={showAdvancedParams ? 'default' : 'outline'}
+                      variant={showAdvancedParams ? "default" : "outline"}
                       size="default"
                       className={cn(
-                        '!border !px-4 !py-2.5 h-9',
-                        showAdvancedParams
-                          ? 'border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90'
-                          : 'border-input dark:border-input'
+                        "!border !px-4 !py-2.5 h-9",
+                        showAdvancedParams? "border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90": "border-input dark:border-input"
                       )}
                       onClick={() => setShowAdvancedParams(prev => !prev)}
                     >
@@ -1048,7 +1032,7 @@ export function Search() {
                       <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
                         {suggestionMatches.map((search) => {
                           const suggestionType = inferSearchTypeFromCategories(search.categories)
-                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? 'auto')
+                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "auto")
                           return (
                             <button
                               type="button"
@@ -1075,7 +1059,7 @@ export function Search() {
                     className="flex-shrink-0"
                   >
                     <SearchIcon className="mr-2 h-4 w-4" />
-                    {loading ? 'Searching...' : 'Search'}
+                    {loading ? "Searching..." : "Search"}
                   </Button>
                 </div>
               </div>
@@ -1092,8 +1076,8 @@ export function Search() {
                         <Input
                           id={`advanced-${key}`}
                           type={type}
-                          inputMode={type === 'number' ? 'numeric' : undefined}
-                          min={type === 'number' && typeof min !== 'undefined' ? min : undefined}
+                          inputMode={type === "number" ? "numeric" : undefined}
+                          min={type === "number" && typeof min !== "undefined" ? min : undefined}
                           placeholder={placeholder}
                           value={advancedParams[key]}
                           onChange={(e) => handleAdvancedParamChange(key, e.target.value)}
@@ -1211,7 +1195,7 @@ export function Search() {
                                     handleAddTorrent(selectedResult, instance.id)
                                   }}
                                 >
-                                  Add to {instance.name}{!instance.connected ? ' (offline)' : ''}
+                                  Add to {instance.name}{!instance.connected ? " (offline)" : ""}
                                 </DropdownMenuItem>
                               ))}
                             </DropdownMenuContent>
@@ -1234,7 +1218,7 @@ export function Search() {
                           size="sm"
                           onClick={() => handleViewDetails(selectedResult)}
                           disabled={!selectedResult.infoUrl}
-                          title={selectedResult.infoUrl ? 'View details' : 'No info URL available'}
+                          title={selectedResult.infoUrl ? "View details" : "No info URL available"}
                           className="h-9"
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -1279,7 +1263,7 @@ export function Search() {
                                         handleAddTorrent(selectedResult, instance.id)
                                       }}
                                     >
-                                      Add to {instance.name}{!instance.connected ? ' (offline)' : ''}
+                                      Add to {instance.name}{!instance.connected ? " (offline)" : ""}
                                     </DropdownMenuItem>
                                   ))}
                                 </DropdownMenuSubContent>
@@ -1323,7 +1307,7 @@ export function Search() {
                       <TooltipTrigger asChild>
                         <Badge
                           variant={cacheBadge.variant}
-                          className={!cacheMetadata ? 'invisible' : ''}
+                          className={!cacheMetadata ? "invisible" : ""}
                         >
                           {cacheBadge.label}
                         </Badge>
@@ -1332,8 +1316,8 @@ export function Search() {
                         <TooltipContent>
                           <p className="text-xs">
                             Cached {formatCacheTimestamp(cacheMetadata.cachedAt)} · Expires {formatCacheTimestamp(cacheMetadata.expiresAt)}
-                          <br />
-                          Source: {cacheMetadata.source} · Scope: {cacheMetadata.scope}
+                            <br />
+                            Source: {cacheMetadata.source} · Scope: {cacheMetadata.scope}
                           </p>
                         </TooltipContent>
                       )}
@@ -1342,10 +1326,10 @@ export function Search() {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? 'invisible' : ''}`}
+                      className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? "invisible" : ""}`}
                       onClick={() => setRefreshConfirmOpen(true)}
                       disabled={!canForceRefresh}
-                      title={refreshCooldownRemaining > 0 ? `Ready in ${Math.ceil(refreshCooldownRemaining / 1000)}s` : 'Refresh from indexers'}
+                      title={refreshCooldownRemaining > 0 ? `Ready in ${Math.ceil(refreshCooldownRemaining / 1000)}s` : "Refresh from indexers"}
                     >
                       <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                     </Button>
@@ -1378,10 +1362,10 @@ export function Search() {
                     <TableHeader className="sticky top-0 z-20 bg-card">
                       <TableRow className="bg-card">
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('title')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("title")}>
                             <span className="select-none">Title</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('title')}
+                              {getSortIcon("title")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="title"
@@ -1402,10 +1386,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('indexer')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("indexer")}>
                             <span className="select-none">Indexer</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('indexer')}
+                              {getSortIcon("indexer")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="indexer"
@@ -1428,10 +1412,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('size')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("size")}>
                             <span className="select-none">Size</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('size')}
+                              {getSortIcon("size")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="size"
@@ -1452,10 +1436,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('seeders')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("seeders")}>
                             <span className="select-none">Seeders</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('seeders')}
+                              {getSortIcon("seeders")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="seeders"
@@ -1476,10 +1460,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('category')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("category")}>
                             <span className="select-none">Category</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('category')}
+                              {getSortIcon("category")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="category"
@@ -1502,10 +1486,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('source')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("source")}>
                             <span className="select-none">Source</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('source')}
+                              {getSortIcon("source")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="source"
@@ -1528,10 +1512,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('collection')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("collection")}>
                             <span className="select-none">Collection</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('collection')}
+                              {getSortIcon("collection")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="collection"
@@ -1552,10 +1536,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('group')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("group")}>
                             <span className="select-none">Group</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('group')}
+                              {getSortIcon("group")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="group"
@@ -1597,10 +1581,10 @@ export function Search() {
                           </div>
                         </TableHead>
                         <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort('published')}>
+                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("published")}>
                             <span className="select-none">Published</span>
                             <div className="flex items-center gap-1">
-                              {getSortIcon('published')}
+                              {getSortIcon("published")}
                               <div onClick={(e) => e.stopPropagation()}>
                                 <ColumnFilterPopover
                                   columnId="published"
@@ -1629,59 +1613,57 @@ export function Search() {
                           <TableRow
                             key={result.guid}
                             className={cn(
-                              'cursor-pointer transition-colors',
-                              isSelected
-                                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                                : 'hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80'
+                              "cursor-pointer transition-colors",
+                              isSelected? "bg-accent text-accent-foreground hover:bg-accent/90": "hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80"
                             )}
                             role="button"
                             tabIndex={0}
                             aria-selected={isSelected}
                             onClick={() => toggleResultSelection(result)}
                             onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
+                              if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault()
                                 toggleResultSelection(result)
                               }
                             }}
                           >
-                            <TableCell className={cn('font-medium max-w-md', isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn("font-medium max-w-md", isSelected && "text-accent-foreground")}>
                               <div className="truncate" title={result.title}>
                                 {result.title}
                               </div>
                             </TableCell>
-                            <TableCell className={cn(isSelected && 'text-accent-foreground')}>{result.indexer}</TableCell>
-                            <TableCell className={cn(isSelected && 'text-accent-foreground')}>{formatBytes(result.size)}</TableCell>
-                            <TableCell className={cn(isSelected && 'text-accent-foreground')}>
-                              <Badge variant={result.seeders > 0 ? 'default' : 'secondary'}>
+                            <TableCell className={cn(isSelected && "text-accent-foreground")}>{result.indexer}</TableCell>
+                            <TableCell className={cn(isSelected && "text-accent-foreground")}>{formatBytes(result.size)}</TableCell>
+                            <TableCell className={cn(isSelected && "text-accent-foreground")}>
+                              <Badge variant={result.seeders > 0 ? "default" : "secondary"}>
                                 {result.seeders}
                               </Badge>
                             </TableCell>
-                            <TableCell className={cn('text-sm text-muted-foreground', isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn("text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
                               {categoryMap.get(result.categoryId) || result.categoryName || `Category ${result.categoryId}`}
                             </TableCell>
-                            <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn("text-sm", isSelected && "text-accent-foreground")}>
                               {result.source ? (
                                 <Badge variant="outline">{result.source}</Badge>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}
                             </TableCell>
-                            <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn("text-sm", isSelected && "text-accent-foreground")}>
                               {result.collection ? (
                                 <Badge variant="outline">{result.collection}</Badge>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}
                             </TableCell>
-                            <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn("text-sm", isSelected && "text-accent-foreground")}>
                               {result.group ? (
                                 <Badge variant="outline">{result.group}</Badge>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}
                             </TableCell>
-                            <TableCell className={cn(isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn(isSelected && "text-accent-foreground")}>
                               {result.downloadVolumeFactor === 0 && (
                                 <Badge variant="default">Free</Badge>
                               )}
@@ -1689,7 +1671,7 @@ export function Search() {
                                 <Badge variant="secondary">{result.downloadVolumeFactor * 100}%</Badge>
                               )}
                             </TableCell>
-                            <TableCell className={cn('text-sm text-muted-foreground', isSelected && 'text-accent-foreground')}>
+                            <TableCell className={cn("text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
                               {formatCacheTimestamp(result.publishDate)}
                             </TableCell>
                           </TableRow>

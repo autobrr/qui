@@ -60,3 +60,24 @@ func TestCORSAllowsXRequestedWithHeader(t *testing.T) {
 	require.Contains(t, allowedHeaders, "x-requested-with",
 		"CORS should allow X-Requested-With header for SSO proxy compatibility")
 }
+
+func TestCORSPreflightWithCustomBaseURL(t *testing.T) {
+	deps := newTestDependencies(t)
+	deps.Config.Config.BaseURL = "/qui"
+
+	server := NewServer(deps)
+	router, err := server.Handler()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodOptions, "/qui/api/auth/me", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, "https://example.com", rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
+}

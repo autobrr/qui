@@ -11,6 +11,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -21,13 +22,6 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check for API key first
 			apiKey := r.Header.Get("X-API-Key")
-			if apiKey == "" {
-				path := r.URL.Path
-				// Use Contains/HasSuffix to support custom base URLs (e.g., /qui/api/cross-seed/apply)
-				if strings.Contains(path, "/cross-seed/webhook/") || strings.HasSuffix(path, "/cross-seed/apply") {
-					apiKey = r.URL.Query().Get("apikey") // autobrr doesnt support headers in webhook actions
-				}
-			}
 			if apiKey != "" {
 				// Validate API key
 				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
@@ -45,12 +39,12 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 
 			// Check session using SCS
 			if !sessionManager.GetBool(r.Context(), "authenticated") {
-				http.Error(w, "Unauthorized", http.StatusForbidden)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 
 			username := sessionManager.GetString(r.Context(), "username")
-			ctx := context.WithValue(r.Context(), "username", username)
+			ctx := context.WithValue(r.Context(), ctxkeys.Username, username)
 			r = r.WithContext(ctx)
 
 			next.ServeHTTP(w, r)

@@ -4,6 +4,7 @@
  */
 
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
+import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { api } from "@/lib/api"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
@@ -86,6 +87,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isLocked: isDeleteFilesLocked,
     toggleLock: toggleDeleteFilesLock,
   } = usePersistedDeleteFiles(false)
+  const { blockCrossSeeds, setBlockCrossSeeds } = usePersistedCrossSeedBlocklist(instanceId, false)
   const [deleteCrossSeeds, setDeleteCrossSeeds] = useState(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
@@ -786,7 +788,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     }
   }, [handleAction])
 
-  const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[], _count?: number) => {
+  const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
     setShowLocationWarningDialog(true)
@@ -873,6 +875,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    blockCrossSeeds,
+    setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
     showAddTagsDialog,

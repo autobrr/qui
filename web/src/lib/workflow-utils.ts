@@ -17,6 +17,7 @@ export interface WorkflowExport {
   trackerDomains: string[]
   conditions: ActionConditions
   intervalSeconds?: number
+  dryRun?: boolean
 }
 
 const DEFAULT_INTERVAL_SECONDS = 900
@@ -40,6 +41,10 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
   // Only include intervalSeconds if it differs from default
   if (workflow.intervalSeconds && workflow.intervalSeconds !== DEFAULT_INTERVAL_SECONDS) {
     exported.intervalSeconds = workflow.intervalSeconds
+  }
+
+  if (workflow.dryRun) {
+    exported.dryRun = true
   }
 
   return exported
@@ -77,6 +82,7 @@ export function fromImportFormat(
     trackerDomains,
     conditions: data.conditions,
     enabled: false, // Always start disabled
+    dryRun: data.dryRun ?? false,
   }
 
   // Include intervalSeconds if specified and differs from default

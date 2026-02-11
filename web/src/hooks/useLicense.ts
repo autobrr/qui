@@ -78,13 +78,13 @@ export const useDeleteLicense = () => {
   return useMutation({
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
-      toast.success("License released successfully")
+      toast.success("License removed from this machine")
       clearLicenseEntitlement()
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to release license")
+      toast.error(getLicenseErrorMessage(error))
     },
   })
 }

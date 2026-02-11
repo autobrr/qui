@@ -1,6 +1,7 @@
 ---
 sidebar_position: 100
 title: Support Development
+description: Donation options that help fund ongoing qui development.
 ---
 
 import CopyAddress from '@site/src/components/CopyAddress';

@@ -74,8 +74,8 @@ export default defineConfig(() => ({
         theme_color: "#000000", // Will be updated dynamically by PWA theme manager
         background_color: "#000000",
         display: "standalone",
-        scope: "/",
-        start_url: "/",
+        scope: "./",
+        start_url: "./",
         categories: ["utilities", "productivity"],
         icons: [
           {
@@ -97,6 +97,23 @@ export default defineConfig(() => ({
             purpose: "maskable",
           },
         ],
+        protocol_handlers: [
+          {
+            protocol: "magnet",
+            url: "./add?url=%s",
+          },
+        ],
+        file_handlers: [
+          {
+            action: "./add",
+            accept: {
+              "application/x-bittorrent": [".torrent"],
+            },
+          },
+        ],
+        launch_handler: {
+          client_mode: "navigate-existing",
+        },
       },
     }),
   ],

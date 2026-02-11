@@ -956,8 +956,8 @@ func (db *DB) migrate() error {
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 		`); err != nil {
-			return fmt.Errorf("failed to create migrations table: %w", err)
-		}
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
 
 	// Handle historical migration file renames.
 	// If we ever rename an embedded migration file, we must update the filename
@@ -1008,6 +1008,10 @@ func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
 		{
 			from: "052_add_dir_scan.sql",
 			to:   "053_add_dir_scan.sql",
+		},
+		{
+			from: "055_add_license_provider_dodo.sql",
+			to:   "057_add_license_provider_dodo.sql",
 		},
 	}
 
@@ -1319,7 +1323,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM string_pool 
+		DELETE FROM string_pool
 		WHERE NOT EXISTS (
 			SELECT 1 FROM temp_referenced_strings trs WHERE trs.string_id = string_pool.id
 		)

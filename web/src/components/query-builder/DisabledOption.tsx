@@ -22,10 +22,11 @@ interface DisabledOptionProps {
   children: ReactNode;
   reason: string;
   className?: string;
+  inline?: boolean;
 }
 
-export function DisabledOption({ children, reason, className }: DisabledOptionProps) {
-  let child: ReactElement;
+export function DisabledOption({ children, reason, className, inline }: DisabledOptionProps) {
+  let child: ReactElement<DisabledOptionChildProps>;
 
   if (isValidElement<DisabledOptionChildProps>(children)) {
     child = cloneElement(children, {
@@ -52,12 +53,29 @@ export function DisabledOption({ children, reason, className }: DisabledOptionPr
     );
   }
 
+  if (inline) {
+    return (
+      <div className="flex flex-col">
+        {cloneElement(child, {
+          ...child.props,
+          className: cn(child.props.className, "pb-1"),
+        })}
+        <div className="flex items-start px-4 -mt-2 pb-2">
+          <div className="size-4 mr-3 shrink-0" aria-hidden="true" />
+          <span className="text-xs text-muted-foreground/80 leading-tight">
+            {reason}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-         <div>
-           {child}
-         </div>
+        <div>
+          {child}
+        </div>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[200px]">
         {reason}

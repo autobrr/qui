@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { api } from "@/lib/api"
 import { formatBytes, formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
@@ -38,11 +39,16 @@ import type {
 } from "@/types"
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
   id: number
   name: string
+}
+
+function getBlocklistPendingKey(instanceId: number, infoHash: string): string {
+  return `${instanceId}:${infoHash}`
 }
 
 export interface CrossSeedDialogProps {
@@ -159,6 +165,7 @@ const CrossSeedDialogComponent = ({
 
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
+  const [blocklistPendingKeys, setBlocklistPendingKeys] = useState<Set<string>>(() => new Set())
 
   // Auto-expand results when there are failures
   const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
@@ -167,6 +174,28 @@ const CrossSeedDialogComponent = ({
       setApplyResultOpen(true)
     }
   }, [hasFailures])
+
+  const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string) => {
+    if (instanceId <= 0) {
+      toast.error("Missing instance for blocklist")
+      return
+    }
+    const pendingKey = getBlocklistPendingKey(instanceId, infoHash)
+    setBlocklistPendingKeys(prev => new Set(prev).add(pendingKey))
+    try {
+      await api.addCrossSeedBlocklist({ instanceId, infoHash })
+      toast.success("Added to blocklist")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add to blocklist"
+      toast.error(message)
+    } finally {
+      setBlocklistPendingKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(pendingKey)
+        return next
+      })
+    }
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -469,6 +498,9 @@ const CrossSeedDialogComponent = ({
                             {result.instanceResults && result.instanceResults.length > 0 && (
                               <ul className="mt-1.5 space-y-1 text-xs">
                                 {result.instanceResults.map(instance => {
+                                  const infoHash = result.infoHash
+                                  const pendingKey = infoHash ? getBlocklistPendingKey(instance.instanceId, infoHash) : null
+                                  const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
                                   const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
@@ -480,6 +512,19 @@ const CrossSeedDialogComponent = ({
                                         >
                                           {statusDisplay.text}
                                         </Badge>
+                                        {infoHash && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleBlockInfoHash(instance.instanceId, infoHash!)}
+                                            disabled={isBlocking}
+                                            aria-label={`Block ${infoHash} for ${instance.instanceName}`}
+                                            title={`Block ${infoHash}`}
+                                            className="h-5 px-2 text-[10px]"
+                                          >
+                                            {isBlocking ? "Blocking..." : "Block"}
+                                          </Button>
+                                        )}
                                       </div>
                                       {instance.message && instance.message !== instance.status && (
                                         <span className={`break-words pl-0.5 ${instance.success ? "text-muted-foreground" : "text-destructive/80"}`}>
@@ -551,6 +596,8 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
       return { text: "Added (reflink)", variant: "success" }
     case "exists":
       return { text: "Already exists", variant: "warning" }
+    case "blocked":
+      return { text: "Blocked", variant: "warning" }
     case "no_match":
       return { text: "No match", variant: "destructive" }
     case "rejected":

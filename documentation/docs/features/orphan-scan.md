@@ -4,8 +4,8 @@ title: Orphan Scan
 description: Find and remove files not associated with any torrent.
 ---
 
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
-import OrphanScanDefaultIgnores from '@site/docs/_partials/_orphan-scan-default-ignores.mdx';
+import LocalFilesystemDocker from "../_partials/_local-filesystem-docker.mdx";
+import OrphanScanDefaultIgnores from "../_partials/_orphan-scan-default-ignores.mdx";
 
 # Orphan Scan
 

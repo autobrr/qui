@@ -31,7 +31,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -220,11 +220,11 @@ export function ArrInstancesManager() {
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
-            <ArrInstanceForm
-              onSubmit={(data) => createMutation.mutate(data as ArrInstanceFormData)}
-              onCancel={() => setShowCreateDialog(false)}
-              isPending={createMutation.isPending}
-            />
+              <ArrInstanceForm
+                onSubmit={(data) => createMutation.mutate(data as ArrInstanceFormData)}
+                onCancel={() => setShowCreateDialog(false)}
+                isPending={createMutation.isPending}
+              />
             </div>
           </DialogContent>
         </Dialog>
@@ -275,12 +275,12 @@ export function ArrInstancesManager() {
               <DialogTitle>Edit ARR Instance</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
-            <ArrInstanceForm
-              instance={editInstance}
-              onSubmit={(data) => updateMutation.mutate({ id: editInstance.id, data })}
-              onCancel={() => setEditInstance(null)}
-              isPending={updateMutation.isPending}
-            />
+              <ArrInstanceForm
+                instance={editInstance}
+                onSubmit={(data) => updateMutation.mutate({ id: editInstance.id, data })}
+                onCancel={() => setEditInstance(null)}
+                isPending={updateMutation.isPending}
+              />
             </div>
           </DialogContent>
         </Dialog>
@@ -426,7 +426,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="My Sonarr"
+          placeholder={`My ${type === "sonarr" ? "Sonarr" : "Radarr"}`}
           required
         />
       </div>
@@ -437,7 +437,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           id="baseUrl"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="http://localhost:8989"
+          placeholder={`http://localhost:${type === "sonarr" ? "8989" : "7878"}`}
           required
         />
         <p className="text-xs text-muted-foreground">

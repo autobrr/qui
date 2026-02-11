@@ -13,7 +13,7 @@ export const CONDITION_FIELDS = {
   SAVE_PATH: { label: "Save Path", type: "string" as const, description: "Download location" },
   CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
-  TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker URL" },
+  TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
   // Size fields (bytes)

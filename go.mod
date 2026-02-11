@@ -9,7 +9,7 @@ require (
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/anacrolix/torrent v1.60.0
 	github.com/andybalholm/brotli v1.2.0
-	github.com/autobrr/autobrr v1.71.0
+	github.com/autobrr/autobrr v1.72.1
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20260121130753-8741290569bc
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -42,7 +42,7 @@ require (
 	golang.org/x/text v0.33.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.44.1
+	modernc.org/sqlite v1.44.3
 )
 
 replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20260101090144-934fa1613435
