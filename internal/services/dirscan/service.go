@@ -338,6 +338,16 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 	if err := s.store.UpdateRunCanceled(context.Background(), run.ID); err != nil {
 		return fmt.Errorf("update run canceled: %w", err)
 	}
+
+	// If a run is canceled while still queued, the directory's last_scan_at has not
+	// been updated yet. Without bumping last_scan_at here, the scheduler will see
+	// the directory as immediately due again and recreate a queued run shortly
+	// after the user clicks "Pause"/cancel.
+	if run.Status == models.DirScanRunStatusQueued {
+		if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
+			log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after queued cancel")
+		}
+	}
 	return nil
 }
 
