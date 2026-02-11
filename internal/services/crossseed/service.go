@@ -5107,6 +5107,16 @@ func gazelleTargetForSource(sourceSiteHost string) string {
 	}
 }
 
+func gazelleTargetsForSource(sourceSiteHost string, isGazelleSource bool) []string {
+	if isGazelleSource {
+		if target := gazelleTargetForSource(sourceSiteHost); target != "" {
+			return []string{target}
+		}
+		return []string{}
+	}
+	return []string{"redacted.sh", "orpheus.network"}
+}
+
 func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 	if torrent == nil || s.syncManager == nil {
 		return "", false
@@ -5135,6 +5145,160 @@ func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 		return site, true
 	}
 	return "", false
+}
+
+func (s *Service) searchGazelleMatches(
+	ctx context.Context,
+	instanceID int,
+	sourceTorrent *qbt.Torrent,
+	sourceFiles qbt.TorrentFiles,
+	sourceSite string,
+	isGazelleSource bool,
+) ([]TorrentSearchResult, bool) {
+	if s == nil || sourceTorrent == nil {
+		return []TorrentSearchResult{}, false
+	}
+
+	targetHosts := gazelleTargetsForSource(sourceSite, isGazelleSource)
+	if len(targetHosts) == 0 {
+		return []TorrentSearchResult{}, false
+	}
+
+	results := make([]TorrentSearchResult, 0, len(targetHosts))
+	gazelleConfigured := false
+
+	localMap := buildFileSizeMap(sourceFiles)
+	var torrentBytes []byte
+	exportAttempted := false
+
+	for _, targetHost := range targetHosts {
+		client, hasClient, clientErr := s.gazelleClientForHost(ctx, targetHost)
+		if clientErr != nil {
+			log.Warn().
+				Err(clientErr).
+				Str("targetHost", targetHost).
+				Str("hash", sourceTorrent.Hash).
+				Msg("[CROSSSEED-GAZELLE] Failed to initialize client")
+			continue
+		}
+		if !hasClient || client == nil {
+			continue
+		}
+		gazelleConfigured = true
+
+		if !exportAttempted && s.syncManager != nil {
+			exportAttempted = true
+			exported, _, _, exportErr := s.syncManager.ExportTorrent(ctx, instanceID, sourceTorrent.Hash)
+			if exportErr != nil {
+				log.Warn().
+					Err(exportErr).
+					Str("hash", sourceTorrent.Hash).
+					Msg("[CROSSSEED-GAZELLE] Export torrent failed; falling back to filename matching only")
+			} else {
+				torrentBytes = exported
+			}
+		}
+
+		// If the target-site hash already exists locally, skip remote requests for this host.
+		if len(torrentBytes) > 0 && s.syncManager != nil {
+			hashes, err := gazellemusic.CalculateHashesWithSources(torrentBytes, []string{client.SourceFlag()})
+			if err == nil {
+				targetHash := strings.TrimSpace(hashes[client.SourceFlag()])
+				if targetHash != "" {
+					_, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{targetHash})
+					if hashErr == nil && exists {
+						log.Debug().
+							Str("sourceSite", sourceSite).
+							Str("targetHost", targetHost).
+							Str("hash", sourceTorrent.Hash).
+							Str("targetHash", targetHash).
+							Msg("[CROSSSEED-GAZELLE] Target hash already present locally, skipping search")
+						continue
+					}
+				}
+			}
+		}
+
+		match, matchErr := gazellemusic.FindMatch(ctx, client, torrentBytes, localMap, sourceTorrent.Size)
+		if matchErr != nil {
+			log.Warn().
+				Err(matchErr).
+				Str("targetHost", targetHost).
+				Str("hash", sourceTorrent.Hash).
+				Msg("[CROSSSEED-GAZELLE] Search failed")
+			continue
+		}
+		if match == nil {
+			log.Debug().
+				Str("sourceSite", sourceSite).
+				Str("targetHost", targetHost).
+				Str("hash", sourceTorrent.Hash).
+				Msg("[CROSSSEED-GAZELLE] No match found")
+			continue
+		}
+
+		log.Info().
+			Str("sourceSite", sourceSite).
+			Str("targetHost", targetHost).
+			Str("hash", sourceTorrent.Hash).
+			Int64("torrentID", match.TorrentID).
+			Str("reason", match.Reason).
+			Msg("[CROSSSEED-GAZELLE] Match found")
+
+		results = append(results, TorrentSearchResult{
+			Indexer:              gazelleIndexerNameForHost(targetHost),
+			IndexerID:            gazelleIndexerIDForHost(targetHost),
+			Title:                match.Title,
+			DownloadURL:          gazellemusic.BuildDownloadURL(targetHost, match.TorrentID),
+			Size:                 match.Size,
+			Seeders:              0,
+			Leechers:             0,
+			CategoryID:           jackett.CategoryAudio,
+			CategoryName:         "Audio",
+			PublishDate:          "",
+			DownloadVolumeFactor: 1,
+			UploadVolumeFactor:   1,
+			GUID:                 "",
+			MatchReason:          "gazelle:" + match.Reason,
+			MatchScore:           1.0,
+		})
+	}
+
+	return results, gazelleConfigured
+}
+
+func mergeTorrentSearchResults(gazelleResults, torznabResults []TorrentSearchResult) []TorrentSearchResult {
+	total := len(gazelleResults) + len(torznabResults)
+	if total == 0 {
+		return []TorrentSearchResult{}
+	}
+
+	merged := make([]TorrentSearchResult, 0, total)
+	seen := make(map[string]struct{}, total)
+
+	appendUnique := func(items []TorrentSearchResult) {
+		for _, item := range items {
+			key := strings.TrimSpace(item.GUID)
+			if key == "" {
+				key = strings.TrimSpace(item.DownloadURL)
+			}
+			if key == "" {
+				key = fmt.Sprintf("%d:%s", item.IndexerID, strings.TrimSpace(item.Title))
+			}
+			key = strings.ToLower(key)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+
+	// Gazelle first: deterministic, low-volume matches from target trackers.
+	appendUnique(gazelleResults)
+	appendUnique(torznabResults)
+
+	return merged
 }
 
 func buildFileSizeMap(files qbt.TorrentFiles) map[string]int64 {
@@ -5329,176 +5493,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
 
-	// Gazelle (OPS/RED) path: for torrents sourced from OPS/RED, use Gazelle JSON API matching
-	// and do not use Torznab for OPS/RED at all.
-	if sourceSite, ok := s.detectGazelleSourceSite(sourceTorrent); ok {
-		targetHost := gazelleTargetForSource(sourceSite)
-		if targetHost != "" {
-			log.Debug().
-				Str("sourceSite", sourceSite).
-				Str("targetHost", targetHost).
-				Str("hash", hash).
-				Str("tracker", sourceTorrent.Tracker).
-				Str("name", sourceTorrent.Name).
-				Msg("[CROSSSEED-GAZELLE] Attempting match")
-
-			client, hasClient, clientErr := s.gazelleClientForHost(ctx, targetHost)
-			if clientErr != nil {
-				log.Warn().Err(clientErr).Str("targetHost", targetHost).Msg("[CROSSSEED-GAZELLE] Failed to initialize client")
-			} else if hasClient && client != nil {
-				torrentBytes, _, _, exportErr := s.syncManager.ExportTorrent(ctx, instanceID, hash)
-				if exportErr != nil {
-					log.Warn().Err(exportErr).Str("hash", hash).Msg("[CROSSSEED-GAZELLE] Export torrent failed; falling back to filename matching only")
-					torrentBytes = nil
-				}
-
-				// Build content info once; used both for early exits and match responses.
-				sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-				contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
-				contentInfo := DetermineContentType(contentDetectionRelease)
-				isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
-				sourceInfo := TorrentInfo{
-					InstanceID:       instanceID,
-					InstanceName:     instance.Name,
-					Hash:             sourceTorrent.Hash,
-					Name:             sourceTorrent.Name,
-					Category:         sourceTorrent.Category,
-					Size:             sourceTorrent.Size,
-					Progress:         sourceTorrent.Progress,
-					ContentType:      contentInfo.ContentType,
-					SearchType:       contentInfo.SearchType,
-					SearchCategories: contentInfo.Categories,
-					RequiredCaps:     contentInfo.RequiredCaps,
-					DiscLayout:       isDiscLayout,
-					DiscMarker:       discMarker,
-				}
-
-				// If we can compute the target-site infohash, skip remote Gazelle search when
-				// the target torrent already exists locally.
-				if torrentBytes != nil {
-					hashes, err := gazellemusic.CalculateHashesWithSources(torrentBytes, []string{client.SourceFlag()})
-					if err == nil {
-						targetHash := strings.TrimSpace(hashes[client.SourceFlag()])
-						if targetHash != "" {
-							_, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{targetHash})
-							if err == nil && exists {
-								log.Debug().
-									Str("sourceSite", sourceSite).
-									Str("targetHost", targetHost).
-									Str("hash", hash).
-									Str("targetHash", targetHash).
-									Msg("[CROSSSEED-GAZELLE] Target hash already present locally, skipping search")
-
-								resp := &TorrentSearchResponse{
-									SourceTorrent: sourceInfo,
-									Results:       []TorrentSearchResult{},
-									Partial:       false,
-									JobID:         0,
-								}
-								return resp, nil
-							}
-						}
-					}
-				}
-
-				localMap := buildFileSizeMap(sourceFiles)
-				match, matchErr := gazellemusic.FindMatch(ctx, client, torrentBytes, localMap, sourceTorrent.Size)
-				if matchErr != nil {
-					log.Warn().Err(matchErr).Str("targetHost", targetHost).Str("hash", hash).Msg("[CROSSSEED-GAZELLE] Search failed")
-					// Best-effort: treat as no results (avoid failing automation loops).
-					match = nil
-				}
-
-				if match != nil {
-					log.Info().
-						Str("sourceSite", sourceSite).
-						Str("targetHost", targetHost).
-						Str("hash", hash).
-						Int64("torrentID", match.TorrentID).
-						Str("reason", match.Reason).
-						Msg("[CROSSSEED-GAZELLE] Match found")
-				} else {
-					log.Debug().
-						Str("sourceSite", sourceSite).
-						Str("targetHost", targetHost).
-						Str("hash", hash).
-						Msg("[CROSSSEED-GAZELLE] No match found")
-				}
-
-				results := []TorrentSearchResult{}
-				if match != nil {
-					results = append(results, TorrentSearchResult{
-						Indexer:              gazelleIndexerNameForHost(targetHost),
-						IndexerID:            gazelleIndexerIDForHost(targetHost),
-						Title:                match.Title,
-						DownloadURL:          gazellemusic.BuildDownloadURL(targetHost, match.TorrentID),
-						Size:                 match.Size,
-						Seeders:              0,
-						Leechers:             0,
-						CategoryID:           jackett.CategoryAudio,
-						CategoryName:         "Audio",
-						PublishDate:          "",
-						DownloadVolumeFactor: 1,
-						UploadVolumeFactor:   1,
-						GUID:                 "",
-						MatchReason:          "gazelle:" + match.Reason,
-						MatchScore:           1.0,
-					})
-				}
-
-				resp := &TorrentSearchResponse{
-					SourceTorrent: sourceInfo,
-					Results:       results,
-					Partial:       false,
-					JobID:         0,
-				}
-				s.cacheSearchResults(instanceID, hash, resp.Results)
-				return resp, nil
-			}
-
-			log.Debug().
-				Str("sourceSite", sourceSite).
-				Str("targetHost", targetHost).
-				Str("hash", hash).
-				Msg("[CROSSSEED-GAZELLE] Gazelle disabled or API key not configured; returning no results")
-
-			// Return empty response (no Torznab fallback for OPS/RED).
-			sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-			contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
-			contentInfo := DetermineContentType(contentDetectionRelease)
-			isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
-			return &TorrentSearchResponse{
-				SourceTorrent: TorrentInfo{
-					InstanceID:       instanceID,
-					InstanceName:     instance.Name,
-					Hash:             sourceTorrent.Hash,
-					Name:             sourceTorrent.Name,
-					Category:         sourceTorrent.Category,
-					Size:             sourceTorrent.Size,
-					Progress:         sourceTorrent.Progress,
-					ContentType:      contentInfo.ContentType,
-					SearchType:       contentInfo.SearchType,
-					SearchCategories: contentInfo.Categories,
-					RequiredCaps:     contentInfo.RequiredCaps,
-					DiscLayout:       isDiscLayout,
-					DiscMarker:       discMarker,
-				},
-				Results: []TorrentSearchResult{},
-			}, nil
-		}
-	}
-
-	if s.jackettService == nil {
-		return nil, errors.New("torznab search is not configured")
-	}
-
-	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
-	if resolveErr != nil {
-		return nil, fmt.Errorf("resolve indexers: %w", resolveErr)
-	}
-	opts.IndexerIDs = resolvedIndexerIDs
-
-	// Parse both torrent name and largest file for content detection
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
@@ -5528,13 +5522,50 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		DiscMarker:       discMarker,
 	}
 
+	sourceSite, isGazelleSource := s.detectGazelleSourceSite(sourceTorrent)
+	gazelleResults, gazelleConfigured := s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource)
+
+	if opts.DisableTorznab {
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+		return &TorrentSearchResponse{
+			SourceTorrent: sourceInfo,
+			Results:       gazelleResults,
+			Partial:       false,
+			JobID:         0,
+		}, nil
+	}
+
+	if s.jackettService == nil {
+		// No Torznab backend. Still allow Gazelle-only matching if source is Gazelle
+		// or any Gazelle API keys are configured.
+		if isGazelleSource || gazelleConfigured {
+			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+			return &TorrentSearchResponse{
+				SourceTorrent: sourceInfo,
+				Results:       gazelleResults,
+				Partial:       false,
+				JobID:         0,
+			}, nil
+		}
+		return nil, errors.New("torznab search is not configured")
+	}
+
+	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
+	if resolveErr != nil {
+		return nil, fmt.Errorf("resolve indexers: %w", resolveErr)
+	}
+	opts.IndexerIDs = resolvedIndexerIDs
+
 	if len(opts.IndexerIDs) == 0 {
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Msg("[CROSSSEED-SEARCH] No eligible Torznab indexers after OPS/RED exclusion")
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
-			Results:       []TorrentSearchResult{},
+			Results:       gazelleResults,
+			Partial:       false,
+			JobID:         0,
 		}, nil
 	}
 
@@ -6012,9 +6043,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
 	if len(scored) == 0 {
+		combined := mergeTorrentSearchResults(gazelleResults, nil)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
-			Results:       []TorrentSearchResult{},
+			Results:       combined,
 			Cache:         searchResp.Cache,
 			Partial:       searchResp.Partial,
 			JobID:         searchResp.JobID,
@@ -6065,11 +6098,12 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		})
 	}
 
-	s.cacheSearchResults(instanceID, sourceTorrent.Hash, results)
+	combined := mergeTorrentSearchResults(gazelleResults, results)
+	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 
 	return &TorrentSearchResponse{
 		SourceTorrent: sourceInfo,
-		Results:       results,
+		Results:       combined,
 		Cache:         searchResp.Cache,
 		Partial:       searchResp.Partial,
 		JobID:         searchResp.JobID,
@@ -6873,19 +6907,16 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return true, nil
 	}
 
-	// Gazelle-only mode: only consider torrents that are sourced from OPS/RED.
+	// Gazelle-only mode still processes all torrents; pre-skip only applies when we can
+	// prove the opposite-site hash already exists locally for OPS/RED-sourced torrents.
 	if state != nil && state.opts.DisableTorznab {
 		sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
-		if !isGazelleSource {
-			if cacheKey != "" && state.skipCache != nil {
-				state.skipCache[cacheKey] = true
-			}
-			return true, nil
+		targetHost := ""
+		if isGazelleSource {
+			// If both OPS and RED are already seeded, we don't need to attempt matching at all.
+			// gzlx behavior: compute the target-site infohash (source-flag swap) and skip when it exists locally.
+			targetHost = gazelleTargetForSource(sourceSite)
 		}
-
-		// If both OPS and RED are already seeded, we don't need to attempt matching at all.
-		// gzlx behavior: compute the target-site infohash (source-flag swap) and skip when it exists locally.
-		targetHost := gazelleTargetForSource(sourceSite)
 		if targetHost != "" && s.syncManager != nil {
 			if spec, ok := gazellemusic.KnownTrackers[targetHost]; ok && strings.TrimSpace(spec.SourceFlag) != "" {
 				torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, state.opts.InstanceID, torrent.Hash)
@@ -6953,59 +6984,32 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt)
 	}
 
-	// Gazelle (OPS/RED) candidate path: if this torrent is sourced from OPS/RED, we should still
-	// attempt Gazelle matching even when the user selected only OPS/RED Torznab indexers (which are ignored).
-	sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
-	gazelleTargetHost := ""
-	if isGazelleSource {
-		gazelleTargetHost = gazelleTargetForSource(sourceSite)
-	}
-	doGazelleOnly := gazelleTargetHost != ""
+	// Hybrid behavior:
+	// - Gazelle matching is attempted inside SearchTorrentMatches for every source torrent.
+	// - Torznab matching is also attempted when enabled and indexers remain after filtering.
+	requestedIndexerIDs := state.resolvedTorznabIndexerIDs
+	searchDisableTorznab := state.opts.DisableTorznab
 
-	var requestedIndexerIDs []int
-	if !doGazelleOnly {
-		requestedIndexerIDs = state.resolvedTorznabIndexerIDs
-		if state.resolvedTorznabIndexerErr != nil {
-			s.searchMu.Lock()
-			state.run.TorrentsFailed++
-			s.searchMu.Unlock()
-			s.appendSearchResult(state, models.CrossSeedSearchResult{
-				TorrentHash:  torrent.Hash,
-				TorrentName:  torrent.Name,
-				IndexerName:  "",
-				ReleaseTitle: "",
-				Added:        false,
-				Message:      fmt.Sprintf("resolve indexers: %v", state.resolvedTorznabIndexerErr),
-				ProcessedAt:  processedAt,
-			})
-			s.persistSearchRun(state)
-			return state.resolvedTorznabIndexerErr
-		}
-		if len(requestedIndexerIDs) == 0 {
-			msg := "no eligible Torznab indexers (OPS/RED are Gazelle-only)"
-			if state.opts.DisableTorznab {
-				msg = "Torznab disabled (Gazelle-only)"
-			}
-			s.searchMu.Lock()
-			state.run.TorrentsSkipped++
-			s.searchMu.Unlock()
-			s.appendSearchResult(state, models.CrossSeedSearchResult{
-				TorrentHash:  torrent.Hash,
-				TorrentName:  torrent.Name,
-				IndexerName:  "",
-				ReleaseTitle: "",
-				Added:        false,
-				Message:      msg,
-				ProcessedAt:  processedAt,
-			})
-			s.persistSearchRun(state)
-			return nil
-		}
+	if !state.opts.DisableTorznab && state.resolvedTorznabIndexerErr != nil {
+		s.searchMu.Lock()
+		state.run.TorrentsFailed++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      fmt.Sprintf("resolve indexers: %v", state.resolvedTorznabIndexerErr),
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return state.resolvedTorznabIndexerErr
 	}
 
 	allowedIndexerIDs := []int(nil)
-	if !doGazelleOnly {
-		// Use async filtering for better performance - capability filtering returns immediately
+	if !searchDisableTorznab && len(requestedIndexerIDs) > 0 {
+		// Use async filtering for better performance - capability filtering returns immediately.
 		asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, state.opts.InstanceID, torrent.Hash, requestedIndexerIDs, true)
 		if err != nil {
 			s.searchMu.Lock()
@@ -7042,32 +7046,33 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				Ints("selectedIndexers", allowedIndexerIDs).
 				Bool("contentFilteringCompleted", contentFilteringCompleted).
 				Msg("[CROSSSEED-SEARCH-AUTO] Using resolved indexer set for automation search")
-		}
-
-		if len(allowedIndexerIDs) == 0 {
-			s.searchMu.Lock()
-			state.run.TorrentsSkipped++
-			s.searchMu.Unlock()
+		} else {
+			// Keep processing with Gazelle even when no Torznab indexers remain for this candidate.
+			searchDisableTorznab = true
 			if skipReason == "" {
 				skipReason = "no indexers support required caps"
 			}
-			s.appendSearchResult(state, models.CrossSeedSearchResult{
-				TorrentHash:  torrent.Hash,
-				TorrentName:  torrent.Name,
-				IndexerName:  "",
-				ReleaseTitle: "",
-				Added:        false,
-				Message:      skipReason,
-				ProcessedAt:  processedAt,
-			})
-			s.persistSearchRun(state)
-			return nil
+			log.Debug().
+				Str("torrentHash", torrent.Hash).
+				Int("instanceID", state.opts.InstanceID).
+				Str("reason", skipReason).
+				Msg("[CROSSSEED-SEARCH-AUTO] Falling back to Gazelle-only for candidate")
 		}
+	}
+	if !searchDisableTorznab && len(requestedIndexerIDs) == 0 && len(state.opts.IndexerIDs) > 0 {
+		// User selected Torznab indexers, but every selected indexer was excluded (for example,
+		// selecting only OPS/RED indexers while Gazelle is enabled). Keep this candidate Gazelle-only
+		// instead of expanding to "all enabled" indexers downstream.
+		searchDisableTorznab = true
 	}
 
 	searchCtx := ctx
 	var searchCancel context.CancelFunc
-	searchTimeout := computeAutomationSearchTimeout(max(1, len(allowedIndexerIDs)))
+	indexerCountForTimeout := len(allowedIndexerIDs)
+	if searchDisableTorznab {
+		indexerCountForTimeout = 1
+	}
+	searchTimeout := computeAutomationSearchTimeout(max(1, indexerCountForTimeout))
 	if searchTimeout > 0 {
 		searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
 	}
@@ -7077,6 +7082,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground)
 
 	searchResp, err := s.SearchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
+		DisableTorznab:         searchDisableTorznab,
 		IndexerIDs:             allowedIndexerIDs,
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
 	})

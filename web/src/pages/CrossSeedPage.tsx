@@ -1236,7 +1236,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
     }
     if (seededSearchIndexerOptions.length > 0) {
-      return "All enabled indexers (leave empty for all)"
+      return gazelleSavedConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
     }
     if (seededSearchHasOnlyGazelleIndexers) {
       return "Only OPS/RED enabled (Gazelle)"
@@ -1257,24 +1257,30 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const seededSearchIndexerHelpText = useMemo(() => {
     if (!seededSearchTorznabEnabled) {
       if (gazelleSavedConfigured) {
-        return "Torznab disabled. Only OPS/RED torrents will be processed via Gazelle; other torrents will be skipped."
+        return "Torznab disabled. Gazelle will check RED/OPS for every source torrent."
       }
       return "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode."
     }
 
     if (seededSearchIndexerOptions.length === 0) {
       if (seededSearchHasOnlyGazelleIndexers) {
-        return "Only OPS/RED indexers enabled. Gazelle will be used for OPS/RED torrents; other torrents will be skipped."
+        return "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS."
       }
 
       if (gazelleSavedConfigured) {
-        return "No Torznab indexers. Gazelle will be used for OPS/RED torrents; other torrents will be skipped."
+        return "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent."
       }
       return "No Torznab indexers configured."
     }
 
     if (seededSearchEffectiveIndexerIds.length === 0) {
+      if (gazelleSavedConfigured) {
+        return "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS."
+      }
       return "All enabled Torznab indexers will be queried for matches."
+    }
+    if (gazelleSavedConfigured) {
+      return `Only ${seededSearchEffectiveIndexerIds.length} selected Torznab indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried. Gazelle still checks RED/OPS.`
     }
     return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
   }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled])
@@ -1293,6 +1299,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     if (red) return "Gazelle: enabled (RED key set, OPS missing)"
     return "Gazelle: enabled (keys missing)"
   }, [settings])
+
+  const seededSearchFlowSummary = gazelleSavedConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Without Gazelle, all matching relies on Torznab indexers."
 
   const handleJumpToGazelleSettings = useCallback(() => {
     onTabChange("rules")
@@ -2038,7 +2046,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           <Card>
             <CardHeader>
               <CardTitle>Library Scan</CardTitle>
-              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
+              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab once per unique release. If Gazelle is enabled, RED/OPS API matching is also attempted.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <Alert className="border-destructive/20 bg-destructive/10 text-destructive mb-8">
@@ -2177,11 +2185,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     {seededSearchIndexerHelpText}
                   </p>
                   <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span>
-                      {gazelleSavedConfigured
-                        ? "OPS/RED torrents are matched via Gazelle (based on the source torrent's tracker). Torznab is used for everything else."
-                        : "OPS/RED torrents use Torznab unless Gazelle is configured."}
-                    </span>
+                    <span>{seededSearchFlowSummary}</span>
                     <button
                       type="button"
                       onClick={handleJumpToGazelleSettings}
@@ -2388,14 +2392,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="space-y-1">
                   <p className="text-sm font-medium leading-none">Gazelle (OPS/RED)</p>
                   <p className="text-xs text-muted-foreground">
-                    Enable direct JSON API matching between Orpheus and Redacted for cross-seeding. Torznab is never used for OPS/RED.
+                    Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="gazelle-enabled" className="font-medium">Enable Gazelle matching</Label>
-                    <p className="text-xs text-muted-foreground">Only applies when the source torrent tracker is OPS or RED.</p>
+                    <p className="text-xs text-muted-foreground">Applies to all source torrents. If possible, qui also checks RED/OPS via Gazelle.</p>
                   </div>
                   <Switch
                     id="gazelle-enabled"

@@ -28,7 +28,7 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
 
-Optional: for OPS/RED torrents, qui can cross-seed via the trackers' Gazelle JSON APIs (no Torznab). See [OPS/RED (Gazelle)](gazelle-ops-red).
+Optional: qui can also query OPS/RED via the trackers' Gazelle JSON APIs. This complements Torznab (and excludes OPS/RED Torznab indexers when Gazelle is enabled). See [OPS/RED (Gazelle)](gazelle-ops-red).
 
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
 
@@ -56,7 +56,7 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
 
 :::warning
-Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
+Run sparingly. This deep scan touches every matching torrent and queries Torznab and/or Gazelle for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
 :::
 
 ### Auto-Search on Completion

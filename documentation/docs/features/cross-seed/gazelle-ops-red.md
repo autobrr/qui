@@ -1,26 +1,29 @@
 ---
 sidebar_position: 25
 title: OPS/RED (Gazelle)
-description: Cross-seed between Orpheus and Redacted via the Gazelle JSON APIs (no Torznab).
+description: Cross-seed using Orpheus/Redacted Gazelle APIs, optionally alongside Torznab.
 ---
 
 # OPS/RED (Gazelle)
 
 qui can cross-seed between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs.
 
-This path is **Gazelle-first**:
+This path is **Gazelle-aware**:
 
-- OPS/RED torrents use Gazelle matching when it's configured
-- Searches only the opposite site (RED -> OPS, OPS -> RED)
+- Gazelle checks RED/OPS when API keys are configured
+- OPS/RED source torrents search only the opposite site (RED -> OPS, OPS -> RED)
+- Non-OPS/RED source torrents can still be checked against RED and OPS
+- Torznab can run in parallel, but OPS/RED Torznab indexers are excluded when Gazelle is configured
 
 ## When It Applies
 
-Only when the **source torrent** is OPS or RED, detected from the announce/tracker URL:
+OPS/RED source detection still matters for the swap-hash fast path. qui detects source site from announce/tracker URL:
 
 - RED announce host: `flacsfor.me`
 - OPS announce host: `home.opsfet.ch`
 
-If the torrent isn't sourced from OPS/RED, qui uses Torznab like normal.
+If the source is OPS/RED, qui targets only the opposite site.
+If the source is not OPS/RED, qui can still query whichever Gazelle sites you configured.
 
 ## What Happens If Gazelle Isn't Configured
 
@@ -42,6 +45,7 @@ UI: **Cross-Seed -> Rules -> Gazelle (OPS/RED)**
 
 - Enable Gazelle matching
 - Set one or both API keys (keys are encrypted at rest and redacted in API/UI responses)
+- If only one key is set, only that tracker can be queried via Gazelle
 
 ## Rate Limiting
 
@@ -53,5 +57,5 @@ Seeded Torrent Search (Library Scan) can run with **no enabled Torznab indexers*
 
 In that mode:
 
-- Only OPS/RED-sourced torrents are processed
-- All other torrents are skipped
+- All source torrents are still processed
+- Matches come only from configured Gazelle sites (RED/OPS)

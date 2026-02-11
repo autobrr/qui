@@ -46,6 +46,13 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 	}
 }
 
+func TestGazelleTargetsForSource(t *testing.T) {
+	require.Equal(t, []string{"orpheus.network"}, gazelleTargetsForSource("redacted.sh", true))
+	require.Equal(t, []string{"redacted.sh"}, gazelleTargetsForSource("orpheus.network", true))
+	require.Equal(t, []string{}, gazelleTargetsForSource("tracker.example", true))
+	require.Equal(t, []string{"redacted.sh", "orpheus.network"}, gazelleTargetsForSource("tracker.example", false))
+}
+
 func TestResolveAllowedIndexerIDsRespectsSelection(t *testing.T) {
 	svc := &Service{}
 	state := &AsyncIndexerFilteringState{
@@ -187,7 +194,7 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("new-hash")])
 }
 
-func TestRefreshSearchQueue_TorznabDisabledCountsOnlyGazelleSources(t *testing.T) {
+func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-only.db")
 	db, err := database.New(dbPath)
@@ -243,10 +250,10 @@ func TestRefreshSearchQueue_TorznabDisabledCountsOnlyGazelleSources(t *testing.T
 
 	require.NoError(t, service.refreshSearchQueue(ctx, state))
 
-	require.Equal(t, 2, state.run.TotalTorrents, "only OPS/RED-sourced torrents should be counted in Gazelle-only mode")
+	require.Equal(t, 3, state.run.TotalTorrents, "Gazelle-only runs should still process non-OPS/RED sources")
 	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("red-hash")])
 	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("ops-hash")])
-	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("other-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("other-hash")])
 }
 
 func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T) {
