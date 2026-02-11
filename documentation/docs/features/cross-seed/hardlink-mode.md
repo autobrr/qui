@@ -4,7 +4,7 @@ title: Hardlink Mode
 description: Cross-seed using hardlinks or reflinks instead of file renaming.
 ---
 
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
+import LocalFilesystemDocker from "../../_partials/_local-filesystem-docker.mdx";
 
 # Hardlink Mode
 
