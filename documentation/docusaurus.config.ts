@@ -76,6 +76,19 @@ const config: Config = {
     ],
   ],
 
+  plugins: [
+    [
+      "docusaurus-plugin-llms",
+      {
+        docsDir: "docs",
+        generateLLMsTxt: true,
+        generateLLMsFullTxt: true,
+        excludeImports: true,
+        removeDuplicateHeadings: true,
+      },
+    ],
+  ],
+
   presets: [
     [
       "classic",
@@ -169,6 +182,14 @@ const config: Config = {
             {
               label: "Releases",
               href: "https://github.com/autobrr/qui/releases",
+            },
+            {
+              label: "llms.txt",
+              href: "https://getqui.com/llms.txt",
+            },
+            {
+              label: "llms-full.txt",
+              href: "https://getqui.com/llms-full.txt",
             },
           ],
         },
