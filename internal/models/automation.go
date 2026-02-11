@@ -29,7 +29,7 @@ const (
 const (
 	TagModeFull   = "full"   // Add to matches, remove from non-matches
 	TagModeAdd    = "add"    // Only add to matches
-	TagModeRemove = "remove" // Only remove from non-matches
+	TagModeRemove = "remove" // Only remove from matches
 )
 
 // FreeSpaceSourceType defines the source for free space checks in workflows.
