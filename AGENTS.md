@@ -102,25 +102,6 @@ PRs need a clear summary, testing checklist, and UI screenshots for visual tweak
 
 Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch premium themes, and keep the file out of version control. Record configuration defaults in `config.toml` but evolve runtime schema through Go migrations rather than editing `qui.db` directly. Drop cached databases and logs (`qui.db*`, `logs/`) from commits to avoid leaking local data.
 
-## Adjacent Repositories
-
-The agent may need to read from sibling repositories to work effectively:
-
-| Path | Purpose |
-|------|---------|
-| `~/github/autobrr/go-qbittorrent` | Go qBittorrent API client library |
-| `~/github/autobrr/autobrr` | autobrr source |
-| `~/github/autobrr/rls` | Release name parser |
-| `~/github/oss/go-jackett` | Jackett API client |
-| `~/github/oss/qBittorrent` | qBittorrent source (API reference) |
-| `~/github/oss/cross-seed`  | cross-seed.org |
-| `~/github/oss/Prowlarr` | Prowlarr source |
-| `~/github/oss/Jackett` | Jackett source |
-| `~/github/oss/Sonarr`  | Sonarr source |
-| `~/github/oss/Radarr` | Radarr source |
-
-Keep those paths available on disk so the agent can inspect them when diagnosing qBittorrent integration issues or cross-referencing API behavior.
-
 ## Architecture Quick Reference
 
 ```text
