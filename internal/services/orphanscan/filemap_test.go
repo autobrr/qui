@@ -63,6 +63,9 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 
 func TestNormalizePath_InvalidUTF8Preserved(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == goosWindows {
+		t.Skip("windows path handling lower-cases before UTF-8 check")
+	}
 
 	// On Unix, filenames are arbitrary bytes; ensure we don't replace invalid
 	// sequences with U+FFFD during normalization.
