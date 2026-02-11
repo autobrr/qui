@@ -1264,10 +1264,46 @@ paths:
                   type: array
                   items:
                     type: string
-                startPaused:
+                paused:
                   type: boolean
-                savePath:
+                savepath:
                   type: string
+                indexer_id:
+                  type: integer
+                  description: Indexer ID for downloading torrent from an indexer
+                skip_checking:
+                  type: boolean
+                sequentialDownload:
+                  type: boolean
+                firstLastPiecePrio:
+                  type: boolean
+                upLimit:
+                  type: integer
+                  description: Upload speed limit in KB/s
+                dlLimit:
+                  type: integer
+                  description: Download speed limit in KB/s
+                ratioLimit:
+                  type: string
+                  description: Share ratio limit
+                seedingTimeLimit:
+                  type: string
+                  description: Seeding time limit in minutes
+                contentLayout:
+                  type: string
+                  description: Content layout (Original, Subfolder, NoSubfolder)
+                rename:
+                  type: string
+                  description: Rename torrent
+                useDownloadPath:
+                  type: boolean
+                  description: Use download path
+                downloadPath:
+                  type: string
+                  description: Download path
+                autoTMM:
+                  type: boolean
+                  description: Automatic torrent management
       responses:
         '201':
           description: Torrent added successfully
