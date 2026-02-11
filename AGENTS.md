@@ -1,4 +1,4 @@
-# agents.md
+# AGENTS.md
 
 Repository guidelines for AI coding agents (Codex, Claude Code, etc.) working on qui.
 
@@ -7,6 +7,8 @@ Repository guidelines for AI coding agents (Codex, Claude Code, etc.) working on
 The Go backend lives in `cmd/qui` (entrypoint) and `internal/` modules for configuration, qBittorrent, metrics, and API routing; shared helpers sit in `pkg/`. The React/Vite client is in `web/src` with static assets in `web/public`, and its production bundle must stay synced to `internal/web/dist`. Reference docs live under `docs/`, while Docker and compose files in the repository root support container workflows.
 
 End-user docs live in the Docusaurus project under `documentation/docs/`. Prefer updating those for user-facing copy; `docs/` is mostly internal/engineering notes.
+
+Keep `README.md` concise. Feature deep-dives belong in `documentation/docs/`, not the root README.
 
 ## Build, Test, and Development Commands
 
@@ -80,6 +82,8 @@ Place backend tests beside implementations as `*_test.go`, mirroring paths such 
 
 When running tests, always use `-race` and `-count=3` to catch race conditions.
 
+For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
+
 ## Commit & Pull Request Guidelines
 
 Follow the conventional commit style in history (`feat(scope):`, `fix(scope):`, etc.) and link issues or PR numbers in the body when relevant. Keep commits focused—split backend and frontend changes when practical.
@@ -101,6 +105,12 @@ PRs need a clear summary, testing checklist, and UI screenshots for visual tweak
 ## Security & Configuration Tips
 
 Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch premium themes, and keep the file out of version control. Record configuration defaults in `config.toml` but evolve runtime schema through Go migrations rather than editing `qui.db` directly. Drop cached databases and logs (`qui.db*`, `logs/`) from commits to avoid leaking local data.
+
+## API & Database Change Rules
+
+- Database schema changes must ship as migrations under `internal/database/migrations` and include matching model/store updates in the same PR.
+- API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
+- Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
 
 ## Architecture Quick Reference
 
