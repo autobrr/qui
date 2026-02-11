@@ -82,10 +82,12 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 #### Tracker/Status Fields
 | Field | Description |
 |-------|-------------|
-| Tracker | Primary tracker URL |
+| Tracker | Primary tracker (URL, domain, or customization display name) |
 | Private | Boolean - is private tracker |
 | Is Unregistered | Boolean - tracker reports unregistered |
 | Comment | Torrent comment field |
+
+Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
 
 #### Advanced Fields
 | Field | Description |
@@ -130,7 +132,21 @@ The State field matches these status buckets:
 
 ### Regex Support
 
-Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default. The UI validates patterns and shows helpful error messages for invalid regex.
+Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default.
+
+Regex can be used either by selecting **matches regex** or by enabling the **Regex** toggle for a condition:
+
+- When regex is enabled, the condition checks whether the regex matches the field value.
+- `not equals` and `not contains` invert the regex result (true only if the regex does **not** match).
+- Operators like `equals`, `contains`, `starts with`, and `ends with` are treated as regex match when regex is enabled.
+- Regex is not implicitly anchored: use `^` and `$` if you want an exact/full-string match (example: `^BHD$`).
+
+Field notes:
+
+- **Tracker**: checked against multiple candidates (raw URL, extracted domain, and optional customization display name). Negative regex passes only if **none** of the candidates match.
+- **Tags**: without regex, string operators are applied per-tag. With regex enabled, the regex is matched against the full raw tags string.
+
+The UI validates patterns and shows helpful error messages for invalid regex.
 
 ## Tracker Matching
 
@@ -177,6 +193,14 @@ Torrents stop seeding when any enabled limit is reached.
 ### Pause
 
 Pause matching torrents. Only pauses if not already stopped.
+
+If a resume action is also present, last action wins.
+
+### Resume
+
+Resume matching torrents. Only resumes if not already running.
+
+If a pause action is also present, last action wins.
 
 ### Delete
 
@@ -269,6 +293,40 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
 
+### External Program
+
+Run a pre-configured external program when torrents match the automation rule. Uses the same programs configured in **Settings → External Programs**.
+
+| Field | Description |
+|-------|-------------|
+| **Program** | Select from enabled external programs |
+| **Condition Override** | Optional condition specific to this action |
+
+**Behavior:**
+
+- Executes asynchronously (fire-and-forget) to avoid blocking automation processing
+- Can be combined with other actions (speed limits, share limits, pause, tag, category)
+- Only enabled programs appear in the dropdown
+- Activity is logged with rule name, torrent details, and success/failure status
+
+:::note
+The program must be enabled in Settings → External Programs to appear in the automation dropdown.
+:::
+
+:::note
+When multiple rules match the same torrent with External Program actions enabled, the **last matching rule** (by sort order) determines which program executes for that torrent. Only one program runs per torrent per automation cycle.
+:::
+
+:::warning
+The program's executable path must be present in the application's allowlist. Programs that are disabled or have forbidden paths will not run—attempts are rejected and logged in the activity log with the rule name and torrent details.
+:::
+
+**Use cases:**
+- Run post-processing scripts when torrents complete
+- Notify external systems (webhooks, notifications) when conditions are met
+- Trigger media library scans after category changes
+- Execute cleanup scripts for old or stalled torrents
+
 ## Cross-Seed Awareness
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
@@ -280,22 +338,121 @@ Automations detect cross-seeded torrents (same content/files) and can handle the
 - **Category Rules** - Enable "Include Cross-Seeds" to move related torrents together
 - **Blocking** - Prevent category moves if cross-seeds are in protected categories
 
-## Hardlink Detection
+### Hardlink Detection
 
-The `Hardlink Scope` field detects whether torrent files have hardlinks:
+The `HARDLINK_SCOPE` field lets automations distinguish between torrents whose files are hardlinked into an external library (Sonarr, Radarr, etc.) and torrents that exist only within qBittorrent. This is the foundation for safe "Remove Upgraded Torrents" automations.
 
-| Value | Description |
-|-------|-------------|
-| `none` | No hardlinks detected |
-| `torrents_only` | Hardlinks only within qBittorrent's download set |
-| `outside_qbittorrent` | Hardlinks to files outside qBittorrent (e.g., media library) |
+#### How scope is determined
+
+When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by calling `Lstat()` on every file of every torrent in qBittorrent. For each file it extracts:
+
+- The **inode** and **device ID** — uniquely identifying the file on disk.
+- The **nlink count** — the total number of hardlinks to that inode, as reported by the filesystem.
+
+It then counts how many unique file paths across the entire qBittorrent torrent set point to each inode. The scope for each torrent is determined by comparing these two numbers:
+
+| Scope | Condition | Meaning |
+|---|---|---|
+| `none` | No file has `nlink > 1` | No hardlinks detected. |
+| `torrents_only` | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links. |
+| `outside_qbittorrent` | Any file has `nlink > uniquePathCount` | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
 
 :::note
-Requires "Local filesystem access" enabled on the instance.
+`HARDLINK_SCOPE` only reflects hardlink metadata. Cross-seeds are detected separately (ContentPath matching), so a torrent can have `HARDLINK_SCOPE = none` and still be cross-seeded.
 :::
 
-Use case: Identify library imports vs pure cross-seeds for selective cleanup.
+#### Unknown scope and safety behavior
 
+If qui cannot `Lstat()` **any** file in a torrent — due to wrong paths, missing permissions, or inaccessible storage — that torrent receives no scope entry. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This is a safety measure to prevent unintended deletions of torrents qui cannot fully inspect.
+
+To diagnose this, enable debug logging and look for the "hardlink index built" log message, which reports an `inaccessible` count.
+
+#### Docker volume requirements
+
+For hardlink scope detection to work in Docker:
+
+1. **Paths must match exactly.** qui must be able to read files at the same paths qBittorrent reports. If qBittorrent says a torrent's save path is `/data/torrents/radarr/`, qui must be able to access `/data/torrents/radarr/` inside its container.
+
+2. **Same underlying storage.** Both containers must share the same host mount so that inode numbers are consistent. If qui and qBittorrent access the same files through different host mounts or different bind-mount configurations, inode numbers may not match.
+
+3. **Single mount, not subdivided.** Mount the common parent directory rather than mounting subdirectories separately. For example, if your data lives under `/mnt/media/data` on the host:
+
+```yaml
+services:
+  qui:
+    volumes:
+      - /home/user/docker/qui:/config
+      - /mnt/media/data:/data  # single mount covering both torrents and library
+```
+
+Avoid mounting both `/mnt/media/data/torrents:/data/torrents` **and** `/mnt/media/data:/data` — the overlapping mounts can cause inconsistent inode visibility. Use a single mount at the common parent.
+
+#### Filesystem limitations
+
+Hardlink scope detection depends on the kernel reporting accurate `nlink` values in stat results. Some filesystems do not do this:
+
+- **FUSE-based filesystems** (sshfs, mergerfs, rclone mount) may report `nlink = 1` for all files regardless of actual hardlink count.
+- **Some NAS appliance filesystems** and **overlay filesystems** (overlayfs) may behave similarly.
+- **Network filesystems** (NFS, CIFS/SMB) generally report accurate nlink values but behavior varies by server implementation.
+
+On affected filesystems, every torrent appears to have scope `none` because nlink is always 1. There is no workaround within qui — this is a kernel/filesystem limitation. If you suspect this issue, run `stat` on a file you know is hardlinked and check the "Links" count.
+
+Hardlinks also cannot span across different filesystems. If your torrent data and media library are on separate filesystems (or separate Docker volumes backed by different host paths), Sonarr/Radarr will copy instead of hardlink, and scope detection has nothing to detect.
+
+#### Example: Remove Upgraded Torrents
+
+This automation deletes torrents that have been replaced by an upgrade in Sonarr/Radarr. It targets torrents where the library hardlink no longer exists (the arr removed or re-linked it during upgrade), the torrent has been seeding for at least 7 days, and the category matches your arr categories.
+
+:::tip
+Use `HARDLINK_SCOPE` with `NOT_EQUAL` to `outside_qbittorrent` rather than `EQUAL` to `none`. This way torrents with scope `torrents_only` (cross-seeded but not in a library) are also eligible for cleanup, while any torrent still linked into your media library is protected.
+:::
+
+```json
+{
+  "name": "Remove Upgraded Torrents",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "delete": {
+      "enabled": true,
+      "mode": "deleteWithFilesPreserveCrossSeeds",
+      "condition": {
+        "operator": "AND",
+        "conditions": [
+          {
+            "operator": "OR",
+            "conditions": [
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "radarr" },
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "radarr.cross" },
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "tv-sonarr" },
+              { "field": "CATEGORY", "operator": "EQUAL", "value": "tv-sonarr.cross" }
+            ]
+          },
+          {
+            "field": "HARDLINK_SCOPE",
+            "operator": "NOT_EQUAL",
+            "value": "outside_qbittorrent"
+          },
+          {
+            "field": "SEEDING_TIME",
+            "operator": "GREATER_THAN_OR_EQUAL",
+            "value": "604800"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+This works because when Sonarr/Radarr upgrades a release, the old library hardlink is removed. The old torrent's files then have `nlink == 1` (scope `none`) or are only linked to other torrents (scope `torrents_only`). Either way, the scope is not `outside_qbittorrent`, so the automation matches and deletes the torrent after the seeding time requirement is met.
+
+If the automation is matching torrents you expect to be protected, verify:
+
+1. qui can access all torrent files at the paths qBittorrent reports (check debug logs for inaccessible files).
+2. Your filesystem reports accurate nlink values (`stat <file>` should show Links > 1 for hardlinked files).
+3. Your Docker volume mounts do not overlap or subdivide the storage in a way that breaks inode consistency.
 ## Missing Files Detection
 
 The `Has Missing Files` field detects whether any files belonging to a completed torrent are missing from disk.
@@ -319,9 +476,9 @@ Only sends API calls when the torrent's current setting differs from the desired
 
 ### Processing Order
 
-- **First match wins** for exclusive actions (delete, category)
-- **Accumulative** for combinable actions (tags, speed limits)
-- Delete ends torrent processing (no further rules evaluated)
+- **First match wins** for delete actions (delete ends torrent processing, no further rules evaluated)
+- **Last rule wins** for speed limits, share limits, category, and external program actions
+- **Accumulative** for tag actions (tags are combined across matching rules)
 
 ### Free Space Condition Behavior
 
@@ -462,3 +619,17 @@ When a torrent matches, any other torrents pointing to the same downloaded files
 Move torrents to tracker-named categories:
 - Tracker: `tracker.example.com`
 - Action: Category "example" with "Include Cross-Seeds" enabled
+
+### Post-Processing on Completion
+
+Run a script when torrents finish downloading:
+- Tracker: `*`
+- Condition: `State is completed` AND `Progress = 100`
+- Action: External Program "post-process.sh"
+
+### Notify on Stalled Torrents
+
+Alert an external monitoring system when torrents stall:
+- Tracker: `*`
+- Condition: `State is stalled` AND `Last Activity Age > 24 hours`
+- Action: External Program "send-alert" + Tag "stalled" (mode: add)

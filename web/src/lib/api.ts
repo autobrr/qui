@@ -26,6 +26,7 @@ import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
+  CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
   CrossSeedRun,
   CrossSeedSearchRun,
@@ -107,6 +108,7 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
+  TransferInfo,
   User,
   WarningResponse,
   WebSeed
@@ -254,6 +256,21 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   return response
 }
 
+// Custom error class for API errors with status and additional data
+export class APIError extends Error {
+  status: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: any
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(message: string, status: number, data?: any) {
+    super(message)
+    this.name = "APIError"
+    this.status = status
+    this.data = data
+  }
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -268,9 +285,9 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const errorMessage = await this.extractErrorMessage(response)
-      this.handleAuthError(response.status, endpoint, errorMessage)
-      throw new Error(errorMessage)
+      const { message, data } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, endpoint, message)
+      throw new APIError(message, response.status, data)
     }
 
     // Handle empty responses (like 204 No Content)
@@ -281,7 +298,8 @@ class ApiClient {
     return response.json()
   }
 
-  private async extractErrorMessage(response: Response): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async extractErrorData(response: Response): Promise<{ message: string; data?: any }> {
     const fallbackMessage = `HTTP error! status: ${response.status}`
 
     try {
@@ -289,33 +307,37 @@ class ApiClient {
       const rawBody = await response.text()
 
       if (!rawBody) {
-        return fallbackMessage
+        return { message: fallbackMessage }
       }
 
       // Try to parse as JSON first
       try {
-        const errorData = JSON.parse(rawBody) as { error?: string; message?: string }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: any }
         const parsedMessage = errorData?.error ?? errorData?.message
         if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
-          return parsedMessage
+          // Return both the message and the full data (for 409 conflicts with automations, etc.)
+          return { message: parsedMessage, data: errorData }
         }
+        // Even if no message, return the data for potential use
+        return { message: fallbackMessage, data: errorData }
       } catch {
         // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
         if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
           // Don't show raw HTML to user, provide a readable message
-          return `${fallbackMessage} (server returned HTML error page)`
+          return { message: `${fallbackMessage} (server returned HTML error page)` }
         }
 
         // Plain text error
         const trimmed = rawBody.trim()
         if (trimmed.length > 0 && trimmed.length < 500) {
-          return trimmed
+          return { message: trimmed }
         }
       }
 
-      return fallbackMessage
+      return { message: fallbackMessage }
     } catch {
-      return fallbackMessage
+      return { message: fallbackMessage }
     }
   }
 
@@ -467,6 +489,10 @@ class ApiClient {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
+  async getTransferInfo(id: number): Promise<TransferInfo> {
+    return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
+  }
+
   async getInstanceReannounceActivity(
     instanceId: number,
     limit?: number
@@ -554,9 +580,9 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const errorMessage = await this.extractErrorMessage(response)
-      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
-      throw new Error(errorMessage)
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, message)
+      throw new Error(message)
     }
 
     return response.json()
@@ -1155,6 +1181,7 @@ class ApiClient {
       title: string
       indexer: string
       torrent_name?: string
+      info_hash?: string
       success: boolean
       instance_results?: RawInstanceResult[]
       error?: string
@@ -1174,6 +1201,7 @@ class ApiClient {
         title: result.title,
         indexer: result.indexer,
         torrentName: result.torrent_name ?? undefined,
+        infoHash: result.info_hash ?? undefined,
         success: result.success,
         instanceResults: (result.instance_results ?? []).map((instance): CrossSeedInstanceResult => ({
           instanceId: instance.instance_id,
@@ -1208,6 +1236,27 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedBlocklist(instanceId?: number): Promise<CrossSeedBlocklistEntry[]> {
+    const search = new URLSearchParams()
+    if (instanceId !== undefined) search.set("instanceId", instanceId.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedBlocklistEntry[]>(`/cross-seed/blocklist${suffix}`)
+  }
+
+  async addCrossSeedBlocklist(payload: { instanceId: number; infoHash: string; note?: string }): Promise<CrossSeedBlocklistEntry> {
+    return this.request<CrossSeedBlocklistEntry>("/cross-seed/blocklist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteCrossSeedBlocklist(instanceId: number, infoHash: string): Promise<void> {
+    await this.request(`/cross-seed/blocklist/${instanceId}/${infoHash}`, {
+      method: "DELETE",
     })
   }
 
@@ -1359,9 +1408,9 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const errorMessage = await this.extractErrorMessage(response)
-      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, errorMessage)
-      throw new Error(errorMessage)
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, message)
+      throw new Error(message)
     }
 
     const blob = await response.blob()
@@ -1699,11 +1748,11 @@ class ApiClient {
     licenseKey: string
     productName: string
     status: string
+    provider?: string
     createdAt: string
   }>> {
     return this.request("/license/licenses")
   }
-
 
   async deleteLicense(licenseKey: string): Promise<{ message: string }> {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })
@@ -1787,8 +1836,9 @@ class ApiClient {
     })
   }
 
-  async deleteExternalProgram(id: number): Promise<void> {
-    return this.request(`/external-programs/${id}`, {
+  async deleteExternalProgram(id: number, force?: boolean): Promise<void> {
+    const url = force ? `/external-programs/${id}?force=true` : `/external-programs/${id}`
+    return this.request(url, {
       method: "DELETE",
     })
   }

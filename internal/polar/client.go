@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -33,6 +35,7 @@ const (
 	polarSandboxAPIBaseURL = "https://sandbox-api.autobrr.com"
 	validateEndpoint       = "/v1/customer-portal/license-keys/validate"
 	activateEndpoint       = "/v1/customer-portal/license-keys/activate"
+	deactivateEndpoint     = "/v1/customer-portal/license-keys/deactivate"
 
 	requestTimeout = 30 * time.Second
 
@@ -161,15 +164,12 @@ func WithEnvironment(env string) OptFunc {
 		case "production":
 			c.baseURL = polarAPIBaseURL
 			c.environment = env
-			break
 		case "sandbox":
 			c.baseURL = polarSandboxAPIBaseURL
 			c.environment = env
-			break
 		case "development":
 			c.baseURL = "http://localhost:8080"
 			c.environment = env
-			break
 		}
 	}
 }
@@ -425,6 +425,113 @@ func (c *Client) Validate(ctx context.Context, validateReq ValidateRequest) (*Va
 	}
 
 	return &response, nil
+}
+
+type DeactivateRequest struct {
+	Key            string `json:"key"`
+	ActivationID   string `json:"activation_id"`
+	OrganizationID string `json:"organization_id"`
+}
+
+func (r *DeactivateRequest) Validate() []error {
+	var err []error
+	if r.Key == "" {
+		err = append(err, errors.New("key is required"))
+	}
+	if r.ActivationID == "" {
+		err = append(err, errors.New("activation_id is required"))
+	}
+	if r.OrganizationID == "" {
+		err = append(err, ErrNoOrganizationID)
+	}
+
+	return err
+}
+
+func (c *Client) Deactivate(ctx context.Context, deactivateReq DeactivateRequest) error {
+	if deactivateReq.OrganizationID == "" {
+		deactivateReq.OrganizationID = c.organizationID
+	}
+
+	if err := deactivateReq.Validate(); len(err) > 0 {
+		return errors.Wrap(ErrBadRequestData, fmt.Sprintf("invalid request: %v", err))
+	}
+
+	log.Debug().
+		Str("licenseKey", maskLicenseKey(deactivateReq.Key)).
+		Str("activationId", maskID(deactivateReq.ActivationID)).
+		Str("baseURL", c.baseURL).
+		Msg("Deactivating Polar license activation")
+
+	jsonData, err := json.Marshal(deactivateReq)
+	if err != nil {
+		return ErrBadRequestData
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+deactivateEndpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	log.Trace().
+		Int("status", resp.StatusCode).
+		Str("licenseKey", maskLicenseKey(deactivateReq.Key)).
+		Str("activationId", maskID(deactivateReq.ActivationID)).
+		Msg("Polar license deactivation response received")
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent:
+		log.Info().
+			Str("licenseKey", maskLicenseKey(deactivateReq.Key)).
+			Str("activationId", maskID(deactivateReq.ActivationID)).
+			Msg("Polar license deactivated successfully")
+		return nil
+	case http.StatusForbidden:
+		var response ErrorResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			return ErrCouldNotUnmarshalData
+		}
+		log.Warn().
+			Str("licenseKey", maskLicenseKey(deactivateReq.Key)).
+			Str("activationId", maskID(deactivateReq.ActivationID)).
+			Str("detail", response.Detail).
+			Msg("Polar license deactivation forbidden")
+		return errors.Wrapf(errors.New(response.Detail), "%s", response.Error)
+	case http.StatusNotFound:
+		var response ErrorResponse
+		if err := json.Unmarshal(body, &response); err == nil && response.Detail != "" {
+			if strings.Contains(strings.ToLower(response.Detail), "activation") {
+				log.Info().
+					Str("licenseKey", maskLicenseKey(deactivateReq.Key)).
+					Str("activationId", maskID(deactivateReq.ActivationID)).
+					Msg("Polar license activation not found (already deactivated)")
+				return ErrLicenseNotActivated
+			}
+		}
+		return ErrInvalidLicenseKey
+	case http.StatusTooManyRequests:
+		log.Warn().
+			Str("licenseKey", maskLicenseKey(deactivateReq.Key)).
+			Str("activationId", maskID(deactivateReq.ActivationID)).
+			Msg("Polar license deactivation rate limited")
+		return ErrRateLimitExceeded
+	default:
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 }
 
 // Helper functions

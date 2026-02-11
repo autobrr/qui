@@ -68,8 +68,8 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
     >
       <div
         className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
-          } ${column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
-          }`}
+        } ${column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
+        }`}
         onClick={event => {
           if (column.id === "select" || !canSort) {
             return
@@ -90,12 +90,12 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
         {/* Header content */}
         <div
           className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${isSelectHeader || isCompactHeader ? "justify-center" : ""
-            }`}
+          }`}
         >
           <span
             className={`whitespace-nowrap ${!isPriorityHeader && !isCompactHeader ? "overflow-hidden flex-1 min-w-0" : ""
-              } ${isCompactHeader ? "flex items-center w-full justify-center" : ""
-              } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
+            } ${isCompactHeader ? "flex items-center w-full justify-center" : ""
+            } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
           >
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
@@ -129,11 +129,11 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
           onMouseDown={canResize ? header.getResizeHandler() : undefined}
           onTouchStart={canResize ? header.getResizeHandler() : undefined}
           className={`absolute right-0 top-0 h-full w-2 select-none group/resize flex justify-end ${canResize ? "cursor-col-resize touch-none" : "pointer-events-none"
-            }`}
+          }`}
         >
           <div
             className={`h-full w-px ${canResize && column.getIsResizing() ? "bg-primary" : canResize ? "bg-border group-hover/resize:bg-primary/50" : "bg-border"
-              }`}
+            }`}
           />
         </div>
       )}

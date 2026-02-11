@@ -43,7 +43,9 @@ const actionLabels: Record<AutomationActivity["action"], string> = {
   speed_limits_changed: "Speed limits changed",
   share_limits_changed: "Share limits changed",
   paused: "Paused",
+  resumed: "Resumed",
   moved: "Moved",
+  external_program: "External program",
 }
 
 interface AutomationActivityRunDialogProps {
@@ -131,6 +133,7 @@ export function AutomationActivityRunDialog({
   const notAvailable = runQuery.isError && isNotFoundError(runQuery.error)
   const hasMore = items.length < total && !notAvailable
   const title = actionLabels[activity.action] ?? "Automation run"
+  const displayTitle = activity.outcome === "dry-run" ? `${title} (dry run)` : title
 
   const handleLoadMore = () => {
     setOffset((prev) => prev + PAGE_SIZE)
@@ -140,9 +143,12 @@ export function AutomationActivityRunDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-5xl max-h-[85dvh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{title} run</DialogTitle>
+          <DialogTitle>{displayTitle} run</DialogTitle>
           <DialogDescription>
             {formatISOTimestamp(activity.createdAt)} - {total} torrent{total === 1 ? "" : "s"} - stored temporarily in memory
+            {activity.outcome === "dry-run" && (
+              <span className="block text-xs text-muted-foreground mt-1">Dry run: no changes were applied.</span>
+            )}
           </DialogDescription>
         </DialogHeader>
 

@@ -1,11 +1,13 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 title: Environment Variables
 ---
 
 # Environment Variables
 
 Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
+
+For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference).
 
 ## Server
 
@@ -39,6 +41,12 @@ When `logPath` is set the server writes to disk using size-based rotation. Adjus
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
 ```
 
+## Cross-Seed
+
+```bash
+QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=false  # Optional: recover errored/missingFiles torrents; can add ~25+ minutes per torrent (default: false)
+```
+
 ## Tracker Icons
 
 ```bash
@@ -49,6 +57,12 @@ QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remo
 
 ```bash
 QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicators (default: true)
+```
+
+## Profiling (pprof)
+
+```bash
+QUI__PPROF_ENABLED=true  # Optional: enable pprof server on :6060 (default: false)
 ```
 
 ## Metrics
