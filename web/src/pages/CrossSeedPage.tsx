@@ -185,7 +185,7 @@ function normalizeNumberList(values: Array<string | number>): number[] {
 
 function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
   const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
-  return /(^|[^a-z0-9])(ops|orpheus|red|redacted)([^a-z0-9]|$)/.test(haystack)
+  return /(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)/.test(haystack)
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
