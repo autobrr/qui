@@ -52,7 +52,7 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 
 - **Source instance** - The qBittorrent instance to scan
 - **Categories/Tags** - Filter which torrents to include
-- **Interval** - Delay between processing each torrent (minimum 60 seconds)
+- **Interval** - Delay between processing each torrent (minimum 60 seconds with Torznab enabled; minimum 1 second in Gazelle-only mode)
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
 
 :::warning

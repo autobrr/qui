@@ -59,3 +59,4 @@ In that mode:
 
 - All source torrents are still processed
 - Matches come only from configured Gazelle sites (RED/OPS)
+- You can lower the Library Scan interval below 60 seconds (minimum 1 second), but actual request pacing still respects the shared OPS/RED API rate limits
