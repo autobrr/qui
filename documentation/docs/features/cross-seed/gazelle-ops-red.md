@@ -13,7 +13,7 @@ This path is **Gazelle-aware**:
 - Gazelle checks RED/OPS when API keys are configured
 - For Gazelle matching, OPS/RED source torrents query only the opposite site (RED -> OPS, OPS -> RED)
 - Non-OPS/RED source torrents can still be checked against RED and OPS via Gazelle
-- Torznab can run in parallel, but OPS/RED Torznab indexers are excluded when Gazelle is configured
+- Torznab can run in parallel, but for per-torrent searches (manual/completion/library scan) OPS/RED Torznab indexers are excluded when Gazelle is configured
 
 ## When It Applies
 
