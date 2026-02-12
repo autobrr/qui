@@ -517,7 +517,7 @@ func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
 
 	deleted, err := db.CleanupUnusedStrings(ctx)
 	require.NoError(t, err)
-	require.Greater(t, deleted, int64(0))
+	require.Positive(t, deleted)
 
 	var exists bool
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", arrBasicUserID).Scan(&exists))
