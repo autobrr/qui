@@ -11,8 +11,8 @@ qui can cross-seed between Orpheus (OPS) and Redacted (RED) using the trackers' 
 This path is **Gazelle-aware**:
 
 - Gazelle checks RED/OPS when API keys are configured
-- OPS/RED source torrents search only the opposite site (RED -> OPS, OPS -> RED)
-- Non-OPS/RED source torrents can still be checked against RED and OPS
+- For Gazelle matching, OPS/RED source torrents query only the opposite site (RED -> OPS, OPS -> RED)
+- Non-OPS/RED source torrents can still be checked against RED and OPS via Gazelle
 - Torznab can run in parallel, but OPS/RED Torznab indexers are excluded when Gazelle is configured
 
 ## When It Applies
@@ -22,8 +22,10 @@ OPS/RED source detection still matters for the swap-hash fast path. qui detects 
 - RED announce host: `flacsfor.me`
 - OPS announce host: `home.opsfet.ch`
 
-If the source is OPS/RED, qui targets only the opposite site.
-If the source is not OPS/RED, qui can still query whichever Gazelle sites you configured.
+For Gazelle matching:
+
+- If the source is OPS/RED, qui targets only the opposite site
+- If the source is not OPS/RED, qui can query whichever Gazelle sites you configured
 
 ## What Happens If Gazelle Isn't Configured
 
@@ -33,7 +35,7 @@ If Gazelle is disabled or no API keys are set, qui falls back to Torznab like it
 
 In order:
 
-1. Infohash match using Gazelle-style `info["source"]` swap logic (gzlx-compatible)
+1. Infohash match using Gazelle-style `info["source"]` swap logic (see [nemorosa](https://github.com/KyokoMiki/nemorosa))
 2. Filename search + exact total size
 3. Filename search + filelist verification (size multiset)
 
