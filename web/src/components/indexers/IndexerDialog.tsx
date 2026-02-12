@@ -80,14 +80,19 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
       const trimmedIndexerId = formData.indexer_id !== undefined ? formData.indexer_id.trim() : undefined
       const trimmedBasicUser = (formData.basic_username ?? "").trim()
       const basicPass = formData.basic_password ?? ""
+      const isRedactedPassword = basicPass === "<redacted>"
 
       if (showBasicAuth) {
         if (!trimmedBasicUser) {
           toast.error("Basic auth username is required")
           return
         }
-        if (mode === "create" && !basicPass) {
+        if (mode === "create" && !basicPass.trim()) {
           toast.error("Basic auth password is required")
+          return
+        }
+        if (mode === "edit" && !isRedactedPassword && !basicPass.trim()) {
+          toast.error("Basic auth password is required (or keep <redacted>)")
           return
         }
       }
