@@ -130,8 +130,41 @@ The State field matches these status buckets:
 
 ### Regex Support
 
-Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default. The UI validates patterns and shows helpful error messages for invalid regex.
+There are two ways to use regex in filter conditions:
 
+**The `matches regex` operator** is a dedicated operator where the value is always treated as a regex pattern. The condition is true if the pattern matches anywhere in the field value.
+
+**The regex toggle (`.*` button)** appears next to the value input on other string operators such as `equals`, `contains`, `not contains`, `starts with`, and `ends with`. When enabled, the value is treated as a regex pattern.
+
+:::warning Regex toggle overrides the selected operator
+
+When the regex toggle is enabled, the selected operator's logic (negation, containment, prefix/suffix matching) is **not applied**. The condition becomes a simple regex match, equivalent to `matches regex`, regardless of which operator is selected in the dropdown.
+
+This means `not contains` with the regex toggle enabled does **not** negate the match. It behaves the same as `matches regex` -- if the pattern is found, the condition evaluates to true.
+
+To negate a regex match, use the **NOT toggle** (the `IF / IF NOT` button at the start of the condition row) together with the `matches regex` operator.
+:::
+
+Full RE2 (Go regex) syntax is supported. Patterns are case-insensitive by default. The UI validates patterns and shows helpful error messages for invalid regex.
+
+#### Tags and regex
+
+Without the regex toggle, tag operators like `contains` and `not contains` check each tag individually (set-based matching). With regex enabled (or when using `matches regex`), the pattern is matched against the full raw comma-separated tag string (e.g., `cross-seed, noHL, racing`).
+
+**Example: exclude torrents tagged with `tag1` or `tag2`**
+
+| Setting | Value |
+|---|---|
+| Field | Tags |
+| Toggle | `IF NOT` |
+| Operator | `matches regex` |
+| Value | Use one of the exact-match patterns below |
+
+**Option 1 (word boundaries):** `\btag1\b|\btag2\b`
+
+**Option 2 (delimiter-aware):** `(^|,\s*)(tag1|tag2)(\s*,|$)`
+
+These patterns avoid substring matches such as `tag10`. The `NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
