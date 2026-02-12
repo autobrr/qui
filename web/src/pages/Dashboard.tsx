@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
@@ -37,9 +38,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
+import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
@@ -137,7 +141,7 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
+function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
       // Use same query key pattern as useTorrentsList for first page with no filters
@@ -148,8 +152,9 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         sort: "added_on",
         order: "desc" as const,
       }),
-      enabled: true,
+      enabled: options.enabled,
       refetchInterval: 5000, // Match TorrentTable polling
+      refetchIntervalInBackground: false,
       staleTime: 2000,
       gcTime: 300000, // Match TorrentTable cache time
       placeholderData: (previousData: TorrentResponse | undefined) => previousData,
@@ -224,19 +229,21 @@ function InstanceCard({
   const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
-
 
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
-  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+  const connectionStatusIconClass = (() => {
+    if (!hasConnectionStatus) return ""
+    if (isConnectable) return "text-green-500"
+    if (isFirewalled) return "text-amber-500"
+    return "text-destructive"
+  })()
 
   const listenPort = preferences?.listen_port
-  const connectionStatusTooltip = connectionStatusDisplay
-    ? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`
-    : ""
+  const connectionStatusTooltip = connectionStatusDisplay? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`: ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -321,6 +328,7 @@ function InstanceCard({
               <InstanceSettingsButton
                 instanceId={instance.id}
                 instanceName={instance.name}
+                instance={instance}
                 showButton={showSettingsButton}
               />
             </div>
@@ -333,8 +341,7 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
-                  }
+                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -442,25 +449,67 @@ function InstanceCard({
               <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
                 {/* Issue rows - only shown when there are problems */}
                 {(torrentCounts?.status?.unregistered || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["unregistered"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
+                    }}
+                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
+                  >
                     <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                     <span className="text-destructive">Unregistered torrents</span>
                     <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.unregistered}</span>
-                  </div>
+                  </Link>
                 )}
                 {(torrentCounts?.status?.tracker_down || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["tracker_down"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
+                    }}
+                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
+                  >
                     <AlertCircle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
                     <span className="text-yellow-500">Tracker Down</span>
                     <span className="ml-auto font-medium text-yellow-500">{torrentCounts?.status?.tracker_down}</span>
-                  </div>
+                  </Link>
                 )}
                 {(torrentCounts?.status?.errored || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["errored"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
+                    }}
+                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
+                  >
                     <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                     <span className="text-destructive">Errors</span>
                     <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.errored}</span>
-                  </div>
+                  </Link>
                 )}
 
                 <div className="flex items-center gap-2 text-xs">
@@ -578,9 +627,8 @@ function InstanceCard({
   )
 }
 
-function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
+function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useGlobalStats(statsData)
 
   return (
     <Card className="sm:hidden">
@@ -634,9 +682,10 @@ function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStat
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
+type GlobalStats = ReturnType<typeof useGlobalStats>
+
+function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useGlobalStats(statsData)
 
   return (
     <>
@@ -880,9 +929,7 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortCo
   if (sortColumn !== column) {
     return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
   }
-  return sortDirection === "asc"
-    ? <ArrowUp className="h-3 w-3" />
-    : <ArrowDown className="h-3 w-3" />
+  return sortDirection === "asc"? <ArrowUp className="h-3 w-3" />: <ArrowDown className="h-3 w-3" />
 }
 
 // Extended tracker stats with customization support
@@ -1006,9 +1053,47 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             existing.downloaded += stats.downloaded
             existing.totalSize += stats.totalSize
             existing.count += stats.count
+            continue
           }
+
+          processed.set(customization.displayName, {
+            ...stats,
+            domain: customization.domains[0] ?? domain,
+            displayName: customization.displayName,
+            originalDomains: customization.domains,
+            customizationId: customization.id,
+          })
         }
       }
+    }
+
+    // Pass 3: Ensure merged groups remain visible even if the primary domain has no torrents.
+    // If no primary/included domain produced a group entry, fall back to whichever domain in the group
+    // currently has stats (pick the one with the highest torrent count to avoid double-counting).
+    const fallbackByDisplayName = new Map<string, { customization: TrackerCustomization; stats: TrackerTransferStats; domain: string }>()
+    for (const [domain, stats] of aggregated) {
+      const customization = domainToCustomization.get(domain.toLowerCase())
+      if (!customization) continue
+      if (processed.has(customization.displayName)) continue
+
+      const existing = fallbackByDisplayName.get(customization.displayName)
+      if (
+        !existing ||
+        stats.count > existing.stats.count ||
+        (stats.count === existing.stats.count && stats.uploaded > existing.stats.uploaded)
+      ) {
+        fallbackByDisplayName.set(customization.displayName, { customization, stats, domain })
+      }
+    }
+
+    for (const { customization, stats, domain } of fallbackByDisplayName.values()) {
+      processed.set(customization.displayName, {
+        ...stats,
+        domain: customization.domains[0] ?? domain,
+        displayName: customization.displayName,
+        originalDomains: customization.domains,
+        customizationId: customization.id,
+      })
     }
 
     return Array.from(processed.values())
@@ -1098,11 +1183,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         displayName: group.displayName,
         domains: mergedDomains,
         includedInStats: group.includedInStats ?? [],
-      }
+      },
     }, {
       onSuccess: () => {
         clearSelection()
-      }
+      },
     })
   }
 
@@ -1110,16 +1195,12 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   const handleSaveCustomization = () => {
     if (!customizeDisplayName.trim()) return
 
-    const domains = editingCustomization
-      ? editingCustomization.domains
-      : Array.from(selectedDomains)
+    const domains = editingCustomization? editingCustomization.domains: Array.from(selectedDomains)
 
     if (domains.length === 0) return
 
     // Get included domains from state (secondary domains that contribute to stats)
-    const included = editingCustomization
-      ? editingCustomization.includedInStats
-      : Array.from(includedInStats)
+    const included = editingCustomization? editingCustomization.includedInStats: Array.from(includedInStats)
 
     if (editingCustomization) {
       // Update existing
@@ -1209,7 +1290,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setEditingCustomization({
       id: customizationId,
       domains,
-      includedInStats: fullCustomization?.includedInStats ?? []
+      includedInStats: fullCustomization?.includedInStats ?? [],
     })
     setCustomizeDisplayName(currentName)
     setShowCustomizeDialog(true)
@@ -1276,9 +1357,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   const handleToggleStatsInclusion = (domain: string, include: boolean) => {
     if (editingCustomization) {
       const domainLower = domain.toLowerCase()
-      const newIncluded = include
-        ? [...editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower), domain]
-        : editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower)
+      const newIncluded = include? [...editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower), domain]: editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower)
       setEditingCustomization({ ...editingCustomization, includedInStats: newIncluded })
     } else {
       const newIncluded = new Set(includedInStats)
@@ -1391,7 +1470,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           includedInStats: entry.includedInStats ?? [],
           index,
           conflict: existingCustomization,
-          isIdentical
+          isIdentical,
         }
       })
 
@@ -1522,354 +1601,102 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   return (
     <>
-    <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
-      <AccordionItem value="tracker-breakdown" className="border-0">
-        <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
-          {/* Mobile layout */}
-          <div className="sm:hidden w-full">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
-                <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
-                <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+      <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
+        <AccordionItem value="tracker-breakdown" className="border-0">
+          <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
+            {/* Mobile layout */}
+            <div className="sm:hidden w-full">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
+                  <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
+                  <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+                </div>
+                <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
               </div>
-              <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
             </div>
-          </div>
 
-          {/* Desktop layout */}
-          <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
-            <div className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
-              <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
-              <h3 className="text-base font-medium">Tracker Breakdown</h3>
+            {/* Desktop layout */}
+            <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
+              <div className="flex items-center gap-2">
+                <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
+                <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
+                <h3 className="text-base font-medium">Tracker Breakdown</h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); openImportDialog() }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
+                      className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Import customizations</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); handleExport() }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
+                      className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
+                      aria-disabled={!customizations || customizations.length === 0}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Export customizations</TooltipContent>
+                </Tooltip>
+                <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); openImportDialog() }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Import customizations</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); handleExport() }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
-                    className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
-                    aria-disabled={!customizations || customizations.length === 0}
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Export customizations</TooltipContent>
-              </Tooltip>
-              <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-0 pb-0">
+            {/* Mobile Sort Dropdown and Import/Export */}
+            <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1 justify-between">
+                    <span className="flex items-center gap-2 text-xs">
+                      Sort: {sortColumn === "tracker" ? "Tracker" :sortColumn === "uploaded" ? "Uploaded" :sortColumn === "downloaded" ? "Downloaded" :sortColumn === "ratio" ? "Ratio" :sortColumn === "count" ? "Torrents" :sortColumn === "size" ? "Size" : "Seeded"}
+                    </span>
+                    {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExport}
+                disabled={!customizations || customizations.length === 0}
+                className="h-8 px-2"
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-        </AccordionTrigger>
-        <AccordionContent className="px-0 pb-0">
-          {/* Mobile Sort Dropdown and Import/Export */}
-          <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="flex-1 justify-between">
-                  <span className="flex items-center gap-2 text-xs">
-                    Sort: {sortColumn === "tracker" ? "Tracker" :
-                           sortColumn === "uploaded" ? "Uploaded" :
-                           sortColumn === "downloaded" ? "Downloaded" :
-                           sortColumn === "ratio" ? "Ratio" :
-                           sortColumn === "count" ? "Torrents" :
-                           sortColumn === "size" ? "Size" : "Seeded"}
-                  </span>
-                  {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleExport}
-              disabled={!customizations || customizations.length === 0}
-              className="h-8 px-2"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          </div>
 
 
-          {/* Mobile Card Layout */}
-          <div className="sm:hidden px-4 space-y-2 py-3">
-            {paginatedTrackerStats.map((tracker) => {
-              const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
-              const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
-              const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
-              const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
-              const isSelected = selectedDomains.has(domain)
-              const isGroupSelected = selectedGroupId === customizationId
-              const isMerged = originalDomains.length > 1
-              const hasCustomization = Boolean(customizationId)
-
-              return (
-                <Card key={displayName} className={`overflow-hidden ${isSelected || isGroupSelected ? "ring-2 ring-primary" : ""}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {hasCustomization ? (
-                          // Show group checkbox if no group selected or the group selected
-                          (selectedGroupId === null || isGroupSelected) && (
-                            <Checkbox
-                              checked={isGroupSelected}
-                              onCheckedChange={() => toggleGroupSelection(customizationId!)}
-                              className="shrink-0"
-                            />
-                          )
-                        ) : (
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelection(domain)}
-                            className="shrink-0"
-                          />
-                        )}
-                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-medium truncate text-sm cursor-default">
-                              {displayValue}
-                            </span>
-                          </TooltipTrigger>
-                          {(isMerged || (hasCustomization && displayName !== domain)) && (
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
-                              </p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {hasCustomization && customizationId ? (
-                          // Show group merge if domains selected and if no other group is selected
-                          selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
-                            >
-                              <Link2 className="h-3 w-3 text-primary" />
-                            </Button>
-                          ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                              >
-                                <Pencil className="h-3 w-3 text-muted-foreground" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                              >
-                                <Trash2 className="h-3 w-3 text-muted-foreground" />
-                              </Button>
-                            </>
-                          )
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              selectedGroupId
-                                ? handleMergeIntoGroup(selectedGroupId, domain)
-                                : openRenameDialog(domain)
-                            }}
-                          >
-                            {selectedGroupId || selectedDomains.size > 0 ? (
-                              <Link2 className="h-3 w-3 text-primary" />
-                            ) : (
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
-                            )}
-                          </Button>
-                        )}
-                        <Badge variant="secondary" className="shrink-0 text-xs">
-                          {count}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Uploaded */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ChevronUp className="h-3 w-3" />
-                          <span>Uploaded</span>
-                        </div>
-                        <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
-                      </div>
-
-                      {/* Downloaded */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ChevronDown className="h-3 w-3" />
-                          <span>Downloaded</span>
-                        </div>
-                        <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
-                      </div>
-
-                      {/* Ratio */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Ratio</div>
-                        <div className="font-semibold text-sm" style={{ color: ratioColor }}>
-                          {isInfinite ? "∞" : ratio.toFixed(2)}
-                        </div>
-                      </div>
-
-                      {/* Size */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Size</div>
-                        <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
-                      </div>
-
-                      {/* Seeded */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Seeded</div>
-                        <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-
-          {/* Desktop Table */}
-          <Table className="hidden sm:table">
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="w-8 pl-4" />
-                <TableHead className="w-[35%]">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("tracker")}
-                    className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Tracker
-                    <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("uploaded")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Uploaded
-                    <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("downloaded")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Downloaded
-                    <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("ratio")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Ratio
-                    <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("buffer")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Buffer
-                    <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("count")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Torrents
-                    <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("size")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Size
-                    <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell pr-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => handleSort("performance")}
-                        className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
-                      >
-                        Seeded
-                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                        <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedTrackerStats.map((tracker, index) => {
+            {/* Mobile Card Layout */}
+            <div className="sm:hidden px-4 space-y-2 py-3">
+              {paginatedTrackerStats.map((tracker) => {
                 const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
                 const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
@@ -1878,67 +1705,57 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 const isGroupSelected = selectedGroupId === customizationId
                 const isMerged = originalDomains.length > 1
                 const hasCustomization = Boolean(customizationId)
-                const buffer = uploaded - downloaded
-                const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
 
                 return (
-                  <TableRow
-                    key={displayName}
-                    className={`group ${isSelected || isGroupSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
-                  >
-                    <TableCell className="w-8 pl-4">
-                      {hasCustomization ? (
-                        // Show group checkbox if no group selected or the group selected
-                        (selectedGroupId === null || isGroupSelected) && (
-                          <Checkbox
-                            checked={isGroupSelected}
-                            onCheckedChange={() => toggleGroupSelection(customizationId!)}
-                            className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
-                          />
-                        )
-                      ) : (
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleSelection(domain)}
-                          className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-medium truncate cursor-default">
-                              {displayValue}
-                            </span>
-                          </TooltipTrigger>
-                          {(isMerged || (hasCustomization && displayName !== domain)) && (
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
-                              </p>
-                            </TooltipContent>
+                  <Card key={displayName} className={`overflow-hidden ${isSelected || isGroupSelected ? "ring-2 ring-primary" : ""}`}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {hasCustomization ? (
+                          // Show group checkbox if no group selected or the group selected
+                            (selectedGroupId === null || isGroupSelected) && (
+                              <Checkbox
+                                checked={isGroupSelected}
+                                onCheckedChange={() => toggleGroupSelection(customizationId!)}
+                                className="shrink-0"
+                              />
+                            )
+                          ) : (
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelection(domain)}
+                              className="shrink-0"
+                            />
                           )}
-                        </Tooltip>
-                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium truncate text-sm cursor-default">
+                                {displayValue}
+                              </span>
+                            </TooltipTrigger>
+                            {(isMerged || (hasCustomization && displayName !== domain)) && (
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        </div>
+                        <div className="flex items-center gap-1">
                           {hasCustomization && customizationId ? (
-                            // Show group merge if domains selected and if no other group is selected
+                          // Show group merge if domains selected and if no other group is selected
                             selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
-                                  >
-                                    <Link2 className="h-3 w-3 text-primary" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Merge selected trackers into this group</TooltipContent>
-                              </Tooltip>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
+                              >
+                                <Link2 className="h-3 w-3 text-primary" />
+                              </Button>
                             ) : (
                               <>
                                 <Button
@@ -1960,114 +1777,367 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                               </>
                             )
                           ) : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    selectedGroupId
-                                      ? handleMergeIntoGroup(selectedGroupId, domain)
-                                      : openRenameDialog(domain)
-                                  }}
-                                >
-                                  {selectedGroupId || selectedDomains.size > 0 ? (
-                                    <Link2 className="h-3 w-3 text-primary" />
-                                  ) : (
-                                    <Pencil className="h-3 w-3 text-muted-foreground" />
-                                  )}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {selectedGroupId ? "Merge into group" : selectedDomains.size > 0 ? "Add to merge" : "Rename"}
-                              </TooltipContent>
-                            </Tooltip>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (selectedGroupId) {
+                                  handleMergeIntoGroup(selectedGroupId, domain)
+                                } else {
+                                  openRenameDialog(domain)
+                                }
+                              }}
+                            >
+                              {selectedGroupId || selectedDomains.size > 0 ? (
+                                <Link2 className="h-3 w-3 text-primary" />
+                              ) : (
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </Button>
                           )}
+                          <Badge variant="secondary" className="shrink-0 text-xs">
+                            {count}
+                          </Badge>
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatBytes(downloaded)}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
-                      {isInfinite ? "∞" : ratio.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold">
-                      <span
-                        className={buffer < 0 ? "text-destructive" : ""}
-                        style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
-                      >
-                        {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {count}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold">
-                      {formatBytes(totalSize)}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
-                      {formatEfficiency(uploaded, totalSize)}
-                    </TableCell>
-                  </TableRow>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Uploaded */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronUp className="h-3 w-3" />
+                            <span>Uploaded</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
+                        </div>
+
+                        {/* Downloaded */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronDown className="h-3 w-3" />
+                            <span>Downloaded</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
+                        </div>
+
+                        {/* Ratio */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Ratio</div>
+                          <div className="font-semibold text-sm" style={{ color: ratioColor }}>
+                            {isInfinite ? "∞" : ratio.toFixed(2)}
+                          </div>
+                        </div>
+
+                        {/* Size */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Size</div>
+                          <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
+                        </div>
+
+                        {/* Seeded */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Seeded</div>
+                          <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )
               })}
-            </TableBody>
-          </Table>
-          {/* Pagination controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <span className="text-sm text-muted-foreground">
-                {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline ml-1">Previous</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                >
-                  <span className="hidden sm:inline mr-1">Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
-          )}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+
+            {/* Desktop Table */}
+            <Table className="hidden sm:table">
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-8 pl-4" />
+                  <TableHead className="w-[35%]">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("tracker")}
+                      className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Tracker
+                      <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("uploaded")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Uploaded
+                      <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("downloaded")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Downloaded
+                      <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("ratio")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Ratio
+                      <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("buffer")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Buffer
+                      <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("count")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Torrents
+                      <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("size")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Size
+                      <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell pr-4">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => handleSort("performance")}
+                          className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
+                        >
+                          Seeded
+                          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                          <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedTrackerStats.map((tracker, index) => {
+                  const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
+                  const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
+                  const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
+                  const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+                  const isSelected = selectedDomains.has(domain)
+                  const isGroupSelected = selectedGroupId === customizationId
+                  const isMerged = originalDomains.length > 1
+                  const hasCustomization = Boolean(customizationId)
+                  const buffer = uploaded - downloaded
+                  const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
+
+                  return (
+                    <TableRow
+                      key={displayName}
+                      className={`group ${isSelected || isGroupSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
+                    >
+                      <TableCell className="w-8 pl-4">
+                        {hasCustomization ? (
+                        // Show group checkbox if no group selected or the group selected
+                          (selectedGroupId === null || isGroupSelected) && (
+                            <Checkbox
+                              checked={isGroupSelected}
+                              onCheckedChange={() => toggleGroupSelection(customizationId!)}
+                              className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
+                            />
+                          )
+                        ) : (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelection(domain)}
+                            className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium truncate cursor-default">
+                                {displayValue}
+                              </span>
+                            </TooltipTrigger>
+                            {(isMerged || (hasCustomization && displayName !== domain)) && (
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                            {hasCustomization && customizationId ? (
+                            // Show group merge if domains selected and if no other group is selected
+                              selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0"
+                                      onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
+                                    >
+                                      <Link2 className="h-3 w-3 text-primary" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Merge selected trackers into this group</TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
+                                  >
+                                    <Pencil className="h-3 w-3 text-muted-foreground" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                                  >
+                                    <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                  </Button>
+                                </>
+                              )
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (selectedGroupId) {
+                                        handleMergeIntoGroup(selectedGroupId, domain)
+                                      } else {
+                                        openRenameDialog(domain)
+                                      }
+                                    }}
+                                  >
+                                    {selectedGroupId || selectedDomains.size > 0 ? (
+                                      <Link2 className="h-3 w-3 text-primary" />
+                                    ) : (
+                                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {selectedGroupId ? "Merge into group" : selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(downloaded)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
+                        {isInfinite ? "∞" : ratio.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold">
+                        <span
+                          className={buffer < 0 ? "text-destructive" : ""}
+                          style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
+                        >
+                          {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {count}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold">
+                        {formatBytes(totalSize)}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
+                        {formatEfficiency(uploaded, totalSize)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <span className="text-sm text-muted-foreground">
+                  {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-1">Previous</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    <span className="hidden sm:inline mr-1">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
-        <DialogContent className="max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>
-              {editingCustomization
-                ? "Edit Tracker Name"
-                : selectedDomains.size === 1
-                  ? "Rename Tracker"
-                  : "Merge Trackers"}
+              {editingCustomization? "Edit Tracker Name": selectedDomains.size === 1? "Rename Tracker": "Merge Trackers"}
             </DialogTitle>
             <DialogDescription>
-              {editingCustomization
-                ? "Update the display name for this tracker."
-                : selectedDomains.size === 1
-                  ? "Give this tracker a custom display name."
-                  : "Combine these trackers into a single entry with a custom name."}
+              {editingCustomization? "Update the display name for this tracker.": selectedDomains.size === 1? "Give this tracker a custom display name.": "Combine these trackers into a single entry with a custom name."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
@@ -2088,15 +2158,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 </p>
               )}
               <ScrollArea className="h-[300px]">
-                  <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
-                    {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
+                <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
+                  {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
                     const hasMultiple = arr.length > 1
                     const isPrimary = index === 0
                     // Get inclusion state from appropriate source
                     // Primary is always included; secondary domains only if in includedInStats
-                    const currentIncluded = editingCustomization
-                      ? editingCustomization.includedInStats
-                      : Array.from(includedInStats)
+                    const currentIncluded = editingCustomization? editingCustomization.includedInStats: Array.from(includedInStats)
                     const isInList = currentIncluded.some(d => d.toLowerCase() === domain.toLowerCase())
                     const isIncluded = isPrimary || isInList
 
@@ -2128,11 +2196,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       </div>
                     )
                   })}
-                  </div>
-                </ScrollArea>
+                </div>
+              </ScrollArea>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={closeCustomizeDialog}>
               Cancel
             </Button>
@@ -2140,13 +2208,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               onClick={handleSaveCustomization}
               disabled={!customizeDisplayName.trim() || createCustomization.isPending || updateCustomization.isPending}
             >
-              {(createCustomization.isPending || updateCustomization.isPending)
-                ? "Saving..."
-                : editingCustomization
-                  ? "Save"
-                  : selectedDomains.size === 1
-                    ? "Rename"
-                    : "Merge"}
+              {(createCustomization.isPending || updateCustomization.isPending)? "Saving...": editingCustomization? "Save": selectedDomains.size === 1? "Rename": "Merge"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2154,21 +2216,21 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Import Tracker Customizations</DialogTitle>
             <DialogDescription>
               Paste JSON to import tracker customizations (renames and merges).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="import-json">JSON Data</Label>
               <Textarea
                 id="import-json"
                 value={importJson}
                 onChange={(e) => setImportJson(e.target.value)}
-                placeholder={`{\n  "trackerCustomizations": [\n    { "displayName": "Name", "domains": ["domain.com"] }\n  ]\n}`}
+                placeholder={"{\n  \"trackerCustomizations\": [\n    { \"displayName\": \"Name\", \"domains\": [\"domain.com\"] }\n  ]\n}"}
                 className="font-mono text-xs h-32"
               />
             </div>
@@ -2247,7 +2309,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={() => setShowImportDialog(false)}>
               Cancel
             </Button>
@@ -2310,6 +2372,8 @@ export function Dashboard() {
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
+  const { isHiddenDelayed } = useDelayedVisibility(3000)
+  const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   // Dashboard settings
   const { data: dashboardSettings } = useDashboardSettings()
@@ -2317,7 +2381,48 @@ export function Dashboard() {
   const settings = dashboardSettings || DEFAULT_DASHBOARD_SETTINGS
 
   // Use safe hook that always calls the same number of hooks
-  const statsData = useAllInstanceStats(activeInstances)
+  // Query handoff: when the dashboard is visible we run full stats; after the
+  // delayed hide, we stop heavy stats and only poll transfer info for title bar speeds.
+  const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
+  const globalStats = useGlobalStats(statsData)
+  const transferInfoQueries = useQueries({
+    queries: activeInstances.map(instance => ({
+      queryKey: ["transfer-info", instance.id],
+      queryFn: () => api.getTransferInfo(instance.id),
+      enabled: titleBarSpeedsEnabled && isHiddenDelayed && hasActiveInstances,
+      refetchInterval: 3000,
+      refetchIntervalInBackground: true,
+      staleTime: 0,
+    })),
+  })
+  const backgroundSpeedsState = transferInfoQueries.reduce(
+    (state, query) => {
+      const info = query.data
+      if (!info) {
+        return state
+      }
+      return {
+        hasData: true,
+        dl: state.dl + (info.dl_info_speed ?? 0),
+        up: state.up + (info.up_info_speed ?? 0),
+      }
+    },
+    { dl: 0, up: 0, hasData: false }
+  )
+  const backgroundSpeeds = backgroundSpeedsState.hasData
+    ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }
+    : undefined
+  useTitleBarSpeeds({
+    mode: "dashboard",
+    enabled: titleBarSpeedsEnabled && hasActiveInstances,
+    foregroundSpeeds: hasActiveInstances
+      ? {
+        dl: globalStats.totalDownload ?? 0,
+        up: globalStats.totalUpload ?? 0,
+      }
+      : undefined,
+    backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
+  })
 
   // Handler for TrackerBreakdownCard to update settings
   const handleTrackerSettingsChange = (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => {
@@ -2327,7 +2432,7 @@ export function Dashboard() {
   // Handler for section collapsed state changes
   const handleSectionCollapsedChange = (sectionId: string, collapsed: boolean) => {
     updateSettings.mutate({
-      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed }
+      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed },
     })
   }
 
@@ -2382,6 +2487,9 @@ export function Dashboard() {
       {/* Show banner if any instances have decryption errors */}
       <PasswordIssuesBanner instances={instances || []} />
 
+      {/* Show banner to register as magnet handler (Firefox support) */}
+      <MagnetHandlerBanner />
+
       {hasInstances ? (
         <div className="space-y-6">
           {hasActiveInstances ? (
@@ -2412,10 +2520,10 @@ export function Dashboard() {
                     return (
                       <div key={sectionId} className="space-y-4">
                         {/* Mobile: Single combined card */}
-                        <MobileGlobalStatsCard statsData={statsData} />
+                        <MobileGlobalStatsCard globalStats={globalStats} />
                         {/* Tablet/Desktop: Separate cards */}
                         <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                          <GlobalStatsCards statsData={statsData} />
+                          <GlobalStatsCards globalStats={globalStats} />
                         </div>
                       </div>
                     )

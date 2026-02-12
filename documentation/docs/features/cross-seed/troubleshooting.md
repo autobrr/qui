@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 7
 title: Troubleshooting
 ---
 
@@ -142,6 +142,6 @@ The `toRawJson` function (from Sprig) properly escapes special characters and ou
 
 ## autoTMM unexpectedly enabled/disabled
 
-- In suffix mode, autoTMM mirrors the matched torrent's setting (intentional)
+- In affix mode, autoTMM mirrors the matched torrent's setting (intentional)
 - In indexer name or custom category mode, autoTMM is always disabled
 - Check the original torrent's autoTMM status in qBittorrent

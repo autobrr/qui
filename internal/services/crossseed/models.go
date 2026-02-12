@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -282,6 +282,7 @@ type TorrentSearchAddResult struct {
 	Title           string                    `json:"title"`
 	Indexer         string                    `json:"indexer"`
 	TorrentName     string                    `json:"torrent_name,omitempty"`
+	InfoHash        string                    `json:"info_hash,omitempty"`
 	Success         bool                      `json:"success"`
 	InstanceResults []InstanceCrossSeedResult `json:"instance_results,omitempty"`
 	Error           string                    `json:"error,omitempty"`

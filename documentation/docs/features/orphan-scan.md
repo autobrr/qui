@@ -4,7 +4,8 @@ title: Orphan Scan
 description: Find and remove files not associated with any torrent.
 ---
 
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
+import LocalFilesystemDocker from "../_partials/_local-filesystem-docker.mdx";
+import OrphanScanDefaultIgnores from "../_partials/_orphan-scan-default-ignores.mdx";
 
 # Orphan Scan
 
@@ -17,8 +18,14 @@ Finds and removes files in your download directories that aren't associated with
 3. You preview the list before confirming deletion
 4. Empty directories are cleaned up after file deletion
 
-:::danger
-If multiple qBittorrent instances share the same download directory, files from other instances **will be flagged as orphans.** Use separate directories per instance or add shared paths to ignore paths.
+:::info
+If you have multiple **active** qBittorrent instances with `Has local filesystem access` enabled, and their torrent `SavePath` directories overlap, qui also protects files referenced by torrents from those other instances (even when scanning a single instance).
+
+To do this safely, qui must be able to determine whether scan roots overlap. If any other local-access instance is unreachable/not ready, the scan fails to avoid false positives.
+:::
+
+:::warning
+**Disabled instances are not protected.** If you have a disabled instance with local filesystem access that shares save paths with an active instance, its files may be flagged as orphans. Enable the instance or ensure paths don't overlap before scanning.
 :::
 
 <LocalFilesystemDocker />
@@ -39,6 +46,8 @@ Directories are only scanned if at least one torrent points to them. If you dele
 | Max files per run | Limit results to prevent overwhelming large scans | 1,000 |
 | Auto-cleanup | Automatically delete orphans from scheduled scans | Disabled |
 | Auto-cleanup max files | Only auto-delete if orphan count is at or below this threshold | 100 |
+
+<OrphanScanDefaultIgnores />
 
 ## Workflow
 

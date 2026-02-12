@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -127,12 +127,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   // Memoize hashes and torrents to avoid re-creating arrays on every render
   const hashes = useMemo(() =>
     useSelection ? selectedHashes : [torrent.hash],
-    [useSelection, selectedHashes, torrent.hash]
+  [useSelection, selectedHashes, torrent.hash]
   )
 
   const torrents = useMemo(() =>
     useSelection ? selectedTorrents : [torrent],
-    [useSelection, selectedTorrents, torrent]
+  [useSelection, selectedTorrents, torrent]
   )
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
@@ -310,9 +310,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             disabled={isPending}
           >
             <FastForward className="mr-2 h-4 w-4" />
-            {allForceStarted
-              ? `Disable Force Start ${count > 1 ? `(${count})` : ""}`
-              : `Force Start ${count > 1 ? `(${count})` : ""}`}
+            {allForceStarted? `Disable Force Start ${count > 1 ? `(${count})` : ""}`: `Force Start ${count > 1 ? `(${count})` : ""}`}
           </ContextMenuItem>
         )}
         <ContextMenuItem
@@ -359,9 +357,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             disabled={isPending}
           >
             <Blocks className="mr-2 h-4 w-4" />
-            {allSeqDlEnabled
-              ? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`
-              : `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
+            {allSeqDlEnabled? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`: `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />

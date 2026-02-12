@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -13,6 +13,12 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+)
+
+// Category affix mode constants.
+const (
+	CategoryAffixModePrefix = "prefix"
+	CategoryAffixModeSuffix = "suffix"
 )
 
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
@@ -55,11 +61,12 @@ type CrossSeedAutomationSettings struct {
 	WebhookTags          []string `json:"webhookTags"`          // Tags for /apply webhook results
 	InheritSourceTags    bool     `json:"inheritSourceTags"`    // Also copy tags from the matched source torrent
 
-	// Category isolation: add .cross suffix to prevent *arr import loops
-	UseCrossCategorySuffix bool `json:"useCrossCategorySuffix"` // Add .cross suffix to categories (e.g., movies → movies.cross)
-
+	// Category affix: add prefix or suffix to the original category name
+	UseCrossCategoryAffix bool   `json:"useCrossCategoryAffix"` // Enable category affix
+	CategoryAffixMode     string `json:"categoryAffixMode"`     // "prefix" or "suffix"
+	CategoryAffix         string `json:"categoryAffix"`         // The affix value (default: ".cross")
 	// Custom category: use exact user-specified category without any suffixing
-	UseCustomCategory bool   `json:"useCustomCategory"` // Use custom category instead of suffix or indexer name
+	UseCustomCategory bool   `json:"useCustomCategory"` // Use custom category instead of affix or indexer name
 	CustomCategory    string `json:"customCategory"`    // Custom category name when UseCustomCategory is true
 
 	// Skip auto-resume settings per source mode.
@@ -115,9 +122,11 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		CompletionSearchTags: []string{"cross-seed"},
 		WebhookTags:          []string{"cross-seed"},
 		InheritSourceTags:    false, // Don't copy source torrent tags by default
-		// Category isolation - default to true for backwards compatibility
-		UseCrossCategorySuffix: true,
-		// Custom category - default to false (use suffix mode by default)
+		// Category isolation - default to true with suffix mode and ".cross" for backwards compatibility
+		UseCrossCategoryAffix: true,
+		CategoryAffixMode:     CategoryAffixModeSuffix,
+		CategoryAffix:         ".cross",
+		// Custom category - default to false (use affix mode by default)
 		UseCustomCategory: false,
 		CustomCategory:    "",
 		// Skip auto-resume - default to false to preserve existing behavior
@@ -303,7 +312,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       find_individual_episodes, size_mismatch_tolerance_percent,
 		       use_category_from_indexer, run_external_program_id,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
-		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
+		       webhook_tags, inherit_source_tags,
+		       use_cross_category_affix, category_affix_mode, category_affix,
 		       use_custom_category, custom_category,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
@@ -349,7 +359,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&completionSearchTags,
 		&webhookTags,
 		&settings.InheritSourceTags,
-		&settings.UseCrossCategorySuffix,
+		&settings.UseCrossCategoryAffix,
+		&settings.CategoryAffixMode,
+		&settings.CategoryAffix,
 		&settings.UseCustomCategory,
 		&settings.CustomCategory,
 		&settings.SkipAutoResumeRSS,
@@ -518,13 +530,14 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			find_individual_episodes, size_mismatch_tolerance_percent,
 			use_category_from_indexer, run_external_program_id,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
-			webhook_tags, inherit_source_tags, use_cross_category_suffix,
+			webhook_tags, inherit_source_tags,
+			use_cross_category_affix, category_affix_mode, category_affix,
 			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
 			skip_recheck, skip_piece_boundary_safety_check
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -551,7 +564,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			completion_search_tags = excluded.completion_search_tags,
 			webhook_tags = excluded.webhook_tags,
 			inherit_source_tags = excluded.inherit_source_tags,
-			use_cross_category_suffix = excluded.use_cross_category_suffix,
+			use_cross_category_affix = excluded.use_cross_category_affix,
+			category_affix_mode = excluded.category_affix_mode,
+			category_affix = excluded.category_affix,
 			use_custom_category = excluded.use_custom_category,
 			custom_category = excluded.custom_category,
 			skip_auto_resume_rss = excluded.skip_auto_resume_rss,
@@ -599,7 +614,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		completionSearchTags,
 		webhookTags,
 		settings.InheritSourceTags,
-		settings.UseCrossCategorySuffix,
+		settings.UseCrossCategoryAffix,
+		settings.CategoryAffixMode,
+		settings.CategoryAffix,
 		settings.UseCustomCategory,
 		settings.CustomCategory,
 		settings.SkipAutoResumeRSS,

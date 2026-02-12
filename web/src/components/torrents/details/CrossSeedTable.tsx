@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -24,7 +24,7 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
-  type SortingState,
+  type SortingState
 } from "@tanstack/react-table"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -48,9 +48,9 @@ const columnHelper = createColumnHelper<CrossSeedTorrent>()
 
 function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   const trackerHealth = match.tracker_health ?? null
-  let label = getStateLabel(match.state)
+  const label = getStateLabel(match.state)
   let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
-  let className = ""
+  const className = ""
 
   if (trackerHealth === "unregistered") {
     return { label: "Unregistered", variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
@@ -135,9 +135,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     columnHelper.accessor("name", {
       header: "Name",
       cell: (info) => {
-        const name = incognitoMode
-          ? getLinuxFileName(info.row.original.hash, 0)
-          : info.getValue()
+        const name = incognitoMode? getLinuxFileName(info.row.original.hash, 0): info.getValue()
         const isHardlink = isHardlinkManaged(info.row.original, instanceById.get(info.row.original.instanceId))
         return (
           <div className="flex items-center gap-1.5 min-w-0">
@@ -203,9 +201,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
           // Keep original if parsing fails
         }
 
-        const displayName = incognitoMode
-          ? getLinuxTracker(`${info.row.original.hash}-0`)
-          : trackerDisplayNames.get(hostname.toLowerCase()) || hostname
+        const displayName = incognitoMode? getLinuxTracker(`${info.row.original.hash}-0`): trackerDisplayNames.get(hostname.toLowerCase()) || hostname
 
         // In incognito mode, pass obfuscated key to prevent real tracker icon lookup
         const iconKey = incognitoMode ? displayName : hostname
@@ -333,9 +329,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">
-            {selectedTorrents.size > 0
-              ? `${selectedTorrents.size} of ${matches.length} selected`
-              : `${matches.length} match${matches.length !== 1 ? "es" : ""}`}
+            {selectedTorrents.size > 0? `${selectedTorrents.size} of ${matches.length} selected`: `${matches.length} match${matches.length !== 1 ? "es" : ""}`}
           </span>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
         </div>
@@ -419,7 +413,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                   )}
                   onClick={(e) => {
                     // Don't navigate if clicking checkbox or button
-                    if ((e.target as HTMLElement).closest('button, [role="checkbox"]')) return
+                    if ((e.target as HTMLElement).closest("button, [role=\"checkbox\"]")) return
                     if (onNavigateToTorrent) {
                       onNavigateToTorrent(row.original.instanceId, row.original.hash)
                     }

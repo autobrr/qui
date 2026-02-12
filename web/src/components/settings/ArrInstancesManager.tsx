@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -31,7 +31,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -212,18 +212,20 @@ export function ArrInstancesManager() {
               Add ARR Instance
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg max-w-full">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Add ARR Instance</DialogTitle>
               <DialogDescription>
                 Configure a Sonarr or Radarr instance for ID lookups during cross-seed searches.
               </DialogDescription>
             </DialogHeader>
-            <ArrInstanceForm
-              onSubmit={(data) => createMutation.mutate(data as ArrInstanceFormData)}
-              onCancel={() => setShowCreateDialog(false)}
-              isPending={createMutation.isPending}
-            />
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <ArrInstanceForm
+                onSubmit={(data) => createMutation.mutate(data as ArrInstanceFormData)}
+                onCancel={() => setShowCreateDialog(false)}
+                isPending={createMutation.isPending}
+              />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -268,16 +270,18 @@ export function ArrInstancesManager() {
       {/* Edit Dialog */}
       {editInstance && (
         <Dialog open={true} onOpenChange={() => setEditInstance(null)}>
-          <DialogContent className="sm:max-w-lg max-w-full">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Edit ARR Instance</DialogTitle>
             </DialogHeader>
-            <ArrInstanceForm
-              instance={editInstance}
-              onSubmit={(data) => updateMutation.mutate({ id: editInstance.id, data })}
-              onCancel={() => setEditInstance(null)}
-              isPending={updateMutation.isPending}
-            />
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <ArrInstanceForm
+                instance={editInstance}
+                onSubmit={(data) => updateMutation.mutate({ id: editInstance.id, data })}
+                onCancel={() => setEditInstance(null)}
+                isPending={updateMutation.isPending}
+              />
+            </div>
           </DialogContent>
         </Dialog>
       )}
@@ -422,7 +426,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="My Sonarr"
+          placeholder={`My ${type === "sonarr" ? "Sonarr" : "Radarr"}`}
           required
         />
       </div>
@@ -433,7 +437,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           id="baseUrl"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="http://localhost:8989"
+          placeholder={`http://localhost:${type === "sonarr" ? "8989" : "7878"}`}
           required
         />
         <p className="text-xs text-muted-foreground">

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -22,18 +22,20 @@ import (
 )
 
 type AutomationHandler struct {
-	store         *models.AutomationStore
-	activityStore *models.AutomationActivityStore
-	instanceStore *models.InstanceStore
-	service       *automations.Service
+	store                *models.AutomationStore
+	activityStore        *models.AutomationActivityStore
+	instanceStore        *models.InstanceStore
+	externalProgramStore *models.ExternalProgramStore
+	service              *automations.Service
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
 	return &AutomationHandler{
-		store:         store,
-		activityStore: activityStore,
-		instanceStore: instanceStore,
-		service:       service,
+		store:                store,
+		activityStore:        activityStore,
+		instanceStore:        instanceStore,
+		externalProgramStore: externalProgramStore,
+		service:              service,
 	}
 }
 
@@ -42,6 +44,7 @@ type AutomationPayload struct {
 	TrackerPattern  string                   `json:"trackerPattern"`
 	TrackerDomains  []string                 `json:"trackerDomains"`
 	Enabled         *bool                    `json:"enabled"`
+	DryRun          *bool                    `json:"dryRun"`
 	SortOrder       *int                     `json:"sortOrder"`
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
@@ -70,10 +73,14 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		Conditions:      p.Conditions,
 		FreeSpaceSource: p.FreeSpaceSource,
 		Enabled:         true,
+		DryRun:          false,
 		IntervalSeconds: p.IntervalSeconds,
 	}
 	if p.Enabled != nil {
 		automation.Enabled = *p.Enabled
+	}
+	if p.DryRun != nil {
+		automation.DryRun = *p.DryRun
 	}
 	if p.SortOrder != nil {
 		automation.SortOrder = *p.SortOrder
@@ -245,20 +252,7 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 }
 
 func normalizeTrackerDomains(domains []string) []string {
-	seen := make(map[string]struct{})
-	var out []string
-	for _, d := range domains {
-		trimmed := strings.TrimSpace(d)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	return out
+	return models.SanitizeCommaSeparatedStringSlice(domains)
 }
 
 // validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.
@@ -289,11 +283,12 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if payload.Conditions.Delete.Condition == nil {
 			return http.StatusBadRequest, "Delete action requires at least one condition", errors.New("delete condition required")
 		}
-		hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
-			(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
-			(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
-			(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
-			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled)
+	hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
+		(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
+		(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
+		(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
+		(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
+		(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
@@ -315,8 +310,8 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Validate hardlink fields require local filesystem access
-	if conditionsUseHardlink(payload.Conditions) {
+	// Validate fields that require local filesystem access
+	if conditionsRequireLocalAccess(payload.Conditions) {
 		instance, err := h.instanceStore.Get(ctx, instanceID)
 		if err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {
@@ -327,7 +322,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			return http.StatusInternalServerError, "Failed to validate automation", err
 		}
 		if !instance.HasLocalFilesystemAccess {
-			return http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
+			return http.StatusBadRequest, "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
 		}
 	}
 
@@ -363,6 +358,26 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return status, msg, err
 	}
 
+	// Validate ExternalProgram action has a valid programId when enabled
+	if err := payload.Conditions.ExternalProgram.Validate(); err != nil {
+		return http.StatusBadRequest, "External program action requires a valid program selection", err
+	}
+
+	// Verify the referenced external program exists
+	if payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled && payload.Conditions.ExternalProgram.ProgramID > 0 {
+		if h.externalProgramStore == nil {
+			log.Warn().Msg("automations: external program store is nil, skipping program existence check")
+			return http.StatusServiceUnavailable, "External program service not available", errors.New("external program store is nil")
+		}
+		_, err := h.externalProgramStore.GetByID(ctx, payload.Conditions.ExternalProgram.ProgramID)
+		if err != nil {
+			if errors.Is(err, models.ErrExternalProgramNotFound) {
+				return http.StatusBadRequest, "Referenced external program does not exist", err
+			}
+			return http.StatusInternalServerError, "Failed to verify external program", err
+		}
+	}
+
 	return 0, "", nil
 }
 
@@ -380,12 +395,15 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
 		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
 		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
-		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition))
+		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
+		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
 }
 
-// conditionsUseHardlink checks if any enabled action condition uses HARDLINK_SCOPE field.
-func conditionsUseHardlink(conditions *models.ActionConditions) bool {
-	return conditionsUseField(conditions, automations.FieldHardlinkScope)
+// conditionsRequireLocalAccess checks if any enabled action condition uses fields
+// that require local filesystem access (HARDLINK_SCOPE or HAS_MISSING_FILES).
+func conditionsRequireLocalAccess(conditions *models.ActionConditions) bool {
+	return conditionsUseField(conditions, automations.FieldHardlinkScope) ||
+		conditionsUseField(conditions, automations.FieldHasMissingFiles)
 }
 
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
@@ -537,6 +555,55 @@ func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request)
 	}
 
 	RespondJSON(w, http.StatusOK, activities)
+}
+
+func (h *AutomationHandler) GetActivityRun(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	activityIDStr := chi.URLParam(r, "activityId")
+	activityID, err := strconv.Atoi(activityIDStr)
+	if err != nil || activityID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid activity ID")
+		return
+	}
+
+	limit := 200
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			if parsed > 1000 {
+				parsed = 1000
+			}
+			limit = parsed
+		}
+	}
+
+	offset := 0
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if parsed, err := strconv.Atoi(offsetStr); err == nil && parsed > 0 {
+			offset = parsed
+		}
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusNotFound, "Run details not available (in-memory only)")
+		return
+	}
+
+	run, err := h.service.GetActivityRun(instanceID, activityID, limit, offset)
+	if errors.Is(err, automations.ErrActivityRunNotFound) {
+		RespondError(w, http.StatusNotFound, "Run details not available (in-memory only)")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("activityID", activityID).Msg("failed to load activity run details")
+		RespondError(w, http.StatusInternalServerError, "Failed to load run details")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, run)
 }
 
 func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
@@ -720,6 +787,9 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	}
 	if conditions.Category != nil {
 		validateConditionRegex(conditions.Category.Condition, "/conditions/category/condition", &result)
+	}
+	if conditions.ExternalProgram != nil {
+		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
 	}
 
 	return result

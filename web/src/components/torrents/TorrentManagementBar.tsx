@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -20,11 +20,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
 import {
@@ -116,6 +117,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    blockCrossSeeds,
+    setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
     showAddTagsDialog,
@@ -177,6 +180,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     torrents: selectedTorrents,
   })
 
+  const hasCrossSeedTag = useMemo(
+    () => anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
+    [selectedTorrents, crossSeedWarning.affectedTorrents]
+  )
+  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(safeInstanceId)
+
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
   const actionOptions = useMemo(() => ({
@@ -213,18 +223,20 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     })
   }, [handleAction, actionHashes, actionOptions])
 
-  const handleDeleteWrapper = useCallback(() => {
+  const handleDeleteWrapper = useCallback(async () => {
+    if (shouldBlockCrossSeeds) {
+      const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
+      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+    }
+
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds
-      ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
-      : selectedHashes
+    const hashesToDelete = deleteCrossSeeds ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)] : selectedHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds
-      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
-      : clientMeta
+    const deleteClientMeta = deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : clientMeta
 
-    handleDelete(
+    await handleDelete(
       hashesToDelete,
       isAllSelected,
       filters,
@@ -232,7 +244,20 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       excludeHashes,
       deleteClientMeta
     )
-  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
+  }, [
+    blockCrossSeedHashes,
+    clientMeta,
+    crossSeedWarning.affectedTorrents,
+    deleteCrossSeeds,
+    excludeHashes,
+    filters,
+    handleDelete,
+    isAllSelected,
+    search,
+    selectedHashes,
+    selectedTorrents,
+    shouldBlockCrossSeeds,
+  ])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -679,6 +704,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onToggleDeleteFilesLock={toggleDeleteFilesLock}
         deleteCrossSeeds={deleteCrossSeeds}
         onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        showBlockCrossSeeds={hasCrossSeedTag}
+        blockCrossSeeds={blockCrossSeeds}
+        onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={crossSeedWarning}
         onConfirm={handleDeleteWrapper}
       />

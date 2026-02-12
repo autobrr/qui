@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package orphanscan
@@ -69,6 +69,32 @@ func (m *TorrentFileMap) Len() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.paths)
+}
+
+// MergeFrom unions other into m.
+// Returns the number of file paths newly added to m.
+func (m *TorrentFileMap) MergeFrom(other *TorrentFileMap) int {
+	if other == nil {
+		return 0
+	}
+
+	other.mu.RLock()
+	defer other.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	added := 0
+	for p := range other.paths {
+		if _, exists := m.paths[p]; !exists {
+			m.paths[p] = struct{}{}
+			added++
+		}
+	}
+	for d := range other.dirs {
+		m.dirs[d] = struct{}{}
+	}
+	return added
 }
 
 // normalizePath cleans and normalizes a path for consistent comparison.

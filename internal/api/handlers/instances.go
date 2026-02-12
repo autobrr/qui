@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -138,6 +138,37 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 	}
 
 	RespondJSON(w, http.StatusOK, normalized)
+}
+
+// GetTransferInfo returns lightweight transfer stats for an instance.
+func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	client, err := h.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "instances:getTransferInfo") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for transfer info")
+		RespondError(w, http.StatusServiceUnavailable, "Failed to load transfer info")
+		return
+	}
+
+	info, err := client.GetTransferInfoCtx(ctx)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get transfer info")
+		RespondError(w, http.StatusInternalServerError, "Failed to get transfer info")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, info)
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {

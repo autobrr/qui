@@ -967,6 +967,30 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/transfer-info:
+    get:
+      tags:
+        - Instances
+      summary: Get transfer info
+      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Transfer info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferInfo'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get transfer info
+        '503':
+          description: Instance unavailable
+
   /api/instances/{instanceID}/getDirectoryContent:
     get:
       tags:
@@ -1240,10 +1264,46 @@ paths:
                   type: array
                   items:
                     type: string
-                startPaused:
+                paused:
                   type: boolean
-                savePath:
+                savepath:
                   type: string
+                indexer_id:
+                  type: integer
+                  description: Indexer ID for downloading torrent from an indexer
+                skip_checking:
+                  type: boolean
+                sequentialDownload:
+                  type: boolean
+                firstLastPiecePrio:
+                  type: boolean
+                upLimit:
+                  type: integer
+                  description: Upload speed limit in KB/s
+                dlLimit:
+                  type: integer
+                  description: Download speed limit in KB/s
+                ratioLimit:
+                  type: string
+                  description: Share ratio limit
+                seedingTimeLimit:
+                  type: string
+                  description: Seeding time limit in minutes
+                contentLayout:
+                  type: string
+                  description: Content layout (Original, Subfolder, NoSubfolder)
+                rename:
+                  type: string
+                  description: Rename torrent
+                useDownloadPath:
+                  type: boolean
+                  description: Use download path
+                downloadPath:
+                  type: string
+                  description: Download path
+                autoTMM:
+                  type: boolean
+                  description: Automatic torrent management
       responses:
         '201':
           description: Torrent added successfully
@@ -1583,6 +1643,34 @@ paths:
           description: Invalid request
         '500':
           description: Failed to get web seeds
+
+  /api/instances/{instanceID}/torrents/{hash}/pieces:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get torrent piece states
+      description: |
+        Get download state of each piece for a torrent.
+        States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Array of piece states
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: integer
+                  minimum: 0
+                  maximum: 2
+                  description: 'Piece state: 0 = not downloaded, 1 = downloading, 2 = downloaded'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to get piece states
 
   /api/instances/{instanceID}/torrents/{hash}/files:
     get:
@@ -2420,6 +2508,11 @@ paths:
                       type: string
                     status:
                       type: string
+                    provider:
+                      type: string
+                      enum:
+                        - polar
+                        - dodo
                     createdAt:
                       type: string
                       format: date-time
@@ -2625,6 +2718,323 @@ paths:
         '500':
           description: Failed to update automation settings
 
+  /api/dir-scan/settings:
+    get:
+      tags:
+        - Dir Scan
+      summary: Get dir scan settings
+      description: Returns the global directory scanner configuration
+      responses:
+        '200':
+          description: Current directory scanner settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanSettings'
+        '500':
+          description: Failed to load directory scanner settings
+    patch:
+      tags:
+        - Dir Scan
+      summary: Update dir scan settings
+      description: Partially updates global directory scanner settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirScanSettingsPatch'
+      responses:
+        '200':
+          description: Updated directory scanner settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update directory scanner settings
+
+  /api/dir-scan/directories:
+    get:
+      tags:
+        - Dir Scan
+      summary: List scan directories
+      description: Returns all configured scan directories
+      responses:
+        '200':
+          description: Configured scan directories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DirScanDirectory'
+        '500':
+          description: Failed to list directories
+    post:
+      tags:
+        - Dir Scan
+      summary: Create scan directory
+      description: Creates a new scan directory configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirScanDirectoryCreate'
+      responses:
+        '201':
+          description: Created scan directory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanDirectory'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to create directory
+
+  /api/dir-scan/directories/{directoryID}:
+    get:
+      tags:
+        - Dir Scan
+      summary: Get scan directory
+      description: Returns a scan directory by ID
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '200':
+          description: Scan directory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanDirectory'
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to get directory
+    patch:
+      tags:
+        - Dir Scan
+      summary: Update scan directory
+      description: Partially updates a scan directory configuration
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirScanDirectoryPatch'
+      responses:
+        '200':
+          description: Updated scan directory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanDirectory'
+        '400':
+          description: Invalid request body
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to update directory
+    delete:
+      tags:
+        - Dir Scan
+      summary: Delete scan directory
+      description: Deletes a scan directory configuration and all associated history
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '204':
+          description: Directory deleted
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to delete directory
+
+  /api/dir-scan/directories/{directoryID}/reset-files:
+    post:
+      tags:
+        - Dir Scan
+      summary: Reset directory scan progress
+      description: Deletes tracked dir-scan file state for the directory so the next scan re-processes it
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '204':
+          description: Scan progress reset
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to reset scan progress
+
+  /api/dir-scan/directories/{directoryID}/scan:
+    post:
+      tags:
+        - Dir Scan
+      summary: Trigger a directory scan
+      description: Starts a manual scan run for the given directory
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanTriggerResponse'
+        '404':
+          description: Directory not found
+        '409':
+          description: A scan is already in progress
+        '500':
+          description: Failed to start scan
+    delete:
+      tags:
+        - Dir Scan
+      summary: Cancel a directory scan
+      description: Cancels the currently running scan for the given directory, if any
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '204':
+          description: Scan canceled (or no scan running)
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to cancel scan
+
+  /api/dir-scan/directories/{directoryID}/status:
+    get:
+      tags:
+        - Dir Scan
+      summary: Get directory scan status
+      description: Returns the status of the active scan run or the most recent run (or idle)
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '200':
+          description: Current scan status
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DirScanRun'
+                  - $ref: '#/components/schemas/DirScanIdleStatus'
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to get scan status
+
+  /api/dir-scan/directories/{directoryID}/runs:
+    get:
+      tags:
+        - Dir Scan
+      summary: List directory scan runs
+      description: Returns recent scan runs for a directory
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Maximum number of runs to return
+      responses:
+        '200':
+          description: Scan runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DirScanRun'
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to list runs
+
+  /api/dir-scan/directories/{directoryID}/runs/{runID}/injections:
+    get:
+      tags:
+        - Dir Scan
+      summary: List directory scan run injections
+      description: Returns injection attempts (added/failed) for a scan run
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+        - $ref: '#/components/parameters/runID'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          description: Maximum number of items to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Injection attempts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DirScanRunInjection'
+        '404':
+          description: Directory or run not found
+        '500':
+          description: Failed to list run injections
+
+  /api/dir-scan/directories/{directoryID}/files:
+    get:
+      tags:
+        - Dir Scan
+      summary: List directory scan files
+      description: Returns tracked files for a directory with optional status filtering
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DirScanFileStatus'
+          description: Filter files by status
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          description: Maximum number of items to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Tracked files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DirScanFile'
+        '404':
+          description: Directory not found
+        '500':
+          description: Failed to list files
+
   /api/cross-seed/status:
     get:
       tags:
@@ -2710,6 +3120,81 @@ paths:
           description: RSS automation run cancelled successfully
         '409':
           description: No automation run is currently active
+
+  /api/cross-seed/blocklist:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List cross-seed blocklist entries
+      description: Returns the per-instance cross-seed blocklist entries.
+      parameters:
+        - name: instanceId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Instance ID
+      responses:
+        '200':
+          description: Blocklist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedBlocklistEntry'
+        '400':
+          description: instanceId must be a positive integer
+        '500':
+          description: Failed to load blocklist
+    post:
+      tags:
+        - Cross-Seed
+      summary: Add cross-seed blocklist entry
+      description: Adds or updates a blocked infohash for a specific instance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedBlocklistRequest'
+      responses:
+        '201':
+          description: Blocklist entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedBlocklistEntry'
+        '400':
+          description: Invalid request body
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to add blocklist entry
+
+  /api/cross-seed/blocklist/{instanceID}/{infohash}:
+    delete:
+      tags:
+        - Cross-Seed
+      summary: Remove cross-seed blocklist entry
+      description: Removes a blocked infohash for a specific instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: infohash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Infohash to remove
+      responses:
+        '204':
+          description: Blocklist entry removed
+        '400':
+          description: Invalid instanceID or infohash
+        '404':
+          description: Blocklist entry not found
+        '500':
+          description: Failed to delete blocklist entry
 
   /api/cross-seed/search/settings:
     get:
@@ -3787,6 +4272,452 @@ paths:
         '404':
           description: Run not found
 
+  # RSS Feed Management
+  /api/instances/{instanceID}/rss/events:
+    get:
+      tags:
+        - RSS
+      summary: RSS events stream (SSE)
+      description: Server-Sent Events stream for real-time RSS feed updates
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream with feed updates
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to establish SSE stream
+
+  /api/instances/{instanceID}/rss/items:
+    get:
+      tags:
+        - RSS
+      summary: Get RSS items
+      description: Retrieve all RSS feeds and folders for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: withData
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Include article data with feeds
+      responses:
+        '200':
+          description: RSS items retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RSSItems'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get RSS items
+    delete:
+      tags:
+        - RSS
+      summary: Remove RSS item
+      description: Remove an RSS feed or folder
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+              properties:
+                path:
+                  type: string
+                  description: Path of the item to remove
+      responses:
+        '200':
+          description: Item removed successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to remove RSS item
+
+  /api/instances/{instanceID}/rss/items/move:
+    post:
+      tags:
+        - RSS
+      summary: Move RSS item
+      description: Move an RSS feed or folder to a new location
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - itemPath
+              properties:
+                itemPath:
+                  type: string
+                  description: Current path of the item
+                destPath:
+                  type: string
+                  description: Destination path (empty for root)
+      responses:
+        '200':
+          description: Item moved successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to move RSS item
+
+  /api/instances/{instanceID}/rss/items/refresh:
+    post:
+      tags:
+        - RSS
+      summary: Refresh RSS item
+      description: Trigger a manual refresh of an RSS feed or folder
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - itemPath
+              properties:
+                itemPath:
+                  type: string
+                  description: Path of the item to refresh
+      responses:
+        '200':
+          description: Refresh triggered successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to refresh RSS item
+
+  /api/instances/{instanceID}/rss/folders:
+    post:
+      tags:
+        - RSS
+      summary: Create RSS folder
+      description: Create a new RSS folder
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+              properties:
+                path:
+                  type: string
+                  description: Path for the new folder
+      responses:
+        '201':
+          description: Folder created successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to create RSS folder
+
+  /api/instances/{instanceID}/rss/feeds:
+    post:
+      tags:
+        - RSS
+      summary: Add RSS feed
+      description: Add a new RSS feed
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: URL of the RSS feed
+                path:
+                  type: string
+                  description: Optional folder path to add the feed to
+      responses:
+        '201':
+          description: Feed added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WarningResponse'
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to add RSS feed
+
+  /api/instances/{instanceID}/rss/feeds/url:
+    put:
+      tags:
+        - RSS
+      summary: Set feed URL
+      description: Change the URL of an existing RSS feed
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+                - url
+              properties:
+                path:
+                  type: string
+                  description: Path of the feed
+                url:
+                  type: string
+                  format: uri
+                  description: New URL for the feed
+      responses:
+        '200':
+          description: Feed URL updated successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to set RSS feed URL
+
+  /api/instances/{instanceID}/rss/articles/read:
+    post:
+      tags:
+        - RSS
+      summary: Mark articles as read
+      description: Mark RSS articles as read
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - itemPath
+              properties:
+                itemPath:
+                  type: string
+                  description: Path of the feed
+                articleId:
+                  type: string
+                  description: Optional specific article ID (omit to mark all as read)
+      responses:
+        '200':
+          description: Articles marked as read successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to mark RSS item as read
+
+  # RSS Rules Management
+  /api/instances/{instanceID}/rss/rules:
+    get:
+      tags:
+        - RSS
+      summary: Get RSS rules
+      description: Retrieve all RSS auto-download rules
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Rules retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/RSSAutoDownloadRule'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get RSS rules
+    post:
+      tags:
+        - RSS
+      summary: Create or update RSS rule
+      description: Create a new rule or update an existing one
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - rule
+              properties:
+                name:
+                  type: string
+                  description: Name of the rule
+                rule:
+                  $ref: '#/components/schemas/RSSAutoDownloadRule'
+      responses:
+        '201':
+          description: Rule created/updated successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to set RSS rule
+
+  /api/instances/{instanceID}/rss/rules/reprocess:
+    post:
+      tags:
+        - RSS
+      summary: Reprocess RSS rules
+      description: Trigger qBittorrent to reprocess all unread articles against rules
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Reprocessing triggered successfully
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to reprocess RSS rules
+
+  /api/instances/{instanceID}/rss/rules/{ruleName}:
+    delete:
+      tags:
+        - RSS
+      summary: Delete RSS rule
+      description: Delete an RSS auto-download rule
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: ruleName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the rule to delete
+      responses:
+        '200':
+          description: Rule deleted successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to remove RSS rule
+
+  /api/instances/{instanceID}/rss/rules/{ruleName}/rename:
+    put:
+      tags:
+        - RSS
+      summary: Rename RSS rule
+      description: Rename an existing RSS auto-download rule
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: ruleName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the rule
+      responses:
+        '200':
+          description: Rule renamed successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to rename RSS rule
+
+  /api/instances/{instanceID}/rss/rules/{ruleName}/preview:
+    get:
+      tags:
+        - RSS
+      summary: Preview RSS rule matches
+      description: Get articles that would match an RSS rule
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: ruleName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the rule to preview
+      responses:
+        '200':
+          description: Matching articles retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get RSS matching articles
+
   /health:
     get:
       tags:
@@ -3851,6 +4782,7 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: qBittorrent instance ID
     hash:
       name: hash
@@ -3859,6 +4791,20 @@ components:
       schema:
         type: string
       description: Torrent hash
+    directoryID:
+      name: directoryID
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Directory scan directory ID
+    runID:
+      name: runID
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Directory scan run ID
 
   schemas:
     User:
@@ -4102,6 +5048,26 @@ components:
           type: string
           nullable: true
           description: Reported qBittorrent Web API version for the instance.
+
+    TransferInfo:
+      type: object
+      properties:
+        connection_status:
+          type: string
+        dht_nodes:
+          type: integer
+        dl_info_data:
+          type: integer
+        dl_info_speed:
+          type: integer
+        dl_rate_limit:
+          type: integer
+        up_info_data:
+          type: integer
+        up_info_speed:
+          type: integer
+        up_rate_limit:
+          type: integer
 
 
     Torrent:
@@ -4508,6 +5474,32 @@ components:
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
 
+    CrossSeedBlocklistEntry:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        infoHash:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CrossSeedBlocklistRequest:
+      type: object
+      required:
+        - instanceId
+        - infoHash
+      properties:
+        instanceId:
+          type: integer
+        infoHash:
+          type: string
+        note:
+          type: string
+
     InstanceCrossSeedCompletionSettings:
       type: object
       description: Per-instance cross-seed completion settings
@@ -4538,6 +5530,11 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags
+        indexerIds:
+          type: array
+          items:
+            type: integer
+          description: Limit completion searches to these Torznab indexer IDs (empty means all)
 
     InstanceCrossSeedCompletionSettingsRequest:
       type: object
@@ -4566,6 +5563,11 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags
+        indexerIds:
+          type: array
+          items:
+            type: integer
+          description: Limit completion searches to these Torznab indexer IDs (empty means all)
 
     CrossSeedAutomationSettingsPatch:
       type: object
@@ -4602,9 +5604,16 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
-        useCrossCategorySuffix:
+        useCrossCategoryAffix:
           type: boolean
-          description: Add .cross suffix to cross-seeded torrent categories
+          description: Enable category affix (prefix or suffix) for cross-seeded torrents
+        categoryAffixMode:
+          type: string
+          enum: [prefix, suffix]
+          description: Whether to add the affix as a prefix or suffix to the category
+        categoryAffix:
+          type: string
+          description: The affix value to add (default ".cross")
         useCustomCategory:
           type: boolean
           description: Use a custom category for all cross-seeds
@@ -4683,9 +5692,16 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
-        useCrossCategorySuffix:
+        useCrossCategoryAffix:
           type: boolean
-          description: Add .cross suffix to cross-seeded torrent categories
+          description: Enable category affix (prefix or suffix) for cross-seeded torrents
+        categoryAffixMode:
+          type: string
+          enum: [prefix, suffix]
+          description: Whether to add the affix as a prefix or suffix to the category
+        categoryAffix:
+          type: string
+          description: The affix value to add (default ".cross")
         useCustomCategory:
           type: boolean
           description: Use a custom category for all cross-seeds
@@ -5559,6 +6575,506 @@ components:
           type: string
           nullable: true
 
+    DirScanMatchMode:
+      type: string
+      enum:
+        - strict
+        - flexible
+
+    DirScanFileStatus:
+      type: string
+      enum:
+        - pending
+        - matched
+        - no_match
+        - error
+        - already_seeding
+        - in_qbittorrent
+
+    DirScanRunStatus:
+      type: string
+      enum:
+        - queued
+        - scanning
+        - searching
+        - injecting
+        - success
+        - failed
+        - canceled
+
+    DirScanSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+        enabled:
+          type: boolean
+        matchMode:
+          $ref: '#/components/schemas/DirScanMatchMode'
+        sizeTolerancePercent:
+          type: number
+          format: double
+        minPieceRatio:
+          type: number
+          format: double
+          description: Minimum percent of torrent pieces that must already exist on disk for partial matches
+        maxSearcheesPerRun:
+          type: integer
+          description: Maximum eligible searchees to process per scan run (0 = unlimited)
+        allowPartial:
+          type: boolean
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+        startPaused:
+          type: boolean
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - enabled
+        - matchMode
+        - sizeTolerancePercent
+        - minPieceRatio
+        - maxSearcheesPerRun
+        - allowPartial
+        - skipPieceBoundarySafetyCheck
+        - startPaused
+        - category
+        - tags
+        - createdAt
+        - updatedAt
+
+    DirScanSettingsPatch:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        matchMode:
+          $ref: '#/components/schemas/DirScanMatchMode'
+        sizeTolerancePercent:
+          type: number
+          format: double
+        minPieceRatio:
+          type: number
+          format: double
+        maxSearcheesPerRun:
+          type: integer
+        allowPartial:
+          type: boolean
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+        startPaused:
+          type: boolean
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    DirScanDirectory:
+      type: object
+      properties:
+        id:
+          type: integer
+        path:
+          type: string
+        qbitPathPrefix:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        arrInstanceId:
+          type: integer
+          nullable: true
+        targetInstanceId:
+          type: integer
+        scanIntervalMinutes:
+          type: integer
+        lastScanAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - path
+        - tags
+        - enabled
+        - targetInstanceId
+        - scanIntervalMinutes
+        - createdAt
+        - updatedAt
+
+    DirScanDirectoryCreate:
+      type: object
+      properties:
+        path:
+          type: string
+        qbitPathPrefix:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        arrInstanceId:
+          type: integer
+          nullable: true
+        targetInstanceId:
+          type: integer
+        scanIntervalMinutes:
+          type: integer
+      required:
+        - path
+        - targetInstanceId
+
+    DirScanDirectoryPatch:
+      type: object
+      properties:
+        path:
+          type: string
+        qbitPathPrefix:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        arrInstanceId:
+          type: integer
+          description: Set to -1 to clear
+        targetInstanceId:
+          type: integer
+        scanIntervalMinutes:
+          type: integer
+
+    DirScanRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        directoryId:
+          type: integer
+        status:
+          $ref: '#/components/schemas/DirScanRunStatus'
+        triggeredBy:
+          type: string
+        filesFound:
+          type: integer
+        filesSkipped:
+          type: integer
+        matchesFound:
+          type: integer
+        torrentsAdded:
+          type: integer
+        errorMessage:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - directoryId
+        - status
+        - triggeredBy
+        - filesFound
+        - filesSkipped
+        - matchesFound
+        - torrentsAdded
+        - startedAt
+
+    DirScanRunInjectionStatus:
+      type: string
+      enum:
+        - added
+        - failed
+
+    DirScanRunInjection:
+      type: object
+      properties:
+        id:
+          type: integer
+        runId:
+          type: integer
+        directoryId:
+          type: integer
+        status:
+          $ref: '#/components/schemas/DirScanRunInjectionStatus'
+        searcheeName:
+          type: string
+        torrentName:
+          type: string
+        infoHash:
+          type: string
+        contentType:
+          type: string
+        indexerName:
+          type: string
+          nullable: true
+        trackerDomain:
+          type: string
+          nullable: true
+        trackerDisplayName:
+          type: string
+          nullable: true
+        linkMode:
+          type: string
+          nullable: true
+        savePath:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - runId
+        - directoryId
+        - status
+        - searcheeName
+        - torrentName
+        - infoHash
+        - contentType
+        - tags
+        - createdAt
+
+    DirScanFile:
+      type: object
+      properties:
+        id:
+          type: integer
+        directoryId:
+          type: integer
+        filePath:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        fileModTime:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/DirScanFileStatus'
+        matchedTorrentHash:
+          type: string
+          nullable: true
+        matchedIndexerId:
+          type: integer
+          nullable: true
+        lastProcessedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - directoryId
+        - filePath
+        - fileSize
+        - fileModTime
+        - status
+
+    DirScanTriggerResponse:
+      type: object
+      properties:
+        runId:
+          type: integer
+      required:
+        - runId
+
+    DirScanIdleStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - idle
+      required:
+        - status
+
+    WarningResponse:
+      type: object
+      properties:
+        warning:
+          type: string
+          description: Warning message about partial success
+
+    RSSItems:
+      type: object
+      additionalProperties:
+        oneOf:
+          - $ref: '#/components/schemas/RSSFeed'
+          - $ref: '#/components/schemas/RSSItems'
+      description: Map of RSS feeds and folders (recursive structure)
+
+    RSSFeed:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+        lastBuildDate:
+          type: string
+        isLoading:
+          type: boolean
+        hasError:
+          type: boolean
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RSSArticle'
+
+    RSSArticle:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        torrentURL:
+          type: string
+        link:
+          type: string
+        description:
+          type: string
+        date:
+          type: string
+          format: date-time
+        author:
+          type: string
+        isRead:
+          type: boolean
+
+    RSSAutoDownloadRule:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        mustContain:
+          type: string
+        mustNotContain:
+          type: string
+        episodeFilter:
+          type: string
+        useRegex:
+          type: boolean
+        affectedFeeds:
+          type: array
+          items:
+            type: string
+        ignoreDays:
+          type: integer
+        lastMatch:
+          type: string
+        smartFilter:
+          type: boolean
+        previouslyMatchedEpisodes:
+          type: array
+          items:
+            type: string
+        torrentParams:
+          $ref: '#/components/schemas/RSSRuleTorrentParams'
+        savePath:
+          type: string
+          description: Legacy field
+        assignedCategory:
+          type: string
+          description: Legacy field
+        addPaused:
+          type: boolean
+          nullable: true
+          description: Legacy field
+
+    RSSRuleTorrentParams:
+      type: object
+      properties:
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        save_path:
+          type: string
+        download_path:
+          type: string
+        content_layout:
+          type: string
+        operating_mode:
+          type: string
+        skip_checking:
+          type: boolean
+        upload_limit:
+          type: integer
+        download_limit:
+          type: integer
+        seeding_time_limit:
+          type: integer
+        inactive_seeding_time_limit:
+          type: integer
+        share_limit_action:
+          type: string
+        ratio_limit:
+          type: number
+          format: double
+        stopped:
+          type: boolean
+        stop_condition:
+          type: string
+        use_auto_tmm:
+          type: boolean
+        use_download_path:
+          type: boolean
+        add_to_top_of_queue:
+          type: boolean
+
 tags:
   - name: Authentication
     description: User authentication and session management
@@ -5582,7 +7098,11 @@ tags:
     description: Tag management
   - name: Cross-Seed
     description: Cross-seeding operations for finding and adding duplicate torrents
+  - name: Dir Scan
+    description: Directory scanner operations for data-based matching and injection
   - name: Orphan Scan
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
+  - name: RSS
+    description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)

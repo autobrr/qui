@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -783,6 +783,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           <TabsContent value="general" className="m-0 h-full">
             {isHorizontal ? (
               <GeneralTabHorizontal
+                instanceId={instanceId}
                 torrent={displayTorrent!}
                 properties={properties}
                 loading={loadingProperties}
@@ -798,9 +799,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 displayComment={displayComment}
                 displayCreatedBy={displayCreatedBy}
                 queueingEnabled={metadata?.preferences?.queueing_enabled}
-                maxActiveDownloads={metadata?.preferences?.max_active_downloads}
-                maxActiveUploads={metadata?.preferences?.max_active_uploads}
-                maxActiveTorrents={metadata?.preferences?.max_active_torrents}
               />
             ) : (
               <ScrollArea className="h-full">

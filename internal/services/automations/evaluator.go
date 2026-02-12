@@ -1,10 +1,12 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package automations
 
 import (
 	"math"
+	"net"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -50,6 +52,8 @@ type EvalContext struct {
 	TrackerDownSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
+	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
+	HasMissingFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
@@ -322,7 +326,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
-		return compareString(torrent.Tracker, cond)
+		return compareTracker(torrent.Tracker, cond, ctx)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -376,7 +380,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldRatio:
 		return compareFloat64(torrent.Ratio, cond)
 	case FieldProgress:
-		return compareFloat64(torrent.Progress, cond)
+		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
 		return compareFloat64(torrent.Availability, cond)
 
@@ -425,6 +429,23 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown scope - don't match
 		}
 		return compareHardlinkScope(scope, cond)
+
+	case FieldHasMissingFiles:
+		// Instances without local filesystem access cannot detect missing files.
+		// Return false so the condition doesn't match and rules won't trigger unintended actions.
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		// If missing files couldn't be computed for this torrent (incomplete, etc.),
+		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
+		if ctx.HasMissingFilesByHash == nil {
+			return false
+		}
+		hasMissing, ok := ctx.HasMissingFilesByHash[torrent.Hash]
+		if !ok {
+			return false // Unknown state - don't match
+		}
+		return compareBool(hasMissing, cond)
 
 	default:
 		return false
@@ -552,7 +573,11 @@ func compareString(value string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(value)
+		matched := cond.Compiled.MatchString(value)
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			return !matched
+		}
+		return matched
 	}
 
 	switch cond.Operator {
@@ -573,6 +598,131 @@ func compareString(value string, cond *RuleCondition) bool {
 	}
 }
 
+func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bool {
+	// Candidates: raw URL, extracted domain, optional customization display name.
+	raw := strings.TrimSpace(trackerURL)
+	domain := extractTrackerDomain(raw)
+	displayName := ""
+	if ctx != nil && ctx.TrackerDisplayNameByDomain != nil && domain != "" {
+		if name, ok := ctx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
+			displayName = strings.TrimSpace(name)
+		}
+	}
+
+	candidates := make([]string, 0, 3)
+	if raw != "" {
+		candidates = append(candidates, raw)
+	}
+	if domain != "" && !strings.EqualFold(domain, raw) {
+		candidates = append(candidates, domain)
+	}
+	if displayName != "" && !strings.EqualFold(displayName, domain) && !strings.EqualFold(displayName, raw) {
+		candidates = append(candidates, displayName)
+	}
+
+	// Preserve existing empty-string behavior (e.g., equals "").
+	if len(candidates) == 0 {
+		return compareString("", cond)
+	}
+
+	if cond.Regex || cond.Operator == OperatorMatches {
+		if cond.Compiled == nil {
+			return false
+		}
+		anyMatch := false
+		for _, c := range candidates {
+			if cond.Compiled.MatchString(c) {
+				anyMatch = true
+				break
+			}
+		}
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			// Negative operators apply to the combined candidate set: fail if any candidate matches.
+			return !anyMatch
+		}
+		// Regex-enabled string operators: succeed if any candidate matches.
+		return anyMatch
+	}
+
+	// Important: negative operators must apply to the combined candidate set.
+	// Example: NOT_EQUAL "BHD" must be false if any candidate equals "BHD".
+	if cond.Operator == OperatorNotEqual {
+		for _, c := range candidates {
+			if strings.EqualFold(c, cond.Value) {
+				return false
+			}
+		}
+		return true
+	}
+	if cond.Operator == OperatorNotContains {
+		condLower := strings.ToLower(cond.Value)
+		for _, c := range candidates {
+			if strings.Contains(strings.ToLower(c), condLower) {
+				return false
+			}
+		}
+		return true
+	}
+
+	for _, c := range candidates {
+		if compareString(c, cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractTrackerDomain(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	// URL parsing with scheme (http/https/udp/etc).
+	if u, err := url.Parse(raw); err == nil {
+		if h := u.Hostname(); h != "" {
+			return strings.ToLower(h)
+		}
+	}
+
+	// Scheme-less input (tracker.example.com/announce).
+	if !strings.Contains(raw, "://") {
+		if u, err := url.Parse("//" + raw); err == nil {
+			if h := u.Hostname(); h != "" {
+				return strings.ToLower(h)
+			}
+		}
+	}
+
+	// Manual fallback: host[:port][/path]
+	candidate := raw
+	if idx := strings.IndexAny(candidate, "/?#"); idx != -1 {
+		candidate = candidate[:idx]
+	}
+	candidate = strings.TrimPrefix(candidate, "//")
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return ""
+	}
+
+	// Try to split host:port (IPv6 requires brackets for SplitHostPort).
+	if host, _, err := net.SplitHostPort(candidate); err == nil {
+		return strings.ToLower(strings.Trim(host, "[]"))
+	}
+
+	// If it's a plain IP (including IPv6 without port), keep it.
+	if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
+		return strings.ToLower(candidate)
+	}
+
+	// Strip :port for hostnames/IPv4.
+	if idx := strings.Index(candidate, ":"); idx != -1 {
+		candidate = candidate[:idx]
+	}
+	candidate = strings.Trim(candidate, "[]")
+	return strings.ToLower(strings.TrimSpace(candidate))
+}
+
 // compareTags compares tags against the condition, treating tags as a set.
 // For string operators, checks individual tags rather than the full comma-separated string.
 // Regex matching still operates on the full string for flexibility.
@@ -582,7 +732,11 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(tagsRaw)
+		matched := cond.Compiled.MatchString(tagsRaw)
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			return !matched
+		}
+		return matched
 	}
 
 	tags := splitTags(tagsRaw)
@@ -691,6 +845,48 @@ func compareFloat64(value float64, cond *RuleCondition) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeProgressCondition(cond *RuleCondition) *RuleCondition {
+	if cond == nil {
+		return nil
+	}
+
+	normalized := *cond
+
+	if normalized.Value != "" {
+		if v, err := strconv.ParseFloat(normalized.Value, 64); err == nil {
+			v = normalizeProgressValue(v)
+			normalized.Value = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+	}
+
+	if normalized.MinValue != nil {
+		v := normalizeProgressValue(*normalized.MinValue)
+		normalized.MinValue = &v
+	}
+
+	if normalized.MaxValue != nil {
+		v := normalizeProgressValue(*normalized.MaxValue)
+		normalized.MaxValue = &v
+	}
+
+	return &normalized
+}
+
+func normalizeProgressValue(v float64) float64 {
+	// Older workflows stored progress conditions as 0-100 percentages; normalize to 0-1.
+	if v > 1 {
+		v /= 100
+	}
+
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 // compareBool compares a boolean value against the condition.

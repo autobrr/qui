@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -132,26 +132,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	isTV := source.Series > 0 || candidate.Series > 0
-
-	if isTV {
-		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
-		// while still requiring the titles to be closely related.
-		if sourceTitleNorm != candidateTitleNorm &&
-			!strings.Contains(sourceTitleNorm, candidateTitleNorm) &&
-			!strings.Contains(candidateTitleNorm, sourceTitleNorm) {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
-	} else {
-		// For non-TV content (movies, music, audiobooks, etc.), require exact title
-		// match after normalization. This avoids very loose substring matches across
-		// unrelated content types.
-		if sourceTitleNorm != candidateTitleNorm {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
+	// Require exact title match after normalization.
+	//
+	// This is intentionally strict to avoid false positives between related-but-distinct
+	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
+	// would incorrectly treat them as the same show.
+	if sourceTitleNorm != candidateTitleNorm {
+		// Title mismatches are expected for most candidates - don't log to avoid noise
+		return false
 	}
+
+	isTV := source.Series > 0 || candidate.Series > 0
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -238,13 +229,13 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 	// Site field is used by anime releases where group is in brackets like [SubsPlease].
 	// rls parses these as Site rather than Group. Different fansub groups can never
-	// cross-seed, so enforce strict matching like Group.
+	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
+	// non-empty site tags as incompatible, but don't reject candidates that simply
+	// lack this metadata.
 	sourceSite := s.stringNormalizer.Normalize(source.Site)
 	candidateSite := s.stringNormalizer.Normalize(candidate.Site)
-	if sourceSite != "" {
-		if candidateSite == "" || sourceSite != candidateSite {
-			return false
-		}
+	if sourceSite != "" && candidateSite != "" && sourceSite != candidateSite {
+		return false
 	}
 
 	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
@@ -489,9 +480,15 @@ func joinNormalizedCodecSlice(slice []string) string {
 	if len(slice) == 0 {
 		return ""
 	}
-	normalized := make([]string, len(slice))
-	for i, s := range slice {
-		normalized[i] = normalizeVideoCodec(s)
+	seen := make(map[string]struct{}, len(slice))
+	normalized := make([]string, 0, len(slice))
+	for _, codec := range slice {
+		n := normalizeVideoCodec(codec)
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		normalized = append(normalized, n)
 	}
 	sort.Strings(normalized)
 	return strings.Join(normalized, " ")

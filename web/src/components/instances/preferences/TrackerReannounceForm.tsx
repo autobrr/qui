@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -20,10 +20,11 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
+import { cn, copyTextToClipboard, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
@@ -95,46 +96,22 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     staleTime: 1000 * 60 * 5,
   })
 
-  // Build lookup maps from tracker customizations for merging and nicknames
-  const trackerCustomizationMaps = useMemo(() => {
-    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
-    const secondaryDomains = new Set<string>()
-
-    for (const custom of trackerCustomizations ?? []) {
-      const domains = custom.domains
-      if (domains.length === 0) continue
-
-      for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].toLowerCase()
-        domainToCustomization.set(domain, {
-          displayName: custom.displayName,
-          domains: custom.domains,
-          id: custom.id,
-        })
-        if (i > 0) {
-          secondaryDomains.add(domain)
-        }
-      }
-    }
-
-    return { domainToCustomization, secondaryDomains }
-  }, [trackerCustomizations])
+  const trackerCustomizationMaps = useMemo(
+    () => buildTrackerCustomizationMaps(trackerCustomizations),
+    [trackerCustomizations]
+  )
 
   // Process trackers to apply customizations (nicknames and merged domains)
   const trackerOptions: Option[] = useMemo(() => {
     if (!trackersQuery.data) return []
 
-    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const { domainToCustomization } = trackerCustomizationMaps
     const trackers = Object.keys(trackersQuery.data)
     const processed: Option[] = []
     const seenDisplayNames = new Set<string>()
 
     for (const tracker of trackers) {
       const lowerTracker = tracker.toLowerCase()
-
-      if (secondaryDomains.has(lowerTracker)) {
-        continue
-      }
 
       const customization = domainToCustomization.get(lowerTracker)
 
@@ -143,11 +120,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
         if (seenDisplayNames.has(displayKey)) continue
         seenDisplayNames.add(displayKey)
 
-        const primaryDomain = customization.domains[0]
+        const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
           label: customization.displayName,
           value: customization.domains.join(","),
-          icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
+          icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
         })
       } else {
         if (seenDisplayNames.has(lowerTracker)) continue
@@ -165,6 +142,22 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
     return processed
   }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons])
+
+  const selectedTrackerValues = useMemo(() => {
+    const { domainToCustomization } = trackerCustomizationMaps
+    const result: string[] = []
+    const seen = new Set<string>()
+
+    for (const domain of normalizeTrackerDomains(settings.trackers)) {
+      const customization = domainToCustomization.get(domain)
+      const value = customization ? customization.domains.join(",") : domain
+      if (seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+
+    return result
+  }, [settings.trackers, trackerCustomizationMaps])
 
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
@@ -203,6 +196,13 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     const normalized = trimmed.toLowerCase()
     setSettings((prev) => {
       const values = prev[field]
+      if (field === "trackers") {
+        const next = normalizeTrackerDomains([...values, trimmed])
+        return {
+          ...prev,
+          trackers: next,
+        }
+      }
       if (values.some((entry) => entry.toLowerCase() === normalized)) {
         return prev
       }
@@ -242,7 +242,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
         onError: (error) => {
           toast.error("Update failed", { description: error instanceof Error ? error.message : "Unable to update settings" })
         },
-      },
+      }
     )
   }
 
@@ -274,9 +274,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   // Filter and limit to 50 events for display
   const allActivityEvents: InstanceReannounceActivity[] = (activityQuery.data ?? []).slice(-50).reverse()
-  const activityEvents = hideSkipped
-    ? (activityQuery.data ?? []).filter((event) => event.outcome !== "skipped").slice(-50).reverse()
-    : allActivityEvents
+  const activityEvents = hideSkipped? (activityQuery.data ?? []).filter((event) => event.outcome !== "skipped").slice(-50).reverse(): allActivityEvents
   const activityEnabled = Boolean(instance && settings.enabled)
 
   const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
@@ -355,208 +353,208 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const settingsContent = (
     <div className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Timing & Behavior</h3>
-                      <Separator className="flex-1" />
-                    </div>
-                    
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                      <NumberField
-                        id="initial-wait"
-                        label="Initial Wait"
-                        description="Seconds before first check"
-                        tooltip="How long to wait after a torrent is added before checking its status. Gives the tracker time to register it naturally. Minimum 5 seconds."
-                        min={REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT}
-                        value={settings.initialWaitSeconds}
-                        onChange={(value) => setSettings((prev) => ({ ...prev, initialWaitSeconds: value }))}
-                      />
-                      <NumberField
-                        id="reannounce-interval"
-                        label="Retry Interval"
-                        description="Seconds between retries"
-                        tooltip="How often to retry inside a single reannounce attempt. With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
-                        min={REANNOUNCE_CONSTRAINTS.MIN_INTERVAL}
-                        value={settings.reannounceIntervalSeconds}
-                        onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
-                      />
-                      <NumberField
-                        id="max-age"
-                        label="Max Torrent Age"
-                        description="Stop monitoring after (s)"
-                        tooltip="Stop monitoring torrents older than this (in seconds). Prevents checking old torrents that are permanently dead. Minimum 60 seconds."
-                        min={REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE}
-                        value={settings.maxAgeSeconds}
-                        onChange={(value) => setSettings((prev) => ({ ...prev, maxAgeSeconds: value }))}
-                      />
-                      <NumberField
-                        id="max-retries"
-                        label="Max Retries"
-                        description="Retry attempts per torrent"
-                        tooltip="Maximum consecutive retries within a single scan cycle. Each scan can retry up to this many times before waiting for the next cycle. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
-                        min={REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES}
-                        max={REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES}
-                        value={settings.maxRetries}
-                        onChange={(value) => setSettings((prev) => ({ ...prev, maxRetries: value }))}
-                      />
-                    </div>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Timing & Behavior</h3>
+          <Separator className="flex-1" />
+        </div>
 
-                    <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-[300px]">
-                              <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating and never spams.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Use Retry Interval for cooldown instead of 2 minutes
-                        </p>
-                      </div>
-                      <Switch
-                        id="quick-retry"
-                        checked={settings.aggressive}
-                        onCheckedChange={(aggressive) => setSettings((prev) => ({ ...prev, aggressive }))}
-                      />
-                    </div>
-                  </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <NumberField
+            id="initial-wait"
+            label="Initial Wait"
+            description="Seconds before first check"
+            tooltip="How long to wait after a torrent is added before checking its status. Gives the tracker time to register it naturally. Minimum 5 seconds."
+            min={REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT}
+            value={settings.initialWaitSeconds}
+            onChange={(value) => setSettings((prev) => ({ ...prev, initialWaitSeconds: value }))}
+          />
+          <NumberField
+            id="reannounce-interval"
+            label="Retry Interval"
+            description="Seconds between retries"
+            tooltip="How often to retry inside a single reannounce attempt. With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
+            min={REANNOUNCE_CONSTRAINTS.MIN_INTERVAL}
+            value={settings.reannounceIntervalSeconds}
+            onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
+          />
+          <NumberField
+            id="max-age"
+            label="Max Torrent Age"
+            description="Stop monitoring after (s)"
+            tooltip="Stop monitoring torrents older than this (in seconds). Prevents checking old torrents that are permanently dead. Minimum 60 seconds."
+            min={REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE}
+            value={settings.maxAgeSeconds}
+            onChange={(value) => setSettings((prev) => ({ ...prev, maxAgeSeconds: value }))}
+          />
+          <NumberField
+            id="max-retries"
+            label="Max Retries"
+            description="Retry attempts per torrent"
+            tooltip="Maximum consecutive retries within a single scan cycle. Each scan can retry up to this many times before waiting for the next cycle. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
+            min={REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES}
+            max={REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES}
+            value={settings.maxRetries}
+            onChange={(value) => setSettings((prev) => ({ ...prev, maxRetries: value }))}
+          />
+        </div>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Scope & Filtering</h3>
-                      <Separator className="flex-1" />
-                    </div>
+        <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[300px]">
+                  <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating and never spams.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Use Retry Interval for cooldown instead of 2 minutes
+            </p>
+          </div>
+          <Switch
+            id="quick-retry"
+            checked={settings.aggressive}
+            onCheckedChange={(aggressive) => setSettings((prev) => ({ ...prev, aggressive }))}
+          />
+        </div>
+      </div>
 
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
-                        <div className="space-y-0.5">
-                          <Label htmlFor="monitor-all" className="text-base">Monitor All Stalled Torrents</Label>
-                          <p className="text-sm text-muted-foreground">
-                            If enabled, monitors everything except excluded items.<br />
-                            If disabled, only monitors items matching the include rules below.
-                          </p>
-                        </div>
-                        <Switch
-                          id="monitor-all"
-                          checked={settings.monitorAll}
-                          onCheckedChange={(v) => {
-                            setSettings((prev) => {
-                              const next = { ...prev, monitorAll: v }
-                              // Automatically switch to exclude mode if monitoring all
-                              if (v) {
-                                next.excludeCategories = true
-                                next.excludeTags = true
-                                next.excludeTrackers = true
-                              }
-                              return next
-                            })
-                          }}
-                        />
-                      </div>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Scope & Filtering</h3>
+          <Separator className="flex-1" />
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
+            <div className="space-y-0.5">
+              <Label htmlFor="monitor-all" className="text-base">Monitor All Stalled Torrents</Label>
+              <p className="text-sm text-muted-foreground">
+                If enabled, monitors everything except excluded items.<br />
+                If disabled, only monitors items matching the include rules below.
+              </p>
+            </div>
+            <Switch
+              id="monitor-all"
+              checked={settings.monitorAll}
+              onCheckedChange={(v) => {
+                setSettings((prev) => {
+                  const next = { ...prev, monitorAll: v }
+                  // Automatically switch to exclude mode if monitoring all
+                  if (v) {
+                    next.excludeCategories = true
+                    next.excludeTags = true
+                    next.excludeTrackers = true
+                  }
+                  return next
+                })
+              }}
+            />
+          </div>
 
 
-                      <div className="grid gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {/* Categories */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="scope-categories">Categories</Label>
-                            <Tabs
-                              value={settings.excludeCategories ? "exclude" : "include"}
-                              onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeCategories: v === "exclude" }))}
-                              className="h-7"
-                            >
-                              <TabsList className="h-7">
-                                <TabsTrigger 
-                                  value="include" 
-                                  className="text-xs h-5 px-2"
-                                  disabled={settings.monitorAll}
-                                >
-                                  Include
-                                </TabsTrigger>
-                                <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
-                              </TabsList>
-                            </Tabs>
-                          </div>
-                          <MultiSelect
-                            options={categoryOptions}
-                            selected={settings.categories}
-                            onChange={(values) => setSettings((prev) => ({ ...prev, categories: values }))}
-                            placeholder="Select categories..."
-                            creatable
-                            onCreateOption={(value) => appendUniqueValue("categories", value)}
-                          />
-                        </div>
+          <div className="grid gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            {/* Categories */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="scope-categories">Categories</Label>
+                <Tabs
+                  value={settings.excludeCategories ? "exclude" : "include"}
+                  onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeCategories: v === "exclude" }))}
+                  className="h-7"
+                >
+                  <TabsList className="h-7">
+                    <TabsTrigger
+                      value="include"
+                      className="text-xs h-5 px-2"
+                      disabled={settings.monitorAll}
+                    >
+                      Include
+                    </TabsTrigger>
+                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+              <MultiSelect
+                options={categoryOptions}
+                selected={settings.categories}
+                onChange={(values) => setSettings((prev) => ({ ...prev, categories: values }))}
+                placeholder="Select categories..."
+                creatable
+                onCreateOption={(value) => appendUniqueValue("categories", value)}
+              />
+            </div>
 
-                        {/* Tags */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="scope-tags">Tags</Label>
-                            <Tabs
-                              value={settings.excludeTags ? "exclude" : "include"}
-                              onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTags: v === "exclude" }))}
-                              className="h-7"
-                            >
-                              <TabsList className="h-7">
-                                <TabsTrigger 
-                                  value="include" 
-                                  className="text-xs h-5 px-2"
-                                  disabled={settings.monitorAll}
-                                >
-                                  Include
-                                </TabsTrigger>
-                                <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
-                              </TabsList>
-                            </Tabs>
-                          </div>
-                          <MultiSelect
-                            options={tagOptions}
-                            selected={settings.tags}
-                            onChange={(values) => setSettings((prev) => ({ ...prev, tags: values }))}
-                            placeholder="Select tags..."
-                            creatable
-                            onCreateOption={(value) => appendUniqueValue("tags", value)}
-                          />
-                        </div>
+            {/* Tags */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="scope-tags">Tags</Label>
+                <Tabs
+                  value={settings.excludeTags ? "exclude" : "include"}
+                  onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTags: v === "exclude" }))}
+                  className="h-7"
+                >
+                  <TabsList className="h-7">
+                    <TabsTrigger
+                      value="include"
+                      className="text-xs h-5 px-2"
+                      disabled={settings.monitorAll}
+                    >
+                      Include
+                    </TabsTrigger>
+                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+              <MultiSelect
+                options={tagOptions}
+                selected={settings.tags}
+                onChange={(values) => setSettings((prev) => ({ ...prev, tags: values }))}
+                placeholder="Select tags..."
+                creatable
+                onCreateOption={(value) => appendUniqueValue("tags", value)}
+              />
+            </div>
 
-                        {/* Trackers */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="scope-trackers">Tracker Domains</Label>
-                            <Tabs
-                              value={settings.excludeTrackers ? "exclude" : "include"}
-                              onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTrackers: v === "exclude" }))}
-                              className="h-7"
-                            >
-                              <TabsList className="h-7">
-                                <TabsTrigger 
-                                  value="include" 
-                                  className="text-xs h-5 px-2"
-                                  disabled={settings.monitorAll}
-                                >
-                                  Include
-                                </TabsTrigger>
-                                <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
-                              </TabsList>
-                            </Tabs>
-                          </div>
-                          <MultiSelect
-                            options={trackerOptions}
-                            selected={settings.trackers}
-                            onChange={(values) => setSettings((prev) => ({ ...prev, trackers: values }))}
-                            placeholder="Select tracker domains..."
-                            creatable
-                            onCreateOption={(value) => appendUniqueValue("trackers", value)}
-                            hideCheckIcon
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+            {/* Trackers */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="scope-trackers">Tracker Domains</Label>
+                <Tabs
+                  value={settings.excludeTrackers ? "exclude" : "include"}
+                  onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTrackers: v === "exclude" }))}
+                  className="h-7"
+                >
+                  <TabsList className="h-7">
+                    <TabsTrigger
+                      value="include"
+                      className="text-xs h-5 px-2"
+                      disabled={settings.monitorAll}
+                    >
+                      Include
+                    </TabsTrigger>
+                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+              <MultiSelect
+                options={trackerOptions}
+                selected={selectedTrackerValues}
+                onChange={(values) => setSettings((prev) => ({ ...prev, trackers: normalizeTrackerDomains(values) }))}
+                placeholder="Select tracker domains..."
+                creatable
+                onCreateOption={(value) => appendUniqueValue("trackers", value)}
+                hideCheckIcon
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       {!formId && (
         <div className="flex justify-end pt-4">
@@ -570,137 +568,135 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const activityContent = (
     <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h3 className="text-sm font-medium leading-none">Recent Activity</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {activityEnabled 
-                      ? "Real-time log of reannounce attempts and results."
-                      : "Monitoring is disabled. No new activity will be recorded."}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 mr-2">
-                    <Switch 
-                      id="hide-skipped" 
-                      checked={hideSkipped} 
-                      onCheckedChange={setHideSkipped} 
-                      className="scale-75"
-                    />
-                    <Label htmlFor="hide-skipped" className="text-sm font-normal cursor-pointer">
-                      Hide skipped
-                    </Label>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={activityQuery.isFetching}
-                    onClick={() => activityQuery.refetch()}
-                    className="h-8 px-2 lg:px-3"
-                  >
-                    <RefreshCcw className={cn("h-3.5 w-3.5 mr-2", activityQuery.isFetching && "animate-spin")} />
-                    Refresh
-                  </Button>
-                </div>
-              </div>
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium leading-none">Recent Activity</h3>
+          <p className="text-sm text-muted-foreground">
+            {activityEnabled? "Real-time log of reannounce attempts and results.": "Monitoring is disabled. No new activity will be recorded."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-2">
+            <Switch
+              id="hide-skipped"
+              checked={hideSkipped}
+              onCheckedChange={setHideSkipped}
+              className="scale-75"
+            />
+            <Label htmlFor="hide-skipped" className="text-sm font-normal cursor-pointer">
+              Hide skipped
+            </Label>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={activityQuery.isFetching}
+            onClick={() => activityQuery.refetch()}
+            className="h-8 px-2 lg:px-3"
+          >
+            <RefreshCcw className={cn("h-3.5 w-3.5 mr-2", activityQuery.isFetching && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-              {activityQuery.isError ? (
-                <div className="h-[150px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                  <p className="text-sm text-destructive">Failed to load activity</p>
-                  <p className="text-xs text-destructive/70 mt-1">
-                    Check connection to the instance.
-                  </p>
-                </div>
-              ) : activityQuery.isLoading ? (
-                 <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/30">
-                    <p className="text-sm text-muted-foreground">Loading activity...</p>
-                 </div>
-              ) : activityEvents.length === 0 ? (
-                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-6">
-                  <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
-                  {activityEnabled && (
-                    <p className="text-xs text-muted-foreground/60 mt-1">
-                      Events will appear here when stalled torrents are detected.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <ScrollArea className="h-[400px] rounded-md border bg-muted/20">
-                  <div className="divide-y divide-border">
-                    {activityEvents.map((event, index) => (
-                      <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                          <div className="space-y-1.5 flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
+      {activityQuery.isError ? (
+        <div className="h-[150px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+          <p className="text-sm text-destructive">Failed to load activity</p>
+          <p className="text-xs text-destructive/70 mt-1">
+            Check connection to the instance.
+          </p>
+        </div>
+      ) : activityQuery.isLoading ? (
+        <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/40">
+          <p className="text-sm text-muted-foreground">Loading activity...</p>
+        </div>
+      ) : activityEvents.length === 0 ? (
+        <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-6">
+          <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+          {activityEnabled && (
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              Events will appear here when stalled torrents are detected.
+            </p>
+          )}
+        </div>
+      ) : (
+        <ScrollArea className="h-[400px] rounded-md border bg-muted/20">
+          <div className="divide-y divide-border">
+            {activityEvents.map((event, index) => (
+              <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-medium text-sm truncate max-w-[300px] sm:max-w-[400px] cursor-help">
+                            {event.torrentName || event.hash}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
+                        {event.outcome}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                        <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                        <button
+                          type="button"
+                          className="hover:text-foreground transition-colors"
+                          onClick={() => {
+                            copyTextToClipboard(event.hash)
+                            toast.success("Hash copied")
+                          }}
+                          title="Copy hash"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <span className="text-muted-foreground/40">•</span>
+                      <span>{formatISOTimestamp(event.timestamp)}</span>
+                    </div>
+
+                    {(event.trackers || event.reason) && (
+                      <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
+                        {event.trackers && (
+                          <div className="flex items-start gap-2">
+                            <span className="font-medium text-muted-foreground shrink-0">Trackers:</span>
+                            <span className="text-foreground break-all">{event.trackers}</span>
+                          </div>
+                        )}
+                        {event.reason && (
+                          <div className="flex items-start gap-2">
+                            <span className="font-medium text-muted-foreground shrink-0">Reason:</span>
+                            {formatErrorReason(event.reason) !== event.reason ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="font-medium text-sm truncate max-w-[300px] sm:max-w-[400px] cursor-help">
-                                    {event.torrentName || event.hash}
-                                  </span>
+                                  <span className="text-foreground break-all cursor-help">{formatErrorReason(event.reason)}</span>
                                 </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                                <TooltipContent className="max-w-md">
+                                  <p className="break-all">{event.reason}</p>
                                 </TooltipContent>
                               </Tooltip>
-                              <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
-                                {event.outcome}
-                              </Badge>
-                            </div>
-                            
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                                <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                <button
-                                  type="button"
-                                  className="hover:text-foreground transition-colors"
-                                  onClick={() => {
-                                    copyTextToClipboard(event.hash)
-                                    toast.success("Hash copied")
-                                  }}
-                                  title="Copy hash"
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </button>
-                              </div>
-                              <span className="text-muted-foreground/40">•</span>
-                              <span>{formatISOTimestamp(event.timestamp)}</span>
-                            </div>
-
-                            {(event.trackers || event.reason) && (
-                              <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
-                                {event.trackers && (
-                                  <div className="flex items-start gap-2">
-                                    <span className="font-medium text-muted-foreground shrink-0">Trackers:</span>
-                                    <span className="text-foreground break-all">{event.trackers}</span>
-                                  </div>
-                                )}
-                                {event.reason && (
-                                  <div className="flex items-start gap-2">
-                                    <span className="font-medium text-muted-foreground shrink-0">Reason:</span>
-                                    {formatErrorReason(event.reason) !== event.reason ? (
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="text-foreground break-all cursor-help">{formatErrorReason(event.reason)}</span>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="max-w-md">
-                                          <p className="break-all">{event.reason}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    ) : (
-                                      <span className="text-foreground break-all">{event.reason}</span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
+                            ) : (
+                              <span className="text-foreground break-all">{event.reason}</span>
                             )}
                           </div>
-                        </div>
+                        )}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </ScrollArea>
-              )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
     </div>
   )
 
@@ -828,7 +824,7 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
     excludeTags: settings.excludeTags,
     tags: [...settings.tags],
     excludeTrackers: settings.excludeTrackers,
-    trackers: [...settings.trackers],
+    trackers: normalizeTrackerDomains(settings.trackers),
     aggressive: settings.aggressive,
   }
 }
@@ -853,7 +849,7 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
     excludeTags: settings.excludeTags,
     tags: normalizeList(settings.tags),
     excludeTrackers: settings.excludeTrackers,
-    trackers: normalizeList(settings.trackers),
+    trackers: normalizeTrackerDomains(settings.trackers),
     aggressive: settings.aggressive,
   }
 }

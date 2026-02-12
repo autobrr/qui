@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -211,7 +211,7 @@ export function InstanceBackups() {
   const { data: runsResponse, isLoading: runsLoading } = useBackupRuns(instanceId ?? 0, {
     limit: BACKUPS_PER_PAGE,
     offset: backupsOffset,
-    enabled: shouldLoadData
+    enabled: shouldLoadData,
   })
   const runs = runsResponse?.runs ?? []
   const queryClient = useQueryClient()
@@ -360,6 +360,9 @@ export function InstanceBackups() {
 
   const lastRun = summaryRuns.length > 0 ? summaryRuns[0] : undefined
   const hasRuns = summaryRuns.length > 0
+  const latestCompletedRun = useMemo(() => {
+    return summaryRuns.find(run => run.status === "success")
+  }, [summaryRuns])
 
   const hasActiveCadence = useMemo(() => {
     if (!formState) return false
@@ -418,9 +421,7 @@ export function InstanceBackups() {
         state: "ready",
         kind: activeRun.kind,
         timestamp: formatDateSafe(activeRun.startedAt ?? activeRun.requestedAt, formatDate),
-        status: activeRun.status === "running"
-          ? "Backup is currently running."
-          : "Backup is queued and will start shortly.",
+        status: activeRun.status === "running"? "Backup is currently running.": "Backup is queued and will start shortly.",
       }
     }
 
@@ -429,10 +430,10 @@ export function InstanceBackups() {
 
     let best:
       | {
-          kind: BackupRunKind
-          nextDate?: Date
-          hasHistory: boolean
-        }
+        kind: BackupRunKind
+        nextDate?: Date
+        hasHistory: boolean
+      }
       | null = null
 
     for (const cadence of enabledCadences) {
@@ -1615,15 +1616,15 @@ export function InstanceBackups() {
             setImportFile(null)
           }
         }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Import backup</DialogTitle>
               <DialogDescription>
                 Upload a backup archive (with torrent files) or manifest.json (metadata only).
                 Archive formats: zip, tar.gz, tar.zst, tar.br, tar.xz, tar.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="manifest-file">Backup file</Label>
                 <Input
@@ -1671,100 +1672,122 @@ export function InstanceBackups() {
         <div ref={backupHistoryRef}>
           <Card>
             <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Backup history</CardTitle>
-              <div className="flex items-center gap-2">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={deleteAllRuns.isPending || runsLoading || !hasRuns}
-                    >
-                      <Trash className="mr-2 h-4 w-4" /> Delete all
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete all backups?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This removes every stored backup archive and manifest for this instance. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteAll} disabled={deleteAllRuns.isPending}>
-                        Delete all
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-                <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                  <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
-                </Button>
+              <div className="flex items-center justify-between">
+                <CardTitle>Backup history</CardTitle>
+                <div className="flex items-center gap-2">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={deleteAllRuns.isPending || runsLoading || !hasRuns}
+                      >
+                        <Trash className="mr-2 h-4 w-4" /> Delete all
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete all backups?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This removes every stored backup archive and manifest for this instance. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteAll} disabled={deleteAllRuns.isPending}>
+                          Delete all
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                    <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => latestCompletedRun && openRestore(latestCompletedRun)}
+                    disabled={!latestCompletedRun || executeRestore.isPending || runsLoading}
+                  >
+                    <Undo2 className="mr-2 h-4 w-4" /> Restore from latest
+                  </Button>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {runsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading backups...</p>
-            ) : runs.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="w-40">Requested</TableHead>
-                        <TableHead className="w-40">Completed</TableHead>
-                        <TableHead className="text-right">Torrents</TableHead>
-                        <TableHead className="text-right">Size</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {runs.map(run => (
-                        <TableRow key={run.id}>
-                          <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
-                          <TableCell>
-                            {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
-                              <div className="space-y-1 min-w-[200px]">
-                                <Progress value={run.progressPercentage ?? 0} className="h-2" />
-                                <p className="text-xs text-muted-foreground">
-                                  {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
-                                </p>
-                              </div>
-                            ) : (
-                              <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
-                          <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
-                          <TableCell className="text-right">{run.torrentCount}</TableCell>
-                          <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
-                          <TableCell className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openManifest(run.id)}
-                              aria-label="View manifest"
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openRestore(run)}
-                              aria-label="Restore from backup"
-                            >
-                              <Undo2 className="h-4 w-4" />
-                            </Button>
-                            {run.status === "success" && run.torrentCount > 0 ? (
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {runsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading backups...</p>
+              ) : runs.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-40">Requested</TableHead>
+                      <TableHead className="w-40">Completed</TableHead>
+                      <TableHead className="text-right">Torrents</TableHead>
+                      <TableHead className="text-right">Size</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {runs.map(run => (
+                      <TableRow key={run.id}>
+                        <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
+                        <TableCell>
+                          {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
+                            <div className="space-y-1 min-w-[200px]">
+                              <Progress value={run.progressPercentage ?? 0} className="h-2" />
+                              <p className="text-xs text-muted-foreground">
+                                {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
+                              </p>
+                            </div>
+                          ) : (
+                            <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
+                        <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
+                        <TableCell className="text-right">{run.torrentCount}</TableCell>
+                        <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
+                        <TableCell className="flex justify-end gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openManifest(run.id)}
+                                aria-label="View manifest"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View backup manifest</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openRestore(run)}
+                                aria-label="Restore from backup"
+                              >
+                                <Undo2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Restore torrents from this backup</TooltipContent>
+                          </Tooltip>
+                          {run.status === "success" && run.torrentCount > 0 ? (
+                            <Tooltip>
                               <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" aria-label="Download backup">
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" aria-label="Download backup">
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Download backup archive</TooltipContent>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem asChild>
                                     <a
@@ -1822,17 +1845,22 @@ export function InstanceBackups() {
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            ) : (
-                              <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            )}
+                            </Tooltip>
+                          ) : (
+                            <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Tooltip>
                             <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Delete backup">
-                                  <Trash className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
+                              <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label="Delete backup">
+                                    <Trash className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete this backup</TooltipContent>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Delete backup?</AlertDialogTitle>
@@ -1848,43 +1876,44 @@ export function InstanceBackups() {
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {canGoPrevious ? "No backups on this page. Use pagination to go back." : "No backups have been created yet."}
-              </p>
-            )}
-            {shouldShowPagination && (
-              <div className="flex items-center justify-between pt-4">
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
                 <p className="text-sm text-muted-foreground">
-                  Page {backupsPage} • Showing {runs.length} backup{runs.length !== 1 ? "s" : ""}
+                  {canGoPrevious ? "No backups on this page. Use pagination to go back." : "No backups have been created yet."}
                 </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBackupsPage(p => p - 1)}
-                    disabled={!canGoPrevious || runsLoading}
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBackupsPage(p => p + 1)}
-                    disabled={!canGoNext || runsLoading}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
+              )}
+              {shouldShowPagination && (
+                <div className="flex items-center justify-between pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Page {backupsPage} • Showing {runs.length} backup{runs.length !== 1 ? "s" : ""}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBackupsPage(p => p - 1)}
+                      disabled={!canGoPrevious || runsLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBackupsPage(p => p + 1)}
+                      disabled={!canGoNext || runsLoading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </CardContent>
           </Card>
         </div>

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 // Shared helpers for deriving Torznab parameters from UI selections
 // Mirrors backend category groupings in internal/services/jackett.
 

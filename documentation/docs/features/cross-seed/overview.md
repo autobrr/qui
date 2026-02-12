@@ -62,6 +62,7 @@ Run sparingly. This deep scan touches every matching torrent and queries indexer
 Triggers a cross-seed search when torrents finish downloading. Configure in the **Auto** tab under "Auto-search on completion".
 
 - **Categories/Tags** - Filter which completed torrents trigger searches
+- **Target indexers** - Limit completion searches to specific indexers (empty means all enabled)
 - **Exclude categories/tags** - Skip torrents matching these filters
 
 ### Manual Search
@@ -70,3 +71,10 @@ Right-click any torrent in the list to access cross-seed actions:
 
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+## Blocklist
+
+Use the per-instance blocklist to prevent specific infohashes from being injected again.
+
+- **Manage**: Cross-Seed page → Blocklist tab
+- **Quick add**: Delete dialog checkbox (only shown for torrents tagged `cross-seed`)

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -39,6 +39,7 @@ type IndexerStore interface {
 	GetCapabilities(ctx context.Context, indexerID int) ([]string, error)
 	SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
+	SetLimits(ctx context.Context, indexerID, limitDefault, limitMax int) error
 	RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error
 	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
 	ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error)
@@ -108,6 +109,7 @@ const (
 
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
+	searchCacheScopeDirScan   = "dir-scan"
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -215,7 +217,7 @@ func rateLimitOptionsForPriority(priority RateLimitPriority) *RateLimitOptions {
 		return &RateLimitOptions{
 			Priority:    RateLimitPriorityCompletion,
 			MinInterval: defaultMinRequestInterval,
-			// MaxWait: 0 - completion searches queue and wait indefinitely
+			MaxWait:     completionMaxWait,
 		}
 	default:
 		return &RateLimitOptions{
@@ -257,6 +259,9 @@ type TorrentDownloadRequest struct {
 	GUID        string
 	Title       string
 	Size        int64
+	// Pace applies per-indexer min-interval pacing before contacting the backend.
+	// This is useful for background/automated workflows (e.g. dirscan) to avoid bursts of .torrent downloads.
+	Pace bool
 }
 
 // ServiceOption configures optional behaviour on the Jackett service.
@@ -546,6 +551,19 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) error {
 // SearchGeneric performs a general Torznab search across specified or all enabled indexers
 func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) error {
 	return s.performSearch(ctx, req, searchCacheScopeGeneral)
+}
+
+// SearchWithScope performs a Torznab search with a custom cache scope.
+// This is used by dir-scan and other features that need cache separation.
+func (s *Service) SearchWithScope(ctx context.Context, req *TorznabSearchRequest, scope string) error {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return errors.New("invalid scope: empty")
+	}
+	if s == nil {
+		return errors.New("nil service")
+	}
+	return s.performSearch(ctx, req, scope)
 }
 
 // performSearch is the shared implementation for Search and SearchGeneric
@@ -918,6 +936,15 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 				IndexerName: indexer.Name,
 				ResumeAt:    resumeAt,
 				Queued:      false,
+			}
+		}
+		if req.Pace {
+			// Even when search results are served from cache, downloading torrent payloads can still hit
+			// Prowlarr/private trackers very aggressively. Apply per-indexer pacing when explicitly enabled.
+			priority := resolveSearchPriority(ctx, nil, RateLimitPriorityBackground)
+			opts := rateLimitOptionsForPriority(priority)
+			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer, opts); waitErr != nil {
+				return nil, waitErr
 			}
 		}
 	}
@@ -1652,6 +1679,9 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 	if err := s.indexerStore.SetCategories(ctx, indexer.ID, caps.Categories); err != nil {
 		return nil, fmt.Errorf("persist torznab categories: %w", err)
 	}
+	if err := s.indexerStore.SetLimits(ctx, indexer.ID, caps.LimitDefault, caps.LimitMax); err != nil {
+		return nil, fmt.Errorf("persist torznab limits: %w", err)
+	}
 
 	updated, err := s.indexerStore.Get(ctx, indexer.ID)
 	if err != nil {
@@ -1797,7 +1827,23 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 
-	s.applyProwlarrWorkaround(idx, paramsMap)
+	limitMax := idx.LimitMax
+	if limitMax <= 0 {
+		limitMax = defaultTorznabLimit
+	}
+
+	// Clamp limit to indexer's max
+	if limitStr, hasLimit := paramsMap["limit"]; hasLimit {
+		if limit, parseErr := strconv.Atoi(limitStr); parseErr == nil && limit > limitMax {
+			paramsMap["limit"] = strconv.Itoa(limitMax)
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Int("requested_limit", limit).
+				Int("clamped_to", limitMax).
+				Msg("Clamped search limit to indexer's max")
+		}
+	}
 
 	var searchFn func() ([]Result, error)
 	switch idx.Backend {
@@ -1805,6 +1851,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
+
+		// Note: the prowlarr workaround only applies to the prowlarr backend.
 
 		if opts.logSearchActivity {
 			log.Debug().
@@ -1832,6 +1880,10 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
+
+		// Apply the year->query workaround after capability processing so that
+		// ID-driven searches which lose IDs can still restore the original query.
+		s.applyProwlarrWorkaround(idx, paramsMap)
 
 		if opts.logSearchActivity {
 			log.Debug().
@@ -2247,6 +2299,9 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
+	// Apply Prowlarr year workaround after pruning/restoring parameters.
+	s.applyProwlarrWorkaround(idx, params)
+
 	// Debug log final parameters after processing
 	log.Debug().
 		Int("indexer_id", idx.ID).
@@ -2332,16 +2387,25 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 	}
 
 	// If we had IDs but they were all pruned, restore q param for this indexer
-	if hadIDs && !hasIDsAfterPruning && meta.originalQuery != "" {
-		// Check if q is already present (shouldn't be if OmitQueryForIDs was used)
-		if _, exists := params["q"]; !exists {
-			params["q"] = meta.originalQuery
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Str("query", meta.originalQuery).
-				Msg("Restored q parameter after all ID params were pruned for indexer")
-		}
+	if !hadIDs || hasIDsAfterPruning {
+		return
+	}
+
+	restoredQuery := strings.TrimSpace(meta.originalQuery)
+	if restoredQuery == "" {
+		restoredQuery = strings.TrimSpace(meta.releaseName)
+	}
+	if restoredQuery == "" {
+		return
+	}
+
+	if strings.TrimSpace(params["q"]) == "" {
+		params["q"] = restoredQuery
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Str("query", restoredQuery).
+			Msg("Restored q parameter after all ID params were pruned for indexer")
 	}
 }
 
@@ -2354,6 +2418,13 @@ func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map
 
 	yearStr, exists := params["year"]
 	if !exists || yearStr == "" {
+		return
+	}
+
+	hasIDs := params["imdbid"] != "" || params["tvdbid"] != "" || params["tmdbid"] != "" || params["tvmazeid"] != ""
+	if hasIDs {
+		// For ID-driven searches we intentionally omit q; avoid injecting year-only queries.
+		delete(params, "year")
 		return
 	}
 
@@ -2414,6 +2485,27 @@ func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx
 				Msg("Failed to persist torznab categories")
 		} else {
 			idx.Categories = caps.Categories
+		}
+	}
+
+	// Store limits if present and different from current values
+	hasNewLimits := caps.LimitDefault > 0 || caps.LimitMax > 0
+	limitsChanged := idx.LimitDefault != caps.LimitDefault || idx.LimitMax != caps.LimitMax
+	if hasNewLimits && limitsChanged {
+		if err := s.indexerStore.SetLimits(ctx, idx.ID, caps.LimitDefault, caps.LimitMax); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", idx.ID).
+				Msg("Failed to persist torznab limits")
+		} else {
+			idx.LimitDefault = caps.LimitDefault
+			idx.LimitMax = caps.LimitMax
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Int("limit_default", caps.LimitDefault).
+				Int("limit_max", caps.LimitMax).
+				Msg("Successfully stored indexer limits from caps")
 		}
 	}
 }

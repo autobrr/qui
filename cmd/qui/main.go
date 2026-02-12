@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package main
@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
@@ -35,6 +36,8 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
@@ -56,7 +59,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
-		Long: `qui - A modern, self-hosted web interface for managing 
+		Long: `qui - A modern, self-hosted web interface for managing
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 
@@ -122,7 +125,7 @@ func RunGenerateConfigCommand() *cobra.Command {
 		Long: `Generate a default configuration file without starting the server.
 
 If no --config-dir is specified, uses the OS-specific default location:
-- Linux/macOS: ~/.config/qui/config.toml  
+- Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml
 
 You can specify either a directory path or a direct file path:
@@ -195,7 +198,7 @@ This command allows you to create the initial user account that is required
 for authentication. Only one user account can exist in the system.
 
 If no --config-dir is specified, uses the OS-specific default location:
-- Linux/macOS: ~/.config/qui/config.toml  
+- Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize configuration
@@ -283,7 +286,7 @@ func RunChangePasswordCommand() *cobra.Command {
 This command allows you to change the password for the existing user account.
 
 If no --config-dir is specified, uses the OS-specific default location:
-- Linux/macOS: ~/.config/qui/config.toml  
+- Linux/macOS: ~/.config/qui/config.toml
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.New(configDir, buildinfo.Version)
@@ -389,7 +392,7 @@ func RunUpdateCommand() *cobra.Command {
 
 	command.SetUsageTemplate(`Usage:
   {{.CommandPath}}
-  
+
 Flags:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
 `)
@@ -465,6 +468,19 @@ func (app *Application) runServer() {
 		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
 	}
 
+	dodoEnv := os.Getenv("DODO_PAYMENTS_ENVIRONMENT")
+	if dodoEnv == "" {
+		dodoEnv = os.Getenv("DODO_ENVIRONMENT")
+	}
+	dodoClient := dodo.NewClient(
+		dodo.WithUserAgent(buildinfo.UserAgent),
+		dodo.WithEnvironment(dodoEnv),
+	)
+	log.Info().
+		Str("environment", dodoEnv).
+		Str("base_url", dodoClient.BaseURL()).
+		Msg("Initialized Dodo Payments client")
+
 	// Initialize database
 	db, err := database.New(cfg.GetDatabasePath())
 	if err != nil {
@@ -500,7 +516,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db)
-	licenseService := license.NewLicenseService(licenseRepo, polarClient, cfg.GetConfigDir())
+	licenseService := license.NewLicenseService(licenseRepo, polarClient, dodoClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
@@ -515,7 +531,7 @@ func (app *Application) runServer() {
 	defer clientPool.Close()
 
 	// Initialize managers
-	syncManager := qbittorrent.NewSyncManager(clientPool)
+	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
@@ -571,16 +587,23 @@ func (app *Application) runServer() {
 	arrService := arr.NewService(arrInstanceStore, arrIDCacheStore)
 	log.Info().Msg("ARR service initialized")
 
+	// Initialize automation activity store and external programs service
+	automationActivityStore := models.NewAutomationActivityStore(db)
+	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore, cfg.Config.CrossSeedRecoverErroredTorrents)
+	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, crossSeedBlocklistStore, jackettService, arrService, externalProgramStore, externalProgramService, instanceCrossSeedCompletionStore, trackerCustomizationStore, cfg.Config.CrossSeedRecoverErroredTorrents)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	automationActivityStore := models.NewAutomationActivityStore(db)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, externalProgramService)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
+
+	dirScanStore := models.NewDirScanStore(db)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -601,6 +624,12 @@ func (app *Application) runServer() {
 	orphanScanCtx, orphanScanCancel := context.WithCancel(context.Background())
 	defer orphanScanCancel()
 	orphanScanService.Start(orphanScanCtx)
+
+	dirScanCtx, dirScanCancel := context.WithCancel(context.Background())
+	defer dirScanCancel()
+	if err := dirScanService.Start(dirScanCtx); err != nil {
+		log.Error().Err(err).Msg("failed to start dirscan service")
+	}
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -675,6 +704,7 @@ func (app *Application) runServer() {
 		ReannounceService:                reannounceService,
 		ClientAPIKeyStore:                clientAPIKeyStore,
 		ExternalProgramStore:             externalProgramStore,
+		ExternalProgramService:           externalProgramService,
 		ClientPool:                       clientPool,
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
@@ -694,6 +724,7 @@ func (app *Application) runServer() {
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
+		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
 	})
@@ -720,7 +751,7 @@ func (app *Application) runServer() {
 	}
 
 	if cfg.Config.MetricsEnabled {
-		metricsManager := metrics.NewMetricsManager(syncManager, clientPool)
+		metricsManager := metrics.NewMetricsManager(syncManager, clientPool, trackerCustomizationStore)
 
 		// Start metrics server on separate port
 		go func() {

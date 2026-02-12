@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package automations provides an expression-based automation system for managing torrents.
@@ -72,6 +72,7 @@ const (
 	// Boolean fields
 	FieldPrivate        = models.FieldPrivate
 	FieldIsUnregistered = models.FieldIsUnregistered
+	FieldHasMissingFiles = models.FieldHasMissingFiles
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope

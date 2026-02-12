@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -12,6 +12,8 @@ import { nodePolyfills } from "vite-plugin-node-polyfills"
 import { VitePWA } from "vite-plugin-pwa"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
+const workboxMode = nodeMajor >= 24 ? "development" : "production"
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
@@ -27,6 +29,9 @@ export default defineConfig(() => ({
       include: ["path", "buffer", "stream"],
     }),
     VitePWA({
+      // Workbox-build uses Rollup + terser when mode=production; that currently breaks builds
+      // on some newer Node.js versions. We don't need SW minification, so prefer compatibility.
+      mode: "development",
       registerType: "autoUpdate",
       injectRegister: null,
       minify: false,
@@ -34,8 +39,13 @@ export default defineConfig(() => ({
         enabled: false,
       },
       workbox: {
+        // Workbox uses rollup+terser in production mode; Node 24 currently triggers an "Unexpected early exit".
+        // Use development mode on Node 24+ to keep builds working without changing runtime behavior elsewhere.
+        mode: workboxMode,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
-        //maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // Allow larger bundles to be precached
+        disableDevLogs: true,
+        // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         sourcemap: true,
         // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
         navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/],
@@ -64,8 +74,8 @@ export default defineConfig(() => ({
         theme_color: "#000000", // Will be updated dynamically by PWA theme manager
         background_color: "#000000",
         display: "standalone",
-        scope: "/",
-        start_url: "/",
+        scope: "./",
+        start_url: "./",
         categories: ["utilities", "productivity"],
         icons: [
           {
@@ -87,6 +97,23 @@ export default defineConfig(() => ({
             purpose: "maskable",
           },
         ],
+        protocol_handlers: [
+          {
+            protocol: "magnet",
+            url: "./add?url=%s",
+          },
+        ],
+        file_handlers: [
+          {
+            action: "./add",
+            accept: {
+              "application/x-bittorrent": [".torrent"],
+            },
+          },
+        ],
+        launch_handler: {
+          client_mode: "navigate-existing",
+        },
       },
     }),
   ],
