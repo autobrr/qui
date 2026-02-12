@@ -280,6 +280,41 @@ func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t
 	require.Equal(t, []int{2}, ids)
 }
 
+func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {
+	ctx := context.Background()
+
+	// Store is required for buildGazelleClientSet, but keys can be missing for this test.
+	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-client-cache.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	calls := 0
+	svc := &Service{
+		automationStore: store,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			calls++
+			return &models.CrossSeedAutomationSettings{
+				GazelleEnabled: true,
+			}, nil
+		},
+	}
+
+	clients, err := svc.buildGazelleClientSet(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, clients)
+	require.Equal(t, 1, calls)
+}
+
 func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh.db")

@@ -887,6 +887,10 @@ type searchRunState struct {
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
+
+	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
+	// This avoids repeated settings/key lookups for every candidate torrent.
+	gazelleClients *gazelleClientSet
 }
 
 // shouldSkipErroredTorrent returns true if the torrent should be excluded from
@@ -1760,6 +1764,10 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
+	gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, settings)
+	if gazelleErr != nil {
+		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
+	}
 	hasGazelle := settings.GazelleEnabled && (strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
 	if opts.DisableTorznab && !hasGazelle {
 		return nil, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
@@ -1833,6 +1841,15 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		run:           storedRun,
 		opts:          opts,
 		recentResults: make([]models.CrossSeedSearchResult, 0, 10),
+		gazelleClients: func() *gazelleClientSet {
+			if gazelleErr != nil {
+				return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
+			}
+			if gazelleClients == nil {
+				return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
+			}
+			return gazelleClients
+		}(),
 	}
 
 	if opts.DisableTorznab {
@@ -3193,15 +3210,15 @@ func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownlo
 			return nil, fmt.Errorf("invalid gazelle download url: %s", req.DownloadURL)
 		}
 
-		if s.automationStore == nil {
-			return nil, errors.New("cross-seed store not configured")
-		}
-
-		client, hasClient, err := s.gazelleClientForHost(ctx, host)
+		clients, err := s.buildGazelleClientSet(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
-		if !hasClient || client == nil {
+		client := (*gazellemusic.Client)(nil)
+		if clients != nil {
+			client = clients.byHost[strings.ToLower(strings.TrimSpace(host))]
+		}
+		if client == nil {
 			return nil, fmt.Errorf("gazelle API key not configured for %s", host)
 		}
 		return client.DownloadTorrent(ctx, torrentID)
@@ -5192,6 +5209,7 @@ func (s *Service) searchGazelleMatches(
 	sourceFiles qbt.TorrentFiles,
 	sourceSite string,
 	isGazelleSource bool,
+	clients *gazelleClientSet,
 ) ([]TorrentSearchResult, bool) {
 	if s == nil || sourceTorrent == nil {
 		return []TorrentSearchResult{}, false
@@ -5210,16 +5228,11 @@ func (s *Service) searchGazelleMatches(
 	exportAttempted := false
 
 	for _, targetHost := range targetHosts {
-		client, hasClient, clientErr := s.gazelleClientForHost(ctx, targetHost)
-		if clientErr != nil {
-			log.Warn().
-				Err(clientErr).
-				Str("targetHost", targetHost).
-				Str("hash", sourceTorrent.Hash).
-				Msg("[CROSSSEED-GAZELLE] Failed to initialize client")
+		if clients == nil || len(clients.byHost) == 0 {
 			continue
 		}
-		if !hasClient || client == nil {
+		client := clients.byHost[strings.ToLower(strings.TrimSpace(targetHost))]
+		if client == nil {
 			continue
 		}
 		gazelleConfigured = true
@@ -5347,33 +5360,6 @@ func buildFileSizeMap(files qbt.TorrentFiles) map[string]int64 {
 	return out
 }
 
-func (s *Service) gazelleClientForHost(ctx context.Context, host string) (*gazellemusic.Client, bool, error) {
-	if s.automationStore == nil {
-		return nil, false, nil
-	}
-
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	if settings == nil || !settings.GazelleEnabled {
-		return nil, false, nil
-	}
-
-	key, ok, err := s.automationStore.GetDecryptedGazelleAPIKey(ctx, host)
-	if err != nil {
-		return nil, false, err
-	}
-	if !ok || strings.TrimSpace(key) == "" {
-		return nil, false, nil
-	}
-	client, err := gazellemusic.NewClient("https://"+strings.TrimSpace(host), key)
-	if err != nil {
-		return nil, false, err
-	}
-	return client, true, nil
-}
-
 var (
 	opsOrRedNameRE = regexp.MustCompile(`\b(ops|orpheus|redacted)\b`)
 	opsOrRedURLRE  = regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)`)
@@ -5493,6 +5479,68 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int,
 
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
+	gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, nil)
+	if gazelleErr != nil {
+		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle clients; continuing without Gazelle")
+		gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
+	}
+	if gazelleClients == nil {
+		gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
+	}
+
+	return s.searchTorrentMatches(ctx, instanceID, hash, opts, gazelleClients)
+}
+
+type gazelleClientSet struct {
+	byHost map[string]*gazellemusic.Client
+}
+
+func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*gazelleClientSet, error) {
+	if s == nil {
+		return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}, nil
+	}
+	if settings == nil {
+		loaded, err := s.GetAutomationSettings(ctx)
+		if err != nil {
+			return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}, err
+		}
+		if loaded == nil {
+			loaded = models.DefaultCrossSeedAutomationSettings()
+		}
+		settings = loaded
+	}
+	if settings == nil || !settings.GazelleEnabled {
+		return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}, nil
+	}
+	if s.automationStore == nil {
+		return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}, nil
+	}
+
+	out := &gazelleClientSet{byHost: make(map[string]*gazellemusic.Client, 2)}
+	for _, host := range []string{"redacted.sh", "orpheus.network"} {
+		hostKey := strings.ToLower(strings.TrimSpace(host))
+		if hostKey == "" {
+			continue
+		}
+		key, ok, err := s.automationStore.GetDecryptedGazelleAPIKey(ctx, host)
+		if err != nil {
+			log.Warn().Err(err).Str("host", host).Msg("[CROSSSEED-GAZELLE] Failed to decrypt API key")
+			continue
+		}
+		if !ok || strings.TrimSpace(key) == "" {
+			continue
+		}
+		client, err := gazellemusic.NewClient("https://"+strings.TrimSpace(host), key)
+		if err != nil {
+			log.Warn().Err(err).Str("host", host).Msg("[CROSSSEED-GAZELLE] Failed to initialize client")
+			continue
+		}
+		out.byHost[hostKey] = client
+	}
+	return out, nil
+}
+
+func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, error) {
 	if instanceID <= 0 {
 		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
 	}
@@ -5564,7 +5612,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(sourceTorrent)
-	gazelleResults, gazelleConfigured := s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource)
+	gazelleResults, gazelleConfigured := s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
 
 	if opts.DisableTorznab {
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
@@ -7128,11 +7176,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground)
 
-	searchResp, err := s.SearchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
+	searchResp, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		DisableTorznab:         searchDisableTorznab,
 		IndexerIDs:             allowedIndexerIDs,
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
-	})
+	}, state.gazelleClients)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
