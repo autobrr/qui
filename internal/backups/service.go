@@ -330,6 +330,8 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 					return false
 				}
 			}
+		case models.BackupRunStatusSuccess:
+			// Success is handled below when selecting schedule reference.
 		}
 		break
 	}
