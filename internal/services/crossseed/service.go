@@ -1590,8 +1590,10 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		}
 
 		var requestedIndexerIDs []int
+		explicitCompletionSelection := false
 		if completionSettings != nil {
 			requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
+			explicitCompletionSelection = len(requestedIndexerIDs) > 0
 		}
 		resolvedRequested, resolveErr := s.resolveTorznabIndexerIDs(ctx, requestedIndexerIDs)
 		if resolveErr != nil {
@@ -1610,7 +1612,13 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				Msg("[CROSSSEED-COMPLETION] Failed to filter indexers, falling back to requested set")
 			allowedIndexerIDs = requestedIndexerIDs
 		} else {
-			allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(ctx, torrent.Hash, asyncAnalysis.FilteringState, requestedIndexerIDs)
+			allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(
+				ctx,
+				torrent.Hash,
+				asyncAnalysis.FilteringState,
+				requestedIndexerIDs,
+				explicitCompletionSelection,
+			)
 		}
 
 		if len(allowedIndexerIDs) == 0 {
@@ -7031,7 +7039,13 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 		filteringState := asyncAnalysis.FilteringState
 		var skipReason string
-		allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(ctx, torrent.Hash, filteringState, requestedIndexerIDs)
+		allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(
+			ctx,
+			torrent.Hash,
+			filteringState,
+			requestedIndexerIDs,
+			len(uniquePositiveInts(state.opts.IndexerIDs)) > 0,
+		)
 
 		if len(allowedIndexerIDs) > 0 {
 			contentFilteringCompleted := false
@@ -7245,8 +7259,23 @@ func (s *Service) reportIndexerOutcomes(jobID uint64, indexerAdds, indexerFails 
 	}
 }
 
-func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash string, filteringState *AsyncIndexerFilteringState, fallback []int) ([]int, string) {
+func (s *Service) resolveAllowedIndexerIDs(
+	ctx context.Context,
+	torrentHash string,
+	filteringState *AsyncIndexerFilteringState,
+	fallback []int,
+	explicitSelection bool,
+) ([]int, string) {
 	requested := append([]int(nil), fallback...)
+	if explicitSelection && len(requested) == 0 {
+		if filteringState != nil {
+			if snapshot := filteringState.Clone(); snapshot != nil && snapshot.ContentCompleted {
+				return nil, selectedIndexerContentSkipReason
+			}
+		}
+		return nil, selectedIndexerCapabilitySkipReason
+	}
+
 	if filteringState == nil {
 		return requested, ""
 	}

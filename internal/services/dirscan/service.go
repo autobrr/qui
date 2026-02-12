@@ -58,6 +58,7 @@ func DefaultConfig() Config {
 type Service struct {
 	cfg            Config
 	store          *models.DirScanStore
+	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
@@ -109,6 +110,7 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 func NewService(
 	cfg Config,
 	store *models.DirScanStore,
+	crossSeedStore *models.CrossSeedStore,
 	instanceStore *models.InstanceStore,
 	syncManager *qbittorrent.SyncManager,
 	jackettService *jackett.Service,
@@ -134,6 +136,7 @@ func NewService(
 	return &Service{
 		cfg:                       cfg,
 		store:                     store,
+		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
 		syncManager:               syncManager,
 		jackettService:            jackettService,
@@ -1443,6 +1446,9 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 	if s.jackettService == nil || len(indexerIDs) == 0 {
 		return indexerIDs
 	}
+	if !s.hasGazelleConfigured(ctx) {
+		return indexerIDs
+	}
 
 	resp, err := s.jackettService.GetIndexers(ctx)
 	if err != nil || resp == nil || len(resp.Indexers) == 0 {
@@ -1512,6 +1518,18 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 	}
 
 	return filtered
+}
+
+func (s *Service) hasGazelleConfigured(ctx context.Context) bool {
+	if s.crossSeedStore == nil {
+		return false
+	}
+	settings, err := s.crossSeedStore.GetSettings(ctx)
+	if err != nil || settings == nil {
+		return false
+	}
+	return settings.GazelleEnabled &&
+		(strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
 }
 
 // searchForSearchee searches indexers and waits for results.

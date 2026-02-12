@@ -130,7 +130,7 @@ func TestResolveAllowedIndexerIDsRespectsSelection(t *testing.T) {
 		CapabilityIndexers:    []int{1, 2, 3},
 	}
 
-	ids, reason := svc.resolveAllowedIndexerIDs(context.Background(), "hash", state, []int{2})
+	ids, reason := svc.resolveAllowedIndexerIDs(context.Background(), "hash", state, []int{2}, false)
 	require.Equal(t, []int{2}, ids)
 	require.Equal(t, "", reason)
 }
@@ -143,7 +143,7 @@ func TestResolveAllowedIndexerIDsSelectionFilteredOut(t *testing.T) {
 		FilteredIndexers:      []int{1, 2},
 	}
 
-	ids, reason := svc.resolveAllowedIndexerIDs(context.Background(), "hash", state, []int{99})
+	ids, reason := svc.resolveAllowedIndexerIDs(context.Background(), "hash", state, []int{99}, false)
 	require.Nil(t, ids)
 	require.Equal(t, selectedIndexerContentSkipReason, reason)
 }
@@ -158,7 +158,7 @@ func TestResolveAllowedIndexerIDsCapabilitySelection(t *testing.T) {
 		CapabilityIndexers:    []int{4, 5},
 	}
 
-	ids, reason := svc.resolveAllowedIndexerIDs(ctx, "hash", state, []int{4})
+	ids, reason := svc.resolveAllowedIndexerIDs(ctx, "hash", state, []int{4}, false)
 	require.Equal(t, []int{4}, ids)
 	require.Equal(t, "", reason)
 
@@ -167,9 +167,23 @@ func TestResolveAllowedIndexerIDsCapabilitySelection(t *testing.T) {
 		ContentCompleted:      false,
 		CapabilityIndexers:    []int{7, 8},
 	}
-	idMismatch, mismatchReason := svc.resolveAllowedIndexerIDs(ctx, "hash", state2, []int{99})
+	idMismatch, mismatchReason := svc.resolveAllowedIndexerIDs(ctx, "hash", state2, []int{99}, false)
 	require.Nil(t, idMismatch)
 	require.Equal(t, selectedIndexerCapabilitySkipReason, mismatchReason)
+}
+
+func TestResolveAllowedIndexerIDsExplicitSelectionNeverExpandsWhenResolvedEmpty(t *testing.T) {
+	svc := &Service{}
+	state := &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		FilteredIndexers:      []int{1, 2},
+		CapabilityIndexers:    []int{1, 2},
+	}
+
+	ids, reason := svc.resolveAllowedIndexerIDs(context.Background(), "hash", state, nil, true)
+	require.Nil(t, ids)
+	require.Equal(t, selectedIndexerContentSkipReason, reason)
 }
 
 func TestFilterIndexersBySelection_AllCandidatesReturnedWhenSelectionEmpty(t *testing.T) {
