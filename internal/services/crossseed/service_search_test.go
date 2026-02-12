@@ -242,6 +242,44 @@ func TestFilterOutGazelleTorznabIndexers_DoesNotExcludeGenericRedName(t *testing
 	require.Equal(t, []int{1}, filtered)
 }
 
+func TestResolveTorznabIndexerIDs_PreservesOPSREDForRSSAutomation(t *testing.T) {
+	svc := &Service{
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 1, Name: "Orpheus", BaseURL: "https://orpheus.network", Enabled: true},
+			{ID: 2, Name: "TorrentLeech", BaseURL: "https://torrentleech.org", Enabled: true},
+		}),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				GazelleEnabled: true,
+				RedactedAPIKey: "red-key",
+			}, nil
+		},
+	}
+
+	ids, err := svc.resolveTorznabIndexerIDs(context.Background(), nil, false)
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2}, ids)
+}
+
+func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t *testing.T) {
+	svc := &Service{
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 1, Name: "Orpheus", BaseURL: "https://orpheus.network", Enabled: true},
+			{ID: 2, Name: "TorrentLeech", BaseURL: "https://torrentleech.org", Enabled: true},
+		}),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				GazelleEnabled: true,
+				RedactedAPIKey: "red-key",
+			}, nil
+		},
+	}
+
+	ids, err := svc.resolveTorznabIndexerIDs(context.Background(), nil, true)
+	require.NoError(t, err)
+	require.Equal(t, []int{2}, ids)
+}
+
 func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh.db")

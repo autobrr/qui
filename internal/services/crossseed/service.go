@@ -1610,7 +1610,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
 			explicitCompletionSelection = len(requestedIndexerIDs) > 0
 		}
-		resolvedRequested, resolveErr := s.resolveTorznabIndexerIDs(ctx, requestedIndexerIDs)
+		resolvedRequested, resolveErr := s.resolveTorznabIndexerIDs(ctx, requestedIndexerIDs, true)
 		if resolveErr != nil {
 			return resolveErr
 		}
@@ -1838,7 +1838,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if opts.DisableTorznab {
 		state.resolvedTorznabIndexerIDs = []int{}
 	} else {
-		state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
+		state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs, true)
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -2081,7 +2081,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
 
-	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, settings.TargetIndexerIDs)
+	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, settings.TargetIndexerIDs, false)
 	if resolveErr != nil {
 		msg := resolveErr.Error()
 		run.ErrorMessage = &msg
@@ -2094,7 +2094,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		return run, resolveErr
 	}
 	if len(resolvedIndexerIDs) == 0 {
-		msg := "no eligible Torznab indexers (OPS/RED are Gazelle-only)"
+		msg := "no enabled Torznab indexers configured"
 		run.ErrorMessage = &msg
 		run.Status = models.CrossSeedRunStatusFailed
 		completed := time.Now().UTC()
@@ -5449,10 +5449,12 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 	return filtered
 }
 
-// resolveTorznabIndexerIDs expands "all enabled" selections (empty slice) into an explicit list,
-// then excludes OPS/RED Torznab indexers only when Gazelle is configured (to avoid removing
-// the only usable search path when Gazelle keys are missing).
-func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int) ([]int, error) {
+// resolveTorznabIndexerIDs expands "all enabled" selections (empty slice) into an explicit list.
+//
+// excludeGazelleOnly enables filtering of OPS/RED Torznab indexers when Gazelle is configured.
+// Only set this when the calling path can still match via Gazelle APIs; RSS automation depends
+// on Torznab feeds and must not exclude OPS/RED.
+func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int, excludeGazelleOnly bool) ([]int, error) {
 	requested = uniquePositiveInts(requested)
 
 	settings, err := s.GetAutomationSettings(ctx)
@@ -5463,9 +5465,10 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int)
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 	hasGazelle := settings.GazelleEnabled && (strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
+	shouldExcludeGazelleOnly := excludeGazelleOnly && hasGazelle
 
 	if len(requested) > 0 {
-		if hasGazelle {
+		if shouldExcludeGazelleOnly {
 			return s.filterOutGazelleTorznabIndexers(ctx, requested), nil
 		}
 		return requested, nil
@@ -5482,7 +5485,7 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int)
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
-	if hasGazelle {
+	if shouldExcludeGazelleOnly {
 		return s.filterOutGazelleTorznabIndexers(ctx, ids), nil
 	}
 	return ids, nil
@@ -5588,7 +5591,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, errors.New("torznab search is not configured")
 	}
 
-	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs)
+	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, opts.IndexerIDs, true)
 	if resolveErr != nil {
 		return nil, fmt.Errorf("resolve indexers: %w", resolveErr)
 	}
