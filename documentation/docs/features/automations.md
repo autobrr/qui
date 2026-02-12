@@ -191,7 +191,7 @@ For example, to exclude torrents tagged with `tag1` or `tag2`, use a single cond
 - Field: `Tags`
 - Toggle: `IF NOT` (negate the match)
 - Operator: `matches regex`
-- Value: `(^|,\\s*)(tag1|tag2)(\\s*,|$)`
+- Value: `(^|,\s*)(tag1|tag2)(\s*,|$)`
 
 This evaluates the regex against the raw tags string. The delimiter-aware pattern ensures `tag1` does not match `tag10`. The `IF NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
 ## Tracker Matching
