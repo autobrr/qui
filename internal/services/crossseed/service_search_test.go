@@ -27,7 +27,8 @@ import (
 )
 
 type failingEnabledIndexerStore struct {
-	err error
+	err      error
+	indexers []*models.TorznabIndexer
 }
 
 func (s *failingEnabledIndexerStore) Get(context.Context, int) (*models.TorznabIndexer, error) {
@@ -35,12 +36,26 @@ func (s *failingEnabledIndexerStore) Get(context.Context, int) (*models.TorznabI
 }
 
 func (s *failingEnabledIndexerStore) List(context.Context) ([]*models.TorznabIndexer, error) {
+	if s.indexers != nil {
+		out := make([]*models.TorznabIndexer, 0, len(s.indexers))
+		out = append(out, s.indexers...)
+		return out, nil
+	}
 	return []*models.TorznabIndexer{}, nil
 }
 
 func (s *failingEnabledIndexerStore) ListEnabled(context.Context) ([]*models.TorznabIndexer, error) {
 	if s.err != nil {
 		return nil, s.err
+	}
+	if s.indexers != nil {
+		out := make([]*models.TorznabIndexer, 0, len(s.indexers))
+		for _, idx := range s.indexers {
+			if idx != nil && idx.Enabled {
+				out = append(out, idx)
+			}
+		}
+		return out, nil
 	}
 	return []*models.TorznabIndexer{}, nil
 }
@@ -91,6 +106,10 @@ func (s *failingEnabledIndexerStore) DeleteRateLimitCooldown(context.Context, in
 
 func newFailingJackettService(err error) *jackett.Service {
 	return jackett.NewService(&failingEnabledIndexerStore{err: err})
+}
+
+func newJackettServiceWithIndexers(indexers []*models.TorznabIndexer) *jackett.Service {
+	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers})
 }
 
 func TestComputeAutomationSearchTimeout(t *testing.T) {
@@ -209,6 +228,18 @@ func TestFilterIndexersBySelection_SelectsSubset(t *testing.T) {
 	filtered, removed := filterIndexersBySelection(candidates, []int{2, 4})
 	require.Equal(t, []int{2, 4}, filtered)
 	require.False(t, removed)
+}
+
+func TestFilterOutGazelleTorznabIndexers_DoesNotExcludeGenericRedName(t *testing.T) {
+	svc := &Service{
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 1, Name: "My Red Archive", BaseURL: "https://tracker.example", Enabled: true},
+			{ID: 2, Name: "Orpheus", BaseURL: "https://tracker.example", Enabled: true},
+		}),
+	}
+
+	filtered := svc.filterOutGazelleTorznabIndexers(context.Background(), []int{1, 2})
+	require.Equal(t, []int{1}, filtered)
 }
 
 func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {

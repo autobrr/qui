@@ -1455,7 +1455,7 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 		return indexerIDs
 	}
 
-	opsOrRedName := regexp.MustCompile(`\b(ops|orpheus|red|redacted)\b`)
+	opsOrRedName := regexp.MustCompile(`\b(ops|orpheus|redacted)\b`)
 	opsOrRedURL := regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)`)
 
 	disallowed := make(map[int]struct{}, 8)

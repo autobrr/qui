@@ -1559,8 +1559,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 
 	var searchResp *TorrentSearchResponse
 
-	// Gazelle (OPS/RED) completion path: bypass Torznab requirements and try Gazelle-only matching.
-	if sourceSite, ok := s.detectGazelleSourceSite(torrent); ok && gazelleTargetForSource(sourceSite) != "" {
+	// Gazelle (OPS/RED) completion path: bypass Torznab only when the target site is actually configured.
+	if sourceSite, ok := s.detectGazelleSourceSite(torrent); ok && gazelleTargetForSource(sourceSite) != "" && shouldUseGazelleOnlyForCompletion(settings, sourceSite) {
 		searchCtx, searchCancel := context.WithTimeout(ctx, 45*time.Second)
 		defer searchCancel()
 		searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
@@ -5126,6 +5126,20 @@ func gazelleTargetsForSource(sourceSiteHost string, isGazelleSource bool) []stri
 	return []string{"redacted.sh", "orpheus.network"}
 }
 
+func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSettings, sourceSiteHost string) bool {
+	if settings == nil || !settings.GazelleEnabled {
+		return false
+	}
+	switch gazelleTargetForSource(sourceSiteHost) {
+	case "redacted.sh":
+		return strings.TrimSpace(settings.RedactedAPIKey) != ""
+	case "orpheus.network":
+		return strings.TrimSpace(settings.OrpheusAPIKey) != ""
+	default:
+		return false
+	}
+}
+
 func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 	if torrent == nil || s.syncManager == nil {
 		return "", false
@@ -5346,7 +5360,7 @@ func (s *Service) gazelleClientForHost(ctx context.Context, host string) (*gazel
 }
 
 var (
-	opsOrRedNameRE = regexp.MustCompile(`\b(ops|orpheus|red|redacted)\b`)
+	opsOrRedNameRE = regexp.MustCompile(`\b(ops|orpheus|redacted)\b`)
 	opsOrRedURLRE  = regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)`)
 )
 

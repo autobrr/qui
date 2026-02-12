@@ -222,6 +222,12 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 		syncManager:   syncMock,
 		// jackettService intentionally nil
 		completionStore: completionStore,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				GazelleEnabled: true,
+				OrpheusAPIKey:  "ops-key",
+			}, nil
+		},
 
 		releaseCache: NewReleaseCache(),
 	}
@@ -253,6 +259,7 @@ func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
 
 	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
 		GazelleEnabled:         true,
+		OrpheusAPIKey:          "ops-key",
 		FindIndividualEpisodes: true,
 	}, &models.InstanceCrossSeedCompletionSettings{
 		InstanceID: 1,
@@ -261,5 +268,40 @@ func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("expected gazelle completion path to skip torznab probe, got error: %v", err)
+	}
+}
+
+func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyMissing(t *testing.T) {
+	t.Parallel()
+
+	src := qbt.Torrent{
+		Hash:     "cccccccccccccccccccccccccccccccccccccccc",
+		Name:     "test (2026) [FLAC]",
+		Tracker:  "https://flacsfor.me/announce",
+		Progress: 1.0,
+	}
+	syncMock := &completionGazelleSyncMock{torrent: src}
+
+	const fallbackErrMsg = "expected torznab fallback path"
+	svc := &Service{
+		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
+		syncManager:    syncMock,
+		jackettService: newFailingJackettService(errors.New(fallbackErrMsg)),
+		releaseCache:   NewReleaseCache(),
+	}
+
+	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:         true,
+		FindIndividualEpisodes: true,
+	}, &models.InstanceCrossSeedCompletionSettings{
+		InstanceID: 1,
+		Enabled:    true,
+		IndexerIDs: []int{999},
+	})
+	if err == nil {
+		t.Fatalf("expected completion path to fall back to torznab when opposite-site Gazelle key is missing")
+	}
+	if !strings.Contains(err.Error(), fallbackErrMsg) {
+		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
 	}
 }
