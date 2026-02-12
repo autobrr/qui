@@ -659,6 +659,118 @@ func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
 	require.Equal(t, models.CrossSeedSearchRunStatusSuccess, loaded.Status)
 }
 
+func TestStartSearchRun_DisableTorznabUsesGazelleIntervalFloor(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-interval.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	run, err := svc.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID:      instance.ID,
+		DisableTorznab:  true,
+		IntervalSeconds: 0,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, run)
+	require.Equal(t, minSearchIntervalSecondsGazelleOnly, run.IntervalSeconds)
+
+	require.Eventually(t, func() bool {
+		loaded, loadErr := store.GetSearchRun(ctx, run.ID)
+		if loadErr != nil || loaded == nil {
+			return false
+		}
+		return loaded.Status != models.CrossSeedSearchRunStatusRunning
+	}, 3*time.Second, 25*time.Millisecond)
+
+	loaded, err := store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, minSearchIntervalSecondsGazelleOnly, loaded.IntervalSeconds)
+}
+
+func TestStartSearchRun_TorznabKeepsConservativeIntervalFloor(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-start-torznab-interval.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	svc := &Service{
+		instanceStore:   instanceStore,
+		automationStore: store,
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 1, Name: "Indexer One", Enabled: true},
+		}),
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	run, err := svc.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID:      instance.ID,
+		IntervalSeconds: 1,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, run)
+	require.Equal(t, minSearchIntervalSecondsTorznab, run.IntervalSeconds)
+
+	require.Eventually(t, func() bool {
+		loaded, loadErr := store.GetSearchRun(ctx, run.ID)
+		if loadErr != nil || loaded == nil {
+			return false
+		}
+		return loaded.Status != models.CrossSeedSearchRunStatusRunning
+	}, 3*time.Second, 25*time.Millisecond)
+
+	loaded, err := store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, minSearchIntervalSecondsTorznab, loaded.IntervalSeconds)
+}
+
 type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }

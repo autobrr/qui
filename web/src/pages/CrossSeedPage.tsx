@@ -123,6 +123,7 @@ type CategoryMode = "reuse" | "affix" | "indexer" | "custom"
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
 const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
+const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 1  // Gazelle-only seeded search can rely on tracker API rate limiting
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
 
 // RSS Automation defaults
@@ -917,38 +918,36 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
     const fallbackAffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategoryAffix ?? true)
 
-    const globalSource = globalSettingsInitialized
-      ? globalSettings
-      : {
-        findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-        useCategoryFromIndexer: fallbackIndexer,
-        useCrossCategoryAffix: fallbackAffix,
-        categoryAffixMode: settings.categoryAffixMode ?? "suffix",
-        categoryAffix: settings.categoryAffix ?? ".cross",
-        useCustomCategory: fallbackCustom,
-        customCategory: settings.customCategory ?? "",
-        runExternalProgramId: settings.runExternalProgramId ?? null,
-        gazelleEnabled: settings.gazelleEnabled ?? false,
-        redactedApiKey: settings.redactedApiKey ?? "",
-        orpheusApiKey: settings.orpheusApiKey ?? "",
-        rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
-        seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
-        completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
-        webhookTags: settings.webhookTags ?? ["cross-seed"],
-        inheritSourceTags: settings.inheritSourceTags ?? false,
-        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
-        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
-        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
-        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
-        skipRecheck: settings.skipRecheck ?? false,
-        skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
-        webhookSourceCategories: settings.webhookSourceCategories ?? [],
-        webhookSourceTags: settings.webhookSourceTags ?? [],
-        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
-        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
-        // Note: Hardlink mode is now per-instance
-      }
+    const globalSource = globalSettingsInitialized ? globalSettings : {
+      findIndividualEpisodes: settings.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: fallbackIndexer,
+      useCrossCategoryAffix: fallbackAffix,
+      categoryAffixMode: settings.categoryAffixMode ?? "suffix",
+      categoryAffix: settings.categoryAffix ?? ".cross",
+      useCustomCategory: fallbackCustom,
+      customCategory: settings.customCategory ?? "",
+      runExternalProgramId: settings.runExternalProgramId ?? null,
+      gazelleEnabled: settings.gazelleEnabled ?? false,
+      redactedApiKey: settings.redactedApiKey ?? "",
+      orpheusApiKey: settings.orpheusApiKey ?? "",
+      rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
+      seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
+      completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
+      webhookTags: settings.webhookTags ?? ["cross-seed"],
+      inheritSourceTags: settings.inheritSourceTags ?? false,
+      skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+      skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+      skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+      skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+      skipRecheck: settings.skipRecheck ?? false,
+      skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+      webhookSourceCategories: settings.webhookSourceCategories ?? [],
+      webhookSourceTags: settings.webhookSourceTags ?? [],
+      webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+      webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+      // Note: Hardlink mode is now per-instance
+    }
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
@@ -1182,6 +1181,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     }
     return undefined
   }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEnabled])
+  const seededSearchIntervalMinimum = useMemo(() => {
+    if (!seededSearchTorznabEnabled && gazelleSavedConfigured) {
+      return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
+    }
+    return MIN_SEEDED_SEARCH_INTERVAL_SECONDS
+  }, [gazelleSavedConfigured, seededSearchTorznabEnabled])
+
+  useEffect(() => {
+    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
+  }, [seededSearchIntervalMinimum])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1416,8 +1425,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     // Validate search interval and cooldown
     const errors: Record<string, string> = {}
-    if (searchIntervalSeconds < MIN_SEEDED_SEARCH_INTERVAL_SECONDS) {
-      errors.searchIntervalSeconds = `Must be at least ${MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds`
+    if (searchIntervalSeconds < seededSearchIntervalMinimum) {
+      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} second${seededSearchIntervalMinimum === 1 ? "" : "s"}`
     }
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
       errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
@@ -1470,7 +1479,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       }
       return searchInstanceName
     },
-    [instances, searchInstanceId, searchRunning, activeSearchRun]
+    [instances, searchRunning, activeSearchRun, searchInstanceName]
   )
 
   const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
@@ -2063,10 +2072,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <Input
                     id="search-interval"
                     type="number"
-                    min={MIN_SEEDED_SEARCH_INTERVAL_SECONDS}
+                    min={seededSearchIntervalMinimum}
                     value={searchIntervalSeconds}
                     onChange={event => {
-                      setSearchIntervalSeconds(Number(event.target.value) || MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+                      setSearchIntervalSeconds(Number(event.target.value) || seededSearchIntervalMinimum)
                       // Clear validation error when user changes the value
                       if (validationErrors.searchIntervalSeconds) {
                         setValidationErrors(prev => ({ ...prev, searchIntervalSeconds: "" }))
@@ -2077,7 +2086,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   {validationErrors.searchIntervalSeconds && (
                     <p className="text-sm text-destructive">{validationErrors.searchIntervalSeconds}</p>
                   )}
-                  <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds.</p>
+                  <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {seededSearchIntervalMinimum} second{seededSearchIntervalMinimum === 1 ? "" : "s"}.</p>
                 </div>
                 <div className="space-y-3">
                   <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>

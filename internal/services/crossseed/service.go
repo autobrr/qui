@@ -228,7 +228,8 @@ const (
 	recheckPollInterval                 = 3 * time.Second  // Batch API calls per instance
 	recheckAbsoluteTimeout              = 60 * time.Minute // Allow time for large recheck queues
 	recheckAPITimeout                   = 30 * time.Second
-	minSearchIntervalSeconds            = 60
+	minSearchIntervalSecondsTorznab     = 60
+	minSearchIntervalSecondsGazelleOnly = 1
 	minSearchCooldownMinutes            = 720
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
@@ -1023,8 +1024,22 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 }
 
 func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
-	if intervalSeconds < minSearchIntervalSeconds {
-		intervalSeconds = minSearchIntervalSeconds
+	if intervalSeconds < minSearchIntervalSecondsTorznab {
+		intervalSeconds = minSearchIntervalSecondsTorznab
+	}
+	if cooldownMinutes < minSearchCooldownMinutes {
+		cooldownMinutes = minSearchCooldownMinutes
+	}
+	return intervalSeconds, cooldownMinutes
+}
+
+func normalizeSearchRunTiming(intervalSeconds, cooldownMinutes int, disableTorznab bool) (int, int) {
+	minIntervalSeconds := minSearchIntervalSecondsTorznab
+	if disableTorznab {
+		minIntervalSeconds = minSearchIntervalSecondsGazelleOnly
+	}
+	if intervalSeconds < minIntervalSeconds {
+		intervalSeconds = minIntervalSeconds
 	}
 	if cooldownMinutes < minSearchCooldownMinutes {
 		cooldownMinutes = minSearchCooldownMinutes
@@ -1959,7 +1974,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	if opts.InstanceID <= 0 {
 		return fmt.Errorf("%w: instance id must be positive", ErrInvalidRequest)
 	}
-	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchTiming(opts.IntervalSeconds, opts.CooldownMinutes)
+	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, opts.DisableTorznab)
 	opts.Categories = normalizeStringSlice(opts.Categories)
 	opts.Tags = normalizeStringSlice(opts.Tags)
 	opts.IndexerIDs = uniquePositiveInts(opts.IndexerIDs)
