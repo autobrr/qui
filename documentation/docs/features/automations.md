@@ -158,9 +158,13 @@ Without the regex toggle, tag operators like `contains` and `not contains` check
 | Field | Tags |
 | Toggle | `IF NOT` |
 | Operator | `matches regex` |
-| Value | `tag1|tag2` |
+| Value | Use one of the exact-match patterns below |
 
-This evaluates the regex `tag1|tag2` against the raw tags string. The `NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
+**Option 1 (word boundaries):** `\btag1\b|\btag2\b`
+
+**Option 2 (delimiter-aware):** `(^|,\s*)(tag1|tag2)(\s*,|$)`
+
+These patterns avoid substring matches such as `tag10`. The `NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
