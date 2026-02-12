@@ -1375,6 +1375,7 @@ export interface TorznabIndexer {
   name: string
   base_url: string
   indexer_id: string
+  basic_username?: string
   backend: "jackett" | "prowlarr" | "native"
   enabled: boolean
   priority: number
@@ -1508,6 +1509,8 @@ export interface TorznabIndexerFormData {
   base_url: string
   indexer_id?: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1521,6 +1524,8 @@ export interface TorznabIndexerUpdate {
   base_url?: string
   api_key?: string
   indexer_id?: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1620,6 +1625,8 @@ export interface JackettIndexer {
 export interface DiscoverJackettRequest {
   base_url: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
 }
 
 export interface DiscoverJackettResponse {

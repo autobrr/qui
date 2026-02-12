@@ -5,13 +5,16 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 )
@@ -93,6 +96,8 @@ type arrCreateRequest struct {
 	Name           string                 `json:"name"`
 	BaseURL        string                 `json:"base_url"`
 	APIKey         string                 `json:"api_key"`
+	BasicUsername  *string                `json:"basic_username,omitempty"`
+	BasicPassword  *string                `json:"basic_password,omitempty"`
 	Enabled        bool                   `json:"enabled"`
 	Priority       int                    `json:"priority"`
 	TimeoutSeconds int                    `json:"timeout_seconds"`
@@ -118,6 +123,8 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Base URL is required")
 		return
 	}
+	req.BaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(req.BaseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
 
 	if req.APIKey == "" {
 		RespondError(w, http.StatusBadRequest, "API key is required")
@@ -136,9 +143,13 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	instance, err := h.instanceStore.Create(ctx, req.Type, req.Name, req.BaseURL, req.APIKey, req.Enabled, req.Priority, req.TimeoutSeconds)
+	instance, err := h.instanceStore.Create(ctx, req.Type, req.Name, req.BaseURL, req.APIKey, req.BasicUsername, req.BasicPassword, req.Enabled, req.Priority, req.TimeoutSeconds)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create ARR instance")
+		if errors.Is(err, models.ErrBasicAuthPasswordRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			RespondError(w, http.StatusConflict, "An instance with this URL already exists for this type")
 			return
@@ -155,12 +166,14 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 
 // arrUpdateRequest represents the request to update an ARR instance
 type arrUpdateRequest struct {
-	Name           string `json:"name"`
-	BaseURL        string `json:"base_url"`
-	APIKey         string `json:"api_key,omitempty"` // Optional - only update if provided
-	Enabled        *bool  `json:"enabled,omitempty"`
-	Priority       *int   `json:"priority,omitempty"`
-	TimeoutSeconds *int   `json:"timeout_seconds,omitempty"`
+	Name           string  `json:"name"`
+	BaseURL        string  `json:"base_url"`
+	APIKey         string  `json:"api_key,omitempty"` // Optional - only update if provided
+	BasicUsername  *string `json:"basic_username,omitempty"`
+	BasicPassword  *string `json:"basic_password,omitempty"` // Optional - update if provided, omit to keep, empty to clear
+	Enabled        *bool   `json:"enabled,omitempty"`
+	Priority       *int    `json:"priority,omitempty"`
+	TimeoutSeconds *int    `json:"timeout_seconds,omitempty"`
 }
 
 // UpdateInstance handles PUT /api/arr/instances/{id}
@@ -192,12 +205,21 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if baseURL := strings.TrimSpace(req.BaseURL); baseURL != "" {
+		baseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(baseURL, req.BasicUsername, req.BasicPassword)
 		params.BaseURL = &baseURL
 	}
 
 	if req.APIKey != "" {
 		params.APIKey = &req.APIKey
 	}
+
+	// Basic auth: treat "<redacted>" as "keep existing".
+	if req.BasicPassword != nil && domain.IsRedactedString(strings.TrimSpace(*req.BasicPassword)) {
+		req.BasicPassword = nil
+	}
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForUpdate(req.BasicUsername, req.BasicPassword)
+	params.BasicUsername = req.BasicUsername
+	params.BasicPassword = req.BasicPassword
 
 	params.Enabled = req.Enabled
 	params.Priority = req.Priority
@@ -208,6 +230,10 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == models.ErrArrInstanceNotFound {
 			RespondError(w, http.StatusNotFound, "ARR instance not found")
+			return
+		}
+		if errors.Is(err, models.ErrBasicAuthPasswordRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		log.Error().Err(err).Int("id", id).Msg("Failed to update ARR instance")
@@ -284,9 +310,11 @@ func (h *ArrHandler) TestInstance(w http.ResponseWriter, r *http.Request) {
 
 // arrTestConnectionRequest represents the request to test a connection before saving
 type arrTestConnectionRequest struct {
-	Type    models.ArrInstanceType `json:"type"`
-	BaseURL string                 `json:"base_url"`
-	APIKey  string                 `json:"api_key"`
+	Type          models.ArrInstanceType `json:"type"`
+	BaseURL       string                 `json:"base_url"`
+	APIKey        string                 `json:"api_key"`
+	BasicUsername *string                `json:"basic_username,omitempty"`
+	BasicPassword *string                `json:"basic_password,omitempty"`
 }
 
 // TestConnection handles POST /api/arr/test
@@ -303,6 +331,8 @@ func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Base URL is required")
 		return
 	}
+	req.BaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(req.BaseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
 
 	if req.APIKey == "" {
 		RespondError(w, http.StatusBadRequest, "API key is required")
@@ -315,7 +345,7 @@ func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	testErr := h.arrService.TestConnection(ctx, req.BaseURL, req.APIKey, req.Type)
+	testErr := h.arrService.TestConnection(ctx, req.BaseURL, req.APIKey, req.BasicUsername, req.BasicPassword, req.Type)
 
 	response := arrTestResponse{
 		Success: testErr == nil,
@@ -330,6 +360,81 @@ func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *string) (string, *string, *string) {
+	trimmedURL := strings.TrimSpace(rawBaseURL)
+	u, err := url.Parse(trimmedURL)
+	if err != nil || u == nil || u.User == nil {
+		return rawBaseURL, basicUsername, basicPassword
+	}
+
+	// If caller didn't explicitly provide basic auth, use URL userinfo.
+	if strings.TrimSpace(stringOrEmpty(basicUsername)) == "" {
+		user := strings.TrimSpace(u.User.Username())
+		if user != "" {
+			basicUsername = &user
+			if pass, ok := u.User.Password(); ok {
+				p := strings.TrimSpace(pass)
+				basicPassword = &p
+			}
+		}
+	}
+
+	// Strip userinfo from stored URL.
+	u.User = nil
+	return strings.TrimRight(u.String(), "/"), basicUsername, basicPassword
+}
+
+func normalizeBasicAuthForCreate(basicUsername, basicPassword *string) (*string, *string) {
+	user := strings.TrimSpace(stringOrEmpty(basicUsername))
+	pass := strings.TrimSpace(stringOrEmpty(basicPassword))
+
+	if user == "" {
+		return nil, nil
+	}
+
+	basicUsername = &user
+	if basicPassword != nil {
+		p := pass
+		basicPassword = &p
+	}
+	return basicUsername, basicPassword
+}
+
+func normalizeBasicAuthForUpdate(basicUsername, basicPassword *string) (*string, *string) {
+	user := strings.TrimSpace(stringOrEmpty(basicUsername))
+	pass := strings.TrimSpace(stringOrEmpty(basicPassword))
+
+	// Field omitted entirely -> no change.
+	if basicUsername == nil && basicPassword == nil {
+		return nil, nil
+	}
+
+	// Explicit clear when username is present but empty.
+	if basicUsername != nil && user == "" {
+		empty := ""
+		return &empty, &empty
+	}
+
+	if user == "" {
+		// Username absent/empty and not an explicit clear -> no change.
+		return nil, nil
+	}
+
+	basicUsername = &user
+	if basicPassword != nil {
+		p := pass
+		basicPassword = &p
+	}
+	return basicUsername, basicPassword
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // arrResolveRequest represents a request to resolve a title to external IDs

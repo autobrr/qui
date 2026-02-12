@@ -6394,6 +6394,9 @@ components:
           type: string
         base_url:
           type: string
+        basic_username:
+          type: string
+          nullable: true
         enabled:
           type: boolean
         priority:
@@ -6435,6 +6438,13 @@ components:
         api_key:
           type: string
           writeOnly: true
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
         enabled:
           type: boolean
           default: true
@@ -6456,6 +6466,13 @@ components:
           type: string
           writeOnly: true
           description: Only update if provided
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies (empty string clears)
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
         enabled:
           type: boolean
         priority:
@@ -6478,6 +6495,13 @@ components:
         api_key:
           type: string
           writeOnly: true
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
 
     ArrTestResponse:
       type: object
