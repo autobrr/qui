@@ -49,6 +49,10 @@ func (s *failingEnabledIndexerStore) GetDecryptedAPIKey(*models.TorznabIndexer) 
 	return "", nil
 }
 
+func (s *failingEnabledIndexerStore) GetDecryptedBasicPassword(*models.TorznabIndexer) (string, error) {
+	return "", nil
+}
+
 func (s *failingEnabledIndexerStore) GetCapabilities(context.Context, int) ([]string, error) {
 	return []string{}, nil
 }
