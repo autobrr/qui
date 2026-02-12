@@ -158,7 +158,7 @@ Without the regex toggle, tag operators like `contains` and `not contains` check
 | Field | Tags |
 | Toggle | `IF NOT` |
 | Operator | `matches regex` |
-| Value | `tag1\|tag2` |
+| Value | `tag1|tag2` |
 
 This evaluates the regex `tag1|tag2` against the raw tags string. The `NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
 ## Tracker Matching
