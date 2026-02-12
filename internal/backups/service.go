@@ -659,12 +659,8 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
-			if exportThrottle != nil {
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-exportThrottle:
-				}
+			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
+				return nil, err
 			}
 			var tracker string
 			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
@@ -823,6 +819,19 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		items:           items,
 		settings:        settings,
 	}, nil
+}
+
+func waitForExportThrottle(ctx context.Context, throttle <-chan time.Time) error {
+	if throttle == nil {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-throttle:
+		return nil
+	}
 }
 
 func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings, instanceID int) (string, string, error) {

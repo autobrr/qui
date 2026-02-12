@@ -842,3 +842,127 @@ func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
 	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
 	require.True(t, missed)
 }
+
+func TestIsBackupMissedPendingRunBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	pendingRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusPending,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	require.NoError(t, store.CreateRun(ctx, pendingRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedRunningRunBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	runningRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	startedAt := fixedTime.Add(-2 * time.Hour)
+	runningRun.StartedAt = &startedAt
+	require.NoError(t, store.CreateRun(ctx, runningRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedCanceledRunWithinCooldownBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	canceledRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusCanceled,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-5 * time.Minute),
+	}
+	require.NoError(t, store.CreateRun(ctx, canceledRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedFailedRunOutsideCooldownIsMissed(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	failedRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	failedCompletedAt := fixedTime.Add(-30 * time.Minute)
+	failedRun.CompletedAt = &failedCompletedAt
+	require.NoError(t, store.CreateRun(ctx, failedRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.True(t, missed)
+}
+
+func TestWaitForExportThrottleNoopWithoutThrottle(t *testing.T) {
+	require.NoError(t, waitForExportThrottle(context.Background(), nil))
+}
+
+func TestWaitForExportThrottleReturnsOnTick(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	throttle := make(chan time.Time, 1)
+	throttle <- time.Now()
+
+	require.NoError(t, waitForExportThrottle(ctx, throttle))
+}
+
+func TestWaitForExportThrottleRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	throttle := make(chan time.Time)
+
+	err := waitForExportThrottle(ctx, throttle)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
