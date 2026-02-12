@@ -2104,7 +2104,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-[320px]">
                                   <p>
-                                    The path supports Go templates. Available fields: <code>{{.Name}}</code>, <code>{{.Hash}}</code>, <code>{{.Category}}</code>, <code>{{.IsolationFolderName}}</code>, <code>{{.Tracker}}</code>. Use <code>{{ sanitize .Name }}</code> to create safe path segments. Example: <code>/data/{{.Category}}/{{ sanitize .Name }}</code>
+                                    The path supports Go templates. Available fields: <code>{"{{.Name}}"}</code>, <code>{"{{.Hash}}"}</code>, <code>{"{{.Category}}"}</code>, <code>{"{{.IsolationFolderName}}"}</code>, <code>{"{{.Tracker}}"}</code>. Use <code>{"{{ sanitize .Name }}"}</code> to create safe path segments. Example: <code>{"/data/{{.Category}}/{{ sanitize .Name }}"}</code>
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
