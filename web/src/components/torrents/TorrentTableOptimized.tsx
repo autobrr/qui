@@ -1901,7 +1901,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   useEffect(() => {
     const handleDeleteHotkey = (event: KeyboardEvent) => {
       const isDeleteKey = event.key === "Delete"
-      const isBackspaceDelete = event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey
+      const isBackspaceDelete = isMac && event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey
 
       // Mac keyboards commonly emit Backspace for the key labeled Delete.
       if (!isDeleteKey && !isBackspaceDelete) {
@@ -1939,6 +1939,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [
     effectiveSelectionCount,
+    isMac,
     isPending,
     prepareDeleteAction,
     selectedHashes,
