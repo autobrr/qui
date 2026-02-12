@@ -1897,6 +1897,55 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     lastSelectedIndexRef.current = null
   }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
 
+  // Open delete dialog with Delete key for current selection.
+  useEffect(() => {
+    const handleDeleteHotkey = (event: KeyboardEvent) => {
+      const isDeleteKey = event.key === "Delete"
+      const isBackspaceDelete = event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey
+
+      // Mac keyboards commonly emit Backspace for the key labeled Delete.
+      if (!isDeleteKey && !isBackspaceDelete) {
+        return
+      }
+
+      if (showDeleteDialog || isPending || effectiveSelectionCount === 0) {
+        return
+      }
+
+      const target = event.target
+      const elementTarget = target instanceof Element ? target : null
+
+      if (
+        elementTarget &&
+        (elementTarget.tagName === "INPUT" ||
+          elementTarget.tagName === "TEXTAREA" ||
+          elementTarget.tagName === "SELECT" ||
+          elementTarget instanceof HTMLElement && elementTarget.isContentEditable ||
+          elementTarget.closest("[role=\"dialog\"]") ||
+          elementTarget.closest("[role=\"combobox\"]"))
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      prepareDeleteAction(selectedHashes, selectedTorrents)
+    }
+
+    window.addEventListener("keydown", handleDeleteHotkey)
+
+    return () => {
+      window.removeEventListener("keydown", handleDeleteHotkey)
+    }
+  }, [
+    effectiveSelectionCount,
+    isPending,
+    prepareDeleteAction,
+    selectedHashes,
+    selectedTorrents,
+    showDeleteDialog,
+  ])
+
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
@@ -2492,6 +2541,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
               {/* Body */}
               <div
+                onClick={(e) => {
+                  // Click on empty table space clears all selection.
+                  if (e.target !== e.currentTarget) {
+                    return
+                  }
+
+                  if (!isAllSelected && selectedRowIds.length === 0) {
+                    return
+                  }
+
+                  resetSelectionState()
+                  onTorrentSelect?.(null)
+                }}
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
                   width: "100%",
@@ -2581,8 +2643,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               lastSelectedIndexRef.current = currentIndex
                             } else {
                               // Plain click - open details panel
-                              // If row is already selected, keep selection intact
-                              // Otherwise, select only this torrent (replace selection)
+                              // Re-clicking the currently focused row toggles both details and selection off.
+                              if (isSelected && isRowSelected) {
+                                if (isAllSelected) {
+                                  handleRowSelection(torrent.hash, false, row.id)
+                                } else {
+                                  setRowSelection(prev => {
+                                    if (!prev[row.id]) {
+                                      return prev
+                                    }
+
+                                    const next = { ...prev }
+                                    delete next[row.id]
+                                    return next
+                                  })
+
+                                  if (selectedRowIds.length <= 1) {
+                                    lastSelectedIndexRef.current = null
+                                  }
+                                }
+
+                                onTorrentSelect?.(null)
+                                return
+                              }
+
+                              // If row is not selected, select only this torrent (replace selection).
                               if (!isRowSelected) {
                                 const allRows = table.getRowModel().rows
                                 const currentIndex = allRows.findIndex(r => r.id === row.id)
@@ -2706,8 +2791,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               lastSelectedIndexRef.current = currentIndex
                             } else {
                               // Plain click - open details panel
-                              // If row is already selected, keep selection intact
-                              // Otherwise, select only this torrent (replace selection)
+                              // Re-clicking the currently focused row toggles both details and selection off.
+                              if (isSelected && isRowSelected) {
+                                if (isAllSelected) {
+                                  handleRowSelection(torrent.hash, false, row.id)
+                                } else {
+                                  setRowSelection(prev => {
+                                    if (!prev[row.id]) {
+                                      return prev
+                                    }
+
+                                    const next = { ...prev }
+                                    delete next[row.id]
+                                    return next
+                                  })
+
+                                  if (selectedRowIds.length <= 1) {
+                                    lastSelectedIndexRef.current = null
+                                  }
+                                }
+
+                                onTorrentSelect?.(null)
+                                return
+                              }
+
+                              // If row is not selected, select only this torrent (replace selection).
                               if (!isRowSelected) {
                                 const allRows = table.getRowModel().rows
                                 const currentIndex = allRows.findIndex(r => r.id === row.id)
