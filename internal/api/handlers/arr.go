@@ -369,8 +369,8 @@ func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *
 		return rawBaseURL, basicUsername, basicPassword
 	}
 
-	// If caller didn't explicitly provide basic auth, use URL userinfo.
-	if strings.TrimSpace(stringOrEmpty(basicUsername)) == "" {
+	// If caller omitted basic auth fields entirely, use URL userinfo.
+	if basicUsername == nil && basicPassword == nil {
 		user := strings.TrimSpace(u.User.Username())
 		if user != "" {
 			basicUsername = &user
