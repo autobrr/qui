@@ -1566,6 +1566,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
 		resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
+			DisableTorznab:         true,
 			FindIndividualEpisodes: settings.FindIndividualEpisodes,
 		})
 		if err != nil {
@@ -1744,7 +1745,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		if !hasGazelle {
 			return nil, errors.New("torznab search is not configured")
 		}
-	} else {
+	} else if !opts.DisableTorznab {
 		indexers, indexersErr := s.jackettService.GetEnabledIndexersInfo(ctx)
 		if indexersErr != nil {
 			return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", indexersErr)

@@ -23,7 +23,71 @@ import (
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/services/jackett"
 )
+
+type failingEnabledIndexerStore struct {
+	err error
+}
+
+func (s *failingEnabledIndexerStore) Get(context.Context, int) (*models.TorznabIndexer, error) {
+	return nil, nil
+}
+
+func (s *failingEnabledIndexerStore) List(context.Context) ([]*models.TorznabIndexer, error) {
+	return []*models.TorznabIndexer{}, nil
+}
+
+func (s *failingEnabledIndexerStore) ListEnabled(context.Context) ([]*models.TorznabIndexer, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return []*models.TorznabIndexer{}, nil
+}
+
+func (s *failingEnabledIndexerStore) GetDecryptedAPIKey(*models.TorznabIndexer) (string, error) {
+	return "", nil
+}
+
+func (s *failingEnabledIndexerStore) GetCapabilities(context.Context, int) ([]string, error) {
+	return []string{}, nil
+}
+
+func (s *failingEnabledIndexerStore) SetCapabilities(context.Context, int, []string) error {
+	return nil
+}
+
+func (s *failingEnabledIndexerStore) SetCategories(context.Context, int, []models.TorznabIndexerCategory) error {
+	return nil
+}
+
+func (s *failingEnabledIndexerStore) SetLimits(context.Context, int, int, int) error {
+	return nil
+}
+
+func (s *failingEnabledIndexerStore) RecordLatency(context.Context, int, string, int, bool) error {
+	return nil
+}
+
+func (s *failingEnabledIndexerStore) RecordError(context.Context, int, string, string) error {
+	return nil
+}
+
+func (s *failingEnabledIndexerStore) ListRateLimitCooldowns(context.Context) ([]models.TorznabIndexerCooldown, error) {
+	return []models.TorznabIndexerCooldown{}, nil
+}
+
+func (s *failingEnabledIndexerStore) UpsertRateLimitCooldown(context.Context, int, time.Time, time.Duration, string) error {
+	return nil
+}
+
+func (s *failingEnabledIndexerStore) DeleteRateLimitCooldown(context.Context, int) error {
+	return nil
+}
+
+func newFailingJackettService(err error) *jackett.Service {
+	return jackett.NewService(&failingEnabledIndexerStore{err: err})
+}
 
 func TestComputeAutomationSearchTimeout(t *testing.T) {
 	tests := []struct {
@@ -487,6 +551,63 @@ func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrInvalidRequest)
+}
+
+func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-jackett-probe.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		jackettService:   newFailingJackettService(errors.New("jackett probe should be skipped")),
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	run, err := svc.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID:     instance.ID,
+		DisableTorznab: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, run)
+
+	require.Eventually(t, func() bool {
+		loaded, loadErr := store.GetSearchRun(ctx, run.ID)
+		if loadErr != nil || loaded == nil {
+			return false
+		}
+		return loaded.Status != models.CrossSeedSearchRunStatusRunning
+	}, 3*time.Second, 25*time.Millisecond)
+
+	loaded, err := store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, models.CrossSeedSearchRunStatusSuccess, loaded.Status)
 }
 
 type queueTestSyncManager struct {

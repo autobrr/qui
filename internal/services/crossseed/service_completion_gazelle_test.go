@@ -3,6 +3,7 @@ package crossseed
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -229,5 +230,36 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 
 	if syncMock.getTorrentsHits == 0 {
 		t.Fatalf("expected completion flow to call syncManager.GetTorrents for Gazelle even when jackett is nil")
+	}
+}
+
+func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
+	t.Parallel()
+
+	src := qbt.Torrent{
+		Hash:     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Name:     "test (2026) [FLAC]",
+		Tracker:  "https://flacsfor.me/announce",
+		Progress: 1.0,
+	}
+	syncMock := &completionGazelleSyncMock{torrent: src}
+
+	svc := &Service{
+		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
+		syncManager:    syncMock,
+		jackettService: newFailingJackettService(errors.New("jackett indexer probe should be skipped")),
+		releaseCache:   NewReleaseCache(),
+	}
+
+	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:         true,
+		FindIndividualEpisodes: true,
+	}, &models.InstanceCrossSeedCompletionSettings{
+		InstanceID: 1,
+		Enabled:    true,
+		IndexerIDs: []int{999},
+	})
+	if err != nil {
+		t.Fatalf("expected gazelle completion path to skip torznab probe, got error: %v", err)
 	}
 }
