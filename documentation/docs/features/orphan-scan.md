@@ -18,6 +18,10 @@ Finds and removes files in your download directories that aren't associated with
 3. You preview the list before confirming deletion
 4. Empty directories are cleaned up after file deletion
 
+:::note
+qui normalizes Unicode paths to canonical NFC form during matching. This avoids false orphans when equivalent composed/decomposed names are reported differently. On normalization-sensitive filesystems, two byte-distinct canonical-equivalent names are treated as one logical path.
+:::
+
 :::info
 If you have multiple **active** qBittorrent instances with `Has local filesystem access` enabled, and their torrent `SavePath` directories overlap, qui also protects files referenced by torrents from those other instances (even when scanning a single instance).
 
