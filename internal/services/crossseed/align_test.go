@@ -651,6 +651,13 @@ func TestNormalizeFileKey_UnicodeMatching(t *testing.T) {
 	}
 }
 
+func TestNormalizeFileKey_AudioAliasMatching(t *testing.T) {
+	// DD+ and DDP represent the same Dolby Digital Plus codec and should normalize the same.
+	normDDPlus := normalizeFileKey("Example.Show.S03.720p.AMZN.WEB-DL.DD+5.1.H.264-GRP.mkv")
+	normDDP := normalizeFileKey("Example.Show.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv")
+	require.Equal(t, normDDP, normDDPlus)
+}
+
 func TestHasContentFileSizeMismatch(t *testing.T) {
 	normalizer := stringutils.NewDefaultNormalizer()
 
