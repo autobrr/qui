@@ -151,27 +151,34 @@ Full RE2 (Go regex) syntax is supported. Patterns are case-insensitive by defaul
 
 Each tag condition checks against a **single value**. The value field does not support comma-separated lists -- if you enter `tag1, tag2, tag3` as the value, it will be treated as one literal string, not three separate tags.
 
-Without regex enabled, tag operators (`contains`, `not contains`, `equals`, `not equals`) compare the condition value against each of the torrent's tags individually. For example, a `Tags / contains / racing` condition is true if any one of the torrent's tags contains the substring `racing`.
+Without regex enabled, tag operators (`equals`, `not equals`, `contains`, `not contains`) compare the condition value against each of the torrent's tags individually.
+
+- `equals` / `not equals`: exact tag membership (case-insensitive)
+- `contains` / `not contains`: substring match per tag (case-insensitive)
+
+:::warning Tag operators: `contains` is substring matching
+`Tags contains tag1` will also match torrents tagged `tag10`. For exact tag membership, prefer `equals` / `not equals` with one condition per tag and combine them with an **OR group**.
+:::
 
 #### Matching any of multiple tags
 
-To check whether a torrent has **any one of** several tags, create an **OR group** with one condition per tag:
+To check whether a torrent has **any one of** several tags, create an **OR group** with one condition per tag (exact match):
 
 | # | Field | Operator | Value |
 |---|-------|----------|-------|
-| 1 | Tags  | contains | tag1  |
-| 2 | Tags  | contains | tag2  |
-| 3 | Tags  | contains | tag3  |
+| 1 | Tags  | equals   | tag1  |
+| 2 | Tags  | equals   | tag2  |
+| 3 | Tags  | equals   | tag3  |
 
 Group these with **OR** logic so the rule matches when at least one tag is present.
 
-To **exclude** torrents that have any of several tags, create an **AND group** of `not contains` conditions:
+To **exclude** torrents that have any of several tags, create an **AND group** of `not equals` conditions (exact match):
 
 | # | Field | Operator     | Value |
 |---|-------|--------------|-------|
-| 1 | Tags  | not contains | tag1  |
-| 2 | Tags  | not contains | tag2  |
-| 3 | Tags  | not contains | tag3  |
+| 1 | Tags  | not equals   | tag1  |
+| 2 | Tags  | not equals   | tag2  |
+| 3 | Tags  | not equals   | tag3  |
 
 Group these with **AND** logic -- all three must be true, meaning none of those tags are present.
 
@@ -184,9 +191,9 @@ For example, to exclude torrents tagged with `tag1` or `tag2`, use a single cond
 - Field: `Tags`
 - Toggle: `IF NOT` (negate the match)
 - Operator: `matches regex`
-- Value: `\btag1\b|\btag2\b`
+- Value: `(^|,\\s*)(tag1|tag2)(\\s*,|$)`
 
-This matches if the raw tag string contains either `tag1` or `tag2`, and the `IF NOT` toggle inverts it to exclude those torrents.
+This evaluates the regex against the raw tags string. The delimiter-aware pattern ensures `tag1` does not match `tag10`. The `IF NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
