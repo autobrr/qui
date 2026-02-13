@@ -11,11 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"net/url"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -713,8 +710,6 @@ func (s *Service) runSearchAndInjectPhase(
 
 	injectedTVGroups := make(map[tvGroupKey]struct{})
 
-	gazelleTorznabDisallowed := s.gazelleTorznabDisallowedIndexerSet(ctx)
-
 	for _, searchee := range processed {
 		if ctx.Err() != nil {
 			if l != nil {
@@ -730,7 +725,6 @@ func (s *Service) runSearchAndInjectPhase(
 			fileIDIndex,
 			trackedFiles,
 			injectedTVGroups,
-			gazelleTorznabDisallowed,
 			settings,
 			matcher,
 			runID,
@@ -756,7 +750,6 @@ func (s *Service) processRootSearchee(
 	fileIDIndex map[string]string,
 	trackedFiles *trackedFilesIndex,
 	injectedTVGroups map[tvGroupKey]struct{},
-	gazelleTorznabDisallowed map[int]struct{},
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
@@ -850,7 +843,7 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, gazelleTorznabDisallowed, runID, l)
+		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -1296,7 +1289,6 @@ func (s *Service) processSearchee(
 	searchee *Searchee,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
-	gazelleTorznabDisallowed map[int]struct{},
 	runID int64,
 	l *zerolog.Logger,
 ) ([]*searcheeMatch, searcheeOutcome) {
@@ -1336,12 +1328,11 @@ func (s *Service) processSearchee(
 			sort.Ints(filteredIndexers)
 		}
 	}
-	filteredIndexers = s.filterOutGazelleTorznabIndexers(filteredIndexers, gazelleTorznabDisallowed, l)
 	if len(filteredIndexers) == 0 {
 		if l != nil {
-			l.Debug().Msg("dirscan: no eligible indexers after OPS/RED exclusion")
+			l.Debug().Msg("dirscan: no eligible indexers")
 		}
-		// Don't mark this as searched: if the user later enables non-OPS/RED indexers,
+		// Don't mark this as searched: if the user later enables indexers,
 		// we want this searchee to be retried rather than finalized as no_match.
 		return nil, searcheeOutcome{}
 	}
@@ -1445,108 +1436,6 @@ func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *cro
 		l.Debug().Int("indexers", len(filteredIndexers)).Msg("dirscan: filtered indexers by capabilities")
 	}
 	return filteredIndexers
-}
-
-func (s *Service) gazelleTorznabDisallowedIndexerSet(ctx context.Context) map[int]struct{} {
-	if s.jackettService == nil {
-		return nil
-	}
-	if !s.hasGazelleConfigured(ctx) {
-		return nil
-	}
-
-	resp, err := s.jackettService.GetIndexers(ctx)
-	if err != nil || resp == nil || len(resp.Indexers) == 0 {
-		return nil
-	}
-
-	opsOrRedName := regexp.MustCompile(`\b(ops|orpheus|redacted)\b`)
-	opsOrRedURL := regexp.MustCompile(`(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)`)
-
-	disallowed := make(map[int]struct{}, 8)
-	for _, idx := range resp.Indexers {
-		id, convErr := strconv.Atoi(strings.TrimSpace(idx.ID))
-		if convErr != nil || id <= 0 {
-			continue
-		}
-
-		name := strings.ToLower(strings.TrimSpace(idx.Name))
-		rawURL := strings.TrimSpace(idx.Description)
-		rawLower := strings.ToLower(rawURL)
-
-		host := ""
-		pathLower := ""
-		if parsed, err := url.Parse(rawURL); err == nil {
-			host = strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-			pathLower = strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
-		}
-
-		// Prefer URL-derived signals; fall back to name.
-		urlHit := false
-		switch {
-		case host == "redacted.sh" || strings.HasSuffix(host, ".redacted.sh"):
-			urlHit = true
-		case host == "orpheus.network" || strings.HasSuffix(host, ".orpheus.network"):
-			urlHit = true
-		case strings.Contains(rawLower, "redacted.sh") || strings.Contains(rawLower, "orpheus.network"):
-			urlHit = true
-		case opsOrRedURL.MatchString(rawLower):
-			urlHit = true
-		case pathLower != "" && opsOrRedURL.MatchString(pathLower):
-			urlHit = true
-		}
-
-		if urlHit || opsOrRedName.MatchString(name) {
-			disallowed[id] = struct{}{}
-		}
-	}
-
-	if len(disallowed) == 0 {
-		return nil
-	}
-
-	return disallowed
-}
-
-func (s *Service) filterOutGazelleTorznabIndexers(indexerIDs []int, disallowed map[int]struct{}, l *zerolog.Logger) []int {
-	if len(indexerIDs) == 0 || len(disallowed) == 0 {
-		return indexerIDs
-	}
-
-	filtered := make([]int, 0, len(indexerIDs))
-	removed := 0
-	for _, id := range indexerIDs {
-		if _, ok := disallowed[id]; ok {
-			removed++
-			continue
-		}
-		filtered = append(filtered, id)
-	}
-
-	if removed > 0 && l != nil {
-		l.Debug().
-			Int("removed", removed).
-			Int("requested", len(indexerIDs)).
-			Msg("dirscan: excluded OPS/RED Torznab indexers (Gazelle-only)")
-	}
-
-	return filtered
-}
-
-func (s *Service) hasGazelleConfigured(ctx context.Context) bool {
-	if s.crossSeedStore == nil {
-		return false
-	}
-	for _, host := range []string{"redacted.sh", "orpheus.network"} {
-		key, ok, err := s.crossSeedStore.GetDecryptedGazelleAPIKey(ctx, host)
-		if err != nil {
-			continue
-		}
-		if ok && strings.TrimSpace(key) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // searchForSearchee searches indexers and waits for results.
