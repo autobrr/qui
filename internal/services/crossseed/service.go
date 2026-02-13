@@ -48,6 +48,7 @@ import (
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -268,6 +269,7 @@ type Service struct {
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
 	arrService               *arr.Service // ARR service for ID lookup
+	notifier                 notifications.Notifier
 
 	// External program execution
 	externalProgramStore   *models.ExternalProgramStore
@@ -343,6 +345,7 @@ func NewService(
 	externalProgramService *externalprograms.Service,
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
+	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
@@ -373,6 +376,7 @@ func NewService(
 		blocklistStore:                blocklistStore,
 		jackettService:                jackettService,
 		arrService:                    arrService,
+		notifier:                      notifier,
 		externalProgramStore:          externalProgramStore,
 		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
@@ -1542,6 +1546,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return errors.New("qbittorrent sync manager not configured")
 	}
 
+	startedAt := time.Now().UTC()
 	if err := s.ensureIndexersConfigured(ctx); err != nil {
 		return err
 	}
@@ -1636,8 +1641,22 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	successCount := 0
+	failedCount := 0
+	skippedCount := 0
+	results := make([]models.CrossSeedSearchResult, 0, len(searchResp.Results))
 	for _, match := range searchResp.Results {
 		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
+		if result != nil {
+			results = append(results, *result)
+			switch {
+			case result.Added:
+				successCount++
+			case attemptErr != nil:
+				failedCount++
+			default:
+				skippedCount++
+			}
+		}
 		if attemptErr != nil {
 			log.Debug().
 				Err(attemptErr).
@@ -1646,9 +1665,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				Str("matchIndexer", match.Indexer).
 				Msg("[CROSSSEED-COMPLETION] Cross-seed apply attempt failed")
 			continue
-		}
-		if result != nil && result.Added {
-			successCount++
 		}
 	}
 
@@ -1665,6 +1681,32 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Completion search executed with no additions")
+	}
+
+	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
+		completedAt := time.Now().UTC()
+		eventType := notifications.EventCrossSeedCompletionSucceeded
+		if failedCount > 0 {
+			eventType = notifications.EventCrossSeedCompletionFailed
+		}
+		lines := []string{
+			"Torrent: " + torrent.Name,
+			fmt.Sprintf("Matches: %d", len(searchResp.Results)),
+			fmt.Sprintf("Added: %d", successCount),
+			fmt.Sprintf("Failed: %d", failedCount),
+			fmt.Sprintf("Skipped: %d", skippedCount),
+		}
+		if samples := collectSearchResultSamples(results, 3); len(samples) > 0 {
+			lines = append(lines, "Samples: "+formatSampleText(samples))
+		}
+		notifyCtx := context.WithoutCancel(ctx)
+		s.notifier.Notify(notifyCtx, notifications.Event{
+			Type:        eventType,
+			InstanceID:  instanceID,
+			Message:     strings.Join(lines, "\n"),
+			StartedAt:   &startedAt,
+			CompletedAt: &completedAt,
+		})
 	}
 
 	return nil
@@ -1974,6 +2016,10 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
+	var runErr error
+	defer func() {
+		s.notifyAutomationRun(context.WithoutCancel(ctx), run, runErr)
+	}()
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)
 
@@ -1996,6 +2042,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
+		runErr = err
 		return run, err
 	}
 
@@ -2011,6 +2058,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
+		runErr = err
 		return run, err
 	case <-time.After(10 * time.Minute): // generous timeout for RSS automation
 		msg := "Recent search timed out"
@@ -2021,7 +2069,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
-		return run, errors.New("recent search timed out")
+		timeoutErr := errors.New("recent search timed out")
+		runErr = timeoutErr
+		return run, timeoutErr
 	case <-ctx.Done():
 		msg := "canceled by user"
 		run.ErrorMessage = &msg
@@ -2031,6 +2081,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(context.WithoutCancel(ctx), run); updateErr == nil {
 			run = updated
 		}
+		runErr = ctx.Err()
 		return run, ctx.Err()
 	}
 
@@ -2052,8 +2103,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		Msg("[RSS] Starting feed item processing")
 
 	processed := 0
-	var runErr error
-
 	for _, result := range searchResp.Results {
 		if ctx.Err() != nil {
 			runErr = ctx.Err()
@@ -5926,6 +5975,8 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 		s.searchCancel = nil
 	}
 	s.searchMu.Unlock()
+
+	s.notifySearchRun(context.Background(), state, canceled)
 }
 
 // dedupCacheKey generates a cache key for deduplication results based on instance ID
@@ -7466,6 +7517,260 @@ func (s *Service) appendSearchResult(state *searchRunState, result models.CrossS
 	s.searchMu.Unlock()
 }
 
+func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeedRun, runErr error) {
+	if s == nil || s.notifier == nil || run == nil {
+		return
+	}
+
+	eventType := notifications.EventCrossSeedAutomationSucceeded
+	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
+		eventType = notifications.EventCrossSeedAutomationFailed
+	}
+
+	lines := []string{
+		fmt.Sprintf("Run: %d", run.ID),
+		fmt.Sprintf("Mode: %s", run.Mode),
+		fmt.Sprintf("Status: %s", run.Status),
+		fmt.Sprintf("Feed items: %d", run.TotalFeedItems),
+		fmt.Sprintf("Candidates: %d", run.CandidatesFound),
+		fmt.Sprintf("Added: %d", run.TorrentsAdded),
+		fmt.Sprintf("Failed: %d", run.TorrentsFailed),
+		fmt.Sprintf("Skipped: %d", run.TorrentsSkipped),
+	}
+	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
+		lines = append(lines, "Message: "+strings.TrimSpace(*run.Message))
+	}
+	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
+		lines = append(lines, "Error: "+strings.TrimSpace(*run.ErrorMessage))
+	} else if runErr != nil {
+		lines = append(lines, "Error: "+runErr.Error())
+	}
+	if samples := collectCrossSeedRunSamples(run.Results, 3); len(samples) > 0 {
+		lines = append(lines, "Samples: "+formatSampleText(samples))
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         eventType,
+		InstanceName: "Cross-seed RSS",
+		Message:      strings.Join(lines, "\n"),
+		StartedAt:    &run.StartedAt,
+		CompletedAt:  run.CompletedAt,
+	})
+}
+
+func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, canceled bool) {
+	if s == nil || s.notifier == nil || state == nil || state.run == nil {
+		return
+	}
+
+	eventType := notifications.EventCrossSeedSearchSucceeded
+	if state.run.Status != models.CrossSeedSearchRunStatusSuccess {
+		eventType = notifications.EventCrossSeedSearchFailed
+	}
+
+	lines := []string{
+		fmt.Sprintf("Run: %d", state.run.ID),
+		fmt.Sprintf("Status: %s", state.run.Status),
+		fmt.Sprintf("Processed: %d/%d", state.run.Processed, state.run.TotalTorrents),
+		fmt.Sprintf("Added: %d", state.run.TorrentsAdded),
+		fmt.Sprintf("Failed: %d", state.run.TorrentsFailed),
+		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
+	}
+	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
+		lines = append(lines, "Error: "+strings.TrimSpace(*state.run.ErrorMessage))
+	} else if canceled {
+		lines = append(lines, "Error: canceled")
+	}
+	if samples := collectSearchRunSamples(state); len(samples) > 0 {
+		lines = append(lines, "Samples: "+formatSampleText(samples))
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:        eventType,
+		InstanceID:  state.run.InstanceID,
+		Message:     strings.Join(lines, "\n"),
+		StartedAt:   &state.run.StartedAt,
+		CompletedAt: state.run.CompletedAt,
+	})
+}
+
+func collectCrossSeedRunSamples(results []models.CrossSeedRunResult, limit int) []string {
+	if limit <= 0 || len(results) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, limit)
+	samples := make([]string, 0, limit)
+	for _, result := range results {
+		if !result.Success {
+			continue
+		}
+		label := ""
+		if result.MatchedTorrentName != nil && strings.TrimSpace(*result.MatchedTorrentName) != "" {
+			label = strings.TrimSpace(*result.MatchedTorrentName)
+		} else if result.MatchedTorrentHash != nil && strings.TrimSpace(*result.MatchedTorrentHash) != "" {
+			label = strings.TrimSpace(*result.MatchedTorrentHash)
+		}
+		if label == "" {
+			continue
+		}
+		if strings.TrimSpace(result.InstanceName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, result.InstanceName)
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func collectSearchRunSamples(state *searchRunState) []string {
+	if state == nil {
+		return nil
+	}
+	results := state.recentResults
+	if len(results) == 0 && state.run != nil {
+		results = state.run.Results
+	}
+	return collectSearchResultSamples(results, 3)
+}
+
+func collectSearchResultSamples(results []models.CrossSeedSearchResult, limit int) []string {
+	if limit <= 0 || len(results) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, limit)
+	samples := make([]string, 0, limit)
+	for _, result := range results {
+		if !result.Added {
+			continue
+		}
+		label := strings.TrimSpace(result.TorrentName)
+		if label == "" {
+			label = "torrent"
+		}
+		if strings.TrimSpace(result.ReleaseTitle) != "" {
+			label = fmt.Sprintf("%s → %s", label, strings.TrimSpace(result.ReleaseTitle))
+		}
+		if strings.TrimSpace(result.IndexerName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(result.IndexerName))
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func formatSampleText(samples []string) string {
+	if len(samples) == 0 {
+		return ""
+	}
+	return strings.Join(samples, "; ")
+}
+
+func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string {
+	if limit <= 0 || len(matches) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, limit)
+	samples := make([]string, 0, limit)
+	for _, match := range matches {
+		label := strings.TrimSpace(match.TorrentName)
+		if label == "" {
+			label = strings.TrimSpace(match.TorrentHash)
+		}
+		if label == "" {
+			continue
+		}
+		if strings.TrimSpace(match.InstanceName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(match.InstanceName))
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
+	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
+		return
+	}
+
+	completeCount := 0
+	pendingCount := 0
+	for _, match := range matches {
+		if match.Progress >= 1.0 {
+			completeCount++
+		} else {
+			pendingCount++
+		}
+	}
+
+	lines := []string{
+		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		fmt.Sprintf("Matches: %d", len(matches)),
+		fmt.Sprintf("Complete matches: %d", completeCount),
+		fmt.Sprintf("Pending matches: %d", pendingCount),
+	}
+	if strings.TrimSpace(recommendation) != "" {
+		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
+	}
+	if samples := collectWebhookMatchSamples(matches, 3); len(samples) > 0 {
+		lines = append(lines, "Samples: "+formatSampleText(samples))
+	}
+
+	completedAt := time.Now().UTC()
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventCrossSeedWebhookSucceeded,
+		InstanceName: "Cross-seed webhook",
+		Message:      strings.Join(lines, "\n"),
+		StartedAt:    &startedAt,
+		CompletedAt:  &completedAt,
+	})
+}
+
+func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookCheckRequest, err error, startedAt time.Time) {
+	if s == nil || s.notifier == nil || req == nil || err == nil {
+		return
+	}
+	if errors.Is(err, ErrInvalidWebhookRequest) {
+		return
+	}
+
+	lines := []string{
+		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		"Error: " + err.Error(),
+	}
+
+	completedAt := time.Now().UTC()
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventCrossSeedWebhookFailed,
+		InstanceName: "Cross-seed webhook",
+		Message:      strings.Join(lines, "\n"),
+		StartedAt:    &startedAt,
+		CompletedAt:  &completedAt,
+	})
+}
+
 func (s *Service) persistSearchRun(state *searchRunState) {
 	updated, err := s.automationStore.UpdateSearchRun(context.Background(), state.run)
 	if err != nil {
@@ -8200,6 +8505,7 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 // This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
 // and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
 func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
+	startedAt := time.Now().UTC()
 	if err := validateWebhookCheckRequest(req); err != nil {
 		return nil, err
 	}
@@ -8226,6 +8532,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	instances, err := s.resolveInstances(ctx, requestedInstanceIDs)
 	if err != nil {
+		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
 		return nil, err
 	}
 
@@ -8451,6 +8758,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
+
+	s.notifyWebhookCheck(ctx, req, matches, recommendation, startedAt)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,

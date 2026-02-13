@@ -565,7 +565,7 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 	}
 
 	store := models.NewOrphanScanStore(&testQuerier{DB: sqlDB})
-	svc := NewService(DefaultConfig(), nil, store, nil)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil)
 	if err := svc.recoverStuckRuns(ctx); err != nil {
 		t.Fatalf("recoverStuckRuns: %v", err)
 	}

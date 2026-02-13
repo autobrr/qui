@@ -29,7 +29,7 @@ func (s stubHealthChecker) GetLastSyncUpdate() time.Time   { return s.lastSync }
 func TestGetOtherLocalInstances(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
@@ -53,7 +53,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
 	recoveryTime := now.Add(-10 * time.Minute)
@@ -128,7 +128,7 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
 	recoveryTime := now.Add(-10 * time.Minute)
@@ -180,7 +180,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
 	recoveryTime := now.Add(-10 * time.Minute)
@@ -241,7 +241,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
 	recoveryTime := now.Add(-10 * time.Minute)
@@ -310,7 +310,7 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
 	recoveryTime := now.Add(-10 * time.Minute)

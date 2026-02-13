@@ -472,4 +472,3 @@ function RuleSummary({ rule }: { rule: Automation }) {
     </div>
   )
 }
-

@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // healthChecker is the subset of *qbittorrent.Client methods needed for readiness checks.
@@ -38,6 +39,7 @@ type Service struct {
 	instanceStore *models.InstanceStore
 	store         *models.OrphanScanStore
 	syncManager   *qbittorrent.SyncManager
+	notifier      notifications.Notifier
 
 	// Per-instance mutex to prevent overlapping scans
 	instanceMu map[int]*sync.Mutex
@@ -61,7 +63,7 @@ type Service struct {
 }
 
 // NewService creates a new orphan scan service.
-func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
 	}
@@ -76,6 +78,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		instanceStore:       instanceStore,
 		store:               store,
 		syncManager:         syncManager,
+		notifier:            notifier,
 		instanceMu:          make(map[int]*sync.Mutex),
 		cancelFuncs:         make(map[int64]context.CancelFunc),
 		settledRecoveryTime: make(map[int]time.Time),
@@ -522,7 +525,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during settings fetch")
 			return
 		}
-		s.failRun(ctx, runID, "failed to get settings")
+		s.failRun(ctx, runID, instanceID, "failed to get settings")
 		return
 	}
 	if settings == nil {
@@ -549,7 +552,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 		log.Error().Err(err).Msg("orphanscan: failed to build file map")
-		s.failRun(ctx, runID, fmt.Sprintf("failed to build file map: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to build file map: %v", err))
 		return
 	}
 
@@ -569,7 +572,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	if len(scanRoots) == 0 {
 		log.Warn().Msg("orphanscan: no scan roots found")
-		s.failRun(ctx, runID, "no scan roots found (no torrents with absolute save paths)")
+		s.failRun(ctx, runID, instanceID, "no scan roots found (no torrents with absolute save paths)")
 		return
 	}
 
@@ -580,7 +583,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during ignore path normalization")
 			return
 		}
-		s.failRun(ctx, runID, fmt.Sprintf("invalid ignore paths: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
 		return
 	}
 
@@ -662,7 +665,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// If no orphans found but we had walk errors, all roots likely failed
 	if len(allOrphans) == 0 && len(walkErrors) > 0 {
 		errMsg := fmt.Sprintf("Failed to access %d scan path(s):\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
-		s.failRun(ctx, runID, errMsg)
+		s.failRun(ctx, runID, instanceID, errMsg)
 		return
 	}
 
@@ -693,7 +696,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 		log.Error().Err(err).Msg("orphanscan: failed to insert files")
-		s.failRun(ctx, runID, fmt.Sprintf("failed to insert files: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to insert files: %v", err))
 		return
 	}
 
@@ -712,6 +715,16 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
 			return
 		}
+		startedAt, completedAt := s.getRunTimes(ctx, runID)
+		s.notify(ctx, notifications.Event{
+			Type:                     notifications.EventOrphanScanCompleted,
+			InstanceID:               instanceID,
+			OrphanScanRunID:          runID,
+			OrphanScanFilesDeleted:   0,
+			OrphanScanFoldersDeleted: 0,
+			StartedAt:                startedAt,
+			CompletedAt:              completedAt,
+		})
 		log.Info().Int64("run", runID).Msg("orphanscan: clean (no orphan files found)")
 		return
 	}
@@ -821,7 +834,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// Get run details
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil || run == nil {
-		s.failRun(ctx, runID, "failed to get run details")
+		s.failRun(ctx, runID, instanceID, "failed to get run details")
 		return
 	}
 
@@ -829,7 +842,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	fileMapResult, err := s.buildFileMap(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
-		s.failRun(ctx, runID, fmt.Sprintf("failed to rebuild file map: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
 		return
 	}
 	tfm := fileMapResult.fileMap
@@ -851,7 +864,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// Get files for deletion
 	files, err := s.store.GetFilesForDeletion(ctx, runID)
 	if err != nil {
-		s.failRun(ctx, runID, fmt.Sprintf("failed to get files: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get files: %v", err))
 		return
 	}
 
@@ -951,6 +964,15 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return
 		}
+		startedAt, completedAt := s.getRunTimes(ctx, runID)
+		s.notify(ctx, notifications.Event{
+			Type:            notifications.EventOrphanScanFailed,
+			InstanceID:      instanceID,
+			OrphanScanRunID: runID,
+			ErrorMessage:    failureMessage,
+			StartedAt:       startedAt,
+			CompletedAt:     completedAt,
+		})
 		log.Warn().
 			Int64("run", runID).
 			Int("failedDeletes", failedDeletes).
@@ -963,6 +985,17 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
 		return
 	}
+
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
+	s.notify(ctx, notifications.Event{
+		Type:                     notifications.EventOrphanScanCompleted,
+		InstanceID:               instanceID,
+		OrphanScanRunID:          runID,
+		OrphanScanFilesDeleted:   filesDeleted,
+		OrphanScanFoldersDeleted: foldersDeleted,
+		StartedAt:                startedAt,
+		CompletedAt:              completedAt,
+	})
 
 	// Add warning for partial failures
 	if failedDeletes > 0 {
@@ -986,14 +1019,25 @@ func (s *Service) markCanceled(ctx context.Context, runID int64) {
 	}
 }
 
-func (s *Service) failRun(ctx context.Context, runID int64, message string) {
+func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, message string) {
 	if ctx.Err() != nil {
 		log.Info().Int64("run", runID).Msg("orphanscan: run canceled, skipping failure update")
 		return
 	}
 	if err := s.store.UpdateRunFailed(ctx, runID, message); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run failed")
+		return
 	}
+
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
+	s.notify(ctx, notifications.Event{
+		Type:            notifications.EventOrphanScanFailed,
+		InstanceID:      instanceID,
+		OrphanScanRunID: runID,
+		ErrorMessage:    message,
+		StartedAt:       startedAt,
+		CompletedAt:     completedAt,
+	})
 }
 
 func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
@@ -1003,6 +1047,32 @@ func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
 	if err := s.store.UpdateRunWarning(ctx, runID, message); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to update warning")
 	}
+}
+
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(ctx, event)
+}
+
+func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *time.Time) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	var startedAt *time.Time
+	if !run.StartedAt.IsZero() {
+		started := run.StartedAt
+		startedAt = &started
+	}
+	return startedAt, run.CompletedAt
 }
 
 func (s *Service) updateFileStatus(ctx context.Context, fileID int64, status, errorMessage string) {
