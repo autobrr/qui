@@ -1105,6 +1105,66 @@ func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testin
 	require.ErrorIs(t, err, ErrInvalidRequest)
 	require.Contains(t, err.Error(), "gazelle")
 }
+func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-partial-disable-torznab.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	// Only RED key configured: OPS-sourced torrents can be searched (target=RED),
+	// but RED-sourced torrents cannot (target=OPS). Gazelle-only mode should not hard-fail.
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{
+				{
+					Hash:     sourceHash,
+					Name:     "Durante - LMK (2024 WF)",
+					Progress: 1.0,
+					Size:     123,
+					Tracker:  "https://flacsfor.me/abc/announce",
+				},
+			},
+			filesByHash: map[string]qbt.TorrentFiles{
+				sourceHashNorm: {
+					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+		},
+	}
+
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.Results)
+}
 
 func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing.T) {
 	ctx := context.Background()
