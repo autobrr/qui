@@ -187,7 +187,7 @@ function normalizeNumberList(values: Array<string | number>): number[] {
 
 function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
   const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
-  return /(^|[^a-z0-9])(ops|orpheus|redacted)([^a-z0-9]|$)/.test(haystack)
+  return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
@@ -1263,14 +1263,28 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }, [gazelleSavedConfigured, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled])
 
   const seededSearchEffectiveIndexerIds = useMemo(() => {
+    const allAllowed = enabledIndexers
+      .filter(idx => !seededSearchIndexerExclusions.has(idx.id))
+      .map(idx => idx.id)
+
     if (searchIndexerIds.length === 0) {
-      return []
+      if (seededSearchIndexerExclusions.size === 0) {
+        return []
+      }
+      // Backend treats [] as "all enabled"; when exclusions exist, send an explicit list.
+      return allAllowed
     }
     if (seededSearchIndexerExclusions.size === 0) {
       return searchIndexerIds
     }
-    return searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
-  }, [searchIndexerIds, seededSearchIndexerExclusions])
+
+    const filtered = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
+    if (filtered.length === 0) {
+      // Avoid empty meaning "all" when the user selected only excluded OPS/RED indexers.
+      return allAllowed
+    }
+    return filtered
+  }, [enabledIndexers, searchIndexerIds, seededSearchIndexerExclusions])
 
   const seededSearchIndexerHelpText = useMemo(() => {
     if (!seededSearchTorznabEnabled) {
