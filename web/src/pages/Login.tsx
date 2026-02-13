@@ -46,6 +46,13 @@ export function Login() {
   })
 
   useEffect(() => {
+    if (sessionStorage.getItem("qui_sso_recovered")) {
+      sessionStorage.removeItem("qui_sso_recovered")
+      toast.info("SSO session refreshed. Please sign in again.")
+    }
+  }, [])
+
+  useEffect(() => {
     // Redirect to homepage if user is already authenticated
     if (isAuthenticated && !isLoading) {
       navigate({ to: "/dashboard" })
