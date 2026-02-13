@@ -2373,6 +2373,8 @@ export function TorrentCardsMobile({
         initialLocation={getCommonSavePath(getSelectedTorrents)}
         onConfirm={handleSetLocationWrapper}
         isPending={isPending}
+        instanceId={instanceId}
+        capabilities={capabilities}
       />
 
       {/* TMM Confirmation Dialog */}
