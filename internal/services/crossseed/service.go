@@ -7182,6 +7182,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	allowedIndexerIDs := []int(nil)
+	skipReasonForNoIndexers := ""
 	if !searchDisableTorznab && len(requestedIndexerIDs) > 0 {
 		// Use async filtering for better performance - capability filtering returns immediately.
 		asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, state.opts.InstanceID, torrent.Hash, requestedIndexerIDs, true)
@@ -7230,8 +7231,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			// Keep processing with Gazelle even when no Torznab indexers remain for this candidate.
 			searchDisableTorznab = true
 			if skipReason == "" {
-				skipReason = "no indexers support required caps"
+				skipReason = "no eligible indexers"
 			}
+			skipReasonForNoIndexers = skipReason
 			log.Debug().
 				Str("torrentHash", torrent.Hash).
 				Int("instanceID", state.opts.InstanceID).
@@ -7244,6 +7246,28 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		// selecting only OPS/RED indexers while Gazelle is enabled). Keep this candidate Gazelle-only
 		// instead of expanding to "all enabled" indexers downstream.
 		searchDisableTorznab = true
+		skipReasonForNoIndexers = "no eligible indexers after filtering"
+	}
+
+	hasGazelle := state.gazelleClients != nil && len(state.gazelleClients.byHost) > 0
+	if searchDisableTorznab && !hasGazelle {
+		if skipReasonForNoIndexers == "" {
+			skipReasonForNoIndexers = "no eligible indexers"
+		}
+		s.searchMu.Lock()
+		state.run.TorrentsSkipped++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      skipReasonForNoIndexers,
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return nil
 	}
 
 	searchCtx := ctx

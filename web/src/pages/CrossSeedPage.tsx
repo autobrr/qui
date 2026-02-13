@@ -124,7 +124,6 @@ const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed 
 const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
 const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
-const DEFAULT_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 10
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
 
 // RSS Automation defaults
@@ -1191,15 +1190,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }, [gazelleSavedConfigured, seededSearchTorznabEnabled])
 
   useEffect(() => {
-    const gazelleOnly = !seededSearchTorznabEnabled && gazelleSavedConfigured
-    setSearchIntervalSeconds(prev => {
-      // If user hasn't tuned anything yet (still at the Torznab default), suggest a sane Gazelle-only default.
-      if (gazelleOnly && prev === MIN_SEEDED_SEARCH_INTERVAL_SECONDS) {
-        return Math.max(DEFAULT_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS, seededSearchIntervalMinimum)
-      }
-      return prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev
-    })
-  }, [gazelleSavedConfigured, seededSearchIntervalMinimum, seededSearchTorznabEnabled])
+    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
+  }, [seededSearchIntervalMinimum])
 
   useEffect(() => {
     if (typeof window === "undefined") {

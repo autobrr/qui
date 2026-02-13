@@ -145,30 +145,74 @@ func filesConflict(localFiles, remoteFiles map[string]int64) bool {
 
 	type fileSig struct {
 		size int64
-		name string // normalized base filename
+		name string // normalized relative path (root folder stripped when consistent)
 	}
 
-	normalize := func(name string) string {
-		name = strings.ReplaceAll(name, "\\", "/")
-		name = path.Base(name)
-		if name == "." {
-			name = ""
+	singleRoot := func(files map[string]int64) string {
+		root := ""
+		for name := range files {
+			n := strings.TrimPrefix(path.Clean(strings.ReplaceAll(name, "\\", "/")), "./")
+			n = strings.TrimPrefix(n, "/")
+			if n == "" || n == "." {
+				return ""
+			}
+			parts := strings.Split(n, "/")
+			if len(parts) < 2 {
+				return ""
+			}
+			if parts[0] == "" {
+				return ""
+			}
+			if root == "" {
+				root = parts[0]
+				continue
+			}
+			if root != parts[0] {
+				return ""
+			}
 		}
-		return normalizeFilenameForCompare(name)
+		return root
+	}
+
+	localRoot := singleRoot(localFiles)
+	remoteRoot := singleRoot(remoteFiles)
+
+	normalize := func(name string, root string) string {
+		n := strings.ReplaceAll(name, "\\", "/")
+		n = strings.TrimPrefix(path.Clean(n), "./")
+		n = strings.TrimPrefix(n, "/")
+		if root != "" {
+			prefix := root + "/"
+			if trimmed, ok := strings.CutPrefix(n, prefix); ok {
+				n = trimmed
+			}
+		}
+		if n == "." {
+			n = ""
+		}
+		parts := strings.Split(n, "/")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if part == "" || part == "." {
+				continue
+			}
+			out = append(out, normalizeFilenameForCompare(part))
+		}
+		return strings.Join(out, "/")
 	}
 
 	localSigs := make([]fileSig, 0, len(localFiles))
 	for name, size := range localFiles {
 		localSigs = append(localSigs, fileSig{
 			size: size,
-			name: normalize(name),
+			name: normalize(name, localRoot),
 		})
 	}
 	remoteSigs := make([]fileSig, 0, len(remoteFiles))
 	for name, size := range remoteFiles {
 		remoteSigs = append(remoteSigs, fileSig{
 			size: size,
-			name: normalize(name),
+			name: normalize(name, remoteRoot),
 		})
 	}
 
