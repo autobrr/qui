@@ -5615,6 +5615,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	gazelleResults, gazelleConfigured := s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
 
 	if opts.DisableTorznab {
+		if !gazelleConfigured {
+			return nil, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
+		}
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
@@ -5625,9 +5628,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	if s.jackettService == nil {
-		// No Torznab backend. Still allow Gazelle-only matching if source is Gazelle
-		// or any Gazelle API keys are configured.
-		if isGazelleSource || gazelleConfigured {
+		// No Torznab backend. Only succeed if we have a usable Gazelle client.
+		if gazelleConfigured {
 			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,

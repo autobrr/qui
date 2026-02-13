@@ -1017,6 +1017,95 @@ func (*gazelleSkipHashSyncManager) CreateCategory(_ context.Context, _ int, _, _
 	return nil
 }
 
+func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-no-backend.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{
+				{
+					Hash:     sourceHash,
+					Name:     "Durante - LMK (2024 WF)",
+					Progress: 1.0,
+					Size:     123,
+					Tracker:  "https://flacsfor.me/abc/announce",
+				},
+			},
+			filesByHash: map[string]qbt.TorrentFiles{
+				sourceHashNorm: {
+					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+		},
+	}
+
+	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "torznab search is not configured")
+}
+
+func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-disable-torznab-no-gazelle.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{
+				{
+					Hash:     sourceHash,
+					Name:     "Durante - LMK (2024 WF)",
+					Progress: 1.0,
+					Size:     123,
+					Tracker:  "https://flacsfor.me/abc/announce",
+				},
+			},
+			filesByHash: map[string]qbt.TorrentFiles{
+				sourceHashNorm: {
+					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+		},
+	}
+
+	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Contains(t, err.Error(), "gazelle")
+}
+
 func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-skip-hash.db")

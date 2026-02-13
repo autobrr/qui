@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	_ "modernc.org/sqlite"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
@@ -242,6 +244,29 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
 	t.Parallel()
 
+	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-search.db")
+	db, err := database.New(dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	if err != nil {
+		t.Fatalf("new cross-seed store: %v", err)
+	}
+	_, err = store.UpsertSettings(context.Background(), &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		OrpheusAPIKey:  "ops-key",
+	})
+	if err != nil {
+		t.Fatalf("persist cross-seed settings: %v", err)
+	}
+
 	src := qbt.Torrent{
 		Hash:     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Name:     "test (2026) [FLAC]",
@@ -251,13 +276,14 @@ func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
 	syncMock := &completionGazelleSyncMock{torrent: src}
 
 	svc := &Service{
-		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
-		syncManager:    syncMock,
-		jackettService: newFailingJackettService(errors.New("jackett indexer probe should be skipped")),
-		releaseCache:   NewReleaseCache(),
+		instanceStore:   &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
+		syncManager:     syncMock,
+		jackettService:  newFailingJackettService(errors.New("jackett indexer probe should be skipped")),
+		automationStore: store,
+		releaseCache:    NewReleaseCache(),
 	}
 
-	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
+	err = svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
 		GazelleEnabled:         true,
 		OrpheusAPIKey:          "ops-key",
 		FindIndividualEpisodes: true,
