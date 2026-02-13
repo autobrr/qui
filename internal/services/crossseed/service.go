@@ -1354,15 +1354,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	// Allow Gazelle-only completion cross-seed even when Torznab is not configured.
-	// For non-Gazelle torrents, completion search still requires Torznab (Jackett).
-	isGazelle := false
-	if sourceSite, ok := s.detectGazelleSourceSite(&torrent); ok && gazelleTargetForSource(sourceSite) != "" {
-		isGazelle = true
-	}
-	if s.jackettService == nil && !isGazelle {
-		return
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	} else {
@@ -1579,17 +1570,24 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 
 	var searchResp *TorrentSearchResponse
 
-	// Gazelle (OPS/RED) completion path: bypass Torznab only when the target site is actually configured.
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
-	useGazelleOnly := false
-	if isGazelleSource && gazelleTargetForSource(sourceSite) != "" {
-		gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, settings)
+
+	var gazelleClients *gazelleClientSet
+	needsGazelle := settings.GazelleEnabled && (s.jackettService == nil || (isGazelleSource && gazelleTargetForSource(sourceSite) != ""))
+	if needsGazelle {
+		var gazelleErr error
+		gazelleClients, gazelleErr = s.buildGazelleClientSet(ctx, settings)
 		if gazelleErr != nil {
 			log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle clients; continuing without Gazelle")
 		}
-		useGazelleOnly = shouldUseGazelleOnlyForCompletion(settings, gazelleClients, sourceSite)
 	}
-	if useGazelleOnly {
+
+	hasGazelle := gazelleClients != nil && len(gazelleClients.byHost) > 0
+	if s.jackettService == nil {
+		if !hasGazelle {
+			return errors.New("no search backend configured")
+		}
+
 		searchCtx, searchCancel := context.WithTimeout(ctx, 45*time.Second)
 		defer searchCancel()
 		searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
@@ -1611,87 +1609,111 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		}
 		searchResp = resp
 	} else {
-		if s.jackettService == nil {
-			return errors.New("torznab search is not configured")
+		// Gazelle (OPS/RED) completion path: bypass Torznab only when the target site is actually configured.
+		useGazelleOnly := false
+		if isGazelleSource && gazelleTargetForSource(sourceSite) != "" {
+			useGazelleOnly = shouldUseGazelleOnlyForCompletion(settings, gazelleClients, sourceSite)
 		}
-		if err := s.ensureIndexersConfigured(ctx); err != nil {
-			return err
-		}
-
-		var requestedIndexerIDs []int
-		explicitCompletionSelection := false
-		if completionSettings != nil {
-			requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
-			explicitCompletionSelection = len(requestedIndexerIDs) > 0
-		}
-		resolvedRequested, resolveErr := s.resolveTorznabIndexerIDs(ctx, requestedIndexerIDs, true)
-		if resolveErr != nil {
-			return resolveErr
-		}
-		requestedIndexerIDs = resolvedRequested
-
-		asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
-		var allowedIndexerIDs []int
-		var skipReason string
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", torrent.Hash).
-				Msg("[CROSSSEED-COMPLETION] Failed to filter indexers, falling back to requested set")
-			allowedIndexerIDs = requestedIndexerIDs
-		} else {
-			allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(
-				ctx,
-				torrent.Hash,
-				asyncAnalysis.FilteringState,
-				requestedIndexerIDs,
-				explicitCompletionSelection,
-			)
-		}
-
-		if len(allowedIndexerIDs) == 0 {
-			if skipReason == "" {
-				skipReason = "no eligible indexers"
-			}
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", torrent.Hash).
-				Str("name", torrent.Name).
-				Msgf("[CROSSSEED-COMPLETION] Skipping completion search: %s", skipReason)
-			return nil
-		}
-
-		searchCtx := ctx
-		var searchCancel context.CancelFunc
-		searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
-		if searchTimeout > 0 {
-			searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
-		}
-		if searchCancel != nil {
+		if useGazelleOnly {
+			searchCtx, searchCancel := context.WithTimeout(ctx, 45*time.Second)
 			defer searchCancel()
-		}
-		searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
+			searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
-		resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
-			IndexerIDs:             allowedIndexerIDs,
-			FindIndividualEpisodes: settings.FindIndividualEpisodes,
-		})
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+			resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
+				DisableTorznab:         true,
+				FindIndividualEpisodes: settings.FindIndividualEpisodes,
+			})
+			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", torrent.Hash).
+						Str("name", torrent.Name).
+						Msg("[CROSSSEED-COMPLETION] Gazelle search timed out, no cross-seeds found")
+					return nil
+				}
+				return err
+			}
+			searchResp = resp
+		} else {
+			if err := s.ensureIndexersConfigured(ctx); err != nil {
+				return err
+			}
+
+			var requestedIndexerIDs []int
+			explicitCompletionSelection := false
+			if completionSettings != nil {
+				requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
+				explicitCompletionSelection = len(requestedIndexerIDs) > 0
+			}
+			resolvedRequested, resolveErr := s.resolveTorznabIndexerIDs(ctx, requestedIndexerIDs, true)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			requestedIndexerIDs = resolvedRequested
+
+			asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
+			var allowedIndexerIDs []int
+			var skipReason string
+			if err != nil {
 				log.Warn().
+					Err(err).
+					Int("instanceID", instanceID).
+					Str("hash", torrent.Hash).
+					Msg("[CROSSSEED-COMPLETION] Failed to filter indexers, falling back to requested set")
+				allowedIndexerIDs = requestedIndexerIDs
+			} else {
+				allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(
+					ctx,
+					torrent.Hash,
+					asyncAnalysis.FilteringState,
+					requestedIndexerIDs,
+					explicitCompletionSelection,
+				)
+			}
+
+			if len(allowedIndexerIDs) == 0 {
+				if skipReason == "" {
+					skipReason = "no eligible indexers"
+				}
+				log.Debug().
 					Int("instanceID", instanceID).
 					Str("hash", torrent.Hash).
 					Str("name", torrent.Name).
-					Dur("timeout", searchTimeout).
-					Msg("[CROSSSEED-COMPLETION] Search timed out, no cross-seeds found")
+					Msgf("[CROSSSEED-COMPLETION] Skipping completion search: %s", skipReason)
 				return nil
 			}
-			return err
-		}
-		searchResp = resp
-	}
 
+			searchCtx := ctx
+			var searchCancel context.CancelFunc
+			searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
+			if searchTimeout > 0 {
+				searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
+			}
+			if searchCancel != nil {
+				defer searchCancel()
+			}
+			searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
+
+			resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
+				IndexerIDs:             allowedIndexerIDs,
+				FindIndividualEpisodes: settings.FindIndividualEpisodes,
+			})
+			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", torrent.Hash).
+						Str("name", torrent.Name).
+						Dur("timeout", searchTimeout).
+						Msg("[CROSSSEED-COMPLETION] Search timed out, no cross-seeds found")
+					return nil
+				}
+				return err
+			}
+			searchResp = resp
+		}
+	}
 	if len(searchResp.Results) == 0 {
 		log.Debug().
 			Int("instanceID", instanceID).

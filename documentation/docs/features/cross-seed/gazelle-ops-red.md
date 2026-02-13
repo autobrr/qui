@@ -22,7 +22,7 @@ When Gazelle matching is enabled:
 
 - OPS/RED source torrents query **only the opposite site** (RED -> OPS, OPS -> RED)
 - Non-OPS/RED source torrents can still be checked against whichever Gazelle sites you configured
-- Torznab can run in parallel, but for per-torrent searches (manual/completion/library scan) OPS/RED Torznab indexers are excluded when Gazelle is configured
+- Torznab can run in parallel, but for per-torrent searches (manual/completion/library scan) OPS/RED Torznab indexers are excluded only when **both** Gazelle keys are configured (so partial-key setups keep Torznab as fallback)
 
 ## When It Applies
 

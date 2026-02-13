@@ -1171,6 +1171,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const gazelleSavedHasOpsKey = Boolean((settings?.orpheusApiKey ?? "").trim())
   const gazelleSavedHasRedKey = Boolean((settings?.redactedApiKey ?? "").trim())
   const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
+  const gazelleSavedFullyConfigured = gazelleSavedEnabled && gazelleSavedHasOpsKey && gazelleSavedHasRedKey
 
   const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
@@ -1225,7 +1226,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const seededSearchIndexerExclusions = useMemo(() => {
     const disallowedIDs = new Set<number>()
-    if (!gazelleSavedConfigured) {
+    if (!gazelleSavedFullyConfigured) {
       return disallowedIDs
     }
     for (const idx of enabledIndexers) {
@@ -1237,9 +1238,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }, [enabledIndexers, gazelleSavedConfigured])
 
   const seededSearchIndexerOptions = useMemo(
-    () => (gazelleSavedConfigured ? enabledIndexers.filter(idx => !isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) : enabledIndexers)
+    () => (gazelleSavedFullyConfigured ? enabledIndexers.filter(idx => !isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) : enabledIndexers)
       .map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
-    [enabledIndexers, gazelleSavedConfigured]
+    [enabledIndexers, gazelleSavedFullyConfigured]
   )
 
   const seededSearchHasOnlyGazelleIndexers = useMemo(() => (
@@ -1253,7 +1254,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
     }
     if (seededSearchIndexerOptions.length > 0) {
-      return gazelleSavedConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
+      return gazelleSavedFullyConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
     }
     if (seededSearchHasOnlyGazelleIndexers) {
       return "Only OPS/RED enabled (Gazelle)"
@@ -1326,7 +1327,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return [60, 120, 300]
   }, [seededSearchGazelleOnlyMode])
 
-  const seededSearchFlowSummary = gazelleSavedConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Without Gazelle, all matching relies on Torznab indexers."
+  const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.") : "Without Gazelle, all matching relies on Torznab indexers."
 
   const handleJumpToGazelleSettings = useCallback(() => {
     onTabChange("rules")
