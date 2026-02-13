@@ -481,7 +481,7 @@ func TestMoveAction_WithTemplatePath(t *testing.T) {
 		TrackerPattern: "*",
 		Conditions:     &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/archive/{{.Category}}"}},
 	}}
-	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, sm, nil, nil)
+	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, sm, nil, nil, nil)
 	state, ok := states["abc"]
 	require.True(t, ok)
 	require.True(t, state.shouldMove)
@@ -1215,7 +1215,6 @@ func TestDeleteFreesSpace(t *testing.T) {
 		require.True(t, result)
 	})
 }
-
 
 func TestCalculateScore(t *testing.T) {
 	tests := []struct {
