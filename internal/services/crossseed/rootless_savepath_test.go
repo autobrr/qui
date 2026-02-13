@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -44,6 +45,10 @@ func (m *rootlessSavePathSyncManager) GetTorrentFilesBatch(_ context.Context, _ 
 		}
 	}
 	return result, nil
+}
+
+func (*rootlessSavePathSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*rootlessSavePathSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {

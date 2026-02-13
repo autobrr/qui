@@ -109,6 +109,10 @@ func (m *localMatchSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, h
 	return result, nil
 }
 
+func (*localMatchSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (m *localMatchSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
