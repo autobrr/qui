@@ -238,7 +238,7 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected move action to be blocked when cross-seed exists and BlockIfCrossSeed is true")
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
@@ -272,7 +272,7 @@ func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when torrent has no cross-seed partner")
 	require.True(t, state.shouldMove)
@@ -318,7 +318,7 @@ func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is false")
 	require.True(t, state.shouldMove)
@@ -364,7 +364,7 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is true but all cross-seeds meet the condition")
 	require.True(t, state.shouldMove)
@@ -410,7 +410,7 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected move action to be blocked when condition is met but cross-seed exists")
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
