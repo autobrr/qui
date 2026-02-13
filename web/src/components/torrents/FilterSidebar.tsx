@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchInput } from "@/components/ui/SearchInput"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +43,7 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { useUserDefinedViews } from "@/hooks/useUserDefinedViews"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
@@ -65,7 +67,7 @@ import {
   Upload,
   X,
   XCircle,
-  type LucideIcon
+  type LucideIcon, FunnelPlus, FunnelX
 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CategoryTree } from "./CategoryTree"
@@ -81,8 +83,9 @@ import {
 import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { Button } from "@/components/ui/button.tsx";
 
 interface FilterBadgeProps {
   count: number
@@ -109,6 +112,7 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 
 interface FilterSidebarProps {
   instanceId: number
+  savedViews: string[]
   selectedFilters: TorrentFilters
   onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
@@ -192,6 +196,7 @@ const FilterSidebarComponent = ({
   const { instances } = useInstances()
   const instanceMeta = instances?.find(instance => instance.id === instanceId)
   const isInstanceActive = instanceMeta?.isActive ?? true
+  const queryClient = useQueryClient()
 
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
@@ -301,6 +306,44 @@ const FilterSidebarComponent = ({
 
     return states
   }, [supportsTrackerHealth, selectedFilters.expr])
+
+  // User defined views
+  const [selectedView, setSelectedView] = useState<string | null>(null)
+  const { data: userDefinedViews, isLoading: viewsLoading, error: viewsError } = useUserDefinedViews(instanceId)
+  const saveUserDefinedViewMutation = useMutation({
+    mutationFn: async (viewData: { name: string; filters: object }) => {
+      return await api.saveUserDefinedView(instanceId, viewData)
+    },
+    onSuccess: (_, variables) => {
+      toast.success("Filter view saved successfully")
+      queryClient.invalidateQueries({ queryKey: ["user-defined-views", instanceId] })
+      // Find and select the newly created view
+      setTimeout(() => {
+        const newView = userDefinedViews?.find(v => v.name === variables.name)
+        if (newView) {
+          handleSelectUserDefinedView(newView.id.toString())
+        }
+      }, 100)
+    },
+    onError: (error) => {
+      toast.error("Failed to save filter view")
+      console.error("Save view error:", error)
+    }
+  })
+
+  const deleteUserDefinedViewMutation = useMutation({
+    mutationFn: async (viewData: { id: number }) => {
+      return await api.deleteUserDefinedView(instanceId, viewData)
+    },
+    onSuccess: (_, variables) => {
+      toast.success("Filter view deleted successfully")
+      queryClient.invalidateQueries({ queryKey: ["user-defined-views", instanceId] })
+    },
+    onError: (error) => {
+      toast.error("Failed to delete filter view")
+      console.error("Delet view error:", error)
+    }
+  })
 
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
@@ -1765,6 +1808,86 @@ const FilterSidebarComponent = ({
     setShowDeleteEmptyCategoriesDialog(true)
   }, [setShowDeleteEmptyCategoriesDialog])
 
+  const handleSelectUserDefinedView = (viewId: string) => {
+    if (!viewId) {
+      // Clear the view
+      setSelectedView(null)
+      // Reset filters to default
+      onFilterChange({
+        ...selectedFilters,
+        status: [],
+        categories: [],
+        tags: [],
+        trackers: [],
+        excludeStatus: [],
+        excludeCategories: [],
+        excludeTags: [],
+        excludeTrackers: [],
+      })
+      return
+    }
+
+    const selectedViewData = userDefinedViews?.find(v => v.id.toString() === viewId)
+    if (selectedViewData) {
+      setSelectedView(viewId)
+      // Apply the view's filters to the current filter state
+      onFilterChange({
+        ...selectedFilters,
+        status: selectedViewData.status || [],
+        categories: selectedViewData.categories || [],
+        tags: selectedViewData.tags || [],
+        trackers: selectedViewData.trackers || [],
+        excludeStatus: selectedViewData.excludeStatus || [],
+        excludeCategories: selectedViewData.excludeCategories || [],
+        excludeTags: selectedViewData.excludeTags || [],
+        excludeTrackers: selectedViewData.excludeTrackers || [],
+      })
+    }
+  }
+
+  const handleSaveUserDefinedView = () => {
+    const hasActiveFilters =
+      selectedFilters.status.length > 0 ||
+      selectedFilters.categories.length > 0 ||
+      selectedFilters.tags.length > 0 ||
+      selectedFilters.trackers.length > 0 ||
+      selectedFilters.excludeStatus.length > 0 ||
+      selectedFilters.excludeCategories.length > 0 ||
+      selectedFilters.excludeTags.length > 0 ||
+      selectedFilters.excludeTrackers.length > 0
+
+    if (!hasActiveFilters) {
+      toast.error("No active filters to save")
+      return
+    }
+
+    // Prompt for view name
+    const viewName = prompt("Enter a name for this filter view:")
+    if (!viewName || viewName.trim() === "") {
+      return
+    }
+
+    // Build data and make request
+    const viewData = {
+      name: viewName.trim(),
+      filters: {
+        status: selectedFilters.status,
+        categories: selectedFilters.categories,
+        tags: selectedFilters.tags,
+        trackers: selectedFilters.trackers,
+        excludeStatus: selectedFilters.excludeStatus,
+        excludeCategories: selectedFilters.excludeCategories,
+        excludeTags: selectedFilters.excludeTags,
+        excludeTrackers: selectedFilters.excludeTrackers,
+      }
+    }
+    saveUserDefinedViewMutation.mutate(viewData)
+  }
+
+  const handleDeleteUserDefinedView = (id: number) => {
+    deleteUserDefinedViewMutation.mutate({id: id})
+  }
+
   // Track previous subcategories state to detect transitions
   const prevAllowSubcategories = useRef<boolean | null>(null)
 
@@ -1880,12 +2003,88 @@ const FilterSidebarComponent = ({
             </div>
           )}
 
+          {/* Saved user-defined views */}
+          <Accordion
+            type="single"
+            className={viewMode === "dense" ? "space-y-1" : "space-y-2"}
+          >
+            <AccordionItem value="saved-views" className="border rounded-lg">
+              <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-sm font-medium">Saved Views</span>
+                  {selectedView && (
+                      <FilterBadge
+                          count={1}
+                          onClick={() => handleSelectUserDefinedView("")}
+                      />
+                  )}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className={accordionContentClass}>
+                <div className="flex flex-col gap-2">
+                  {/* Add new view button */}
+                  <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSaveUserDefinedView}
+                      disabled={saveUserDefinedViewMutation.isPending}
+                      className="w-full justify-start"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Save current filters
+                  </Button>
+
+                  {/* List of saved views */}
+                  {viewsError ? (
+                      <div className="text-sm text-destructive">
+                        Could not load saved views
+                      </div>
+                  ) : viewsLoading ? (
+                      <div className="text-sm text-muted-foreground">
+                        Loading...
+                      </div>
+                  ) : userDefinedViews?.length === 0 ? (
+                      <div className="text-sm text-muted-foreground italic">
+                        No saved views
+                      </div>
+                  ) : (
+                      <div className="space-y-1">
+                        {userDefinedViews?.map((view) => (
+                            <div
+                                key={view.id}
+                                className={cn(
+                                    "flex items-center justify-between p-2 rounded cursor-pointer hover:bg-muted/50 group",
+                                    selectedView === view.id.toString() && "bg-muted"
+                                )}
+                                onClick={() => handleSelectUserDefinedView(view.id.toString())}
+                            >
+                              <span className="text-sm flex-1">{view.name}</span>
+                              <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeleteUserDefinedView(view.id)
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/20 rounded transition-opacity"
+                                  title={`Delete ${view.name}`}
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </button>
+                            </div>
+                        ))}
+                      </div>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
           <Accordion
             type="multiple"
             value={expandedItems}
             onValueChange={setExpandedItems}
             className={viewMode === "dense" ? "space-y-1" : "space-y-2"}
           >
+
             {/* Custom Filter */}
             {selectedFilters.expr && (
               <AccordionItem value="custom" className="border rounded-lg">
@@ -3080,6 +3279,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isMobile !== nextProps.isMobile) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
+  if ((prevProps.savedViews ?? false) !== (nextProps.savedViews ?? false)) return false
 
   return (
     prevProps.selectedFilters === nextProps.selectedFilters &&
