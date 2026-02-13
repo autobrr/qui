@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package orphanscan finds and removes orphan files not associated with any torrent.
@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -57,6 +56,8 @@ type Service struct {
 	getAllTorrentsProvider       func(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	getTorrentFilesBatchProvider func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	getClientProvider            func(ctx context.Context, instanceID int) (healthChecker, error)
+	listInstancesProvider        func(ctx context.Context) ([]*models.Instance, error)
+	getLastCompletedRunProvider  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
 }
 
 // NewService creates a new orphan scan service.
@@ -150,6 +151,67 @@ func (s *Service) getClient(ctx context.Context, instanceID int) (healthChecker,
 		return nil, fmt.Errorf("get client: %w", err)
 	}
 	return client, nil
+}
+
+func (s *Service) listInstances(ctx context.Context) ([]*models.Instance, error) {
+	if s.listInstancesProvider != nil {
+		return s.listInstancesProvider(ctx)
+	}
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	return instances, nil
+}
+
+func (s *Service) getLastCompletedRun(ctx context.Context, instanceID int) (*models.OrphanScanRun, error) {
+	if s.getLastCompletedRunProvider != nil {
+		return s.getLastCompletedRunProvider(ctx, instanceID)
+	}
+	if s.store == nil {
+		return nil, errors.New("orphan scan store unavailable")
+	}
+	return s.store.GetLastCompletedRun(ctx, instanceID)
+}
+
+func scanRootsFromTorrents(torrents []qbt.Torrent) []string {
+	scanRoots := make(map[string]struct{})
+	for i := range torrents {
+		savePath := filepath.Clean(torrents[i].SavePath)
+		if savePath == "" || !filepath.IsAbs(savePath) {
+			continue
+		}
+		scanRoots[savePath] = struct{}{}
+	}
+
+	roots := make([]string, 0, len(scanRoots))
+	for r := range scanRoots {
+		roots = append(roots, r)
+	}
+	return roots
+}
+
+func scanRootsOverlap(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+
+	for _, ra := range a {
+		na := normalizePath(ra)
+		if na == "" {
+			continue
+		}
+		for _, rb := range b {
+			nb := normalizePath(rb)
+			if nb == "" {
+				continue
+			}
+			if na == nb || isPathUnderNormalized(na, nb) || isPathUnderNormalized(nb, na) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Start starts the background scheduler.
@@ -825,7 +887,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			failedDeletes++
 
 			// Detect error type for user-facing message
-			if errors.Is(err, syscall.EROFS) || strings.Contains(err.Error(), "read-only file system") {
+			if isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system") {
 				sawReadOnly = true
 			} else if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted") {
 				sawPermissionDenied = true
@@ -1147,9 +1209,121 @@ type buildFileMapResult struct {
 	torrentCount int
 }
 
-func (s *Service) buildFileMap(ctx context.Context, instanceID int) (result *buildFileMapResult, err error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
+func (s *Service) getOtherLocalInstances(ctx context.Context, excludeInstanceID int) ([]*models.Instance, error) {
+	instances, err := s.listInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	local := make([]*models.Instance, 0, len(instances))
+	for _, inst := range instances {
+		if inst == nil || inst.ID == excludeInstanceID {
+			continue
+		}
+		if inst.IsActive && inst.HasLocalFilesystemAccess {
+			local = append(local, inst)
+		}
+	}
+	return local, nil
+}
+
+func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, timeout time.Duration) ([]string, error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	client, err := s.getClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+	if readinessErr := checkReadinessGates(client); readinessErr != nil {
+		return nil, readinessErr
+	}
+
+	torrents, err := s.getAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+	if len(torrents) == 0 {
+		return nil, fmt.Errorf("no torrents returned - instance not ready")
+	}
+
+	return scanRootsFromTorrents(torrents), nil
+}
+
+func (s *Service) instanceScanRootsForOverlap(ctx context.Context, instanceID int) (roots []string, source string, err error) {
+	roots, err = s.buildInstanceScanRoots(ctx, instanceID, 15*time.Second)
+	if err == nil {
+		return roots, "live", nil
+	}
+
+	lastRun, lastErr := s.getLastCompletedRun(ctx, instanceID)
+	if lastErr != nil {
+		return nil, "", err
+	}
+	if lastRun == nil || len(lastRun.ScanPaths) == 0 {
+		return nil, "", err
+	}
+
+	return lastRun.ScanPaths, "last_completed_run", nil
+}
+
+func (s *Service) buildInstanceScanRootsSettled(ctx context.Context, instanceID int, timeout time.Duration) (roots []string, err error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	client, err := s.getClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	recoveryTime := client.GetLastRecoveryTime()
+	defer func() {
+		if err != nil {
+			s.clearSettledForRecovery(instanceID, recoveryTime)
+		}
+	}()
+
+	if readinessErr := checkReadinessGates(client); readinessErr != nil {
+		return nil, readinessErr
+	}
+
+	var torrents []qbt.Torrent
+	if s.isSettledForRecovery(instanceID, recoveryTime) {
+		torrents, err = s.getAllTorrents(ctx, instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get torrents: %w", err)
+		}
+		if len(torrents) == 0 {
+			return nil, fmt.Errorf("no torrents returned - instance not ready")
+		}
+	} else {
+		settleResult, settleErr := s.checkSettled(ctx, instanceID, client)
+		if settleErr != nil {
+			return nil, fmt.Errorf("settling check failed: %w", settleErr)
+		}
+		if !settleResult.settled {
+			return nil, fmt.Errorf("instance not settled: %s", settleResult.reason)
+		}
+		torrents = settleResult.torrents
+	}
+
+	roots = scanRootsFromTorrents(torrents)
+	s.markSettledForRecovery(instanceID, recoveryTime)
+	return roots, nil
+}
+
+func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, timeout time.Duration) (result *buildFileMapResult, err error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 
 	// Step 1: Get client and verify readiness
 	client, err := s.getClient(ctx, instanceID)
@@ -1212,6 +1386,51 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (result *bui
 	// Step 4: Build file map from validated data
 	result = buildFileMapFromTorrents(hashToTorrent, filesByHash, len(torrents))
 	s.markSettledForRecovery(instanceID, recoveryTime)
+	return result, nil
+}
+
+func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileMapResult, error) {
+	result, err := s.buildInstanceFileMap(ctx, instanceID, 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
+	otherLocalInstances, err := s.getOtherLocalInstances(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, inst := range otherLocalInstances {
+		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, inst.ID)
+		if rootsErr != nil {
+			return nil, fmt.Errorf(
+				"could not determine scan roots for other local-access instance (id=%d name=%q): %w",
+				inst.ID, inst.Name, rootsErr,
+			)
+		}
+
+		if !scanRootsOverlap(result.scanRoots, otherRoots) {
+			confirmedRoots, err := s.buildInstanceScanRootsSettled(ctx, inst.ID, 90*time.Second)
+			if err != nil {
+				return nil, fmt.Errorf("could not confirm non-overlapping scan roots for other local-access instance (id=%d name=%q): %w", inst.ID, inst.Name, err)
+			}
+			if !scanRootsOverlap(result.scanRoots, confirmedRoots) {
+				continue
+			}
+		}
+
+		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, 2*time.Minute)
+		if err != nil {
+			return nil, fmt.Errorf("overlapping local-access instance unavailable (id=%d name=%q): %w", inst.ID, inst.Name, err)
+		}
+
+		added := result.fileMap.MergeFrom(otherResult.fileMap)
+		log.Debug().
+			Int("instance", inst.ID).
+			Int("filesAdded", added).
+			Str("rootsSource", source).
+			Msg("orphanscan: merged cross-instance torrent files (overlapping scan roots)")
+	}
+
 	return result, nil
 }
 

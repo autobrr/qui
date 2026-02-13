@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -590,6 +590,7 @@ const (
 	// Boolean fields
 	FieldPrivate        ConditionField = "PRIVATE"
 	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
@@ -670,6 +671,7 @@ type ActionConditions struct {
 	Delete        *DeleteAction      `json:"delete,omitempty"`
 	Tag           *TagAction         `json:"tag,omitempty"`
 	Category      *CategoryAction    `json:"category,omitempty"`
+	Move          *MoveAction        `json:"move,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -723,10 +725,17 @@ type CategoryAction struct {
 	Condition                    *RuleCondition `json:"condition,omitempty"`
 }
 
+type MoveAction struct {
+	Enabled          bool           `json:"enabled"`
+	Path             string         `json:"path"`
+	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty"`
+	Condition        *RuleCondition `json:"condition,omitempty"`
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil
 }

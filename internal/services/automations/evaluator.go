@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package automations
@@ -50,6 +50,8 @@ type EvalContext struct {
 	TrackerDownSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
+	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
+	HasMissingFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
@@ -376,7 +378,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldRatio:
 		return compareFloat64(torrent.Ratio, cond)
 	case FieldProgress:
-		return compareFloat64(torrent.Progress, cond)
+		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
 		return compareFloat64(torrent.Availability, cond)
 
@@ -425,6 +427,23 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown scope - don't match
 		}
 		return compareHardlinkScope(scope, cond)
+
+	case FieldHasMissingFiles:
+		// Instances without local filesystem access cannot detect missing files.
+		// Return false so the condition doesn't match and rules won't trigger unintended actions.
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		// If missing files couldn't be computed for this torrent (incomplete, etc.),
+		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
+		if ctx.HasMissingFilesByHash == nil {
+			return false
+		}
+		hasMissing, ok := ctx.HasMissingFilesByHash[torrent.Hash]
+		if !ok {
+			return false // Unknown state - don't match
+		}
+		return compareBool(hasMissing, cond)
 
 	default:
 		return false
@@ -691,6 +710,48 @@ func compareFloat64(value float64, cond *RuleCondition) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeProgressCondition(cond *RuleCondition) *RuleCondition {
+	if cond == nil {
+		return nil
+	}
+
+	normalized := *cond
+
+	if normalized.Value != "" {
+		if v, err := strconv.ParseFloat(normalized.Value, 64); err == nil {
+			v = normalizeProgressValue(v)
+			normalized.Value = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+	}
+
+	if normalized.MinValue != nil {
+		v := normalizeProgressValue(*normalized.MinValue)
+		normalized.MinValue = &v
+	}
+
+	if normalized.MaxValue != nil {
+		v := normalizeProgressValue(*normalized.MaxValue)
+		normalized.MaxValue = &v
+	}
+
+	return &normalized
+}
+
+func normalizeProgressValue(v float64) float64 {
+	// Older workflows stored progress conditions as 0-100 percentages; normalize to 0-1.
+	if v > 1 {
+		v /= 100
+	}
+
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 // compareBool compares a boolean value against the condition.

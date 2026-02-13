@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -23,6 +23,7 @@ import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, copyTextToClipboard, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -119,11 +120,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
         if (seenDisplayNames.has(displayKey)) continue
         seenDisplayNames.add(displayKey)
 
-        const primaryDomain = customization.domains[0]
+        const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
           label: customization.displayName,
           value: customization.domains.join(","),
-          icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
+          icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
         })
       } else {
         if (seenDisplayNames.has(lowerTracker)) continue

@@ -24,6 +24,13 @@ A web interface for qBittorrent. Manage multiple qBittorrent instances from a si
 - **Cross-Seed**: Automatically find and add matching torrents across trackers with autobrr webhook integration
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps like autobrr, Sonarr, and Radarr—no credential sharing needed
 
+## Browser Extensions
+
+Right-click any magnet or torrent link to add it directly to your qBittorrent instances:
+
+- [Chrome Extension](https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili)
+- [Firefox Add-on](https://addons.mozilla.org/en-US/firefox/addon/qui/)
+
 ## Quick Start
 
 Get started in minutes:

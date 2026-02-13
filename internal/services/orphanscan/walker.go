@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package orphanscan
@@ -15,6 +15,55 @@ import (
 )
 
 var discLayoutMarkers = []string{"BDMV", "VIDEO_TS"}
+
+var ignoredOrphanFileNames = []string{
+	".DS_Store",
+	".directory",
+	"desktop.ini",
+	"Thumbs.db",
+}
+
+// ignoredOrphanFileNamePrefixes are filename (not path) prefixes that are commonly created by
+// OS/NAS layers and should not be treated as orphan content (e.g. ".fuse_hidden*", ".nfs*", "._*").
+var ignoredOrphanFileNamePrefixes = []string{
+	".fuse",
+	".goutputstream-",
+	".nfs",
+	"._",
+	".#",
+	"~$",
+}
+
+// ignoredOrphanFileNameSuffixes are filename (not path) suffixes that are commonly created by
+// torrent clients and should not be treated as orphan content (e.g. "*.parts" from qBittorrent).
+var ignoredOrphanFileNameSuffixes = []string{
+	".parts",
+}
+
+// ignoredOrphanDirNames are directory names that should be skipped entirely during scanning.
+// These are typically system metadata/recycle bins/snapshot internals, not real content.
+var ignoredOrphanDirNames = []string{
+	".AppleDB",
+	".AppleDouble",
+	".TemporaryItems",
+	".Trashes",
+	".Recycle.Bin",
+	".recycle",
+	".snapshot",
+	".snapshots",
+	".zfs",
+	"@eaDir",
+	"$RECYCLE.BIN",
+	"#recycle",
+	"lost+found",
+	"System Volume Information",
+}
+
+// ignoredOrphanDirNamePrefixes are directory-name prefixes that should be skipped entirely.
+var ignoredOrphanDirNamePrefixes = []string{
+	".Trash-",
+	"..",
+}
 
 // discUnitDecision represents the cached decision for disc-layout unit selection.
 type discUnitDecision struct {
@@ -53,6 +102,7 @@ type scanWalker struct {
 	discUnitsInUse map[string]struct{}
 	discUnitCache  map[string]discUnitDecision
 	discUnitPaths  map[string]struct{}
+	seenInodes     map[inodeKey]struct{}
 	truncated      bool
 }
 
@@ -73,7 +123,25 @@ func newScanWalker(
 		discUnitsInUse: make(map[string]struct{}),
 		discUnitCache:  make(map[string]discUnitDecision),
 		discUnitPaths:  make(map[string]struct{}),
+		seenInodes:     make(map[inodeKey]struct{}),
 	}
+}
+
+type inodeKey struct {
+	dev uint64
+	ino uint64
+}
+
+func (w *scanWalker) shouldSkipDuplicate(info fs.FileInfo) bool {
+	key, nlink, ok := inodeKeyFromInfo(info)
+	if !ok || nlink > 1 {
+		return false
+	}
+	if _, exists := w.seenInodes[key]; exists {
+		return true
+	}
+	w.seenInodes[key] = struct{}{}
+	return false
 }
 
 func (w *scanWalker) walk(path string, d fs.DirEntry, walkErr error) error {
@@ -92,7 +160,7 @@ func (w *scanWalker) walk(path string, d fs.DirEntry, walkErr error) error {
 		return nil
 	}
 	if d.IsDir() {
-		return w.handleDir(path)
+		return w.handleDir(path, d)
 	}
 	return w.handleFile(path, d)
 }
@@ -116,8 +184,11 @@ func (w *scanWalker) handleWalkErr(walkErr error) error {
 	return walkErr
 }
 
-func (w *scanWalker) handleDir(path string) error {
+func (w *scanWalker) handleDir(path string, d fs.DirEntry) error {
 	if isIgnoredPath(path, w.ignorePaths) {
+		return fs.SkipDir
+	}
+	if isIgnoredOrphanDirName(d.Name()) {
 		return fs.SkipDir
 	}
 	return nil
@@ -129,8 +200,15 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 	}
 
 	unitPath, isDiscUnit := discOrphanUnitWithContext(w.root, path, w.tfm, w.discUnitCache, w.ignorePaths)
-	if w.tfm.Has(normalizePath(path)) {
+	normPath := normalizePath(path)
+	if w.tfm.Has(normPath) {
 		w.markInUse(unitPath, isDiscUnit)
+		if info, infoErr := d.Info(); infoErr == nil {
+			w.shouldSkipDuplicate(info)
+		}
+		return nil
+	}
+	if isIgnoredOrphanFileName(d.Name()) {
 		return nil
 	}
 
@@ -139,6 +217,9 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 		return nil //nolint:nilerr // best-effort scan: ignore stat failures
 	}
 	if time.Since(info.ModTime()) < w.gracePeriod {
+		return nil
+	}
+	if w.shouldSkipDuplicate(info) {
 		return nil
 	}
 	if isDiscUnit {
@@ -507,6 +588,53 @@ func isIgnoredPath(path string, ignorePaths []string) bool {
 		}
 	}
 	return false
+}
+
+func isIgnoredOrphanFileName(name string) bool {
+	for _, exact := range ignoredOrphanFileNames {
+		if strings.EqualFold(name, exact) {
+			return true
+		}
+	}
+	for _, prefix := range ignoredOrphanFileNamePrefixes {
+		if hasPrefixFold(name, prefix) {
+			return true
+		}
+	}
+	for _, suffix := range ignoredOrphanFileNameSuffixes {
+		if hasSuffixFold(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isIgnoredOrphanDirName(name string) bool {
+	for _, exact := range ignoredOrphanDirNames {
+		if strings.EqualFold(name, exact) {
+			return true
+		}
+	}
+	for _, prefix := range ignoredOrphanDirNamePrefixes {
+		if hasPrefixFold(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPrefixFold(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	return strings.EqualFold(s[:len(prefix)], prefix)
+}
+
+func hasSuffixFold(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+	return strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 
 // isPathProtectedByIgnorePaths checks if a path should not be deleted because:

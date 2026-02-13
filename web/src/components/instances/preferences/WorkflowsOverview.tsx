@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -49,6 +49,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
@@ -76,7 +77,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -166,6 +167,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Share"
     case "paused":
       return "Pause"
+    case "moved":
+      return "Move"
     default:
       return action
   }
@@ -218,6 +221,17 @@ function formatShareLimitsSummary(details: AutomationActivity["details"]): strin
 function formatPausedSummary(details: AutomationActivity["details"]): string {
   const count = details?.count ?? 0
   return `${count} torrent${count !== 1 ? "s" : ""} paused`
+}
+
+function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = Object.values(details?.paths ?? {}).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+  if (outcome === "failed") {
+    return `${count} torrent${count !== 1 ? "s" : ""} failed to move`
+  }
+  return `${count} torrent${count !== 1 ? "s" : ""} moved`
 }
 
 interface WorkflowsOverviewProps {
@@ -336,7 +350,7 @@ export function WorkflowsOverview({
     if (customization) {
       return {
         displayName: customization.displayName,
-        iconDomain: customization.domains[0],
+        iconDomain: pickTrackerIconDomain(trackerIcons, customization.domains, domain),
         isCustomized: true,
       }
     }
@@ -345,7 +359,7 @@ export function WorkflowsOverview({
       iconDomain: domain,
       isCustomized: false,
     }
-  }, [domainToCustomization])
+  }, [domainToCustomization, trackerIcons])
 
   const deleteRule = useMutation({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
@@ -684,6 +698,7 @@ export function WorkflowsOverview({
     speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    moved: "bg-green-500/10 text-green-500 border-green-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -1072,6 +1087,10 @@ export function WorkflowsOverview({
                                         <span className="font-medium text-sm block">
                                           {formatPausedSummary(event.details)}
                                         </span>
+                                      ) : event.action === "moved" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatMovedSummary(event.details, event.outcome)}
+                                        </span>
                                       ) : (
                                         <TruncatedText className="font-medium text-sm block cursor-default">
                                           {event.torrentName || event.hash}
@@ -1088,7 +1107,7 @@ export function WorkflowsOverview({
                                       >
                                         {formatAction(event.action)}
                                       </Badge>
-                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused"].includes(event.action) && (
+                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused", "moved"].includes(event.action) && (
                                         <Badge
                                           variant="outline"
                                           className={cn(
@@ -1293,6 +1312,18 @@ export function WorkflowsOverview({
                                       {event.ruleName && (
                                         <span className="text-muted-foreground">Rule: {event.ruleName}</span>
                                       )}
+                                      {event.details?.paths && (() => {
+                                        const paths = Object.entries(event.details.paths as Record<string, number>)
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {paths.map(([path, count]) => (
+                                              <Badge key={path} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
+                                                {path} ({count})
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )
+                                      })()}
                                     </div>
                                   )}
                                 </div>
@@ -1563,7 +1594,8 @@ function RulePreview({
     (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
     (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
     (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
-    (rule.conditions?.category?.enabled && rule.conditions.category.condition)
+    (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
+    (rule.conditions?.move?.enabled && rule.conditions.move.condition)
   )
 
   return (
@@ -1654,6 +1686,12 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
             <Folder className="h-3 w-3" />
             {rule.conditions.category.category}
+          </Badge>
+        )}
+        {rule.conditions?.move?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Move className="h-3 w-3" />
+            {rule.conditions.move.path}
           </Badge>
         )}
         <Button

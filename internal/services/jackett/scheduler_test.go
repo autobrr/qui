@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package jackett
 
 import (
@@ -673,6 +676,11 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 			expectedMaxWait: 15 * time.Second,
 		},
 		{
+			name:            "Completion uses 30s default, should skip (90s wait > 30s max)",
+			priority:        RateLimitPriorityCompletion,
+			expectedMaxWait: 30 * time.Second,
+		},
+		{
 			name:            "Background uses 60s default, should skip (90s wait > 60s max)",
 			priority:        RateLimitPriorityBackground,
 			expectedMaxWait: 60 * time.Second,
@@ -705,32 +713,6 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 			assert.Equal(t, tc.expectedMaxWait, waitErr.MaxWait, "wrong MaxWait for priority %s", tc.priority)
 		})
 	}
-
-	// Test Completion - should queue (not skip), verify by checking queue status
-	t.Run("Completion has no limit, should queue (not skip)", func(t *testing.T) {
-		_, err := s.Submit(context.Background(), SubmitRequest{
-			Indexers: []*models.TorznabIndexer{indexer},
-			Meta: &searchContext{
-				rateLimit: &RateLimitOptions{
-					Priority: RateLimitPriorityCompletion,
-				},
-			},
-			ExecFn: exec,
-			Callbacks: JobCallbacks{
-				OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
-					// Don't block - we just want to verify it queues
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		// Give scheduler time to process
-		time.Sleep(50 * time.Millisecond)
-
-		// Check that the task is queued (not completed with error)
-		status := s.GetStatus()
-		assert.Equal(t, 1, status.QueueLength, "completion task should be queued, not skipped")
-	})
 }
 
 // Rate limiter tests
@@ -847,6 +829,44 @@ func TestRateLimiter_RecordRequest(t *testing.T) {
 	wait = limiter.NextWait(indexer, nil)
 	if wait < 40*time.Millisecond {
 		t.Fatalf("expected wait after recording request, got %v", wait)
+	}
+}
+
+func TestRateLimiter_WaitForMinInterval_ReservesSlot(t *testing.T) {
+	limiter := NewRateLimiter(50 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1}
+
+	limiter.RecordRequest(indexer.ID, time.Time{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	if err := limiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground}); err != nil {
+		t.Fatalf("WaitForMinInterval returned error: %v", err)
+	}
+
+	// We just reserved a slot; immediately after, there should be some wait remaining.
+	wait := limiter.NextWait(indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground})
+	if wait <= 0 {
+		t.Fatalf("expected positive wait after reserving slot, got %v", wait)
+	}
+}
+
+func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
+	limiter := NewRateLimiter(50 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1}
+
+	limiter.SetCooldown(indexer.ID, time.Now().Add(1*time.Hour))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	if err := limiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground}); err != nil {
+		t.Fatalf("WaitForMinInterval returned error: %v", err)
+	}
+	if time.Since(start) > 150*time.Millisecond {
+		t.Fatalf("WaitForMinInterval waited unexpectedly long (cooldown should be ignored)")
 	}
 }
 

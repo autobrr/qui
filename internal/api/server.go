@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package api
@@ -30,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
@@ -75,6 +76,7 @@ type Server struct {
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
+	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 }
@@ -110,6 +112,7 @@ type Dependencies struct {
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
+	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
 }
@@ -152,6 +155,7 @@ func NewServer(deps *Dependencies) *Server {
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
+		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 	}
@@ -292,7 +296,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
+	var dirScanHandler *handlers.DirScanHandler
+	if s.dirScanService != nil {
+		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
+	}
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
+	rssHandler := handlers.NewRSSHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
@@ -437,6 +447,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/webseeds", torrentsHandler.GetTorrentWebSeeds)
+							r.Get("/pieces", torrentsHandler.GetTorrentPieceStates)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 							r.Put("/files", torrentsHandler.SetTorrentFilePriority)
 							r.Put("/rename", torrentsHandler.RenameTorrent)
@@ -488,6 +499,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						})
 					})
 
+					// RSS management
+					r.Route("/rss", func(r chi.Router) {
+						rssHandler.Routes(r)
+						r.Get("/events", rssSSEHandler.HandleSSE)
+					})
+
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
@@ -531,6 +548,30 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					})
 				})
 			})
+
+			// Directory scanner (global, not per-instance)
+			if dirScanHandler != nil {
+				r.Route("/dir-scan", func(r chi.Router) {
+					r.Get("/settings", dirScanHandler.GetSettings)
+					r.Patch("/settings", dirScanHandler.UpdateSettings)
+					r.Route("/directories", func(r chi.Router) {
+						r.Get("/", dirScanHandler.ListDirectories)
+						r.Post("/", dirScanHandler.CreateDirectory)
+						r.Route("/{directoryID}", func(r chi.Router) {
+							r.Get("/", dirScanHandler.GetDirectory)
+							r.Patch("/", dirScanHandler.UpdateDirectory)
+							r.Delete("/", dirScanHandler.DeleteDirectory)
+							r.Post("/reset-files", dirScanHandler.ResetFiles)
+							r.Post("/scan", dirScanHandler.TriggerScan)
+							r.Delete("/scan", dirScanHandler.CancelScan)
+							r.Get("/status", dirScanHandler.GetStatus)
+							r.Get("/runs", dirScanHandler.ListRuns)
+							r.Get("/runs/{runID}/injections", dirScanHandler.ListRunInjections)
+							r.Get("/files", dirScanHandler.ListFiles)
+						})
+					})
+				})
+			}
 
 			// Global torrent operations (cross-instance)
 			r.Route("/torrents", func(r chi.Router) {

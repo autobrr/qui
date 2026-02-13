@@ -62,6 +62,7 @@ Run sparingly. This deep scan touches every matching torrent and queries indexer
 Triggers a cross-seed search when torrents finish downloading. Configure in the **Auto** tab under "Auto-search on completion".
 
 - **Categories/Tags** - Filter which completed torrents trigger searches
+- **Target indexers** - Limit completion searches to specific indexers (empty means all enabled)
 - **Exclude categories/tags** - Skip torrents matching these filters
 
 ### Manual Search

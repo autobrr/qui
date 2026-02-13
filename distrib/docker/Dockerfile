@@ -72,7 +72,7 @@ ENV HOME="/config" \
     XDG_DATA_HOME="/config"
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates curl tzdata
+RUN apk --no-cache add ca-certificates curl tzdata bash
 
 WORKDIR /config
 

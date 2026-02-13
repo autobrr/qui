@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -8,16 +8,20 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { api } from "@/lib/api"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent, TorrentProperties } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2 } from "lucide-react"
-import { memo } from "react"
+import { memo, useMemo } from "react"
 import { toast } from "sonner"
+import { PieceBar } from "./PieceBar"
 import { StatRow } from "./StatRow"
 
 interface GeneralTabHorizontalProps {
+  instanceId: number
   torrent: Torrent
   properties: TorrentProperties | undefined
   loading: boolean
@@ -33,12 +37,10 @@ interface GeneralTabHorizontalProps {
   displayComment?: string
   displayCreatedBy?: string
   queueingEnabled?: boolean
-  maxActiveDownloads?: number
-  maxActiveUploads?: number
-  maxActiveTorrents?: number
 }
 
 export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
+  instanceId,
   torrent,
   properties,
   loading,
@@ -54,11 +56,49 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   displayComment,
   displayCreatedBy,
   queueingEnabled,
-  maxActiveDownloads,
-  maxActiveUploads,
-  maxActiveTorrents,
 }: GeneralTabHorizontalProps) {
   const { formatTimestamp } = useDateTimeFormatters()
+
+  // Only fetch piece states when downloading or rechecking (not needed for completed torrents)
+  const isDownloading = torrent.progress < 1
+  const isChecking = torrent.state?.includes("checking") ?? false
+  const needsPieceStates = isDownloading || isChecking
+
+  const { data: pieceStates, isLoading: loadingPieces } = useQuery({
+    queryKey: ["torrent-piece-states", instanceId, torrent.hash],
+    queryFn: () => api.getTorrentPieceStates(instanceId, torrent.hash),
+    enabled: instanceId != null && !!torrent.hash && needsPieceStates,
+    staleTime: 3000,
+    refetchInterval: needsPieceStates ? 5000 : false,
+  })
+
+  // Calculate pieces stats from actual piece states when available (more accurate than properties)
+  const piecesStats = useMemo(() => {
+    const totalFromProperties = properties?.pieces_num || 0
+    const haveFromProperties = properties?.pieces_have || 0
+    const isCompleteFromProperties = (properties?.completion_date != null && properties.completion_date !== -1)
+      || (totalFromProperties > 0 && haveFromProperties >= totalFromProperties)
+
+    // When we don't need piece states anymore, prefer properties (react-query can keep stale pieceStates cached).
+    if (!needsPieceStates) {
+      const total = totalFromProperties
+      const have = isCompleteFromProperties ? total : haveFromProperties
+      const progress = total > 0 ? (have / total) * 100 : (isCompleteFromProperties ? 100 : 0)
+      return { have, total, progress: Math.min(100, progress) }
+    }
+
+    if (pieceStates && pieceStates.length > 0) {
+      const total = pieceStates.length
+      const have = pieceStates.filter(state => state === 2).length
+      const progress = (have / total) * 100
+      return { have, total, progress }
+    }
+    // For completed torrents (no piece states fetched), use properties
+    const total = totalFromProperties
+    const have = haveFromProperties
+    const progress = total > 0 ? (have / total) * 100 : 0
+    return { have, total, progress }
+  }, [needsPieceStates, pieceStates, properties?.completion_date, properties?.pieces_have, properties?.pieces_num])
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -279,7 +319,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             />
             <StatRow
               label="Pieces"
-              value={`${properties.pieces_have || 0} / ${properties.pieces_num || 0} (${formatBytes(properties.piece_size || 0)} each)`}
+              value={piecesStats.total > 0 ? `${piecesStats.have} / ${piecesStats.total}` : "—"}
             />
             {queueingEnabled && (
               <StatRow
@@ -322,26 +362,25 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
         </div>
 
-        {/* Queue Management (if enabled) */}
-        {queueingEnabled && (maxActiveDownloads || maxActiveUploads || maxActiveTorrents) && (
-          <>
-            <Separator className="opacity-30" />
-            <div className="flex items-center gap-4 text-xs">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Queue Limits:
-              </span>
-              {maxActiveDownloads !== undefined && maxActiveDownloads > 0 && (
-                <StatRow label="Max DL" value={String(maxActiveDownloads)} />
-              )}
-              {maxActiveUploads !== undefined && maxActiveUploads > 0 && (
-                <StatRow label="Max UL" value={String(maxActiveUploads)} />
-              )}
-              {maxActiveTorrents !== undefined && maxActiveTorrents > 0 && (
-                <StatRow label="Max Active" value={String(maxActiveTorrents)} />
-              )}
-            </div>
-          </>
-        )}
+        {/* Pieces visualization */}
+        <Separator className="opacity-30 mt-2" />
+        <div className="mt-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Pieces
+            </h4>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {piecesStats.total > 0
+                ? `${piecesStats.have} / ${piecesStats.total} (${piecesStats.progress.toFixed(1)}%)`
+                : "—"}
+            </span>
+          </div>
+          <PieceBar
+            pieceStates={needsPieceStates ? pieceStates : undefined}
+            isLoading={needsPieceStates ? loadingPieces : false}
+            isComplete={!needsPieceStates && piecesStats.progress >= 100}
+          />
+        </div>
       </div>
     </ScrollArea>
   )

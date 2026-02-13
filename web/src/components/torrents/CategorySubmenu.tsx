@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -37,7 +37,7 @@ interface CategorySubmenuProps {
 
 // Threshold for when to use virtualization vs simple rendering
 // Below this, simple CSS scrolling is faster
-const VIRTUALIZATION_THRESHOLD = 50
+const VIRTUALIZATION_THRESHOLD = 250
 
 export const CategorySubmenu = memo(function CategorySubmenu({
   type,

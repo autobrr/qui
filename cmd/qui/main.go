@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package main
@@ -35,6 +35,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
@@ -582,6 +583,9 @@ func (app *Application) runServer() {
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
 
+	dirScanStore := models.NewDirScanStore(db)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore)
+
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -601,6 +605,12 @@ func (app *Application) runServer() {
 	orphanScanCtx, orphanScanCancel := context.WithCancel(context.Background())
 	defer orphanScanCancel()
 	orphanScanService.Start(orphanScanCtx)
+
+	dirScanCtx, dirScanCancel := context.WithCancel(context.Background())
+	defer dirScanCancel()
+	if err := dirScanService.Start(dirScanCtx); err != nil {
+		log.Error().Err(err).Msg("failed to start dirscan service")
+	}
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -694,6 +704,7 @@ func (app *Application) runServer() {
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
+		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
 	})

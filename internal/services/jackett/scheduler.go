@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package jackett
 
 import (
@@ -42,6 +45,10 @@ var priorityMultipliers = map[RateLimitPriority]float64{
 const (
 	// Keep RSS responsive; we'll skip indexers that need more than this wait.
 	rssMaxWait = 15 * time.Second
+	// Completion searches should not be blocked indefinitely by a single rate-limited/down indexer.
+	// Keep this modest so the overall end-to-end completion automation stays bounded even when some
+	// indexers are slow or temporarily unavailable.
+	completionMaxWait = 30 * time.Second
 	// Background jobs are least urgent; allow more wait before skipping.
 	backgroundMaxWait = 60 * time.Second
 	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
@@ -128,6 +135,56 @@ func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
 		dur = ts.Sub(r.startTime)
 	}
 	r.recordLocked(indexerID, dur)
+}
+
+// WaitForMinInterval blocks until a new request slot is available for the given indexer according to the
+// configured min interval and priority multiplier, then reserves the slot by recording the request time.
+//
+// Note: this intentionally does NOT wait for cooldown windows. Callers that care about cooldowns should
+// check IsInCooldown separately (downloads typically return immediately when in cooldown).
+func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.TorznabIndexer, opts *RateLimitOptions) error {
+	if r == nil || indexer == nil {
+		return nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	cfg := r.resolveOptions(opts)
+
+	for {
+		r.mu.Lock()
+		state := r.getStateLocked(indexer.ID)
+		now := time.Since(r.startTime)
+
+		wait := time.Duration(0)
+		if cfg.MinInterval > 0 && state.lastRequest >= 0 {
+			next := state.lastRequest + cfg.MinInterval
+			if next > now {
+				wait = next - now
+			}
+		}
+
+		if wait <= 0 {
+			if ctx.Err() != nil {
+				r.mu.Unlock()
+				return ctx.Err()
+			}
+			r.recordLocked(indexer.ID, now)
+			r.mu.Unlock()
+			return nil
+		}
+		r.mu.Unlock()
+
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
@@ -825,7 +882,7 @@ func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
 		case RateLimitPriorityRSS:
 			return rssMaxWait
 		case RateLimitPriorityCompletion:
-			return 0 // No limit - completion searches queue and wait for rate limits
+			return completionMaxWait
 		case RateLimitPriorityBackground:
 			return backgroundMaxWait
 		case RateLimitPriorityInteractive:

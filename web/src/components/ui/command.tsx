@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { type DialogProps } from "@radix-ui/react-dialog"
 import { Command as CommandPrimitive } from "cmdk"
 import { Search } from "lucide-react"

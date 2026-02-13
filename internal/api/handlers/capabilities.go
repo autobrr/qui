@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -24,6 +24,7 @@ type InstanceCapabilitiesResponse struct {
 	SupportsTorrentTmpPath      bool   `json:"supportsTorrentTmpPath"`
 	SupportsPathAutocomplete    bool   `json:"supportsPathAutocomplete"`
 	SupportsFreeSpacePathSource bool   `json:"supportsFreeSpacePathSource"`
+	SupportsSetRSSFeedURL       bool   `json:"supportsSetRSSFeedURL"`
 	WebAPIVersion               string `json:"webAPIVersion,omitempty"`
 }
 
@@ -43,6 +44,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsTorrentTmpPath:      client.SupportsTorrentTmpPath(),
 		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
 		SupportsFreeSpacePathSource: runtime.GOOS != osWindows,
+		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
 	}
 
 	if version := client.GetWebAPIVersion(); version != "" {

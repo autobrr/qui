@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package crossseed provides intelligent cross-seeding functionality for torrents.
@@ -1511,7 +1511,10 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return err
 	}
 
-	requestedIndexerIDs := uniquePositiveInts(settings.TargetIndexerIDs)
+	var requestedIndexerIDs []int
+	if completionSettings != nil {
+		requestedIndexerIDs = uniquePositiveInts(completionSettings.IndexerIDs)
+	}
 
 	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
 	var allowedIndexerIDs []int
@@ -2804,15 +2807,19 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	// Parse torrent metadata to get name, hash, files, and info for validation
-	torrentName, torrentHash, sourceFiles, torrentInfo, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse torrent: %w", err)
 	}
-	sourceRelease := s.releaseCache.Parse(torrentName)
+	torrentHash := meta.HashV1
+	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+		torrentHash = meta.HashV2
+	}
+	sourceRelease := s.releaseCache.Parse(meta.Name)
 
 	// Use FindCandidates to locate matching torrents
 	findReq := &FindCandidatesRequest{
-		TorrentName:            torrentName,
+		TorrentName:            meta.Name,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
 	}
@@ -2836,13 +2843,13 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	// Detect disc layout from source files
-	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
+	isDiscLayout, discMarker := isDiscLayoutTorrent(meta.Files)
 
 	response := &CrossSeedResponse{
 		Success: false,
 		Results: make([]InstanceCrossSeedResult, 0),
 		TorrentInfo: &TorrentInfo{
-			Name:       torrentName,
+			Name:       meta.Name,
 			Hash:       torrentHash,
 			DiscLayout: isDiscLayout,
 			DiscMarker: discMarker,
@@ -2850,9 +2857,9 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	if response.TorrentInfo != nil {
-		response.TorrentInfo.TotalFiles = len(sourceFiles)
+		response.TorrentInfo.TotalFiles = len(meta.Files)
 		var totalSize int64
-		for _, f := range sourceFiles {
+		for _, f := range meta.Files {
 			totalSize += f.Size
 		}
 		if totalSize > 0 {
@@ -2862,7 +2869,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 
 	// Process each instance with matching candidates
 	for _, candidate := range candidatesResp.Candidates {
-		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, torrentName, req, sourceRelease, sourceFiles, torrentInfo)
+		result := s.processCrossSeedCandidate(ctx, candidate, torrentBytes, torrentHash, meta.HashV2, meta.Name, req, sourceRelease, meta.Files, meta.Info)
 		response.Results = append(response.Results, result)
 		if result.Success {
 			response.Success = true
@@ -3033,7 +3040,8 @@ func (s *Service) processCrossSeedCandidate(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	torrentBytes []byte,
-	torrentHash,
+	torrentHash string,
+	torrentHashV2 string,
 	torrentName string,
 	req *CrossSeedRequest,
 	sourceRelease *rls.Release,
@@ -3048,7 +3056,22 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Check if torrent already exists
-	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{torrentHash})
+	hashes := make([]string, 0, 2)
+	seenHashes := make(map[string]struct{}, 2)
+	for _, hash := range []string{torrentHash, torrentHashV2} {
+		trimmed := strings.TrimSpace(hash)
+		if trimmed == "" {
+			continue
+		}
+		canonical := strings.ToLower(trimmed)
+		if _, ok := seenHashes[canonical]; ok {
+			continue
+		}
+		seenHashes[canonical] = struct{}{}
+		hashes = append(hashes, trimmed)
+	}
+
+	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, hashes)
 	if err != nil {
 		result.Message = fmt.Sprintf("Failed to check existing torrents: %v", err)
 		return result
@@ -3357,7 +3380,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Try reflink mode first if enabled - reflinks bypass piece-boundary restrictions
 	if useReflinkMode {
 		rlResult := s.processReflinkMode(
-			ctx, candidate, torrentBytes, torrentHash, torrentName, req,
+			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -3376,7 +3399,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Try hardlink mode if enabled - this bypasses the regular reuse+rename alignment
 	if useHardlinkMode {
 		hlResult := s.processHardlinkMode(
-			ctx, candidate, torrentBytes, torrentHash, torrentName, req,
+			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -3612,7 +3635,10 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
-	alignmentSucceeded := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
+	alignmentSucceeded, activeHash := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, matchedTorrent, sourceFiles, candidateFiles)
+	if activeHash == "" {
+		activeHash = torrentHash
+	}
 
 	// Determine if we need to wait for verification and resume at threshold:
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
@@ -3622,10 +3648,15 @@ func (s *Service) processCrossSeedCandidate(
 	needsRecheck := (addPolicy.DiscLayout && alignmentSucceeded) || needsRecheckAndResume
 
 	if needsRecheck {
+		recheckHashes := []string{torrentHash}
+		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+			recheckHashes = append(recheckHashes, torrentHashV2)
+		}
+
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
@@ -3655,9 +3686,9 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, 1.0)
 			} else {
-				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, activeHash)
 			}
 			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
@@ -3680,7 +3711,7 @@ func (s *Service) processCrossSeedCandidate(
 			result.Message += " - auto-resume skipped per settings"
 		} else {
 			// Resume immediately since there's nothing to wait for
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{activeHash}, "resume"); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", candidate.InstanceID).
@@ -3694,7 +3725,7 @@ func (s *Service) processCrossSeedCandidate(
 		// Alignment failed - pause torrent to prevent unwanted downloads
 		if !startPaused {
 			// Torrent was added running - need to actually pause it
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "pause"); err != nil {
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", candidate.InstanceID).
@@ -3741,6 +3772,30 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	return result
+}
+
+func dedupeHashes(hashes ...string) []string {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+
+	for _, hash := range hashes {
+		trimmed := strings.TrimSpace(hash)
+		if trimmed == "" {
+			continue
+		}
+		canonical := strings.ToLower(trimmed)
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, trimmed)
+	}
+
+	return out
 }
 
 func normalizeHash(hash string) string {
@@ -4068,10 +4123,14 @@ func matchTypePriority(matchType string) int {
 		return 3
 	case "partial-in-pack":
 		return 2
+	case "partial-contains":
+		// Allows cross-seeding when folder structures differ but content matches
+		// (e.g., /movie1/movie1.mkv vs /movie1.mkv)
+		return 1
 	case "size":
 		return 1
 	default:
-		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
+		// Unknown/unsupported match types (e.g. "release-match")
 		// intentionally receive priority 0 so callers treat them as unusable unless
 		// explicitly handled above. Add new match types here when they become valid.
 		return 0
@@ -4175,7 +4234,21 @@ func (s *Service) findBestCandidateMatch(
 			continue
 		}
 
-		score := matchTypePriority(matchResult.MatchType)
+		// Since we swapped parameters above, we need to swap the partial match types to maintain
+		// correct semantics from the caller's perspective:
+		// - "partial-in-pack" from getMatchTypeWithReason means existing files are in new files
+		//   → should be "partial-contains" (new torrent contains existing torrent's files)
+		// - "partial-contains" from getMatchTypeWithReason means new files are in existing files
+		//   → should be "partial-in-pack" (new torrent's files are in existing pack)
+		actualMatchType := matchResult.MatchType
+		switch actualMatchType {
+		case "partial-in-pack":
+			actualMatchType = "partial-contains"
+		case "partial-contains":
+			actualMatchType = "partial-in-pack"
+		}
+
+		score := matchTypePriority(actualMatchType)
 		if score == 0 {
 			// Layout checks can still return named match types (e.g. "partial-contains")
 			// that we never want to use for apply, so priority 0 acts as a hard reject.
@@ -4200,7 +4273,7 @@ func (s *Service) findBestCandidateMatch(
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
-			matchType = matchResult.MatchType
+			matchType = actualMatchType
 			bestScore = score
 			bestHasRoot = hasRootFolder
 			bestFileCount = fileCount
@@ -4873,6 +4946,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
+	searchRelease := sourceRelease
+	if contentInfo.ContentType == "tv" {
+		searchRelease = s.deriveSourceReleaseForSearch(sourceRelease, sourceFiles)
+	}
 
 	// Detect disc layout for this torrent
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
@@ -4895,7 +4972,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
-	queryRelease := sourceRelease
+	queryRelease := searchRelease
 	if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
 		// For music, create a proper music release object by parsing the torrent name as music
 		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
@@ -5188,19 +5265,19 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		// Add season/episode info for TV content only if not already set by safe query
-		if sourceRelease.Series > 0 && searchReq.Season == nil {
-			season := sourceRelease.Series
+		if searchRelease.Series > 0 && searchReq.Season == nil {
+			season := searchRelease.Series
 			searchReq.Season = &season
 
-			if sourceRelease.Episode > 0 && searchReq.Episode == nil {
-				episode := sourceRelease.Episode
+			if searchRelease.Episode > 0 && searchReq.Episode == nil {
+				episode := searchRelease.Episode
 				searchReq.Episode = &episode
 			}
 		}
 
 		// Add year info if available
-		if sourceRelease.Year > 0 {
-			searchReq.Year = sourceRelease.Year
+		if searchRelease.Year > 0 {
+			searchReq.Year = searchRelease.Year
 		}
 
 		// Use the appropriate release object for logging based on content type
@@ -5209,7 +5286,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			// For music, create a proper music release object by parsing the torrent name as music
 			logRelease = *ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
-			logRelease = *sourceRelease
+			logRelease = *searchRelease
 		}
 
 		logEvent := log.Debug().
@@ -5242,14 +5319,27 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	var searchResp *jackett.SearchResponse
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
+	var onAllCompleteOnce sync.Once
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer waitCancel()
+
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
-		if err != nil {
-			errCh <- err
-		} else {
-			respCh <- resp
-		}
+		onAllCompleteOnce.Do(func() {
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-waitCtx.Done():
+				}
+			} else {
+				select {
+				case respCh <- resp:
+				case <-waitCtx.Done():
+				}
+			}
+		})
 	}
-	err = s.jackettService.Search(ctx, searchReq)
+	err = s.jackettService.Search(waitCtx, searchReq)
 	if err != nil {
 		return nil, wrapCrossSeedSearchError(err)
 	}
@@ -5259,8 +5349,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		// continue
 	case err := <-errCh:
 		return nil, wrapCrossSeedSearchError(err)
-	case <-time.After(5 * time.Minute):
-		return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+	case <-waitCtx.Done():
+		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+			return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+		}
+		return nil, wrapCrossSeedSearchError(waitCtx.Err())
 	}
 
 	searchResults := searchResp.Results
@@ -5298,19 +5391,19 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(sourceRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
 			releaseFilteredCount++
 			continue
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
 		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
-		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, sourceRelease, opts.FindIndividualEpisodes); reject {
+		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
 			releaseFilteredCount++
 			continue
 		}
 
-		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(sourceRelease) && isTVEpisode(candidateRelease)
+		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 
 		// Size validation: check if candidate size is within tolerance of source size
 		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
@@ -5326,7 +5419,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			continue
 		}
 
-		score, reason := evaluateReleaseMatch(sourceRelease, candidateRelease)
+		score, reason := evaluateReleaseMatch(searchRelease, candidateRelease)
 		if score <= 0 {
 			score = 1.0
 		}
@@ -7813,16 +7906,28 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 	return contentPath
 }
 
-// appendCrossSuffix adds the .cross suffix to a category name.
-// Returns empty string for empty input, and avoids double-suffixing.
-func appendCrossSuffix(category string) string {
-	if category == "" {
-		return ""
-	}
-	if strings.HasSuffix(category, ".cross") {
+// applyCategoryAffix applies a prefix or suffix to a category based on the affix mode.
+// Returns the category unchanged if affixMode is empty or affix is empty.
+func applyCategoryAffix(category, affixMode, affix string) string {
+	if category == "" || affix == "" || affixMode == "" {
 		return category
 	}
-	return category + ".cross"
+	switch affixMode {
+	case models.CategoryAffixModePrefix:
+		// Avoid double-prefixing
+		if strings.HasPrefix(category, affix) {
+			return category
+		}
+		return affix + category
+	case models.CategoryAffixModeSuffix:
+		// Avoid double-suffixing
+		if strings.HasSuffix(category, affix) {
+			return category
+		}
+		return category + affix
+	default:
+		return category
+	}
 }
 
 // ensureCrossCategory ensures a .cross suffixed category exists with the correct save_path.
@@ -7905,32 +8010,32 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 		settings, _ = s.GetAutomationSettings(ctx)
 	}
 
-	// Custom category takes priority - use exact category without any suffix
+	// Custom category takes priority - use exact category without any affix
 	if settings != nil && settings.UseCustomCategory && settings.CustomCategory != "" {
 		return settings.CustomCategory, settings.CustomCategory
 	}
 
-	// Helper to apply .cross suffix only if enabled in settings
-	applySuffix := func(cat string) string {
-		if settings != nil && !settings.UseCrossCategorySuffix {
-			return cat
+	// Helper to apply category affix (prefix or suffix) based on settings
+	applyAffix := func(cat string) string {
+		if settings != nil && settings.UseCrossCategoryAffix && settings.CategoryAffixMode != "" && settings.CategoryAffix != "" {
+			return applyCategoryAffix(cat, settings.CategoryAffixMode, settings.CategoryAffix)
 		}
-		return appendCrossSuffix(cat)
+		return cat
 	}
 
 	if req == nil {
-		return matchedCategory, applySuffix(matchedCategory)
+		return matchedCategory, applyAffix(matchedCategory)
 	}
 
 	if req.Category != "" {
-		return req.Category, applySuffix(req.Category)
+		return req.Category, applyAffix(req.Category)
 	}
 
 	if req.IndexerName != "" && settings != nil && settings.UseCategoryFromIndexer {
-		return req.IndexerName, applySuffix(req.IndexerName)
+		return req.IndexerName, applyAffix(req.IndexerName)
 	}
 
-	return matchedCategory, applySuffix(matchedCategory)
+	return matchedCategory, applyAffix(matchedCategory)
 }
 
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
@@ -8849,7 +8954,9 @@ func (s *Service) processHardlinkMode(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	torrentBytes []byte,
-	torrentHash, torrentName string,
+	torrentHash string,
+	torrentHashV2 string,
+	torrentName string,
 	req *CrossSeedRequest,
 	matchedTorrent *qbt.Torrent,
 	matchType string,
@@ -9186,9 +9293,14 @@ func (s *Service) processHardlinkMode(
 
 	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
 	if hasExtras || addPolicy.DiscLayout {
+		recheckHashes := []string{torrentHash}
+		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+			recheckHashes = append(recheckHashes, torrentHashV2)
+		}
+
 		// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
 		// and which are missing (extras to download)
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
@@ -9351,7 +9463,9 @@ func (s *Service) processReflinkMode(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	torrentBytes []byte,
-	torrentHash, torrentName string,
+	torrentHash string,
+	torrentHashV2 string,
+	torrentName string,
 	req *CrossSeedRequest,
 	matchedTorrent *qbt.Torrent,
 	matchType string,
@@ -9692,9 +9806,14 @@ func (s *Service) processReflinkMode(
 
 	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
 	if hasExtras || addPolicy.DiscLayout {
+		recheckHashes := []string{torrentHash}
+		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+			recheckHashes = append(recheckHashes, torrentHashV2)
+		}
+
 		// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
 		// and which are missing (extras to download)
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).

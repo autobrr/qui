@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package orphanscan
@@ -7,9 +7,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+const orphanFileName = "orphan.txt"
 
 func TestWalkScanRoot_CollapsesDiscLayoutIntoSingleOrphanUnit(t *testing.T) {
 	t.Parallel()
@@ -213,6 +216,198 @@ func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenSiblingContentInUse(t *tes
 	}
 	if filepath.Clean(orphans[0].Path) != filepath.Clean(bdmvDir) {
 		t.Fatalf("expected orphan unit path %q, got %q", bdmvDir, orphans[0].Path)
+	}
+}
+
+func TestWalkScanRoot_IgnoresFuseHiddenFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	fuseHidden := filepath.Join(root, ".fuse_hidden0005c2cb00000025")
+	if err := os.WriteFile(fuseHidden, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	normal := filepath.Join(root, orphanFileName)
+	if err := os.WriteFile(normal, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(fuseHidden, old, old)
+	_ = os.Chtimes(normal, old, old)
+
+	tfm := NewTorrentFileMap()
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, filepath.Base(o.Path))
+	}
+	for _, p := range paths {
+		if strings.HasPrefix(p, ".fuse") {
+			t.Fatalf("expected .fuse* to be ignored, got orphan %q", p)
+		}
+	}
+	foundNormal := false
+	for _, p := range paths {
+		if p == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func TestWalkScanRoot_IgnoresPartsFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	partsFile := filepath.Join(root, "movie.mkv.parts")
+	if err := os.WriteFile(partsFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	normal := filepath.Join(root, orphanFileName)
+	if err := os.WriteFile(normal, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(partsFile, old, old)
+	_ = os.Chtimes(normal, old, old)
+
+	tfm := NewTorrentFileMap()
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, filepath.Base(o.Path))
+	}
+	for _, p := range paths {
+		if strings.HasSuffix(p, ".parts") {
+			t.Fatalf("expected *.parts to be ignored, got orphan %q", p)
+		}
+	}
+	foundNormal := false
+	for _, p := range paths {
+		if p == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func writeOldFile(t *testing.T, path string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(path, old, old)
+}
+
+func orphanPaths(orphans []OrphanFile) []string {
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, normalizePath(o.Path))
+	}
+	return paths
+}
+
+func TestWalkScanRoot_IgnoresTrashDirs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	inTrash := filepath.Join(root, ".Trash-1000", "trash.txt")
+	writeOldFile(t, inTrash)
+
+	normal := filepath.Join(root, orphanFileName)
+	writeOldFile(t, normal)
+
+	tfm := NewTorrentFileMap()
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := orphanPaths(orphans)
+	for _, p := range paths {
+		if strings.Contains(p, normalizePath(filepath.Join(root, ".Trash-1000"))) {
+			t.Fatalf("expected .Trash-* to be ignored, got orphan %q", p)
+		}
+	}
+
+	foundNormal := false
+	for _, p := range paths {
+		if filepath.Base(p) == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func TestWalkScanRoot_IgnoresKubernetesInternalDirs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	inKube := filepath.Join(root, "..data", "kube.txt")
+	writeOldFile(t, inKube)
+
+	normal := filepath.Join(root, orphanFileName)
+	writeOldFile(t, normal)
+
+	tfm := NewTorrentFileMap()
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := orphanPaths(orphans)
+	for _, p := range paths {
+		if strings.Contains(p, normalizePath(filepath.Join(root, "..data"))) {
+			t.Fatalf("expected k8s internal dirs to be ignored, got orphan %q", p)
+		}
+	}
+
+	foundNormal := false
+	for _, p := range paths {
+		if filepath.Base(p) == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
 	}
 }
 

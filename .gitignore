@@ -43,7 +43,6 @@ dist/
 .run/
 .dev/
 tmp/
-.golangci.yml
 web/eslint-sarif-report.sarif
 test/mockindexer/feeds/*
 test/mockindexer/files/*
@@ -67,4 +66,8 @@ tracker-icons/*
 .device-id-*
 backups/*
 .gocache/*
+.gomodcache/*
+.golangci-cache/*
 torrentfiles/*
+analyses/*
+.envrc

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -118,6 +118,17 @@ func addTorrentWithIndexer(
 				DownloadURL: url,
 			})
 			if err != nil {
+				var magnetErr *jackett.MagnetDownloadError
+				if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
+					magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
+					if err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+						failedCount++
+						lastError = err
+					} else {
+						addedCount++
+					}
+					continue
+				}
 				failedCount++
 				lastError = err
 				continue
@@ -222,6 +233,32 @@ func TestAddTorrentWithIndexer_FallsBackWithNilJackettService(t *testing.T) {
 	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
 	assert.Equal(t, 1, mockSync.addTorrentFromURLsCalls[0].instanceID)
 	assert.Equal(t, urls, mockSync.addTorrentFromURLsCalls[0].urls)
+}
+
+func TestAddTorrentWithIndexer_AddsMagnetRedirect(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &mockSyncManager{}
+	mockJackett := &mockJackettService{
+		downloadTorrentErr: &jackett.MagnetDownloadError{MagnetURL: "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"},
+	}
+
+	ctx := context.Background()
+	urls := []string{"http://indexer.example.com/download/123"}
+	options := map[string]string{"category": "movies"}
+
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, mockJackett, 1, urls, 42, options)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, added)
+	assert.Equal(t, 0, failed)
+
+	require.Len(t, mockJackett.downloadTorrentCalls, 1)
+	assert.Equal(t, "http://indexer.example.com/download/123", mockJackett.downloadTorrentCalls[0].DownloadURL)
+
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, []string{"magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"}, mockSync.addTorrentFromURLsCalls[0].urls)
+	assert.Empty(t, mockSync.addTorrentCalls)
 }
 
 func TestAddTorrentWithIndexer_MagnetLinksPassedDirectly(t *testing.T) {

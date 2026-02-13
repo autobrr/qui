@@ -1,9 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import type {
+  AddRSSFeedRequest,
+  AddRSSFolderRequest,
   AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
@@ -34,6 +36,14 @@ import type {
   CrossSeedTorrentSearchSelection,
   DashboardSettings,
   DashboardSettingsInput,
+  DirScanDirectory,
+  DirScanDirectoryCreate,
+  DirScanDirectoryUpdate,
+  DirScanFile,
+  DirScanRun,
+  DirScanRunInjection,
+  DirScanSettings,
+  DirScanSettingsUpdate,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
@@ -54,16 +64,26 @@ import type {
   LogExclusionsInput,
   LogSettings,
   LogSettingsUpdate,
+  MarkRSSAsReadRequest,
+  MoveRSSItemRequest,
   OrphanScanRun,
   OrphanScanRunWithFiles,
   OrphanScanSettings,
   OrphanScanSettingsUpdate,
   QBittorrentAppInfo,
+  RefreshRSSItemRequest,
   RegexValidationResult,
+  RemoveRSSItemRequest,
+  RenameRSSRuleRequest,
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  RSSItems,
+  RSSMatchingArticles,
+  RSSRules,
   SearchHistoryResponse,
+  SetRSSFeedURLRequest,
+  SetRSSRuleRequest,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -87,7 +107,8 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   User,
-  WebSeed
+  WarningResponse,
+  WebSeed,
 } from "@/types"
 import type {
   ArrInstance,
@@ -1357,6 +1378,11 @@ class ApiClient {
     return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
   }
 
+  // Piece states: 0 = not downloaded, 1 = downloading, 2 = downloaded
+  async getTorrentPieceStates(instanceId: number, hash: string): Promise<number[]> {
+    return this.request<number[]>(`/instances/${instanceId}/torrents/${hash}/pieces`)
+  }
+
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/add-peers`, {
       method: "POST",
@@ -2090,6 +2116,206 @@ class ApiClient {
   // Get the SSE log stream URL for EventSource
   getLogStreamUrl(limit = 1000): string {
     return `${API_BASE}/logs/stream?limit=${limit}`
+  }
+
+  // Directory Scanner endpoints
+  async getDirScanSettings(): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings")
+  }
+
+  async updateDirScanSettings(data: DirScanSettingsUpdate): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listDirScanDirectories(): Promise<DirScanDirectory[]> {
+    return this.request<DirScanDirectory[]>("/dir-scan/directories")
+  }
+
+  async getDirScanDirectory(directoryId: number): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`)
+  }
+
+  async createDirScanDirectory(data: DirScanDirectoryCreate): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>("/dir-scan/directories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateDirScanDirectory(
+    directoryId: number,
+    data: DirScanDirectoryUpdate
+  ): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteDirScanDirectory(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}`, { method: "DELETE" })
+  }
+
+  async resetDirScanFiles(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
+  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
+      method: "POST",
+    })
+  }
+
+  async cancelDirScan(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
+  }
+
+  async getDirScanStatus(directoryId: number): Promise<DirScanRun | { status: "idle" }> {
+    return this.request<DirScanRun | { status: "idle" }>(
+      `/dir-scan/directories/${directoryId}/status`
+    )
+  }
+
+  async listDirScanRuns(
+    directoryId: number,
+    options?: { limit?: number }
+  ): Promise<DirScanRun[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRun[]>(`/dir-scan/directories/${directoryId}/runs${suffix}`)
+  }
+
+  async listDirScanRunInjections(
+    directoryId: number,
+    runId: number,
+    options?: { limit?: number; offset?: number }
+  ): Promise<DirScanRunInjection[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRunInjection[]>(
+      `/dir-scan/directories/${directoryId}/runs/${runId}/injections${suffix}`
+    )
+  }
+
+  async listDirScanFiles(
+    directoryId: number,
+    options?: { limit?: number; offset?: number; status?: string }
+  ): Promise<DirScanFile[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    if (options?.status) {
+      params.set("status", options.status)
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanFile[]>(`/dir-scan/directories/${directoryId}/files${suffix}`)
+  }
+
+  // RSS Feed Management
+
+  async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
+    return this.request<RSSItems>(`/instances/${instanceId}/rss/items?withData=${withData}`)
+  }
+
+  async addRSSFolder(instanceId: number, data: AddRSSFolderRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/folders`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse | undefined> {
+    return this.request<WarningResponse | undefined>(`/instances/${instanceId}/rss/feeds`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async setRSSFeedURL(instanceId: number, data: SetRSSFeedURLRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/feeds/url`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async moveRSSItem(instanceId: number, data: MoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/move`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSItem(instanceId: number, data: RemoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items`, {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async refreshRSSItem(instanceId: number, data: RefreshRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/refresh`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async markRSSAsRead(instanceId: number, data: MarkRSSAsReadRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/articles/read`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // RSS Auto-Download Rules
+
+  async getRSSRules(instanceId: number): Promise<RSSRules> {
+    return this.request<RSSRules>(`/instances/${instanceId}/rss/rules`)
+  }
+
+  async setRSSRule(instanceId: number, data: SetRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async renameRSSRule(instanceId: number, ruleName: string, data: RenameRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/rename`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSRule(instanceId: number, ruleName: string): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getRSSMatchingArticles(instanceId: number, ruleName: string): Promise<RSSMatchingArticles> {
+    return this.request<RSSMatchingArticles>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/preview`)
+  }
+
+  async reprocessRSSRules(instanceId: number): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
+      method: "POST",
+    })
   }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package api
@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -108,6 +109,15 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	require.NoError(t, err)
 
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	dirScanService := dirscan.NewService(
+		dirscan.DefaultConfig(),
+		models.NewDirScanStore(db),
+		&models.InstanceStore{},
+		&qbittorrent.SyncManager{},
+		nil,
+		nil,
+		trackerCustomizationStore,
+	)
 
 	return &Dependencies{
 		Config: &config.AppConfig{
@@ -130,6 +140,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		AutomationStore:           models.NewAutomationStore(db),
 		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		DirScanService:            dirScanService,
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -578,6 +578,22 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					DownloadURL: url,
 				})
 				if err != nil {
+					var magnetErr *jackett.MagnetDownloadError
+					if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
+						magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
+						if err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+								return
+							}
+							log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
+							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
+							failedCount++
+							lastError = err
+						} else {
+							addedCount++
+						}
+						continue
+					}
 					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
@@ -1178,6 +1194,36 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 	}
 
 	RespondJSON(w, http.StatusOK, webseeds)
+}
+
+// GetTorrentPieceStates returns the download state of each piece for a torrent.
+// States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+//
+//nolint:dupl // Handler pattern is intentionally similar to other torrent detail handlers
+func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	pieceStates, err := h.syncManager.GetTorrentPieceStates(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getPieceStates") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent piece states")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent piece states")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, pieceStates)
 }
 
 // EditTrackerRequest represents a tracker edit request
