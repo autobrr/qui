@@ -7411,6 +7411,11 @@ func (s *Service) reportIndexerOutcomes(jobID uint64, indexerAdds, indexerFails 
 	}
 
 	for indexerID := range allIndexers {
+		// Gazelle results use pseudo indexer IDs (negative) which should never be written
+		// to Jackett indexer outcome tracking.
+		if indexerID <= 0 {
+			continue
+		}
 		addCount := indexerAdds[indexerID]
 		failCount := indexerFails[indexerID]
 
