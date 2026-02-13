@@ -1537,12 +1537,16 @@ func (s *Service) hasGazelleConfigured(ctx context.Context) bool {
 	if s.crossSeedStore == nil {
 		return false
 	}
-	settings, err := s.crossSeedStore.GetSettings(ctx)
-	if err != nil || settings == nil {
-		return false
+	for _, host := range []string{"redacted.sh", "orpheus.network"} {
+		key, ok, err := s.crossSeedStore.GetDecryptedGazelleAPIKey(ctx, host)
+		if err != nil {
+			continue
+		}
+		if ok && strings.TrimSpace(key) != "" {
+			return true
+		}
 	}
-	return settings.GazelleEnabled &&
-		(strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
+	return false
 }
 
 // searchForSearchee searches indexers and waits for results.

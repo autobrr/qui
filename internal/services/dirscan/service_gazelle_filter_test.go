@@ -137,6 +137,40 @@ func TestFilterOutGazelleTorznabIndexers_ExcludesWhenGazelleConfigured(t *testin
 	require.Equal(t, []int{2}, filtered)
 }
 
+func TestFilterOutGazelleTorznabIndexers_DoesNotExcludeWhenKeysUndecryptable(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "dirscan-gazelle-settings-undecryptable.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	goodStore, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	_, err = goodStore.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+	badKey := make([]byte, 32)
+	for i := range badKey {
+		badKey[i] = byte(i + 1)
+	}
+	badStore, err := models.NewCrossSeedStore(db, badKey)
+	require.NoError(t, err)
+	svc := &Service{
+		jackettService: newDirscanTestJackettService([]*models.TorznabIndexer{{ID: 1, Name: "RED", BaseURL: "https://redacted.sh", Enabled: true}, {ID: 2, Name: "General", BaseURL: "https://tracker.example", Enabled: true}}),
+		crossSeedStore: badStore,
+	}
+	disallowed := svc.gazelleTorznabDisallowedIndexerSet(ctx)
+	filtered := svc.filterOutGazelleTorznabIndexers([]int{1, 2}, disallowed, nil)
+	require.Equal(t, []int{1, 2}, filtered)
+}
+
 func TestFilterOutGazelleTorznabIndexers_DoesNotExcludeGenericRedName(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "dirscan-gazelle-generic-red.db")
 	db, err := database.New(dbPath)
