@@ -1320,7 +1320,13 @@ func (s *Service) processSearchee(
 	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
 	if len(filteredIndexers) == 0 && s.jackettService != nil {
 		enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
-		if err == nil && len(enabledInfo) > 0 {
+		if err != nil {
+			if l != nil {
+				l.Warn().Err(err).Msg("dirscan: failed to probe enabled indexers")
+			}
+			return nil, searcheeOutcome{searchError: true}
+		}
+		if len(enabledInfo) > 0 {
 			filteredIndexers = make([]int, 0, len(enabledInfo))
 			for id := range enabledInfo {
 				filteredIndexers = append(filteredIndexers, id)
