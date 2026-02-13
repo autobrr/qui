@@ -713,6 +713,8 @@ func (s *Service) runSearchAndInjectPhase(
 
 	injectedTVGroups := make(map[tvGroupKey]struct{})
 
+	gazelleTorznabDisallowed := s.gazelleTorznabDisallowedIndexerSet(ctx)
+
 	for _, searchee := range processed {
 		if ctx.Err() != nil {
 			if l != nil {
@@ -728,6 +730,7 @@ func (s *Service) runSearchAndInjectPhase(
 			fileIDIndex,
 			trackedFiles,
 			injectedTVGroups,
+			gazelleTorznabDisallowed,
 			settings,
 			matcher,
 			runID,
@@ -753,6 +756,7 @@ func (s *Service) processRootSearchee(
 	fileIDIndex map[string]string,
 	trackedFiles *trackedFilesIndex,
 	injectedTVGroups map[tvGroupKey]struct{},
+	gazelleTorznabDisallowed map[int]struct{},
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
@@ -846,7 +850,7 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
+		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, gazelleTorznabDisallowed, runID, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -1292,6 +1296,7 @@ func (s *Service) processSearchee(
 	searchee *Searchee,
 	settings *models.DirScanSettings,
 	matcher *Matcher,
+	gazelleTorznabDisallowed map[int]struct{},
 	runID int64,
 	l *zerolog.Logger,
 ) ([]*searcheeMatch, searcheeOutcome) {
@@ -1331,7 +1336,7 @@ func (s *Service) processSearchee(
 			sort.Ints(filteredIndexers)
 		}
 	}
-	filteredIndexers = s.filterOutGazelleTorznabIndexers(ctx, filteredIndexers, l)
+	filteredIndexers = s.filterOutGazelleTorznabIndexers(filteredIndexers, gazelleTorznabDisallowed, l)
 	if len(filteredIndexers) == 0 {
 		if l != nil {
 			l.Debug().Msg("dirscan: no eligible indexers after OPS/RED exclusion")
@@ -1442,17 +1447,17 @@ func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *cro
 	return filteredIndexers
 }
 
-func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerIDs []int, l *zerolog.Logger) []int {
-	if s.jackettService == nil || len(indexerIDs) == 0 {
-		return indexerIDs
+func (s *Service) gazelleTorznabDisallowedIndexerSet(ctx context.Context) map[int]struct{} {
+	if s.jackettService == nil {
+		return nil
 	}
 	if !s.hasGazelleConfigured(ctx) {
-		return indexerIDs
+		return nil
 	}
 
 	resp, err := s.jackettService.GetIndexers(ctx)
 	if err != nil || resp == nil || len(resp.Indexers) == 0 {
-		return indexerIDs
+		return nil
 	}
 
 	opsOrRedName := regexp.MustCompile(`\b(ops|orpheus|redacted)\b`)
@@ -1497,6 +1502,14 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 	}
 
 	if len(disallowed) == 0 {
+		return nil
+	}
+
+	return disallowed
+}
+
+func (s *Service) filterOutGazelleTorznabIndexers(indexerIDs []int, disallowed map[int]struct{}, l *zerolog.Logger) []int {
+	if len(indexerIDs) == 0 || len(disallowed) == 0 {
 		return indexerIDs
 	}
 

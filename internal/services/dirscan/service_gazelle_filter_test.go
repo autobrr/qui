@@ -101,7 +101,8 @@ func TestFilterOutGazelleTorznabIndexers_RequiresGazelleConfiguration(t *testing
 		}),
 	}
 
-	filtered := svc.filterOutGazelleTorznabIndexers(context.Background(), []int{1, 2}, nil)
+	disallowed := svc.gazelleTorznabDisallowedIndexerSet(context.Background())
+	filtered := svc.filterOutGazelleTorznabIndexers([]int{1, 2}, disallowed, nil)
 	require.Equal(t, []int{1, 2}, filtered)
 }
 
@@ -131,7 +132,8 @@ func TestFilterOutGazelleTorznabIndexers_ExcludesWhenGazelleConfigured(t *testin
 		crossSeedStore: crossSeedStore,
 	}
 
-	filtered := svc.filterOutGazelleTorznabIndexers(context.Background(), []int{1, 2}, nil)
+	disallowed := svc.gazelleTorznabDisallowedIndexerSet(context.Background())
+	filtered := svc.filterOutGazelleTorznabIndexers([]int{1, 2}, disallowed, nil)
 	require.Equal(t, []int{2}, filtered)
 }
 
@@ -164,6 +166,7 @@ func TestFilterOutGazelleTorznabIndexers_DoesNotExcludeGenericRedName(t *testing
 		crossSeedStore: crossSeedStore,
 	}
 
-	filtered := svc.filterOutGazelleTorznabIndexers(context.Background(), []int{1, 2}, nil)
+	disallowed := svc.gazelleTorznabDisallowedIndexerSet(context.Background())
+	filtered := svc.filterOutGazelleTorznabIndexers([]int{1, 2}, disallowed, nil)
 	require.Equal(t, []int{1}, filtered)
 }
