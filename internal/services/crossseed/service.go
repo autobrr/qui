@@ -1768,7 +1768,9 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
 	}
-	hasGazelle := settings.GazelleEnabled && (strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
+	// Important: settings.RedactedAPIKey/OrpheusAPIKey are redacted placeholders when encrypted values exist.
+	// Only treat Gazelle as configured if we have at least one usable (decryptable) client.
+	hasGazelle := gazelleClients != nil && len(gazelleClients.byHost) > 0
 	if opts.DisableTorznab && !hasGazelle {
 		return nil, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
 	}
@@ -5450,7 +5452,14 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int,
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
-	hasGazelle := settings.GazelleEnabled && (strings.TrimSpace(settings.RedactedAPIKey) != "" || strings.TrimSpace(settings.OrpheusAPIKey) != "")
+	hasGazelle := false
+	if excludeGazelleOnly {
+		clients, err := s.buildGazelleClientSet(ctx, settings)
+		if err != nil {
+			log.Warn().Err(err).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
+		}
+		hasGazelle = clients != nil && len(clients.byHost) > 0
+	}
 	shouldExcludeGazelleOnly := excludeGazelleOnly && hasGazelle
 
 	if len(requested) > 0 {

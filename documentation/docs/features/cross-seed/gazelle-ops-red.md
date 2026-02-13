@@ -83,6 +83,7 @@ Fix:
 
 - Enable Gazelle
 - Set at least one API key
+- If you changed `session_secret`, re-enter the key(s) (old encrypted values cannot be decrypted)
 - For best OPS <-> RED coverage, set **both** keys
 
 ### Only One Key Set

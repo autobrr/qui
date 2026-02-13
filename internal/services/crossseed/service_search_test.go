@@ -262,20 +262,35 @@ func TestResolveTorznabIndexerIDs_PreservesOPSREDForRSSAutomation(t *testing.T) 
 }
 
 func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-resolve-exclude-gazelle.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
 	svc := &Service{
 		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
 			{ID: 1, Name: "Orpheus", BaseURL: "https://orpheus.network", Enabled: true},
 			{ID: 2, Name: "TorrentLeech", BaseURL: "https://torrentleech.org", Enabled: true},
 		}),
+		automationStore: store,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				GazelleEnabled: true,
-				RedactedAPIKey: "red-key",
-			}, nil
+			return &models.CrossSeedAutomationSettings{GazelleEnabled: true}, nil
 		},
 	}
-
-	ids, err := svc.resolveTorznabIndexerIDs(context.Background(), nil, true)
+	ids, err := svc.resolveTorznabIndexerIDs(ctx, nil, true)
 	require.NoError(t, err)
 	require.Equal(t, []int{2}, ids)
 }
@@ -667,6 +682,50 @@ func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	_, err = svc.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID:     instance.ID,
+		DisableTorznab: true,
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidRequest)
+}
+
+func TestStartSearchRun_DisableTorznabRequiresDecryptableGazelleKey(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-decryptable.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	goodStore, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	_, err = goodStore.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+	badKey := make([]byte, 32)
+	for i := range badKey {
+		badKey[i] = byte(i + 1)
+	}
+	badStore, err := models.NewCrossSeedStore(db, badKey)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  badStore,
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
 	_, err = svc.StartSearchRun(ctx, SearchRunOptions{
 		InstanceID:     instance.ID,
 		DisableTorznab: true,
