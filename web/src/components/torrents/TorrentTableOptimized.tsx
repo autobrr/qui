@@ -4,8 +4,10 @@
  */
 
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
@@ -84,7 +86,7 @@ import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -337,6 +339,7 @@ interface CompactRowProps {
   rowIndex: number
   isSelected: boolean
   isRowSelected: boolean
+  showCheckbox: boolean
   onClick: (e: React.MouseEvent) => void
   onContextMenu: () => void
   onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
@@ -355,6 +358,7 @@ const CompactRow = memo(({
   rowIndex,
   isSelected,
   isRowSelected,
+  showCheckbox,
   onClick,
   onContextMenu,
   onCheckboxPointerDown,
@@ -410,18 +414,20 @@ const CompactRow = memo(({
       )}
       {/* Name with progress inline */}
       <div className="flex items-center gap-2">
-        <div
-          className="flex items-center justify-center flex-shrink-0"
-          data-slot="checkbox"
-          onPointerDown={onCheckboxPointerDown}
-        >
-          <Checkbox
-            checked={isRowSelected}
-            onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-            aria-label="Select torrent"
-            className="h-4 w-4"
-          />
-        </div>
+        {showCheckbox && (
+          <div
+            className="flex items-center justify-center flex-shrink-0"
+            data-slot="checkbox"
+            onPointerDown={onCheckboxPointerDown}
+          >
+            <Checkbox
+              checked={isRowSelected}
+              onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
+              aria-label="Select torrent"
+              className="h-4 w-4"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
           <TrackerIcon
             title={trackerTitle}
@@ -525,6 +531,7 @@ const CompactRow = memo(({
   prev.torrent.ratio === next.torrent.ratio &&
   prev.isSelected === next.isSelected &&
   prev.isRowSelected === next.isRowSelected &&
+  prev.showCheckbox === next.showCheckbox &&
   prev.incognitoMode === next.incognitoMode &&
   prev.speedUnit === next.speedUnit &&
   prev.supportsTrackerHealth === next.supportsTrackerHealth &&
@@ -720,6 +727,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Column filters with persistence
   const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
 
+  // Remove filters for columns that are no longer visible
+  useEffect(() => {
+    setColumnFilters(prev => {
+      if (prev.length === 0) return prev
+      const filtered = prev.filter(f => columnVisibility[f.columnId] !== false)
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [columnVisibility, setColumnFilters])
+
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
@@ -735,6 +751,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    blockCrossSeeds,
+    setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
     showAddTagsDialog,
@@ -815,6 +833,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     instanceName: instance?.name ?? "",
     torrents: contextTorrents,
   })
+
+  const hasCrossSeedTag = useMemo(
+    () => anyTorrentHasTag(contextTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
+    [contextTorrents, crossSeedWarning.affectedTorrents]
+  )
+  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
@@ -948,6 +973,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
   const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
 
+  const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
+  const isVisibilitySettled = isHiddenDelayed || isVisible
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -967,6 +995,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     loadMore: backendLoadMore,
     isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
+    enabled: true,
+    pollingEnabled: isVisibilitySettled,
     search: effectiveSearch,
     filters: {
       status: filters?.status || [],
@@ -1872,6 +1902,56 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     lastSelectedIndexRef.current = null
   }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
 
+  // Open delete dialog with Delete key for current selection.
+  useEffect(() => {
+    const handleDeleteHotkey = (event: KeyboardEvent) => {
+      const isDeleteKey = event.key === "Delete"
+      const isBackspaceDelete = isMac && event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey
+
+      // Mac keyboards commonly emit Backspace for the key labeled Delete.
+      if (!isDeleteKey && !isBackspaceDelete) {
+        return
+      }
+
+      if (showDeleteDialog || isPending || effectiveSelectionCount === 0) {
+        return
+      }
+
+      const target = event.target
+      const elementTarget = target instanceof Element ? target : null
+
+      if (
+        elementTarget &&
+        (elementTarget.tagName === "INPUT" ||
+          elementTarget.tagName === "TEXTAREA" ||
+          elementTarget.tagName === "SELECT" ||
+          elementTarget instanceof HTMLElement && elementTarget.isContentEditable ||
+          elementTarget.closest("[role=\"dialog\"]") ||
+          elementTarget.closest("[role=\"combobox\"]"))
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      prepareDeleteAction(selectedHashes, selectedTorrents)
+    }
+
+    window.addEventListener("keydown", handleDeleteHotkey)
+
+    return () => {
+      window.removeEventListener("keydown", handleDeleteHotkey)
+    }
+  }, [
+    effectiveSelectionCount,
+    isMac,
+    isPending,
+    prepareDeleteAction,
+    selectedHashes,
+    selectedTorrents,
+    showDeleteDialog,
+  ])
+
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
@@ -1920,14 +2000,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     activeSortOrder,
   ])
 
-  const handleDeleteWrapper = useCallback(() => {
+  const handleDeleteWrapper = useCallback(async () => {
+    if (shouldBlockCrossSeeds) {
+      const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
+      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+    }
+
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]: contextHashes
+    const hashesToDelete = deleteCrossSeeds ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)] : contextHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }: contextClientMeta
+    const deleteClientMeta = deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : contextClientMeta
 
-    handleDelete(
+    await handleDelete(
       hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
@@ -1935,7 +2021,21 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       Array.from(excludedFromSelectAll),
       deleteClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
+  }, [
+    blockCrossSeedHashes,
+    contextHashes,
+    contextClientMeta,
+    contextTorrents,
+    crossSeedWarning.affectedTorrents,
+    deleteCrossSeeds,
+    effectiveSearch,
+    excludedFromSelectAll,
+    filters,
+    handleDelete,
+    isAllSelected,
+    selectAllFilters,
+    shouldBlockCrossSeeds,
+  ])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -2283,7 +2383,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             .getAllColumns()
                             .filter(
                               (column) =>
-                                column.id !== "select" && // Never show select in visibility options
                                 column.getCanHide()
                             )
                             .map((column) => {
@@ -2447,6 +2546,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
               {/* Body */}
               <div
+                onClick={(e) => {
+                  // Click on empty table space clears all selection.
+                  if (e.target !== e.currentTarget) {
+                    return
+                  }
+
+                  if (!isAllSelected && selectedRowIds.length === 0) {
+                    return
+                  }
+
+                  resetSelectionState()
+                  onTorrentSelect?.(null)
+                }}
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
                   width: "100%",
@@ -2505,6 +2617,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           rowIndex={virtualRow.index}
                           isSelected={isSelected}
                           isRowSelected={isRowSelected}
+                          showCheckbox={table.getColumn("select")?.getIsVisible() !== false}
                           onClick={(e) => {
                             const target = e.target as HTMLElement
                             const isCheckboxElement = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]")
@@ -2536,8 +2649,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               lastSelectedIndexRef.current = currentIndex
                             } else {
                               // Plain click - open details panel
-                              // If row is already selected, keep selection intact
-                              // Otherwise, select only this torrent (replace selection)
+                              // Re-clicking the currently focused row toggles both details and selection off.
+                              if (isSelected && isRowSelected) {
+                                if (isAllSelected) {
+                                  handleRowSelection(torrent.hash, false, row.id)
+                                } else {
+                                  setRowSelection(prev => {
+                                    if (!prev[row.id]) {
+                                      return prev
+                                    }
+
+                                    const next = { ...prev }
+                                    delete next[row.id]
+                                    return next
+                                  })
+
+                                  if (selectedRowIds.length <= 1) {
+                                    lastSelectedIndexRef.current = null
+                                  }
+                                }
+
+                                onTorrentSelect?.(null)
+                                return
+                              }
+
+                              // If row is not selected, select only this torrent (replace selection).
                               if (!isRowSelected) {
                                 const allRows = table.getRowModel().rows
                                 const currentIndex = allRows.findIndex(r => r.id === row.id)
@@ -2661,8 +2797,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               lastSelectedIndexRef.current = currentIndex
                             } else {
                               // Plain click - open details panel
-                              // If row is already selected, keep selection intact
-                              // Otherwise, select only this torrent (replace selection)
+                              // Re-clicking the currently focused row toggles both details and selection off.
+                              if (isSelected && isRowSelected) {
+                                if (isAllSelected) {
+                                  handleRowSelection(torrent.hash, false, row.id)
+                                } else {
+                                  setRowSelection(prev => {
+                                    if (!prev[row.id]) {
+                                      return prev
+                                    }
+
+                                    const next = { ...prev }
+                                    delete next[row.id]
+                                    return next
+                                  })
+
+                                  if (selectedRowIds.length <= 1) {
+                                    lastSelectedIndexRef.current = null
+                                  }
+                                }
+
+                                onTorrentSelect?.(null)
+                                return
+                              }
+
+                              // If row is not selected, select only this torrent (replace selection).
                               if (!isRowSelected) {
                                 const allRows = table.getRowModel().rows
                                 const currentIndex = allRows.findIndex(r => r.id === row.id)
@@ -2731,6 +2890,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onDeleteFilesChange={setDeleteFiles}
           isDeleteFilesLocked={isDeleteFilesLocked}
           onToggleDeleteFilesLock={toggleDeleteFilesLock}
+          showBlockCrossSeeds={hasCrossSeedTag}
+          blockCrossSeeds={blockCrossSeeds}
+          onBlockCrossSeedsChange={setBlockCrossSeeds}
           deleteCrossSeeds={deleteCrossSeeds}
           onDeleteCrossSeedsChange={setDeleteCrossSeeds}
           crossSeedWarning={crossSeedWarning}

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,7 +39,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
+import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -82,10 +83,11 @@ export function Header({
   )
 
 
-  const instanceName = useMemo(() => {
-    if (!isInstanceRoute || !instances || selectedInstanceId === null) return null
-    return instances.find(i => i.id === selectedInstanceId)?.name ?? null
+  const currentInstance = useMemo(() => {
+    if (!isInstanceRoute || selectedInstanceId === null) return undefined
+    return instances?.find(i => i.id === selectedInstanceId)
   }, [isInstanceRoute, instances, selectedInstanceId])
+  const instanceName = currentInstance?.name ?? null
   const hasMultipleActiveInstances = activeInstances.length > 1
 
   // Keep local state in sync with URL when navigating between instances/routes
@@ -168,6 +170,13 @@ export function Header({
   })
 
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
+
+  // Instance settings dialog state
+  const [instanceSettingsOpen, setInstanceSettingsOpen] = useState(false)
+
+  useEffect(() => {
+    setInstanceSettingsOpen(false)
+  }, [selectedInstanceId])
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
@@ -348,6 +357,23 @@ export function Header({
                 <TooltipContent>Torrent creation tasks</TooltipContent>
               </Tooltip>
             )}
+            {/* Instance settings button */}
+            {isInstanceRoute && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex"
+                    onClick={() => setInstanceSettingsOpen(true)}
+                    aria-label="Instance settings"
+                  >
+                    <Cog className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Instance settings</TooltipContent>
+              </Tooltip>
+            )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
           {(selectedHashes.length > 0 || isAllSelected) && (
@@ -403,7 +429,7 @@ export function Header({
                   }
                 }}
                 className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
-                  } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
+                } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {/* Clear search button */}
@@ -558,6 +584,16 @@ export function Header({
                   Instances
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/settings"
+                  search={{ tab: "logs" }}
+                  className="flex cursor-pointer"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Logs
+                </Link>
+              </DropdownMenuItem>
               {activeInstances.length > 0 && (
                 <>
                   {activeInstances.map((instance) => {
@@ -635,6 +671,17 @@ export function Header({
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Instance Preferences Dialog */}
+      {selectedInstanceId !== null && instanceName && (
+        <InstancePreferencesDialog
+          open={instanceSettingsOpen}
+          onOpenChange={setInstanceSettingsOpen}
+          instanceId={selectedInstanceId}
+          instanceName={instanceName}
+          instance={currentInstance}
+        />
+      )}
     </header>
   )
 }

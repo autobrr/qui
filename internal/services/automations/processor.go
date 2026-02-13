@@ -4,14 +4,18 @@
 package automations
 
 import (
+	"bytes"
 	"sort"
 	"strings"
+	"text/template"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 // torrentDesiredState tracks accumulated actions for a single torrent across all matching rules.
@@ -30,6 +34,9 @@ type torrentDesiredState struct {
 
 	// Pause (OR - any rule can trigger)
 	shouldPause bool
+
+	// Resume (OR - any rule can trigger)
+	shouldResume bool
 
 	// Tags (accumulated, last action per tag wins)
 	currentTags map[string]struct{}
@@ -50,6 +57,11 @@ type torrentDesiredState struct {
 	// Move (first rule to trigger wins)
 	shouldMove bool
 	movePath   string
+
+	// External program (last rule wins)
+	externalProgramID *int
+	programRuleID     int
+	programRuleName   string
 }
 
 type ruleRunStats struct {
@@ -60,6 +72,8 @@ type ruleRunStats struct {
 	ShareConditionNotMet             int
 	PauseApplied                     int
 	PauseConditionNotMet             int
+	ResumeApplied                    int
+	ResumeConditionNotMet            int
 	TagConditionMet                  int
 	TagConditionNotMet               int
 	TagSkippedMissingUnregisteredSet int
@@ -71,13 +85,15 @@ type ruleRunStats struct {
 	MoveConditionNotMet              int
 	MoveAlreadyAtDestination         int
 	MoveBlockedByCrossSeed           int
+	ExternalProgramApplied           int
+	ExternalProgramConditionNotMet   int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -237,7 +253,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
-	// Pause
+	// Pause (last rule wins)
 	if conditions.Pause != nil && conditions.Pause.Enabled {
 		shouldApply := conditions.Pause.Condition == nil ||
 			EvaluateConditionWithContext(conditions.Pause.Condition, torrent, evalCtx, 0)
@@ -250,9 +266,31 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl &&
 				torrent.State != qbt.TorrentStateStoppedUp && torrent.State != qbt.TorrentStateStoppedDl {
 				state.shouldPause = true
+				state.shouldResume = false // Clear conflicting resume from earlier rule if any
 			}
 		} else if stats != nil {
 			stats.PauseConditionNotMet++
+		}
+	}
+
+	// Resume (last rule wins)
+	if conditions.Resume != nil && conditions.Resume.Enabled {
+		shouldApply := conditions.Resume.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Resume.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ResumeApplied++
+			}
+
+			// Only resume if currently paused/stopped
+			if torrent.State == qbt.TorrentStatePausedUp || torrent.State == qbt.TorrentStatePausedDl ||
+				torrent.State == qbt.TorrentStateStoppedUp || torrent.State == qbt.TorrentStateStoppedDl {
+				state.shouldResume = true
+				state.shouldPause = false // Clear conflicting pause from earlier rule if any
+			}
+		} else if stats != nil {
+			stats.ResumeConditionNotMet++
 		}
 	}
 
@@ -291,6 +329,23 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		} else if stats != nil {
 			stats.CategoryConditionNotMetOrBlocked++
+		}
+	}
+
+	// External program (last rule wins)
+	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled && conditions.ExternalProgram.ProgramID > 0 {
+		shouldApply := conditions.ExternalProgram.Condition == nil ||
+			EvaluateConditionWithContext(conditions.ExternalProgram.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ExternalProgramApplied++
+			}
+			state.externalProgramID = &conditions.ExternalProgram.ProgramID
+			state.programRuleID = rule.ID
+			state.programRuleName = rule.Name
+		} else if stats != nil {
+			stats.ExternalProgramConditionNotMet++
 		}
 	}
 
@@ -336,7 +391,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 }
 
 func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
-	pathValid := strings.TrimSpace(action.Path) != ""
+	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
 	if !pathValid {
 		if stats != nil {
 			stats.MoveConditionNotMet++
@@ -346,7 +401,7 @@ func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx 
 
 	conditionMet := action.Condition == nil ||
 		EvaluateConditionWithContext(action.Condition, torrent, evalCtx, 0)
-	alreadyAtDest := inSavePath(torrent, action.Path)
+	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
 	if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx) {
@@ -354,7 +409,7 @@ func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx 
 			stats.MoveApplied++
 		}
 		state.shouldMove = true
-		state.movePath = action.Path
+		state.movePath = resolvedPath
 		return
 	}
 	if stats == nil {
@@ -431,6 +486,50 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
+// resolveMovePath returns the path to use for a move. The path is executed as a
+// Go template with data; paths with no template actions are unchanged. sanitize
+// is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
+func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	tracker := ""
+	if state != nil {
+		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
+	}
+
+	data := map[string]any{
+		"Name":                torrent.Name,
+		"Hash":                torrent.Hash,
+		"Category":            torrent.Category,
+		"IsolationFolderName": pathutil.IsolationFolderName(torrent.Hash, torrent.Name),
+		"Tracker":             tracker,
+	}
+
+	tmpl, err := template.New("movePath").
+		Option("missingkey=error").
+		Funcs(template.FuncMap{
+			"sanitize": pathutil.SanitizePathSegment,
+		}).
+		Parse(path)
+	if err != nil {
+		// Log template parse error for debugging
+		log.Error().Err(err).Str("path", path).Msg("failed to parse move path template")
+		return "", false
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		// Log template execution error for debugging
+		log.Error().Err(err).Str("path", path).Msg("failed to execute move path template")
+		return "", false
+	}
+
+	resolvedPath := strings.TrimSpace(buf.String())
+
+	if resolvedPath == "" {
+		return "", false
+	}
+
+	return resolvedPath, true
+}
+
 func containsStringFold(list []string, candidate string) bool {
 	if candidate == "" {
 		return false
@@ -470,37 +569,43 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 		EvaluateConditionWithContext(tagAction.Condition, torrent, evalCtx, 0)
 
 	// Determine tags to manage - either from static list or derived from tracker
-	var tagsToManage []string
+	tagsToManage := tagAction.Tags
 	if tagAction.UseTrackerAsTag && len(state.trackerDomains) > 0 {
 		// Derive tag from tracker domain, preferring domains with customizations
-		tag := selectTrackerTag(state.trackerDomains, tagAction.UseDisplayName, evalCtx)
-		if tag != "" {
+		if tag := selectTrackerTag(state.trackerDomains, tagAction.UseDisplayName, evalCtx); tag != "" {
 			tagsToManage = []string{tag}
+		} else {
+			tagsToManage = nil
 		}
-	} else {
-		tagsToManage = tagAction.Tags
 	}
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
-		hasTagNow := false
-		if _, ok := state.currentTags[managedTag]; ok {
-			hasTagNow = true
-		}
-
+		_, hasTag := state.currentTags[managedTag]
 		// Apply pending action if exists
-		hasTag := hasTagNow
 		if pending, ok := state.tagActions[managedTag]; ok {
 			hasTag = (pending == "add")
 		}
 
-		// Smart tagging logic:
-		// - ADD: doesn't have tag + matches + mode allows add
-		// - REMOVE: has tag + doesn't match + mode allows remove
-		if !hasTag && matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeAdd) {
-			state.tagActions[managedTag] = "add"
-		} else if hasTag && !matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeRemove) {
-			state.tagActions[managedTag] = "remove"
+		// Tagging semantics:
+		// - FULL: add to matches, remove from non-matches
+		// - ADD: add to matches only
+		// - REMOVE: remove from matches only
+		switch tagMode {
+		case models.TagModeAdd:
+			if !hasTag && matchesCondition {
+				state.tagActions[managedTag] = "add"
+			}
+		case models.TagModeRemove:
+			if hasTag && matchesCondition {
+				state.tagActions[managedTag] = "remove"
+			}
+		default: // full (incl. unknown/empty)
+			if !hasTag && matchesCondition {
+				state.tagActions[managedTag] = "add"
+			} else if hasTag && !matchesCondition {
+				state.tagActions[managedTag] = "remove"
+			}
 		}
 	}
 
@@ -514,10 +619,12 @@ func hasActions(state *torrentDesiredState) bool {
 		state.ratioLimit != nil ||
 		state.seedingMinutes != nil ||
 		state.shouldPause ||
+		state.shouldResume ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||
-		state.shouldMove
+		state.shouldMove ||
+		state.externalProgramID != nil
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.
@@ -529,16 +636,29 @@ func selectTrackerTag(domains []string, useDisplayName bool, evalCtx *EvalContex
 	}
 
 	// If using display names, prefer domains that have a customization
-	if useDisplayName && evalCtx != nil && evalCtx.TrackerDisplayNameByDomain != nil {
-		for _, domain := range domains {
-			if displayName, ok := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
-				return displayName
-			}
+	if useDisplayName {
+		if displayName, ok := getTrackerDisplayName(domains, evalCtx); ok {
+			return displayName
 		}
 	}
 
 	// Fall back to the first domain
 	return domains[0]
+}
+
+// getTrackerDisplayName picks the best tracker display name available.
+func getTrackerDisplayName(domains []string, evalCtx *EvalContext) (displayName string, ok bool) {
+	if evalCtx == nil {
+		return "", false
+	}
+
+	for _, domain := range domains {
+		if displayName, found := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; found {
+			return displayName, true
+		}
+	}
+
+	return "", false
 }
 
 // parseTorrentTags parses the comma-separated tag string into a set.

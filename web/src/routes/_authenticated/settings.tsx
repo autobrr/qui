@@ -22,6 +22,9 @@ const settingsSearchSchema = z.object({
     "logs",
   ]).optional().catch(undefined),
   modal: z.enum(["add-instance"]).optional().catch(undefined),
+  checkout: z.enum(["success"]).optional().catch(undefined),
+  status: z.string().optional().catch(undefined),
+  payment_id: z.string().optional().catch(undefined),
 })
 
 export type SettingsSearch = z.infer<typeof settingsSearchSchema>
