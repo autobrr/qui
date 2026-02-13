@@ -322,10 +322,10 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
 	if patch.RedactedAPIKey != nil {
-		settings.RedactedAPIKey = *patch.RedactedAPIKey
+		settings.RedactedAPIKey = strings.TrimSpace(*patch.RedactedAPIKey)
 	}
 	if patch.OrpheusAPIKey != nil {
-		settings.OrpheusAPIKey = *patch.OrpheusAPIKey
+		settings.OrpheusAPIKey = strings.TrimSpace(*patch.OrpheusAPIKey)
 	}
 }
 
@@ -846,8 +846,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
 		GazelleEnabled:               req.GazelleEnabled,
-		RedactedAPIKey:               req.RedactedAPIKey,
-		OrpheusAPIKey:                req.OrpheusAPIKey,
+		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
+		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
