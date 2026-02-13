@@ -331,3 +331,73 @@ func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyMis
 		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
 	}
 }
+
+func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUndecryptable(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-undecryptable.db")
+	db, err := database.New(dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	goodStore, err := models.NewCrossSeedStore(db, key)
+	if err != nil {
+		t.Fatalf("new cross-seed store: %v", err)
+	}
+	_, err = goodStore.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		OrpheusAPIKey:  "ops-key",
+	})
+	if err != nil {
+		t.Fatalf("persist cross-seed settings: %v", err)
+	}
+
+	badKey := make([]byte, 32)
+	for i := range badKey {
+		badKey[i] = byte(i + 1)
+	}
+	badStore, err := models.NewCrossSeedStore(db, badKey)
+	if err != nil {
+		t.Fatalf("new cross-seed store (bad key): %v", err)
+	}
+	settings, err := badStore.GetSettings(ctx)
+	if err != nil {
+		t.Fatalf("load settings with bad key: %v", err)
+	}
+
+	src := qbt.Torrent{
+		Hash:     "dddddddddddddddddddddddddddddddddddddddd",
+		Name:     "test (2026) [FLAC]",
+		Tracker:  "https://flacsfor.me/announce",
+		Progress: 1.0,
+	}
+	syncMock := &completionGazelleSyncMock{torrent: src}
+
+	const fallbackErrMsg = "expected torznab fallback path"
+	svc := &Service{
+		instanceStore:   &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
+		syncManager:     syncMock,
+		jackettService:  newFailingJackettService(errors.New(fallbackErrMsg)),
+		automationStore: badStore,
+		releaseCache:    NewReleaseCache(),
+	}
+
+	err = svc.executeCompletionSearch(ctx, 1, &src, settings, &models.InstanceCrossSeedCompletionSettings{
+		InstanceID: 1,
+		Enabled:    true,
+		IndexerIDs: []int{999},
+	})
+	if err == nil {
+		t.Fatalf("expected completion path to fall back to torznab when opposite-site Gazelle key is undecryptable")
+	}
+	if !strings.Contains(err.Error(), fallbackErrMsg) {
+		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
+	}
+}

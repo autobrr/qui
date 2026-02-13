@@ -278,6 +278,7 @@ func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		GazelleEnabled: true,
 		RedactedAPIKey: "red-key",
+		OrpheusAPIKey:  "ops-key",
 	})
 	require.NoError(t, err)
 	svc := &Service{
@@ -293,6 +294,41 @@ func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t
 	ids, err := svc.resolveTorznabIndexerIDs(ctx, nil, true)
 	require.NoError(t, err)
 	require.Equal(t, []int{2}, ids)
+}
+
+func TestResolveTorznabIndexerIDs_DoesNotExcludeOPSREDForPartialGazelleConfig(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "crossseed-resolve-partial-gazelle.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+	svc := &Service{
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 1, Name: "Orpheus", BaseURL: "https://orpheus.network", Enabled: true},
+			{ID: 2, Name: "Redacted", BaseURL: "https://redacted.sh", Enabled: true},
+			{ID: 3, Name: "TorrentLeech", BaseURL: "https://torrentleech.org", Enabled: true},
+		}),
+		automationStore: store,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{GazelleEnabled: true}, nil
+		},
+	}
+	ids, err := svc.resolveTorznabIndexerIDs(ctx, nil, true)
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2, 3}, ids)
 }
 
 func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {

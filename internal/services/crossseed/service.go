@@ -43,6 +43,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -1579,7 +1580,16 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	var searchResp *TorrentSearchResponse
 
 	// Gazelle (OPS/RED) completion path: bypass Torznab only when the target site is actually configured.
-	if sourceSite, ok := s.detectGazelleSourceSite(torrent); ok && gazelleTargetForSource(sourceSite) != "" && shouldUseGazelleOnlyForCompletion(settings, sourceSite) {
+	sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
+	useGazelleOnly := false
+	if isGazelleSource && gazelleTargetForSource(sourceSite) != "" {
+		gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, settings)
+		if gazelleErr != nil {
+			log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle clients; continuing without Gazelle")
+		}
+		useGazelleOnly = shouldUseGazelleOnlyForCompletion(settings, gazelleClients, sourceSite)
+	}
+	if useGazelleOnly {
 		searchCtx, searchCancel := context.WithTimeout(ctx, 45*time.Second)
 		defer searchCancel()
 		searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
@@ -5160,18 +5170,18 @@ func gazelleTargetsForSource(sourceSiteHost string, isGazelleSource bool) []stri
 	return []string{"redacted.sh", "orpheus.network"}
 }
 
-func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSettings, sourceSiteHost string) bool {
+func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSettings, clients *gazelleClientSet, sourceSiteHost string) bool {
 	if settings == nil || !settings.GazelleEnabled {
 		return false
 	}
-	switch gazelleTargetForSource(sourceSiteHost) {
-	case "redacted.sh":
-		return strings.TrimSpace(settings.RedactedAPIKey) != ""
-	case "orpheus.network":
-		return strings.TrimSpace(settings.OrpheusAPIKey) != ""
-	default:
+	if clients == nil || len(clients.byHost) == 0 {
 		return false
 	}
+	target := strings.ToLower(strings.TrimSpace(gazelleTargetForSource(sourceSiteHost)))
+	if target == "" {
+		return false
+	}
+	return clients.byHost[target] != nil
 }
 
 func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
@@ -5458,7 +5468,7 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int,
 		if err != nil {
 			log.Warn().Err(err).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
 		}
-		hasGazelle = clients != nil && len(clients.byHost) > 0
+		hasGazelle = clients != nil && len(clients.byHost) == 2
 	}
 	shouldExcludeGazelleOnly := excludeGazelleOnly && hasGazelle
 
@@ -5522,7 +5532,23 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 		return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}, nil
 	}
 	if s.automationStore == nil {
-		return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}, nil
+		// Allow building clients directly from settings when keys are supplied as plaintext.
+		// In normal runtime settings are loaded from the DB with redacted placeholders, so this path
+		// is mainly for tests and non-DB settings loaders.
+		out := &gazelleClientSet{byHost: make(map[string]*gazellemusic.Client, 2)}
+		if settings != nil {
+			if key := strings.TrimSpace(settings.RedactedAPIKey); key != "" && !domain.IsRedactedString(key) {
+				if c, err := gazellemusic.NewClient("https://redacted.sh", key); err == nil {
+					out.byHost["redacted.sh"] = c
+				}
+			}
+			if key := strings.TrimSpace(settings.OrpheusAPIKey); key != "" && !domain.IsRedactedString(key) {
+				if c, err := gazellemusic.NewClient("https://orpheus.network", key); err == nil {
+					out.byHost["orpheus.network"] = c
+				}
+			}
+		}
+		return out, nil
 	}
 
 	out := &gazelleClientSet{byHost: make(map[string]*gazellemusic.Client, 2)}
