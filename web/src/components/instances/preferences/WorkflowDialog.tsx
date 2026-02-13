@@ -14,7 +14,7 @@ import {
   getFieldType,
   type Capabilities,
   type DisabledField,
-  type DisabledStateValue,
+  type DisabledStateValue
 } from "@/components/query-builder/constants"
 import { Button } from "@/components/ui/button"
 import {
@@ -911,7 +911,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         }),
       }
     }
-    
+
     const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
 
     return {
@@ -1453,7 +1453,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
                               }}
-                              hiddenFields={Object.keys(CONDITION_FIELDS).filter(f => !isNumericField(f))}
+                              disabledFields={Object.keys(CONDITION_FIELDS)
+                                .filter(f => !isNumericField(f))
+                                .map(f => ({ field: f, reason: "Not a numeric field" }))}
                             />
 
                             <span className="text-sm text-muted-foreground">x</span>
@@ -1489,8 +1491,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 }
                               }}
                               categoryOptions={categoryOptions}
-                              hiddenFields={supportsTrackerHealth ? [] : ["IS_UNREGISTERED"]}
-                              hiddenStateValues={supportsTrackerHealth ? [] : ["tracker_down"]}
+                              disabledFields={getDisabledFields(fieldCapabilities)}
+                              disabledStateValues={getDisabledStateValues(fieldCapabilities)}
                             />
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-muted-foreground">Add Score:</span>
