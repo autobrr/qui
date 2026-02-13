@@ -5903,10 +5903,13 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Ints("originalIndexers", opts.IndexerIDs).
 			Msg("[CROSSSEED-SEARCH] All indexers filtered out - no suitable indexers remain")
 
-		// Return empty response instead of error to avoid breaking the UI
+		combined := mergeTorrentSearchResults(gazelleResults, nil)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
-			Results:       []TorrentSearchResult{},
+			Results:       combined,
+			Partial:       false,
+			JobID:         0,
 		}, nil
 	}
 
@@ -5919,9 +5922,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				Ints("candidateIndexers", candidateIndexerIDs).
 				Ints("requestedIndexers", opts.IndexerIDs).
 				Msg("[CROSSSEED-SEARCH] Requested indexers removed after filtering, skipping search")
+
+			combined := mergeTorrentSearchResults(gazelleResults, nil)
+			s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,
-				Results:       []TorrentSearchResult{},
+				Results:       combined,
+				Partial:       false,
+				JobID:         0,
 			}, nil
 		}
 		if len(selectedIndexerIDs) != len(candidateIndexerIDs) {
@@ -7277,6 +7285,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		indexerCountForTimeout = 1
 	}
 	searchTimeout := computeAutomationSearchTimeout(max(1, indexerCountForTimeout))
+	if searchDisableTorznab {
+		// Gazelle-only matching can require multiple rate-limited API calls; give it the full budget.
+		searchTimeout = timeouts.MaxSearchTimeout
+	}
 	if searchTimeout > 0 {
 		searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
 	}
