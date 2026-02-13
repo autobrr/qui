@@ -48,3 +48,9 @@ Join our friendly and welcoming community on [Discord](https://discord.autobrr.c
 ## License
 
 GPL-2.0-or-later
+
+## Supported Torrent Clients
+
+qui currently only supports qBittorrent. It communicates directly with the qBittorrent Web API. Support for other torrent clients such as Deluge, rTorrent, and Transmission is not yet available, but we hope to support them all in the future.
+
+For details on which qBittorrent versions are compatible, see the [qBittorrent Version Compatibility](./advanced/compatibility.md) page.
