@@ -17,10 +17,11 @@ import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation, useSearch } from "@tanstack/react-router"
 import {
   Archive,
   Copyright,
+  FileText,
   GitBranch,
   Github,
   HardDrive,
@@ -35,53 +36,73 @@ import {
 } from "lucide-react"
 
 interface NavItem {
+  id: string
   title: string
   href: string
   icon: React.ComponentType<{ className?: string }>
   params?: Record<string, string>
+  search?: Record<string, unknown>
+  isActive?: (pathname: string, search: Record<string, unknown> | undefined) => boolean
 }
 
 const navigation: NavItem[] = [
   {
+    id: "dashboard",
     title: "Dashboard",
     href: "/dashboard",
     icon: Home,
   },
   {
+    id: "search",
     title: "Search",
     href: "/search",
     icon: Search,
   },
   {
+    id: "cross-seed",
     title: "Cross-Seed",
     href: "/cross-seed",
     icon: GitBranch,
     params: {},
   },
   {
+    id: "automations",
     title: "Automations",
     href: "/automations",
     icon: Zap,
   },
   {
+    id: "backups",
     title: "Backups",
     href: "/backups",
     icon: Archive,
   },
   {
+    id: "rss",
     title: "RSS",
     href: "/rss",
     icon: Rss,
   },
   {
+    id: "settings",
     title: "Settings",
     href: "/settings",
     icon: Settings,
+    isActive: (pathname, search) => pathname === "/settings" && search?.tab !== "logs",
+  },
+  {
+    id: "logs",
+    title: "Logs",
+    href: "/settings",
+    icon: FileText,
+    search: { tab: "logs" },
+    isActive: (pathname, search) => pathname === "/settings" && search?.tab === "logs",
   },
 ]
 
 export function Sidebar() {
   const location = useLocation()
+  const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { theme } = useTheme()
 
@@ -115,13 +136,16 @@ export function Sidebar() {
         <div className="space-y-1">
           {navigation.map((item) => {
             const Icon = item.icon
-            const isActive = location.pathname === item.href
+            const isActive = item.isActive
+              ? item.isActive(location.pathname, routeSearch)
+              : location.pathname === item.href
 
             return (
               <Link
-                key={item.href}
+                key={item.id}
                 to={item.href}
                 params={item.params}
+                search={item.search}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
