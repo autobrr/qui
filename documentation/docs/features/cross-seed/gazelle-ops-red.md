@@ -61,4 +61,5 @@ In that mode:
 
 - All source torrents are still processed
 - Matches come only from configured Gazelle sites (RED/OPS)
-- You can lower the Library Scan interval below 60 seconds (minimum 1 second), but actual request pacing still respects the shared OPS/RED API rate limits
+- You can lower the Library Scan interval below 60 seconds (minimum 5 seconds), but actual request pacing still respects the shared OPS/RED API rate limits
+- Recommended: 10+ seconds to reduce API pressure (interval is per-torrent pacing; each torrent can trigger multiple API calls)

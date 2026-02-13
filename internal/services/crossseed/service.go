@@ -229,7 +229,7 @@ const (
 	recheckAbsoluteTimeout              = 60 * time.Minute // Allow time for large recheck queues
 	recheckAPITimeout                   = 30 * time.Second
 	minSearchIntervalSecondsTorznab     = 60
-	minSearchIntervalSecondsGazelleOnly = 1
+	minSearchIntervalSecondsGazelleOnly = 5
 	minSearchCooldownMinutes            = 720
 
 	// User-facing message when cross-seed is skipped due to recheck requirement

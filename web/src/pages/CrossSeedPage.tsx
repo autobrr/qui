@@ -123,7 +123,8 @@ type CategoryMode = "reuse" | "affix" | "indexer" | "custom"
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
 const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
-const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 1  // Gazelle-only seeded search can rely on tracker API rate limiting
+const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
+const DEFAULT_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 10
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
 
 // RSS Automation defaults
@@ -1189,8 +1190,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }, [gazelleSavedConfigured, seededSearchTorznabEnabled])
 
   useEffect(() => {
-    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
-  }, [seededSearchIntervalMinimum])
+    const gazelleOnly = !seededSearchTorznabEnabled && gazelleSavedConfigured
+    setSearchIntervalSeconds(prev => {
+      // If user hasn't tuned anything yet (still at the Torznab default), suggest a sane Gazelle-only default.
+      if (gazelleOnly && prev === MIN_SEEDED_SEARCH_INTERVAL_SECONDS) {
+        return Math.max(DEFAULT_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS, seededSearchIntervalMinimum)
+      }
+      return prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev
+    })
+  }, [gazelleSavedConfigured, seededSearchIntervalMinimum, seededSearchTorznabEnabled])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1309,6 +1317,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return "Gazelle: enabled (keys missing)"
   }, [settings])
 
+  const seededSearchGazelleOnlyMode = !seededSearchTorznabEnabled && gazelleSavedConfigured
+
+  const seededSearchIntervalPresets = useMemo(() => {
+    if (seededSearchGazelleOnlyMode) {
+      return [10, 30, 60]
+    }
+    return [60, 120, 300]
+  }, [seededSearchGazelleOnlyMode])
+
   const seededSearchFlowSummary = gazelleSavedConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Without Gazelle, all matching relies on Torznab indexers."
 
   const handleJumpToGazelleSettings = useCallback(() => {
@@ -1426,7 +1443,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     // Validate search interval and cooldown
     const errors: Record<string, string> = {}
     if (searchIntervalSeconds < seededSearchIntervalMinimum) {
-      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} second${seededSearchIntervalMinimum === 1 ? "" : "s"}`
+      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} seconds`
     }
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
       errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
@@ -2086,7 +2103,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   {validationErrors.searchIntervalSeconds && (
                     <p className="text-sm text-destructive">{validationErrors.searchIntervalSeconds}</p>
                   )}
-                  <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {seededSearchIntervalMinimum} second{seededSearchIntervalMinimum === 1 ? "" : "s"}.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {seededSearchIntervalPresets.map(seconds => (
+                      <Button
+                        key={seconds}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSearchIntervalSeconds(seconds)}
+                        disabled={seconds < seededSearchIntervalMinimum}
+                      >
+                        {seconds}s
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Wait time before scanning the next seeded torrent. Minimum {seededSearchIntervalMinimum} seconds.
+                    {seededSearchGazelleOnlyMode && " Recommended 10s+; this is per-torrent pacing, and each torrent can trigger multiple Gazelle API calls."}
+                  </p>
                 </div>
                 <div className="space-y-3">
                   <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
