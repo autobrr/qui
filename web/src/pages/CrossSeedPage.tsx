@@ -1235,7 +1235,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       }
     }
     return disallowedIDs
-  }, [enabledIndexers, gazelleSavedConfigured])
+  }, [enabledIndexers, gazelleSavedFullyConfigured])
 
   const seededSearchIndexerOptions = useMemo(
     () => (gazelleSavedFullyConfigured ? enabledIndexers.filter(idx => !isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) : enabledIndexers)
