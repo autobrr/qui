@@ -46,6 +46,7 @@ import {
   Copyright,
   CornerDownRight,
   Download,
+  FileText,
   GitBranch,
   Github,
   HardDrive,
@@ -450,6 +451,16 @@ export function MobileFooterNav() {
               >
                 <Server className="h-4 w-4" />
                 Manage Instances
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings"
+                search={{ tab: "logs" }}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Logs
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>

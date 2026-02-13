@@ -1449,6 +1449,11 @@ func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabInde
 	return "mock-api-key", nil
 }
 
+func (m *mockTorznabIndexerStore) GetDecryptedBasicPassword(_ *models.TorznabIndexer) (string, error) {
+	// Service only calls this when BasicUsername is set; tests don't cover basic auth yet.
+	return "", nil
+}
+
 func (m *mockTorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

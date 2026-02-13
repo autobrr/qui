@@ -38,9 +38,11 @@ var (
 
 // Config controls background backup scheduling.
 type Config struct {
-	DataDir      string
-	PollInterval time.Duration
-	WorkerCount  int
+	DataDir         string
+	PollInterval    time.Duration
+	WorkerCount     int
+	FailureCooldown time.Duration
+	ExportThrottle  time.Duration
 }
 
 type BackupProgress struct {
@@ -114,6 +116,12 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = time.Minute
+	}
+	if cfg.FailureCooldown <= 0 {
+		cfg.FailureCooldown = 10 * time.Minute
+	}
+	if cfg.ExportThrottle <= 0 {
+		cfg.ExportThrottle = 200 * time.Millisecond
 	}
 
 	cacheDir := ""
@@ -305,6 +313,30 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 		}
 		// On DB error treat as not missed to avoid accidental scheduling
 		return false
+	}
+
+	// Short-circuit if the latest run is still in flight or within failure cooldown.
+	for _, r := range runs {
+		if r == nil {
+			continue
+		}
+		switch r.Status {
+		case models.BackupRunStatusPending, models.BackupRunStatusRunning:
+			return false
+		case models.BackupRunStatusFailed, models.BackupRunStatusCanceled:
+			if s.cfg.FailureCooldown > 0 {
+				ref := r.CompletedAt
+				if ref == nil {
+					ref = &r.RequestedAt
+				}
+				if ref != nil && now.Before(ref.Add(s.cfg.FailureCooldown)) {
+					return false
+				}
+			}
+		case models.BackupRunStatusSuccess:
+			// Success is handled below when selecting schedule reference.
+		}
+		break
 	}
 
 	// Find the most recent successful run
@@ -560,6 +592,16 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
 	}
 
+	var exportTicker *time.Ticker
+	var exportThrottle <-chan time.Time
+	if s.cfg.ExportThrottle > 0 {
+		exportTicker = time.NewTicker(s.cfg.ExportThrottle)
+		exportThrottle = exportTicker.C
+	}
+	if exportTicker != nil {
+		defer exportTicker.Stop()
+	}
+
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
 		categories, err := s.syncManager.GetCategories(ctx, j.instanceID)
@@ -655,6 +697,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
+			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
+				return nil, err
+			}
 			var tracker string
 			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
 			if err != nil {
@@ -822,6 +867,19 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		items:           items,
 		settings:        settings,
 	}, nil
+}
+
+func waitForExportThrottle(ctx context.Context, throttle <-chan time.Time) error {
+	if throttle == nil {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-throttle:
+		return nil
+	}
 }
 
 func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings, instanceID int) (string, string, error) {

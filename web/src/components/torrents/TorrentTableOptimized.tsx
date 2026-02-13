@@ -339,6 +339,7 @@ interface CompactRowProps {
   rowIndex: number
   isSelected: boolean
   isRowSelected: boolean
+  showCheckbox: boolean
   onClick: (e: React.MouseEvent) => void
   onContextMenu: () => void
   onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
@@ -357,6 +358,7 @@ const CompactRow = memo(({
   rowIndex,
   isSelected,
   isRowSelected,
+  showCheckbox,
   onClick,
   onContextMenu,
   onCheckboxPointerDown,
@@ -412,18 +414,20 @@ const CompactRow = memo(({
       )}
       {/* Name with progress inline */}
       <div className="flex items-center gap-2">
-        <div
-          className="flex items-center justify-center flex-shrink-0"
-          data-slot="checkbox"
-          onPointerDown={onCheckboxPointerDown}
-        >
-          <Checkbox
-            checked={isRowSelected}
-            onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-            aria-label="Select torrent"
-            className="h-4 w-4"
-          />
-        </div>
+        {showCheckbox && (
+          <div
+            className="flex items-center justify-center flex-shrink-0"
+            data-slot="checkbox"
+            onPointerDown={onCheckboxPointerDown}
+          >
+            <Checkbox
+              checked={isRowSelected}
+              onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
+              aria-label="Select torrent"
+              className="h-4 w-4"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
           <TrackerIcon
             title={trackerTitle}
@@ -527,6 +531,7 @@ const CompactRow = memo(({
   prev.torrent.ratio === next.torrent.ratio &&
   prev.isSelected === next.isSelected &&
   prev.isRowSelected === next.isRowSelected &&
+  prev.showCheckbox === next.showCheckbox &&
   prev.incognitoMode === next.incognitoMode &&
   prev.speedUnit === next.speedUnit &&
   prev.supportsTrackerHealth === next.supportsTrackerHealth &&
@@ -1897,6 +1902,56 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     lastSelectedIndexRef.current = null
   }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
 
+  // Open delete dialog with Delete key for current selection.
+  useEffect(() => {
+    const handleDeleteHotkey = (event: KeyboardEvent) => {
+      const isDeleteKey = event.key === "Delete"
+      const isBackspaceDelete = isMac && event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey
+
+      // Mac keyboards commonly emit Backspace for the key labeled Delete.
+      if (!isDeleteKey && !isBackspaceDelete) {
+        return
+      }
+
+      if (showDeleteDialog || isPending || effectiveSelectionCount === 0) {
+        return
+      }
+
+      const target = event.target
+      const elementTarget = target instanceof Element ? target : null
+
+      if (
+        elementTarget &&
+        (elementTarget.tagName === "INPUT" ||
+          elementTarget.tagName === "TEXTAREA" ||
+          elementTarget.tagName === "SELECT" ||
+          elementTarget instanceof HTMLElement && elementTarget.isContentEditable ||
+          elementTarget.closest("[role=\"dialog\"]") ||
+          elementTarget.closest("[role=\"combobox\"]"))
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      prepareDeleteAction(selectedHashes, selectedTorrents)
+    }
+
+    window.addEventListener("keydown", handleDeleteHotkey)
+
+    return () => {
+      window.removeEventListener("keydown", handleDeleteHotkey)
+    }
+  }, [
+    effectiveSelectionCount,
+    isMac,
+    isPending,
+    prepareDeleteAction,
+    selectedHashes,
+    selectedTorrents,
+    showDeleteDialog,
+  ])
+
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
@@ -2328,7 +2383,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             .getAllColumns()
                             .filter(
                               (column) =>
-                                column.id !== "select" && // Never show select in visibility options
                                 column.getCanHide()
                             )
                             .map((column) => {
@@ -2492,6 +2546,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
               {/* Body */}
               <div
+                onClick={(e) => {
+                  // Click on empty table space clears all selection.
+                  if (e.target !== e.currentTarget) {
+                    return
+                  }
+
+                  if (!isAllSelected && selectedRowIds.length === 0) {
+                    return
+                  }
+
+                  resetSelectionState()
+                  onTorrentSelect?.(null)
+                }}
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
                   width: "100%",
@@ -2550,6 +2617,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           rowIndex={virtualRow.index}
                           isSelected={isSelected}
                           isRowSelected={isRowSelected}
+                          showCheckbox={table.getColumn("select")?.getIsVisible() !== false}
                           onClick={(e) => {
                             const target = e.target as HTMLElement
                             const isCheckboxElement = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]")
@@ -2581,8 +2649,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               lastSelectedIndexRef.current = currentIndex
                             } else {
                               // Plain click - open details panel
-                              // If row is already selected, keep selection intact
-                              // Otherwise, select only this torrent (replace selection)
+                              // Re-clicking the currently focused row toggles both details and selection off.
+                              if (isSelected && isRowSelected) {
+                                if (isAllSelected) {
+                                  handleRowSelection(torrent.hash, false, row.id)
+                                } else {
+                                  setRowSelection(prev => {
+                                    if (!prev[row.id]) {
+                                      return prev
+                                    }
+
+                                    const next = { ...prev }
+                                    delete next[row.id]
+                                    return next
+                                  })
+
+                                  if (selectedRowIds.length <= 1) {
+                                    lastSelectedIndexRef.current = null
+                                  }
+                                }
+
+                                onTorrentSelect?.(null)
+                                return
+                              }
+
+                              // If row is not selected, select only this torrent (replace selection).
                               if (!isRowSelected) {
                                 const allRows = table.getRowModel().rows
                                 const currentIndex = allRows.findIndex(r => r.id === row.id)
@@ -2706,8 +2797,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               lastSelectedIndexRef.current = currentIndex
                             } else {
                               // Plain click - open details panel
-                              // If row is already selected, keep selection intact
-                              // Otherwise, select only this torrent (replace selection)
+                              // Re-clicking the currently focused row toggles both details and selection off.
+                              if (isSelected && isRowSelected) {
+                                if (isAllSelected) {
+                                  handleRowSelection(torrent.hash, false, row.id)
+                                } else {
+                                  setRowSelection(prev => {
+                                    if (!prev[row.id]) {
+                                      return prev
+                                    }
+
+                                    const next = { ...prev }
+                                    delete next[row.id]
+                                    return next
+                                  })
+
+                                  if (selectedRowIds.length <= 1) {
+                                    lastSelectedIndexRef.current = null
+                                  }
+                                }
+
+                                onTorrentSelect?.(null)
+                                return
+                              }
+
+                              // If row is not selected, select only this torrent (replace selection).
                               if (!isRowSelected) {
                                 const allRows = table.getRowModel().rows
                                 const currentIndex = allRows.findIndex(r => r.id === row.id)

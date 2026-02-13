@@ -4,8 +4,8 @@ title: Orphan Scan
 description: Find and remove files not associated with any torrent.
 ---
 
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
-import OrphanScanDefaultIgnores from '@site/docs/_partials/_orphan-scan-default-ignores.mdx';
+import LocalFilesystemDocker from "../_partials/_local-filesystem-docker.mdx";
+import OrphanScanDefaultIgnores from "../_partials/_orphan-scan-default-ignores.mdx";
 
 # Orphan Scan
 
@@ -17,6 +17,10 @@ Finds and removes files in your download directories that aren't associated with
 2. Files not referenced by any torrent are flagged as orphans
 3. You preview the list before confirming deletion
 4. Empty directories are cleaned up after file deletion
+
+:::note
+qui normalizes Unicode paths to canonical NFC form during matching. This avoids false orphans when equivalent composed/decomposed names are reported differently. On normalization-sensitive filesystems, two byte-distinct canonical-equivalent names are treated as one logical path.
+:::
 
 :::info
 If you have multiple **active** qBittorrent instances with `Has local filesystem access` enabled, and their torrent `SavePath` directories overlap, qui also protects files referenced by torrents from those other instances (even when scanning a single instance).
