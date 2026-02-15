@@ -521,7 +521,6 @@ func buildFixtures() []fixture {
 						{Label: "Tagger", Count: 2},
 					},
 					Samples: []string{"Example.Movie.2025", "Another.Show.S01E01"},
-					Errors:  []string{"permission denied", "missing category"},
 				},
 				ErrorMessage:  "permission denied",
 				ErrorMessages: []string{"permission denied", "missing category"},

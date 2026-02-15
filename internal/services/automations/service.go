@@ -2594,7 +2594,6 @@ func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, s
 			TopFailures: topCounts(summary.failedByAction, 3, automationActionLabel),
 			Rules:       topCounts(summary.ruleCounts, 3, func(v string) string { return v }),
 			Samples:     append([]string(nil), summary.sampleTorrents...),
-			Errors:      append([]string(nil), summary.sampleErrors...),
 		},
 		ErrorMessage:  errorMessage,
 		ErrorMessages: errorMessages,
