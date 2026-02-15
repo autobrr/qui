@@ -266,18 +266,18 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	if event.OrphanScanFoldersDeleted > 0 {
 		data.OrphanScanFoldersDeleted = intPtr(event.OrphanScanFoldersDeleted)
 	}
-	if strings.TrimSpace(event.ErrorMessage) != "" {
-		data.ErrorMessage = stringPtr(event.ErrorMessage)
-	}
-	if len(event.ErrorMessages) > 0 {
-		data.ErrorMessages = normalizeErrorMessages(event.ErrorMessages)
-	}
-	if data.ErrorMessage != nil {
-		if len(data.ErrorMessages) == 0 {
-			data.ErrorMessages = []string{*data.ErrorMessage}
-		} else if !slices.Contains(data.ErrorMessages, *data.ErrorMessage) {
-			data.ErrorMessages = append([]string{*data.ErrorMessage}, data.ErrorMessages...)
+	// Prefer a single stable shape for templates: always emit error_messages (a list).
+	// Keep error_message reserved for backwards compatibility, but do not populate it.
+	errors := normalizeErrorMessages(event.ErrorMessages)
+	if msg := strings.TrimSpace(event.ErrorMessage); msg != "" {
+		if len(errors) == 0 {
+			errors = []string{msg}
+		} else if !slices.Contains(errors, msg) {
+			errors = append([]string{msg}, errors...)
 		}
+	}
+	if len(errors) > 0 {
+		data.ErrorMessages = errors
 	}
 
 	if event.StartedAt != nil && !event.StartedAt.IsZero() {
