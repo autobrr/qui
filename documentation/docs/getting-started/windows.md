@@ -36,13 +36,7 @@ Avoid placing qui in `C:\Program Files` — it can cause permission issues with 
 
 ### Configuration
 
-qui stores its configuration and database in `%APPDATA%\qui\` by default. You can override this with the `--config-dir` flag:
-
-```powershell
-.\qui.exe serve --config-dir "C:\qui\config"
-```
-
-For more details, see the [Configuration](/docs/configuration/environment) section.
+qui stores its configuration and database in `%APPDATA%\qui\` by default. For more details, see the [Configuration](/docs/configuration/environment) section.
 
 ## Create a Windows Task
 
