@@ -26,6 +26,7 @@ import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
+  CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
   CrossSeedRun,
   CrossSeedSearchRun,
@@ -107,6 +108,7 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
+  TransferInfo,
   User,
   WarningResponse,
   WebSeed
@@ -485,6 +487,10 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getTransferInfo(id: number): Promise<TransferInfo> {
+    return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
   }
 
   async getInstanceReannounceActivity(
@@ -1175,6 +1181,7 @@ class ApiClient {
       title: string
       indexer: string
       torrent_name?: string
+      info_hash?: string
       success: boolean
       instance_results?: RawInstanceResult[]
       error?: string
@@ -1194,6 +1201,7 @@ class ApiClient {
         title: result.title,
         indexer: result.indexer,
         torrentName: result.torrent_name ?? undefined,
+        infoHash: result.info_hash ?? undefined,
         success: result.success,
         instanceResults: (result.instance_results ?? []).map((instance): CrossSeedInstanceResult => ({
           instanceId: instance.instance_id,
@@ -1228,6 +1236,27 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedBlocklist(instanceId?: number): Promise<CrossSeedBlocklistEntry[]> {
+    const search = new URLSearchParams()
+    if (instanceId !== undefined) search.set("instanceId", instanceId.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedBlocklistEntry[]>(`/cross-seed/blocklist${suffix}`)
+  }
+
+  async addCrossSeedBlocklist(payload: { instanceId: number; infoHash: string; note?: string }): Promise<CrossSeedBlocklistEntry> {
+    return this.request<CrossSeedBlocklistEntry>("/cross-seed/blocklist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteCrossSeedBlocklist(instanceId: number, infoHash: string): Promise<void> {
+    await this.request(`/cross-seed/blocklist/${instanceId}/${infoHash}`, {
+      method: "DELETE",
     })
   }
 
@@ -1719,11 +1748,11 @@ class ApiClient {
     licenseKey: string
     productName: string
     status: string
+    provider?: string
     createdAt: string
   }>> {
     return this.request("/license/licenses")
   }
-
 
   async deleteLicense(licenseKey: string): Promise<{ message: string }> {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })
@@ -1920,10 +1949,16 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<DiscoverJackettResponse> {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string): Promise<DiscoverJackettResponse> {
+    const user = basicUsername?.trim() ?? ""
+    const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
+    if (user) {
+      payload.basic_username = user
+      payload.basic_password = basicPassword ?? ""
+    }
     return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
-      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+      body: JSON.stringify(payload),
     })
   }
 

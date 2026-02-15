@@ -165,14 +165,20 @@ export function ClientApiKeysManager() {
       instanceId: "",
     },
     onSubmit: async ({ value }) => {
-      const instanceId = parseInt(value.instanceId)
+      const clientName = value.clientName.trim()
+      if (clientName === "") {
+        toast.error("Client name is required")
+        return
+      }
+
+      const instanceId = parseInt(value.instanceId, 10)
       if (!instanceId) {
         toast.error("Please select an instance")
         return
       }
 
       await createMutation.mutateAsync({
-        clientName: value.clientName,
+        clientName,
         instanceId,
       })
       form.reset()
@@ -207,147 +213,147 @@ export function ClientApiKeysManager() {
               </DialogHeader>
 
               <div className="flex-1 overflow-y-auto min-h-0">
-              {newKey ? (
-                <div className="space-y-4">
-                  <Card className="w-full">
-                    <CardHeader>
-                      <CardTitle className="text-base">API Key Created</CardTitle>
-                      <CardDescription>
-                        This information is shown only once. Store it in your password manager before closing the dialog.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 sm:flex-nowrap">
-                          <code
-                            id="proxy-url"
-                            className={`w-full flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all ${incognitoMode ? "blur-sm select-none" : ""}`}
-                          >
-                            {getFullProxyUrl(newKey.proxyUrl)}
-                          </code>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-7 w-7"
-                            onClick={() => setIncognitoMode(!incognitoMode)}
-                            title={incognitoMode ? "Show proxy URL" : "Hide proxy URL"}
-                          >
-                            {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-7 w-7"
-                            onClick={async () => {
-                              try {
-                                await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
-                                toast.success("Proxy URL copied to clipboard")
-                              } catch {
-                                toast.error("Failed to copy to clipboard")
-                              }
-                            }}
-                            title="Copy proxy URL"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
+                {newKey ? (
+                  <div className="space-y-4">
+                    <Card className="w-full">
+                      <CardHeader>
+                        <CardTitle className="text-base">API Key Created</CardTitle>
+                        <CardDescription>
+                          This information is shown only once. Store it in your password manager before closing the dialog.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div>
+                          <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                            <code
+                              id="proxy-url"
+                              className={`w-full flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all ${incognitoMode ? "blur-sm select-none" : ""}`}
+                            >
+                              {getFullProxyUrl(newKey.proxyUrl)}
+                            </code>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-7 w-7"
+                              onClick={() => setIncognitoMode(!incognitoMode)}
+                              title={incognitoMode ? "Show proxy URL" : "Hide proxy URL"}
+                            >
+                              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-7 w-7"
+                              onClick={async () => {
+                                try {
+                                  await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
+                                  toast.success("Proxy URL copied to clipboard")
+                                } catch {
+                                  toast.error("Failed to copy to clipboard")
+                                }
+                              }}
+                              title="Copy proxy URL"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
 
-                  <Button
-                    onClick={() => handleDialogOpenChange(false)}
-                    className="w-full"
-                  >
-                    Done
-                  </Button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    form.handleSubmit()
-                  }}
-                  className="space-y-4"
-                >
-                  <form.Field
-                    name="clientName"
-                    validators={{
-                      onChange: ({ value }) => !value ? "Client name is required" : undefined,
+                    <Button
+                      onClick={() => handleDialogOpenChange(false)}
+                      className="w-full"
+                    >
+                      Done
+                    </Button>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      form.handleSubmit()
                     }}
+                    className="space-y-4"
                   >
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="clientName">Client Name</Label>
+                    <form.Field
+                      name="clientName"
+                      validators={{
+                        onChange: ({ value }) => value.trim() === "" ? "Client name is required" : undefined,
+                      }}
+                    >
+                      {(field) => (
                         <div className="space-y-2">
-                          <Input
-                            id="clientName"
-                            placeholder="e.g., autobrr, tqm, sonarr, radarr, cross-seed"
-                            value={field.state.value}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                            data-1p-ignore
-                            autoComplete='off'
-                          />
+                          <Label htmlFor="clientName">Client Name</Label>
+                          <div className="space-y-2">
+                            <Input
+                              id="clientName"
+                              placeholder="e.g., autobrr, tqm, sonarr, radarr, cross-seed"
+                              value={field.state.value}
+                              onBlur={field.handleBlur}
+                              onChange={(e) => field.handleChange(e.target.value)}
+                              data-1p-ignore
+                              autoComplete='off'
+                            />
+                          </div>
+                          {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                            <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                          )}
                         </div>
-                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                        )}
-                      </div>
-                    )}
-                  </form.Field>
+                      )}
+                    </form.Field>
 
-                  <form.Field
-                    name="instanceId"
-                    validators={{
-                      onChange: ({ value }) => !value ? "Instance is required" : undefined,
-                    }}
-                  >
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="instanceId">qBittorrent Instance</Label>
-                        <Select
-                          value={field.state.value}
-                          onValueChange={(value) => field.handleChange(value)}
+                    <form.Field
+                      name="instanceId"
+                      validators={{
+                        onChange: ({ value }) => value.trim() === "" ? "Instance is required" : undefined,
+                      }}
+                    >
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label htmlFor="instanceId">qBittorrent Instance</Label>
+                          <Select
+                            value={field.state.value}
+                            onValueChange={(value) => field.handleChange(value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select an instance" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {instances?.map((instance) => (
+                                <SelectItem key={instance.id} value={instance.id.toString()}>
+                                  <div className="flex items-center gap-2">
+                                    <Server className="h-4 w-4" />
+                                    <span>{instance.name}</span>
+                                    <span className="text-xs text-muted-foreground">({instance.host})</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                            <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                          )}
+                        </div>
+                      )}
+                    </form.Field>
+
+                    <form.Subscribe
+                      selector={(state) => [state.canSubmit, state.isSubmitting]}
+                    >
+                      {([canSubmit, isSubmitting]) => (
+                        <Button
+                          type="submit"
+                          disabled={!canSubmit || isSubmitting || createMutation.isPending}
+                          className="w-full"
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select an instance" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {instances?.map((instance) => (
-                              <SelectItem key={instance.id} value={instance.id.toString()}>
-                                <div className="flex items-center gap-2">
-                                  <Server className="h-4 w-4" />
-                                  <span>{instance.name}</span>
-                                  <span className="text-xs text-muted-foreground">({instance.host})</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                        )}
-                      </div>
-                    )}
-                  </form.Field>
-
-                  <form.Subscribe
-                    selector={(state) => [state.canSubmit, state.isSubmitting]}
-                  >
-                    {([canSubmit, isSubmitting]) => (
-                      <Button
-                        type="submit"
-                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                        className="w-full"
-                      >
-                        {isSubmitting || createMutation.isPending ? "Creating..." : "Create Client API Key"}
-                      </Button>
-                    )}
-                  </form.Subscribe>
-                </form>
-              )}
+                          {isSubmitting || createMutation.isPending ? "Creating..." : "Create Client API Key"}
+                        </Button>
+                      )}
+                    </form.Subscribe>
+                  </form>
+                )}
               </div>
             </DialogContent>
           </Dialog>

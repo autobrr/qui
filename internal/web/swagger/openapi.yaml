@@ -967,6 +967,30 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/transfer-info:
+    get:
+      tags:
+        - Instances
+      summary: Get transfer info
+      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Transfer info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferInfo'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get transfer info
+        '503':
+          description: Instance unavailable
+
   /api/instances/{instanceID}/getDirectoryContent:
     get:
       tags:
@@ -1240,10 +1264,46 @@ paths:
                   type: array
                   items:
                     type: string
-                startPaused:
+                paused:
                   type: boolean
-                savePath:
+                savepath:
                   type: string
+                indexer_id:
+                  type: integer
+                  description: Indexer ID for downloading torrent from an indexer
+                skip_checking:
+                  type: boolean
+                sequentialDownload:
+                  type: boolean
+                firstLastPiecePrio:
+                  type: boolean
+                upLimit:
+                  type: integer
+                  description: Upload speed limit in KB/s
+                dlLimit:
+                  type: integer
+                  description: Download speed limit in KB/s
+                ratioLimit:
+                  type: string
+                  description: Share ratio limit
+                seedingTimeLimit:
+                  type: string
+                  description: Seeding time limit in minutes
+                contentLayout:
+                  type: string
+                  description: Content layout (Original, Subfolder, NoSubfolder)
+                rename:
+                  type: string
+                  description: Rename torrent
+                useDownloadPath:
+                  type: boolean
+                  description: Use download path
+                downloadPath:
+                  type: string
+                  description: Download path
+                autoTMM:
+                  type: boolean
+                  description: Automatic torrent management
       responses:
         '201':
           description: Torrent added successfully
@@ -2448,6 +2508,11 @@ paths:
                       type: string
                     status:
                       type: string
+                    provider:
+                      type: string
+                      enum:
+                        - polar
+                        - dodo
                     createdAt:
                       type: string
                       format: date-time
@@ -3055,6 +3120,81 @@ paths:
           description: RSS automation run cancelled successfully
         '409':
           description: No automation run is currently active
+
+  /api/cross-seed/blocklist:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List cross-seed blocklist entries
+      description: Returns the per-instance cross-seed blocklist entries.
+      parameters:
+        - name: instanceId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Instance ID
+      responses:
+        '200':
+          description: Blocklist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedBlocklistEntry'
+        '400':
+          description: instanceId must be a positive integer
+        '500':
+          description: Failed to load blocklist
+    post:
+      tags:
+        - Cross-Seed
+      summary: Add cross-seed blocklist entry
+      description: Adds or updates a blocked infohash for a specific instance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedBlocklistRequest'
+      responses:
+        '201':
+          description: Blocklist entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedBlocklistEntry'
+        '400':
+          description: Invalid request body
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to add blocklist entry
+
+  /api/cross-seed/blocklist/{instanceID}/{infohash}:
+    delete:
+      tags:
+        - Cross-Seed
+      summary: Remove cross-seed blocklist entry
+      description: Removes a blocked infohash for a specific instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: infohash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Infohash to remove
+      responses:
+        '204':
+          description: Blocklist entry removed
+        '400':
+          description: Invalid instanceID or infohash
+        '404':
+          description: Blocklist entry not found
+        '500':
+          description: Failed to delete blocklist entry
 
   /api/cross-seed/search/settings:
     get:
@@ -4642,6 +4782,7 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: qBittorrent instance ID
     hash:
       name: hash
@@ -4907,6 +5048,26 @@ components:
           type: string
           nullable: true
           description: Reported qBittorrent Web API version for the instance.
+
+    TransferInfo:
+      type: object
+      properties:
+        connection_status:
+          type: string
+        dht_nodes:
+          type: integer
+        dl_info_data:
+          type: integer
+        dl_info_speed:
+          type: integer
+        dl_rate_limit:
+          type: integer
+        up_info_data:
+          type: integer
+        up_info_speed:
+          type: integer
+        up_rate_limit:
+          type: integer
 
 
     Torrent:
@@ -5312,6 +5473,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
+
+    CrossSeedBlocklistEntry:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        infoHash:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CrossSeedBlocklistRequest:
+      type: object
+      required:
+        - instanceId
+        - infoHash
+      properties:
+        instanceId:
+          type: integer
+        infoHash:
+          type: string
+        note:
+          type: string
 
     InstanceCrossSeedCompletionSettings:
       type: object
@@ -6207,6 +6394,9 @@ components:
           type: string
         base_url:
           type: string
+        basic_username:
+          type: string
+          nullable: true
         enabled:
           type: boolean
         priority:
@@ -6248,6 +6438,13 @@ components:
         api_key:
           type: string
           writeOnly: true
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
         enabled:
           type: boolean
           default: true
@@ -6269,6 +6466,13 @@ components:
           type: string
           writeOnly: true
           description: Only update if provided
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies (empty string clears)
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
         enabled:
           type: boolean
         priority:
@@ -6291,6 +6495,13 @@ components:
         api_key:
           type: string
           writeOnly: true
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
 
     ArrTestResponse:
       type: object

@@ -758,7 +758,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     if (lastSlash === -1) return { folderPath: "", fileName: initialPath }
     return {
       folderPath: initialPath.slice(0, lastSlash),
-      fileName: initialPath.slice(lastSlash + 1)
+      fileName: initialPath.slice(lastSlash + 1),
     }
   }, [initialPath])
 
@@ -912,7 +912,7 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     if (lastSlash === -1) return { parentPath: "", folderName: path }
     return {
       parentPath: path.slice(0, lastSlash),
-      folderName: path.slice(lastSlash + 1)
+      folderName: path.slice(lastSlash + 1),
     }
   }, [selectedPath, initialPath])
 
@@ -1213,89 +1213,89 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                 ref={scrollContainerRef}
                 className="max-h-64 border rounded-md overflow-y-auto"
               >
-              {/* No category option */}
-              <button
-                type="button"
-                onClick={() => setCategoryInput("")}
-                className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                  categoryInput === "" ? "bg-accent" : ""
-                }`}
-              >
-                <span className="text-sm text-muted-foreground italic">(No category)</span>
-              </button>
-
-              {shouldUseVirtualization ? (
-                // Virtualized rendering for large lists
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: "100%",
-                    position: "relative",
-                  }}
+                {/* No category option */}
+                <button
+                  type="button"
+                  onClick={() => setCategoryInput("")}
+                  className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                    categoryInput === "" ? "bg-accent" : ""
+                  }`}
                 >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const category = filteredCategories[virtualRow.index]
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setCategoryInput(category.name)}
-                          className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                            categoryInput === category.name ? "bg-accent" : ""
-                          }`}
-                          title={category.name}
-                        >
-                          <span
-                            className="text-sm"
-                            style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                          >
-                            {category.displayName}
-                          </span>
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                // Simple rendering for small lists - much faster!
-                <div>
-                  {filteredCategories.map((category) => (
-                    <button
-                      key={category.name}
-                      type="button"
-                      onClick={() => setCategoryInput(category.name)}
-                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                        categoryInput === category.name ? "bg-accent" : ""
-                      }`}
-                      title={category.name}
-                    >
-                      <span
-                        className="text-sm"
-                        style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                      >
-                        {category.displayName}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                  <span className="text-sm text-muted-foreground italic">(No category)</span>
+                </button>
 
-              {filteredCategories.length === 0 && searchQuery && (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No categories found matching "{searchQuery}"
-                </div>
-              )}
+                {shouldUseVirtualization ? (
+                // Virtualized rendering for large lists
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const category = filteredCategories[virtualRow.index]
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setCategoryInput(category.name)}
+                            className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                              categoryInput === category.name ? "bg-accent" : ""
+                            }`}
+                            title={category.name}
+                          >
+                            <span
+                              className="text-sm"
+                              style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                            >
+                              {category.displayName}
+                            </span>
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                // Simple rendering for small lists - much faster!
+                  <div>
+                    {filteredCategories.map((category) => (
+                      <button
+                        key={category.name}
+                        type="button"
+                        onClick={() => setCategoryInput(category.name)}
+                        className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                          categoryInput === category.name ? "bg-accent" : ""
+                        }`}
+                        title={category.name}
+                      >
+                        <span
+                          className="text-sm"
+                          style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                        >
+                          {category.displayName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {filteredCategories.length === 0 && searchQuery && (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No categories found matching "{searchQuery}"
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2064,9 +2064,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {ratioMode === "global" ? "Follow qBittorrent global settings" :
-               ratioMode === "unlimited" ? "No ratio limit" :
-               "Stop seeding when ratio reaches this value"}
+              {ratioMode === "global" ? "Follow qBittorrent global settings" :ratioMode === "unlimited" ? "No ratio limit" :"Stop seeding when ratio reaches this value"}
             </p>
           </div>
 
@@ -2113,9 +2111,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {seedTimeMode === "global" ? "Follow qBittorrent global settings" :
-               seedTimeMode === "unlimited" ? "No time limit" :
-               "Minutes (1440 = 24 hours)"}
+              {seedTimeMode === "global" ? "Follow qBittorrent global settings" :seedTimeMode === "unlimited" ? "No time limit" :"Minutes (1440 = 24 hours)"}
             </p>
           </div>
 
@@ -2162,9 +2158,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {inactiveTimeMode === "global" ? "Follow qBittorrent global settings" :
-               inactiveTimeMode === "unlimited" ? "No inactive limit" :
-               "Minutes (10080 = 7 days)"}
+              {inactiveTimeMode === "global" ? "Follow qBittorrent global settings" :inactiveTimeMode === "unlimited" ? "No inactive limit" :"Minutes (10080 = 7 days)"}
             </p>
           </div>
         </div>

@@ -29,7 +29,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { api } from "@/lib/api"
+import { APIError, api } from "@/lib/api"
 import type { ExternalProgram, ExternalProgramCreate, ExternalProgramUpdate, PathMapping } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Edit, Plus, Trash2, X } from "lucide-react"
@@ -41,6 +41,12 @@ interface AutomationReference {
   id: number
   instanceId: number
   name: string
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof APIError) return error.message
+  if (error instanceof Error) return error.message
+  return "Unknown error"
 }
 
 export function ExternalProgramsManager() {
@@ -67,8 +73,8 @@ export function ExternalProgramsManager() {
       setShowCreateDialog(false)
       toast.success("External program created successfully")
     },
-    onError: (error: any) => {
-      toast.error(`Failed to create external program: ${error.message || "Unknown error"}`)
+    onError: (error: unknown) => {
+      toast.error(`Failed to create external program: ${getErrorMessage(error)}`)
     },
   })
 
@@ -81,8 +87,8 @@ export function ExternalProgramsManager() {
       setEditProgram(null)
       toast.success("External program updated successfully")
     },
-    onError: (error: any) => {
-      toast.error(`Failed to update external program: ${error.message || "Unknown error"}`)
+    onError: (error: unknown) => {
+      toast.error(`Failed to update external program: ${getErrorMessage(error)}`)
     },
   })
 
@@ -98,13 +104,15 @@ export function ExternalProgramsManager() {
       setDeleteConflict(null)
       toast.success("External program deleted successfully")
     },
-    onError: (error: any) => {
-      // Check if this is a 409 conflict with automation references
-      if (error.status === 409 && error.data?.automations) {
-        setDeleteConflict(error.data.automations)
-        return
+    onError: (error: unknown) => {
+      if (error instanceof APIError && error.status === 409) {
+        const data = error.data as { automations?: AutomationReference[] } | undefined
+        if (data?.automations) {
+          setDeleteConflict(data.automations)
+          return
+        }
       }
-      toast.error(`Failed to delete external program: ${error.message || "Unknown error"}`)
+      toast.error(`Failed to delete external program: ${getErrorMessage(error)}`)
     },
   })
 
@@ -126,11 +134,11 @@ export function ExternalProgramsManager() {
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
-            <ProgramForm
-              onSubmit={(data) => createMutation.mutate(data)}
-              onCancel={() => setShowCreateDialog(false)}
-              isPending={createMutation.isPending}
-            />
+              <ProgramForm
+                onSubmit={(data) => createMutation.mutate(data)}
+                onCancel={() => setShowCreateDialog(false)}
+                isPending={createMutation.isPending}
+              />
             </div>
           </DialogContent>
         </Dialog>
@@ -170,7 +178,7 @@ export function ExternalProgramsManager() {
                     </div>
                     <CardDescription className="text-xs">
                       Created {formatDate(new Date(program.created_at))}
-                      {program.updated_at !== program.created_at && 
+                      {program.updated_at !== program.created_at &&
                         ` • Updated ${formatDate(new Date(program.updated_at))}`}
                     </CardDescription>
                   </div>
@@ -223,12 +231,12 @@ export function ExternalProgramsManager() {
               <DialogTitle>Edit External Program</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
-            <ProgramForm
-              program={editProgram}
-              onSubmit={(data) => updateMutation.mutate({ id: editProgram.id, data })}
-              onCancel={() => setEditProgram(null)}
-              isPending={updateMutation.isPending}
-            />
+              <ProgramForm
+                program={editProgram}
+                onSubmit={(data) => updateMutation.mutate({ id: editProgram.id, data })}
+                onCancel={() => setEditProgram(null)}
+                isPending={updateMutation.isPending}
+              />
             </div>
           </DialogContent>
         </Dialog>
@@ -433,7 +441,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. 
+          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote.
           Paths are matched by longest prefix first. Use the same path separator style as the remote qBittorrent instance (/ for Linux, \ for Windows).
         </p>
       </div>

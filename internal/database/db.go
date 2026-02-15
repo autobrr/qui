@@ -956,8 +956,8 @@ func (db *DB) migrate() error {
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 		`); err != nil {
-			return fmt.Errorf("failed to create migrations table: %w", err)
-		}
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
 
 	// Handle historical migration file renames.
 	// If we ever rename an embedded migration file, we must update the filename
@@ -1008,6 +1008,10 @@ func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
 		{
 			from: "052_add_dir_scan.sql",
 			to:   "053_add_dir_scan.sql",
+		},
+		{
+			from: "055_add_license_provider_dodo.sql",
+			to:   "057_add_license_provider_dodo.sql",
 		},
 	}
 
@@ -1257,6 +1261,8 @@ const referencedStringsInsertQuery = `
 	UNION ALL
 	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
 	UNION ALL
+	SELECT basic_username_id AS string_id FROM torznab_indexers WHERE basic_username_id IS NOT NULL
+	UNION ALL
 	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
 	UNION ALL
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
@@ -1266,6 +1272,8 @@ const referencedStringsInsertQuery = `
 	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
 	UNION ALL
 	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT basic_username_id AS string_id FROM arr_instances WHERE basic_username_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
@@ -1319,7 +1327,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM string_pool 
+		DELETE FROM string_pool
 		WHERE NOT EXISTS (
 			SELECT 1 FROM temp_referenced_strings trs WHERE trs.string_id = string_pool.id
 		)

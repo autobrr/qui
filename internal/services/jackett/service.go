@@ -36,6 +36,7 @@ type IndexerStore interface {
 	List(ctx context.Context) ([]*models.TorznabIndexer, error)
 	ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error)
 	GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error)
+	GetDecryptedBasicPassword(indexer *models.TorznabIndexer) (string, error)
 	GetCapabilities(ctx context.Context, indexerID int) ([]string, error)
 	SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
@@ -954,7 +955,12 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		return nil, fmt.Errorf("failed to decrypt API key for indexer %d: %w", req.IndexerID, err)
 	}
 
-	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
+	basicUser, basicPass, err := s.basicAuthForIndexer(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt basic auth password for indexer %d: %w", req.IndexerID, err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, indexer.Backend, indexer.TimeoutSeconds)
 
 	// Retry loop with exponential backoff
 	var lastErr error
@@ -1090,6 +1096,20 @@ func isRetryableDownloadError(err error) bool {
 	// Check for specific syscall errors (connection refused, reset, etc.)
 	var opErr *net.OpError
 	return errors.As(err, &opErr)
+}
+
+func (s *Service) basicAuthForIndexer(indexer *models.TorznabIndexer) (*string, *string, error) {
+	if s == nil || s.indexerStore == nil || indexer == nil || indexer.BasicUsername == nil || strings.TrimSpace(*indexer.BasicUsername) == "" {
+		return nil, nil, nil
+	}
+
+	pass, err := s.indexerStore.GetDecryptedBasicPassword(indexer)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	p := pass
+	return indexer.BasicUsername, &p, nil
 }
 
 func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
@@ -1658,7 +1678,12 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 		return nil, fmt.Errorf("decrypt torznab api key: %w", err)
 	}
 
-	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
+	basicUser, basicPass, err := s.basicAuthForIndexer(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt torznab basic auth password: %w", err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, indexer.Backend, indexer.TimeoutSeconds)
 
 	identifier, err := resolveCapsIdentifier(indexer)
 	if err != nil {
@@ -1818,7 +1843,17 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		return indexerExecResult{id: idx.ID, err: err}
 	}
 
-	client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
+	basicUser, basicPass, err := s.basicAuthForIndexer(idx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to decrypt basic auth password")
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	client := NewClient(idx.BaseURL, apiKey, basicUser, basicPass, idx.Backend, idx.TimeoutSeconds)
 
 	paramsMap := make(map[string]string)
 	for key, values := range params {
@@ -4030,7 +4065,12 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 	}
 
 	// Create Prowlarr client
-	client := NewClient(indexer.BaseURL, apiKey, models.TorznabBackendProwlarr, 30)
+	basicUser, basicPass, err := s.basicAuthForIndexer(indexer)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt basic auth password: %w", err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, 30)
 	if client.prowlarr == nil {
 		return "", fmt.Errorf("failed to create Prowlarr client")
 	}
@@ -4090,12 +4130,18 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 			continue
 		}
 
+		basicUser, basicPass, err := s.basicAuthForIndexer(indexers[0])
+		if err != nil {
+			log.Warn().Err(err).Str("baseURL", redact.URLString(baseURL)).Msg("Failed to decrypt basic auth password for Prowlarr instance")
+			continue
+		}
+
 		// Create Prowlarr client for this instance
 		timeout := indexers[0].TimeoutSeconds
 		if timeout <= 0 {
 			timeout = 30
 		}
-		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, timeout)
+		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, timeout)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue

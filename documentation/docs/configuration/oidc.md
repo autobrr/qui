@@ -1,11 +1,13 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: OIDC
 ---
 
 # OpenID Connect (OIDC)
 
 Set `QUI__OIDC_ENABLED=true` to hand authentication off to an external identity provider. The built-in login screen automatically offers a "Sign in with OIDC" button when the backend detects a valid OIDC configuration.
+
+For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference).
 
 ## Configuration Options
 

@@ -19,6 +19,8 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
+import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
@@ -40,6 +42,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const { clearSelection } = useTorrentSelection()
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   // Server state for global status bar
   const [serverState, setServerState] = useState<ServerState | null>(null)
@@ -48,6 +51,19 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     setServerState(state)
     setListenPort(port ?? null)
   }, [])
+
+  useTitleBarSpeeds({
+    mode: "instance",
+    enabled: titleBarSpeedsEnabled,
+    instanceId,
+    instanceName: instance?.name,
+    foregroundSpeeds: serverState
+      ? {
+        dl: serverState.dl_info_speed ?? 0,
+        up: serverState.up_info_speed ?? 0,
+      }
+      : undefined,
+  })
 
   // Selection info for global status bar
   const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null)
@@ -136,6 +152,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
   // Mobile detection for responsive layout
   const isMobile = useIsMobile()
+
+  const [detailsPanelReady, setDetailsPanelReady] = useState(false)
 
   const panelIds = useMemo(
     () => (selectedTorrent ? ["torrent-list", "torrent-details"] : ["torrent-list"]),
@@ -288,13 +306,18 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     return () => window.removeEventListener("qui-open-mobile-filters", handler)
   }, [])
 
+  useEffect(() => {
+    if (!selectedTorrent || isMobile) {
+      setDetailsPanelReady(false)
+    }
+  }, [isMobile, selectedTorrent])
 
   // Auto-expand details panel when a torrent is selected on desktop
   useEffect(() => {
-    if (!isMobile && selectedTorrent && detailsPanelRef.current?.isCollapsed()) {
+    if (!isMobile && selectedTorrent && detailsPanelReady && detailsPanelRef.current?.isCollapsed()) {
       detailsPanelRef.current.expand()
     }
-  }, [selectedTorrent, isMobile])
+  }, [detailsPanelReady, detailsPanelRef, selectedTorrent, isMobile])
 
   // Unified Escape handler: close panel and clear selection atomically
   useEffect(() => {
@@ -408,8 +431,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             >
               <ResizablePanel
                 id="torrent-list"
-                defaultSize={selectedTorrent ? 60 : 100}
-                minSize={30}
+                defaultSize={selectedTorrent ? "60%" : "100%"}
               >
                 <div className="h-full">
                   <TorrentTableResponsive
@@ -433,13 +455,17 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                   <ResizablePanel
                     id="torrent-details"
                     panelRef={detailsPanelRef}
-                    defaultSize={40}
-                    minSize={15}
-                    maxSize={70}
+                    defaultSize="40%"
                     collapsible
                     collapsedSize={0}
-                    onResize={(panelSize) => {
+                    onResize={(panelSize, _panelId, prevPanelSize) => {
+                      if (!detailsPanelReady) {
+                        setDetailsPanelReady(true)
+                      }
                       if (!selectedTorrent) {
+                        return
+                      }
+                      if (prevPanelSize === undefined) {
                         return
                       }
                       if (panelSize.asPercentage <= 0 || panelSize.inPixels <= 0) {

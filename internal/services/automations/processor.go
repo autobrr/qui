@@ -34,6 +34,9 @@ type torrentDesiredState struct {
 	// Pause (OR - any rule can trigger)
 	shouldPause bool
 
+	// Resume (OR - any rule can trigger)
+	shouldResume bool
+
 	// Tags (accumulated, last action per tag wins)
 	currentTags map[string]struct{}
 	tagActions  map[string]string // tag -> "add" | "remove"
@@ -68,6 +71,8 @@ type ruleRunStats struct {
 	ShareConditionNotMet             int
 	PauseApplied                     int
 	PauseConditionNotMet             int
+	ResumeApplied                    int
+	ResumeConditionNotMet            int
 	TagConditionMet                  int
 	TagConditionNotMet               int
 	TagSkippedMissingUnregisteredSet int
@@ -87,7 +92,7 @@ func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -243,7 +248,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
-	// Pause
+	// Pause (last rule wins)
 	if conditions.Pause != nil && conditions.Pause.Enabled {
 		shouldApply := conditions.Pause.Condition == nil ||
 			EvaluateConditionWithContext(conditions.Pause.Condition, torrent, evalCtx, 0)
@@ -256,9 +261,31 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl &&
 				torrent.State != qbt.TorrentStateStoppedUp && torrent.State != qbt.TorrentStateStoppedDl {
 				state.shouldPause = true
+				state.shouldResume = false // Clear conflicting resume from earlier rule if any
 			}
 		} else if stats != nil {
 			stats.PauseConditionNotMet++
+		}
+	}
+
+	// Resume (last rule wins)
+	if conditions.Resume != nil && conditions.Resume.Enabled {
+		shouldApply := conditions.Resume.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Resume.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ResumeApplied++
+			}
+
+			// Only resume if currently paused/stopped
+			if torrent.State == qbt.TorrentStatePausedUp || torrent.State == qbt.TorrentStatePausedDl ||
+				torrent.State == qbt.TorrentStateStoppedUp || torrent.State == qbt.TorrentStateStoppedDl {
+				state.shouldResume = true
+				state.shouldPause = false // Clear conflicting pause from earlier rule if any
+			}
+		} else if stats != nil {
+			stats.ResumeConditionNotMet++
 		}
 	}
 
@@ -555,13 +582,25 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 			hasTag = (pending == "add")
 		}
 
-		// Smart tagging logic:
-		// - ADD: doesn't have tag + matches + mode allows add
-		// - REMOVE: has tag + doesn't match + mode allows remove
-		if !hasTag && matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeAdd) {
-			state.tagActions[managedTag] = "add"
-		} else if hasTag && !matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeRemove) {
-			state.tagActions[managedTag] = "remove"
+		// Tagging semantics:
+		// - FULL: add to matches, remove from non-matches
+		// - ADD: add to matches only
+		// - REMOVE: remove from matches only
+		switch tagMode {
+		case models.TagModeAdd:
+			if !hasTag && matchesCondition {
+				state.tagActions[managedTag] = "add"
+			}
+		case models.TagModeRemove:
+			if hasTag && matchesCondition {
+				state.tagActions[managedTag] = "remove"
+			}
+		default: // full (incl. unknown/empty)
+			if !hasTag && matchesCondition {
+				state.tagActions[managedTag] = "add"
+			} else if hasTag && !matchesCondition {
+				state.tagActions[managedTag] = "remove"
+			}
 		}
 	}
 
@@ -575,6 +614,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.ratioLimit != nil ||
 		state.seedingMinutes != nil ||
 		state.shouldPause ||
+		state.shouldResume ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||

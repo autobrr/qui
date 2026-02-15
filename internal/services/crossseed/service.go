@@ -14,6 +14,7 @@ package crossseed
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -263,6 +264,7 @@ type Service struct {
 	stringNormalizer    *stringutils.Normalizer[string, string]
 
 	automationStore          *models.CrossSeedStore
+	blocklistStore           *models.CrossSeedBlocklistStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
 	arrService               *arr.Service // ARR service for ID lookup
@@ -334,6 +336,7 @@ func NewService(
 	syncManager *qbittorrent.SyncManager,
 	filesManager *filesmanager.Service,
 	automationStore *models.CrossSeedStore,
+	blocklistStore *models.CrossSeedBlocklistStore,
 	jackettService *jackett.Service,
 	arrService *arr.Service,
 	externalProgramStore *models.ExternalProgramStore,
@@ -367,6 +370,7 @@ func NewService(
 		indexerDomainCache:            indexerDomainCache,
 		stringNormalizer:              stringutils.NewDefaultNormalizer(),
 		automationStore:               automationStore,
+		blocklistStore:                blocklistStore,
 		jackettService:                jackettService,
 		arrService:                    arrService,
 		externalProgramStore:          externalProgramStore,
@@ -797,6 +801,9 @@ var ErrTorrentNotFound = errors.New("cross-seed torrent not found")
 // ErrTorrentNotComplete indicates the torrent is not 100% complete and cannot be used for cross-seeding yet.
 var ErrTorrentNotComplete = errors.New("cross-seed torrent not fully downloaded")
 
+// ErrBlocklistEntryNotFound indicates a requested blocklist entry does not exist.
+var ErrBlocklistEntryNotFound = errors.New("cross-seed blocklist entry not found")
+
 // AutomationRunOptions configures a manual automation run.
 type AutomationRunOptions struct {
 	RequestedBy string
@@ -933,6 +940,33 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 	}
 
 	return settings, nil
+}
+
+func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.CrossSeedBlocklistEntry, error) {
+	if s.blocklistStore == nil {
+		return nil, errors.New("blocklist store unavailable")
+	}
+	return s.blocklistStore.List(ctx, instanceID)
+}
+
+func (s *Service) UpsertBlocklistEntry(ctx context.Context, entry *models.CrossSeedBlocklistEntry) (*models.CrossSeedBlocklistEntry, error) {
+	if s.blocklistStore == nil {
+		return nil, errors.New("blocklist store unavailable")
+	}
+	return s.blocklistStore.Upsert(ctx, entry)
+}
+
+func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash string) error {
+	if s.blocklistStore == nil {
+		return errors.New("blocklist store unavailable")
+	}
+	if err := s.blocklistStore.Delete(ctx, instanceID, infoHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBlocklistEntryNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // UpdateAutomationSettings persists automation configuration and wakes the scheduler.
@@ -2354,7 +2388,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		case "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped", "rejected", "requires_hardlink_reflink":
+		case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink":
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
@@ -3070,6 +3104,25 @@ func (s *Service) processCrossSeedCandidate(
 		}
 		seenHashes[canonical] = struct{}{}
 		hashes = append(hashes, trimmed)
+	}
+
+	if s.blocklistStore != nil {
+		blockedHash, blocked, err := s.blocklistStore.FindBlocked(ctx, candidate.InstanceID, hashes)
+		if err != nil {
+			result.Message = fmt.Sprintf("Failed to check cross-seed blocklist: %v", err)
+			return result
+		}
+		if blocked {
+			result.Status = "blocked"
+			result.Message = "Blocked by cross-seed blocklist"
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("instanceName", candidate.InstanceName).
+				Str("torrentHash", torrentHash).
+				Str("blockedHash", blockedHash).
+				Msg("Cross-seed apply skipped: infohash is blocked")
+			return result
+		}
 	}
 
 	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, hashes)
@@ -5704,14 +5757,17 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 
 			torrentName := ""
+			infoHash := ""
 			if resp.TorrentInfo != nil {
 				torrentName = resp.TorrentInfo.Name
+				infoHash = resp.TorrentInfo.Hash
 			}
 
 			resultChan <- selectionResult{idx, TorrentSearchAddResult{
 				Title:           title,
 				Indexer:         indexerName,
 				TorrentName:     torrentName,
+				InfoHash:        infoHash,
 				Success:         resp.Success,
 				InstanceResults: resp.Results,
 			}}
@@ -8986,31 +9042,14 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	// Ensure hardlink base directory exists before checking filesystem
-	if err := os.MkdirAll(instance.HardlinkBaseDir, 0o755); err != nil {
-		log.Warn().
-			Err(err).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
-			Msg("[CROSSSEED] Hardlink mode: failed to create base directory")
-		return handleError(fmt.Sprintf("Failed to create hardlink base directory: %v", err))
-	}
-
-	// Validate same filesystem
-	sameFS, err := fsutil.SameFilesystem(existingFilePath, instance.HardlinkBaseDir)
+	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
+			Str("configuredDirs", instance.HardlinkBaseDir).
 			Str("existingPath", existingFilePath).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
-			Msg("[CROSSSEED] Hardlink mode: failed to check filesystem, aborting")
-		return handleError(fmt.Sprintf("Failed to verify same filesystem: %v", err))
-	}
-	if !sameFS {
-		log.Warn().
-			Str("existingPath", existingFilePath).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
-			Msg("[CROSSSEED] Hardlink mode: different filesystems, aborting")
-		return handleError("Hardlink mode enabled but source and destination are on different filesystems")
+			Msg("[CROSSSEED] Hardlink mode: no suitable base directory found")
+		return handleError(fmt.Sprintf("No suitable base directory: %v", err))
 	}
 
 	// Hardlink mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -9031,7 +9070,7 @@ func (s *Service) processHardlinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 
 	// Build existing files list (all files on disk from matched torrent).
 	// We pass all existing files to BuildPlan so it can use path/name matching
@@ -9294,13 +9333,13 @@ func (s *Service) processHardlinkMode(
 func (s *Service) buildHardlinkDestDir(
 	ctx context.Context,
 	instance *models.Instance,
+	baseDir string,
 	torrentHash, torrentName string,
 	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-	baseDir := instance.HardlinkBaseDir
 
 	// Determine if isolation folder is needed based on torrent structure.
 	// Since hardlink mode always uses contentLayout=Original, we only need
@@ -9353,6 +9392,45 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	}
 
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
+}
+
+// findMatchingBaseDir finds the first base directory from a comma-separated list
+// that is on the same filesystem as the source path. Returns the matching directory
+// or an error if none match.
+func findMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
+	if strings.TrimSpace(configuredDirs) == "" {
+		return "", errors.New("base directory not configured")
+	}
+
+	dirs := strings.Split(configuredDirs, ",")
+	var lastErr error
+
+	for _, dir := range dirs {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
+			continue
+		}
+
+		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
+			continue
+		}
+
+		if sameFS {
+			return dir, nil
+		}
+	}
+
+	if lastErr != nil {
+		return "", fmt.Errorf("no base directory on same filesystem as source (last error: %w)", lastErr)
+	}
+	return "", errors.New("no base directory on same filesystem as source")
 }
 
 // reflinkModeResult represents the outcome of reflink mode processing.
@@ -9493,39 +9571,22 @@ func (s *Service) processReflinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	// Ensure base directory exists before checking filesystem
-	if err := os.MkdirAll(instance.HardlinkBaseDir, 0o755); err != nil {
-		log.Warn().
-			Err(err).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
-			Msg("[CROSSSEED] Reflink mode: failed to create base directory")
-		return handleError(fmt.Sprintf("Failed to create reflink base directory: %v", err))
-	}
-
-	// Validate same filesystem (required for reflinks on Linux)
-	sameFS, err := fsutil.SameFilesystem(existingFilePath, instance.HardlinkBaseDir)
+	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
+			Str("configuredDirs", instance.HardlinkBaseDir).
 			Str("existingPath", existingFilePath).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
-			Msg("[CROSSSEED] Reflink mode: failed to check filesystem, aborting")
-		return handleError(fmt.Sprintf("Failed to verify same filesystem: %v", err))
-	}
-	if !sameFS {
-		log.Warn().
-			Str("existingPath", existingFilePath).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
-			Msg("[CROSSSEED] Reflink mode: different filesystems, aborting")
-		return handleError("Reflink mode enabled but source and destination are on different filesystems")
+			Msg("[CROSSSEED] Reflink mode: no suitable base directory found")
+		return handleError(fmt.Sprintf("No suitable base directory: %v", err))
 	}
 
 	// Check reflink support
-	supported, reason := reflinktree.SupportsReflink(instance.HardlinkBaseDir)
+	supported, reason := reflinktree.SupportsReflink(selectedBaseDir)
 	if !supported {
 		log.Warn().
 			Str("reason", reason).
-			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
+			Str("baseDir", selectedBaseDir).
 			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
 		return handleError("Reflink not supported: " + reason)
 	}
@@ -9546,7 +9607,7 @@ func (s *Service) processReflinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 
 	// Build existing files list (all files on disk from matched torrent)
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))

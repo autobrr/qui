@@ -43,14 +43,12 @@ export const StatRow = memo(function StatRow({
     }
   }
 
-  const highlightClass = highlight
-    ? {
-        green: "text-green-500",
-        blue: "text-blue-500",
-        yellow: "text-yellow-500",
-        red: "text-red-500",
-      }[highlight]
-    : ""
+  const highlightClass = highlight? {
+    green: "text-green-500",
+    blue: "text-blue-500",
+    yellow: "text-yellow-500",
+    red: "text-red-500",
+  }[highlight]: ""
 
   const content = (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>
