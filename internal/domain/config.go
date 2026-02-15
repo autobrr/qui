@@ -31,6 +31,12 @@ type Config struct {
 	// When disabled (default), errored torrents are simply excluded from candidate selection.
 	CrossSeedRecoverErroredTorrents bool `toml:"crossSeedRecoverErroredTorrents" mapstructure:"crossSeedRecoverErroredTorrents"`
 
+	// AuthDisabled disables all authentication when both QUI__AUTH_DISABLED=true and
+	// QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true are set. Intended for deployments behind
+	// a reverse proxy that handles authentication. Use IsAuthDisabled() to check.
+	AuthDisabled           bool `toml:"authDisabled" mapstructure:"authDisabled"`
+	IfIGetBannedItsMyFault bool `toml:"ifIGetBannedItsMyFault" mapstructure:"ifIGetBannedItsMyFault"`
+
 	// OIDC Configuration
 	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`
 	OIDCIssuer              string `toml:"oidcIssuer" mapstructure:"oidcIssuer"`
@@ -38,4 +44,11 @@ type Config struct {
 	OIDCClientSecret        string `toml:"oidcClientSecret" mapstructure:"oidcClientSecret"`
 	OIDCRedirectURL         string `toml:"oidcRedirectUrl" mapstructure:"oidcRedirectUrl"`
 	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
+}
+
+// IsAuthDisabled returns true only when both AuthDisabled and
+// IfIGetBannedItsMyFault are set, requiring the operator to explicitly
+// acknowledge the risks of running without authentication.
+func (c *Config) IsAuthDisabled() bool {
+	return c.AuthDisabled && c.IfIGetBannedItsMyFault
 }

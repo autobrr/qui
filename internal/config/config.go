@@ -116,6 +116,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
 
+	// Auth disabled
+	c.viper.SetDefault("authDisabled", false)
+	c.viper.SetDefault("ifIGetBannedItsMyFault", false)
+
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
 	c.viper.SetDefault("oidcIssuer", "")
@@ -200,6 +204,9 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
 
+	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
+	c.viper.BindEnv("ifIGetBannedItsMyFault", envPrefix+"IF_I_GET_BANNED_ITS_MY_FAULT")
+
 	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
 	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
@@ -261,6 +268,9 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
 	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
+
+	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
+	c.Config.IfIGetBannedItsMyFault = c.viper.GetBool("ifIGetBannedItsMyFault")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
 	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")

@@ -343,7 +343,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		})
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
-		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager)
+		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 
 		// Cross-seed routes (query param auth for select endpoints)
 		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)

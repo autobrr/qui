@@ -65,6 +65,16 @@ func (h *AuthHandler) GetOIDCHandler() *OIDCHandler {
 	return h.oidcHandler
 }
 
+// rejectIfAuthDisabled returns true (and writes a 403 response) when
+// authentication is disabled, signalling the caller to return early.
+func (h *AuthHandler) rejectIfAuthDisabled(w http.ResponseWriter) bool {
+	if h.config != nil && h.config.IsAuthDisabled() {
+		RespondError(w, http.StatusForbidden, "Endpoint disabled when authentication is disabled")
+		return true
+	}
+	return false
+}
+
 // SetupRequest represents the initial setup request
 type SetupRequest struct {
 	Username string `json:"username"`
@@ -86,6 +96,10 @@ type ChangePasswordRequest struct {
 
 // Setup handles initial user setup
 func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	if h.config != nil && h.config.OIDCEnabled {
 		RespondError(w, http.StatusForbidden, "Setup is disabled when OIDC is enabled")
 		return
@@ -226,6 +240,10 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -277,6 +295,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles user logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	// Destroy the session
 	if err := h.sessionManager.Destroy(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to destroy session")
@@ -291,6 +313,15 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	// When auth is disabled, return a synthetic user
+	if h.config != nil && h.config.IsAuthDisabled() {
+		RespondJSON(w, http.StatusOK, map[string]any{
+			"username":    "admin",
+			"auth_method": "none",
+		})
+		return
+	}
+
 	// Check if the session is authenticated (works for both regular and OIDC auth)
 	authenticated := h.sessionManager.GetBool(r.Context(), "authenticated")
 	if !authenticated {
@@ -346,6 +377,13 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 
 // CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
+	if h.config != nil && h.config.IsAuthDisabled() {
+		RespondJSON(w, http.StatusOK, map[string]any{
+			"setupRequired": false,
+		})
+		return
+	}
+
 	if h.config != nil && h.config.OIDCEnabled {
 		RespondJSON(w, http.StatusOK, map[string]any{
 			"setupRequired": false,
@@ -367,6 +405,10 @@ func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request)
 
 // ChangePassword handles password change requests
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	var req ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -398,6 +440,10 @@ type CreateAPIKeyRequest struct {
 
 // CreateAPIKey creates a new API key
 func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	var req CreateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -428,6 +474,10 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // ListAPIKeys returns all API keys
 func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	keys, err := h.authService.ListAPIKeys(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list API keys")
@@ -440,6 +490,10 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // DeleteAPIKey deletes an API key
 func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
 	// Get API key ID from URL parameter
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {

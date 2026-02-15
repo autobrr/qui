@@ -59,12 +59,37 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |
 | `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:bcrypt_hash` or `user1:hash1,user2:hash2`. Restart required. |
 | `externalProgramAllowList` | (none) | string[] | empty list | Restricts which executables can be launched from the UI. Only configurable via `config.toml` (no env override). |
+| `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disable all built-in authentication. **Both** this and `ifIGetBannedItsMyFault` must be `true` for auth to be disabled. See [Authentication](#authentication) below. Restart required. |
+| `ifIGetBannedItsMyFault` | `QUI__IF_I_GET_BANNED_ITS_MY_FAULT` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers. Restart required. |
 | `oidcEnabled` | `QUI__OIDC_ENABLED` | bool | `false` | Enable OpenID Connect authentication. Restart required. |
 | `oidcIssuer` | `QUI__OIDC_ISSUER` | string | empty | OIDC issuer URL. Restart required. |
 | `oidcClientId` | `QUI__OIDC_CLIENT_ID` | string | empty | OIDC client ID. Restart required. |
 | `oidcClientSecret` | `QUI__OIDC_CLIENT_SECRET` / `QUI__OIDC_CLIENT_SECRET_FILE` | string | empty | OIDC client secret. Restart required. |
 | `oidcRedirectUrl` | `QUI__OIDC_REDIRECT_URL` | string | empty | Must match the provider redirect URI (include `baseUrl` when reverse proxying). Restart required. |
 | `oidcDisableBuiltInLogin` | `QUI__OIDC_DISABLE_BUILT_IN_LOGIN` | bool | `false` | Hide local username/password form when OIDC is enabled. Restart required. |
+
+## Authentication
+
+To disable qui's built-in authentication, **both** environment variables must be set:
+
+```bash
+QUI__AUTH_DISABLED=true
+QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true
+```
+
+The second variable exists as an explicit acknowledgement of the risks. When authentication is disabled:
+
+- **All API endpoints are publicly accessible** to anyone who can reach qui over the network.
+- `/auth/me` returns a synthetic `admin` user so the frontend works without login.
+- The setup screen is skipped entirely.
+
+**Only use this if qui is behind a reverse proxy that already handles authentication** (e.g., Authelia, Authentik, Caddy with forward_auth).
+
+:::danger Private tracker risks
+If you use private trackers, running qui without authentication is especially dangerous. Anyone with network access can control your torrent clients — adding, removing, or modifying torrents. Actions performed by unauthorized users (hit-and-runs, ratio manipulation, uploading unwanted content) can get your accounts permanently banned from private trackers, with no way to recover.
+:::
+
+If `QUI__AUTH_DISABLED` is set without `QUI__IF_I_GET_BANNED_ITS_MY_FAULT`, qui will log a warning and keep authentication enabled.
 
 ## Example `config.toml`
 

@@ -74,6 +74,17 @@ QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
 
+## Authentication
+
+```bash
+QUI__AUTH_DISABLED=true                 # Optional: disable built-in auth (default: false)
+QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true  # Required confirmation to actually disable auth
+```
+
+**Both** variables must be `true` to disable authentication. The second variable exists as an explicit acknowledgement that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers.
+
+Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
+
 ## External Programs
 
 Configure the allow list from `config.toml`; there is no environment override to keep it read-only from the UI.
