@@ -42,7 +42,7 @@ qui stores its configuration and database in `%APPDATA%\qui\` by default. You ca
 .\qui.exe serve --config-dir "C:\qui\config"
 ```
 
-For more details, see the [Configuration](/docs/configuration/reference) section.
+For more details, see the [Configuration](/docs/configuration/environment) section.
 
 ## Create a Windows Task
 
