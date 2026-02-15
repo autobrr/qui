@@ -37,6 +37,10 @@ type notifiarrAPIPayloadData struct {
 	Message                  string                `json:"message,omitempty"`
 	Event                    string                `json:"event"`
 	Timestamp                time.Time             `json:"timestamp"`
+	Torrent                  *notifiarrAPITorrent  `json:"torrent,omitempty"`
+	Backup                   *notifiarrAPIBackup   `json:"backup,omitempty"`
+	DirScan                  *notifiarrAPIDirScan  `json:"dir_scan,omitempty"`
+	OrphanScan               *notifiarrAPIOrphan   `json:"orphan_scan,omitempty"`
 	CrossSeed                *CrossSeedEventData   `json:"cross_seed,omitempty"`
 	Automations              *AutomationsEventData `json:"automations,omitempty"`
 	InstanceID               *int                  `json:"instance_id,omitempty"`
@@ -62,6 +66,32 @@ type notifiarrAPIPayloadData struct {
 	DurationMs               *int64                `json:"duration_ms,omitempty"`
 	Description              string                `json:"description,omitempty"`
 	Fields                   []notifiarrField      `json:"fields,omitempty"`
+}
+
+type notifiarrAPITorrent struct {
+	Name          *string  `json:"name,omitempty"`
+	Hash          *string  `json:"hash,omitempty"`
+	TrackerDomain *string  `json:"tracker_domain,omitempty"`
+	Category      *string  `json:"category,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+}
+
+type notifiarrAPIBackup struct {
+	Kind         *string `json:"kind,omitempty"`
+	RunID        *int64  `json:"run_id,omitempty"`
+	TorrentCount *int    `json:"torrent_count,omitempty"`
+}
+
+type notifiarrAPIDirScan struct {
+	RunID         *int64 `json:"run_id,omitempty"`
+	MatchesFound  *int   `json:"matches_found,omitempty"`
+	TorrentsAdded *int   `json:"torrents_added,omitempty"`
+}
+
+type notifiarrAPIOrphan struct {
+	RunID          *int64 `json:"run_id,omitempty"`
+	FilesDeleted   *int   `json:"files_deleted,omitempty"`
+	FoldersDeleted *int   `json:"folders_deleted,omitempty"`
 }
 
 type notifiarrAPIConfig struct {
@@ -266,6 +296,58 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	if event.OrphanScanFoldersDeleted > 0 {
 		data.OrphanScanFoldersDeleted = intPtr(event.OrphanScanFoldersDeleted)
 	}
+
+	// "Dump everything": include grouped objects in addition to the existing top-level keys.
+	// This is intentionally redundant but makes template authoring much easier.
+	data.Torrent = func() *notifiarrAPITorrent {
+		t := &notifiarrAPITorrent{
+			Name:          data.TorrentName,
+			Hash:          data.TorrentHash,
+			TrackerDomain: data.TrackerDomain,
+			Category:      data.Category,
+		}
+		if len(data.Tags) > 0 {
+			t.Tags = append([]string(nil), data.Tags...)
+		}
+		if t.Name == nil && t.Hash == nil && t.TrackerDomain == nil && t.Category == nil && len(t.Tags) == 0 {
+			return nil
+		}
+		return t
+	}()
+	data.Backup = func() *notifiarrAPIBackup {
+		b := &notifiarrAPIBackup{
+			Kind:         data.BackupKind,
+			RunID:        data.BackupRunID,
+			TorrentCount: data.BackupTorrentCount,
+		}
+		if b.Kind == nil && b.RunID == nil && b.TorrentCount == nil {
+			return nil
+		}
+		return b
+	}()
+	data.DirScan = func() *notifiarrAPIDirScan {
+		d := &notifiarrAPIDirScan{
+			RunID:         data.DirScanRunID,
+			MatchesFound:  data.DirScanMatchesFound,
+			TorrentsAdded: data.DirScanTorrentsAdded,
+		}
+		if d.RunID == nil && d.MatchesFound == nil && d.TorrentsAdded == nil {
+			return nil
+		}
+		return d
+	}()
+	data.OrphanScan = func() *notifiarrAPIOrphan {
+		o := &notifiarrAPIOrphan{
+			RunID:          data.OrphanScanRunID,
+			FilesDeleted:   data.OrphanScanFilesDeleted,
+			FoldersDeleted: data.OrphanScanFoldersDeleted,
+		}
+		if o.RunID == nil && o.FilesDeleted == nil && o.FoldersDeleted == nil {
+			return nil
+		}
+		return o
+	}()
+
 	// Prefer a single stable shape for templates: always emit error_messages (a list).
 	// Keep error_message reserved for backwards compatibility, but do not populate it.
 	errors := normalizeErrorMessages(event.ErrorMessages)
