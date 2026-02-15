@@ -38,39 +38,24 @@ type notifiarrMessage struct {
 }
 
 type notifiarrMessageData struct {
-	Subject                  string                              `json:"subject,omitempty"`
-	Message                  string                              `json:"message,omitempty"`
-	Event                    string                              `json:"event"`
-	Timestamp                time.Time                           `json:"timestamp"`
-	Torrent                  *notifiarrMessageTorrentData        `json:"torrent,omitempty"`
-	Backup                   *notifiarrMessageBackupData         `json:"backup,omitempty"`
-	DirScan                  *notifiarrMessageDirScanData        `json:"dir_scan,omitempty"`
-	OrphanScan               *notifiarrMessageOrphanScanData     `json:"orphan_scan,omitempty"`
-	CrossSeed                *notifications.CrossSeedEventData   `json:"cross_seed,omitempty"`
-	Automations              *notifications.AutomationsEventData `json:"automations,omitempty"`
-	InstanceID               *int                                `json:"instance_id,omitempty"`
-	InstanceName             *string                             `json:"instance_name,omitempty"`
-	TorrentName              *string                             `json:"torrent_name,omitempty"`
-	TorrentHash              *string                             `json:"torrent_hash,omitempty"`
-	TrackerDomain            *string                             `json:"tracker_domain,omitempty"`
-	Category                 *string                             `json:"category,omitempty"`
-	Tags                     []string                            `json:"tags,omitempty"`
-	BackupKind               *string                             `json:"backup_kind,omitempty"`
-	BackupRunID              *int64                              `json:"backup_run_id,omitempty"`
-	BackupTorrentCount       *int                                `json:"backup_torrent_count,omitempty"`
-	DirScanRunID             *int64                              `json:"dir_scan_run_id,omitempty"`
-	DirScanMatchesFound      *int                                `json:"dir_scan_matches_found,omitempty"`
-	DirScanTorrentsAdded     *int                                `json:"dir_scan_torrents_added,omitempty"`
-	OrphanScanRunID          *int64                              `json:"orphan_scan_run_id,omitempty"`
-	OrphanScanFilesDeleted   *int                                `json:"orphan_scan_files_deleted,omitempty"`
-	OrphanScanFoldersDeleted *int                                `json:"orphan_scan_folders_deleted,omitempty"`
-	ErrorMessage             *string                             `json:"error_message,omitempty"`
-	ErrorMessages            []string                            `json:"error_messages,omitempty"`
-	StartedAt                *time.Time                          `json:"started_at,omitempty"`
-	CompletedAt              *time.Time                          `json:"completed_at,omitempty"`
-	DurationMs               *int64                              `json:"duration_ms,omitempty"`
-	Description              string                              `json:"description,omitempty"`
-	Fields                   []notifiarrField                    `json:"fields,omitempty"`
+	Subject       string                              `json:"subject,omitempty"`
+	Message       string                              `json:"message,omitempty"`
+	Event         string                              `json:"event"`
+	Timestamp     time.Time                           `json:"timestamp"`
+	Torrent       *notifiarrMessageTorrentData        `json:"torrent,omitempty"`
+	Backup        *notifiarrMessageBackupData         `json:"backup,omitempty"`
+	DirScan       *notifiarrMessageDirScanData        `json:"dir_scan,omitempty"`
+	OrphanScan    *notifiarrMessageOrphanScanData     `json:"orphan_scan,omitempty"`
+	CrossSeed     *notifications.CrossSeedEventData   `json:"cross_seed,omitempty"`
+	Automations   *notifications.AutomationsEventData `json:"automations,omitempty"`
+	InstanceID    *int                                `json:"instance_id,omitempty"`
+	InstanceName  *string                             `json:"instance_name,omitempty"`
+	ErrorMessages []string                            `json:"error_messages,omitempty"`
+	StartedAt     *time.Time                          `json:"started_at,omitempty"`
+	CompletedAt   *time.Time                          `json:"completed_at,omitempty"`
+	DurationMs    *int64                              `json:"duration_ms,omitempty"`
+	Description   string                              `json:"description,omitempty"`
+	Fields        []notifiarrField                    `json:"fields,omitempty"`
 }
 
 type notifiarrMessageTorrentData struct {
@@ -811,60 +796,21 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 		data.InstanceName = stringPtr(instanceName)
 	}
 
-	if strings.TrimSpace(event.TorrentName) != "" {
-		data.TorrentName = stringPtr(event.TorrentName)
-	}
-	if strings.TrimSpace(event.TorrentHash) != "" {
-		data.TorrentHash = stringPtr(event.TorrentHash)
-	}
-	if strings.TrimSpace(event.TrackerDomain) != "" {
-		data.TrackerDomain = stringPtr(event.TrackerDomain)
-	}
-	if strings.TrimSpace(event.Category) != "" {
-		data.Category = stringPtr(event.Category)
-	}
+	var tags []string
 	if len(event.Tags) > 0 {
-		tags := append([]string(nil), event.Tags...)
+		tags = append([]string(nil), event.Tags...)
 		sort.Strings(tags)
-		data.Tags = tags
 	}
-	if strings.TrimSpace(string(event.BackupKind)) != "" {
-		data.BackupKind = stringPtr(string(event.BackupKind))
-	}
-	if event.BackupRunID > 0 {
-		data.BackupRunID = int64Ptr(event.BackupRunID)
-	}
-	if event.BackupTorrentCount > 0 {
-		data.BackupTorrentCount = intPtr(event.BackupTorrentCount)
-	}
-	if event.DirScanRunID > 0 {
-		data.DirScanRunID = int64Ptr(event.DirScanRunID)
-	}
-	if event.DirScanMatchesFound > 0 {
-		data.DirScanMatchesFound = intPtr(event.DirScanMatchesFound)
-	}
-	if event.DirScanTorrentsAdded > 0 {
-		data.DirScanTorrentsAdded = intPtr(event.DirScanTorrentsAdded)
-	}
-	if event.OrphanScanRunID > 0 {
-		data.OrphanScanRunID = int64Ptr(event.OrphanScanRunID)
-	}
-	if event.OrphanScanFilesDeleted > 0 {
-		data.OrphanScanFilesDeleted = intPtr(event.OrphanScanFilesDeleted)
-	}
-	if event.OrphanScanFoldersDeleted > 0 {
-		data.OrphanScanFoldersDeleted = intPtr(event.OrphanScanFoldersDeleted)
-	}
-	// "Dump everything": include grouped objects in addition to the existing top-level keys.
+
 	data.Torrent = func() *notifiarrMessageTorrentData {
 		t := &notifiarrMessageTorrentData{
-			Name:          data.TorrentName,
-			Hash:          data.TorrentHash,
-			TrackerDomain: data.TrackerDomain,
-			Category:      data.Category,
+			Name:          stringPtr(event.TorrentName),
+			Hash:          stringPtr(event.TorrentHash),
+			TrackerDomain: stringPtr(event.TrackerDomain),
+			Category:      stringPtr(event.Category),
 		}
-		if len(data.Tags) > 0 {
-			t.Tags = append([]string(nil), data.Tags...)
+		if len(tags) > 0 {
+			t.Tags = append([]string(nil), tags...)
 		}
 		if t.Name == nil && t.Hash == nil && t.TrackerDomain == nil && t.Category == nil && len(t.Tags) == 0 {
 			return nil
@@ -873,9 +819,11 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 	}()
 	data.Backup = func() *notifiarrMessageBackupData {
 		b := &notifiarrMessageBackupData{
-			Kind:         data.BackupKind,
-			RunID:        data.BackupRunID,
-			TorrentCount: data.BackupTorrentCount,
+			Kind:  stringPtr(string(event.BackupKind)),
+			RunID: int64Ptr(event.BackupRunID),
+		}
+		if event.BackupTorrentCount > 0 {
+			b.TorrentCount = intPtr(event.BackupTorrentCount)
 		}
 		if b.Kind == nil && b.RunID == nil && b.TorrentCount == nil {
 			return nil
@@ -884,9 +832,13 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 	}()
 	data.DirScan = func() *notifiarrMessageDirScanData {
 		d := &notifiarrMessageDirScanData{
-			RunID:         data.DirScanRunID,
-			MatchesFound:  data.DirScanMatchesFound,
-			TorrentsAdded: data.DirScanTorrentsAdded,
+			RunID: int64Ptr(event.DirScanRunID),
+		}
+		if event.DirScanMatchesFound > 0 {
+			d.MatchesFound = intPtr(event.DirScanMatchesFound)
+		}
+		if event.DirScanTorrentsAdded > 0 {
+			d.TorrentsAdded = intPtr(event.DirScanTorrentsAdded)
 		}
 		if d.RunID == nil && d.MatchesFound == nil && d.TorrentsAdded == nil {
 			return nil
@@ -895,9 +847,13 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 	}()
 	data.OrphanScan = func() *notifiarrMessageOrphanScanData {
 		o := &notifiarrMessageOrphanScanData{
-			RunID:          data.OrphanScanRunID,
-			FilesDeleted:   data.OrphanScanFilesDeleted,
-			FoldersDeleted: data.OrphanScanFoldersDeleted,
+			RunID: int64Ptr(event.OrphanScanRunID),
+		}
+		if event.OrphanScanFilesDeleted > 0 {
+			o.FilesDeleted = intPtr(event.OrphanScanFilesDeleted)
+		}
+		if event.OrphanScanFoldersDeleted > 0 {
+			o.FoldersDeleted = intPtr(event.OrphanScanFoldersDeleted)
 		}
 		if o.RunID == nil && o.FilesDeleted == nil && o.FoldersDeleted == nil {
 			return nil
@@ -906,7 +862,7 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 	}()
 
 	// Prefer a single stable shape for templates: always emit error_messages (a list).
-	// Keep error_message reserved for backwards compatibility, but do not populate it.
+	// error_message intentionally omitted; use error_messages only.
 	errors := normalizeErrorMessages(event.ErrorMessages)
 	if msg := strings.TrimSpace(event.ErrorMessage); msg != "" {
 		if len(errors) == 0 {

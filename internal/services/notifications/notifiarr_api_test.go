@@ -108,7 +108,6 @@ func TestBuildNotifiarrAPIDataIncludesStructuredFields(t *testing.T) {
 	require.Equal(t, "rss", data.CrossSeed.Mode)
 	require.Equal(t, "partial", data.CrossSeed.Status)
 
-	require.Nil(t, data.ErrorMessage)
 	require.GreaterOrEqual(t, len(data.ErrorMessages), 2)
 	require.Equal(t, "indexer timeout", data.ErrorMessages[0])
 	require.True(t, slices.Contains(data.ErrorMessages, "upstream 502"))
