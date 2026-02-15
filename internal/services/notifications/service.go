@@ -39,6 +39,8 @@ type Event struct {
 	Message                  string
 	StartedAt                *time.Time
 	CompletedAt              *time.Time
+	CrossSeed                *CrossSeedEventData
+	Automations              *AutomationsEventData
 	InstanceID               int
 	InstanceName             string
 	TorrentName              string
@@ -56,6 +58,7 @@ type Event struct {
 	OrphanScanFilesDeleted   int
 	OrphanScanFoldersDeleted int
 	ErrorMessage             string
+	ErrorMessages            []string
 }
 
 type Service struct {

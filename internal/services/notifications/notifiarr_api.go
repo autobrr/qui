@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -32,32 +33,35 @@ type notifiarrAPIPayload struct {
 }
 
 type notifiarrAPIPayloadData struct {
-	Subject                  string           `json:"subject,omitempty"`
-	Message                  string           `json:"message,omitempty"`
-	Event                    string           `json:"event"`
-	Timestamp                time.Time        `json:"timestamp"`
-	InstanceID               *int             `json:"instance_id,omitempty"`
-	InstanceName             *string          `json:"instance_name,omitempty"`
-	TorrentName              *string          `json:"torrent_name,omitempty"`
-	TorrentHash              *string          `json:"torrent_hash,omitempty"`
-	TrackerDomain            *string          `json:"tracker_domain,omitempty"`
-	Category                 *string          `json:"category,omitempty"`
-	Tags                     []string         `json:"tags,omitempty"`
-	BackupKind               *string          `json:"backup_kind,omitempty"`
-	BackupRunID              *int64           `json:"backup_run_id,omitempty"`
-	BackupTorrentCount       *int             `json:"backup_torrent_count,omitempty"`
-	DirScanRunID             *int64           `json:"dir_scan_run_id,omitempty"`
-	DirScanMatchesFound      *int             `json:"dir_scan_matches_found,omitempty"`
-	DirScanTorrentsAdded     *int             `json:"dir_scan_torrents_added,omitempty"`
-	OrphanScanRunID          *int64           `json:"orphan_scan_run_id,omitempty"`
-	OrphanScanFilesDeleted   *int             `json:"orphan_scan_files_deleted,omitempty"`
-	OrphanScanFoldersDeleted *int             `json:"orphan_scan_folders_deleted,omitempty"`
-	ErrorMessage             *string          `json:"error_message,omitempty"`
-	StartedAt                *time.Time       `json:"started_at,omitempty"`
-	CompletedAt              *time.Time       `json:"completed_at,omitempty"`
-	DurationMs               *int64           `json:"duration_ms,omitempty"`
-	Description              string           `json:"description,omitempty"`
-	Fields                   []notifiarrField `json:"fields,omitempty"`
+	Subject                  string                `json:"subject,omitempty"`
+	Message                  string                `json:"message,omitempty"`
+	Event                    string                `json:"event"`
+	Timestamp                time.Time             `json:"timestamp"`
+	CrossSeed                *CrossSeedEventData   `json:"cross_seed,omitempty"`
+	Automations              *AutomationsEventData `json:"automations,omitempty"`
+	InstanceID               *int                  `json:"instance_id,omitempty"`
+	InstanceName             *string               `json:"instance_name,omitempty"`
+	TorrentName              *string               `json:"torrent_name,omitempty"`
+	TorrentHash              *string               `json:"torrent_hash,omitempty"`
+	TrackerDomain            *string               `json:"tracker_domain,omitempty"`
+	Category                 *string               `json:"category,omitempty"`
+	Tags                     []string              `json:"tags,omitempty"`
+	BackupKind               *string               `json:"backup_kind,omitempty"`
+	BackupRunID              *int64                `json:"backup_run_id,omitempty"`
+	BackupTorrentCount       *int                  `json:"backup_torrent_count,omitempty"`
+	DirScanRunID             *int64                `json:"dir_scan_run_id,omitempty"`
+	DirScanMatchesFound      *int                  `json:"dir_scan_matches_found,omitempty"`
+	DirScanTorrentsAdded     *int                  `json:"dir_scan_torrents_added,omitempty"`
+	OrphanScanRunID          *int64                `json:"orphan_scan_run_id,omitempty"`
+	OrphanScanFilesDeleted   *int                  `json:"orphan_scan_files_deleted,omitempty"`
+	OrphanScanFoldersDeleted *int                  `json:"orphan_scan_folders_deleted,omitempty"`
+	ErrorMessage             *string               `json:"error_message,omitempty"`
+	ErrorMessages            []string              `json:"error_messages,omitempty"`
+	StartedAt                *time.Time            `json:"started_at,omitempty"`
+	CompletedAt              *time.Time            `json:"completed_at,omitempty"`
+	DurationMs               *int64                `json:"duration_ms,omitempty"`
+	Description              string                `json:"description,omitempty"`
+	Fields                   []notifiarrField      `json:"fields,omitempty"`
 }
 
 type notifiarrAPIConfig struct {
@@ -199,6 +203,13 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 		data.Message = trimmedMessage
 	}
 
+	if event.CrossSeed != nil {
+		data.CrossSeed = event.CrossSeed
+	}
+	if event.Automations != nil {
+		data.Automations = event.Automations
+	}
+
 	if event.InstanceID > 0 {
 		data.InstanceID = intPtr(event.InstanceID)
 	}
@@ -258,6 +269,16 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	if strings.TrimSpace(event.ErrorMessage) != "" {
 		data.ErrorMessage = stringPtr(event.ErrorMessage)
 	}
+	if len(event.ErrorMessages) > 0 {
+		data.ErrorMessages = normalizeErrorMessages(event.ErrorMessages)
+	}
+	if data.ErrorMessage != nil {
+		if len(data.ErrorMessages) == 0 {
+			data.ErrorMessages = []string{*data.ErrorMessage}
+		} else if !slices.Contains(data.ErrorMessages, *data.ErrorMessage) {
+			data.ErrorMessages = append([]string{*data.ErrorMessage}, data.ErrorMessages...)
+		}
+	}
 
 	if event.StartedAt != nil && !event.StartedAt.IsZero() {
 		data.StartedAt = event.StartedAt
@@ -284,6 +305,39 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	}
 
 	return data
+}
+
+func normalizeErrorMessages(messages []string) []string {
+	if len(messages) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(messages))
+	out := make([]string, 0, minInt(len(messages), 10))
+	for _, raw := range messages {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+		if len(out) >= 10 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func buildNotifiarrAPIValidateURL(endpoint string) string {

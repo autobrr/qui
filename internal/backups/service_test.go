@@ -850,7 +850,7 @@ func TestIsBackupMissedPendingRunBlocksScheduling(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -874,7 +874,7 @@ func TestIsBackupMissedRunningRunBlocksScheduling(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -900,7 +900,7 @@ func TestIsBackupMissedCanceledRunWithinCooldownBlocksScheduling(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -924,7 +924,7 @@ func TestIsBackupMissedFailedRunOutsideCooldownIsMissed(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 

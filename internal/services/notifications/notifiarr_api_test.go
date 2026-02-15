@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -77,4 +79,41 @@ func TestValidateNotifiarrAPIKeyInvalid(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "notifiarr api key invalid")
 	require.Contains(t, err.Error(), "invalid key")
+}
+
+func TestBuildNotifiarrAPIDataIncludesStructuredFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	event := Event{
+		Type: EventCrossSeedAutomationFailed,
+		CrossSeed: &CrossSeedEventData{
+			RunID:      9,
+			Mode:       "rss",
+			Status:     "partial",
+			FeedItems:  120,
+			Candidates: 8,
+			Added:      3,
+			Failed:     1,
+			Skipped:    4,
+			Samples:    []string{"Example.One", "Example.Two"},
+		},
+		ErrorMessage:  "indexer timeout",
+		ErrorMessages: []string{"indexer timeout", "upstream 502"},
+	}
+
+	data := svc.buildNotifiarrAPIData(context.Background(), event, "title", "message")
+	require.NotNil(t, data.CrossSeed)
+	require.Equal(t, int64(9), data.CrossSeed.RunID)
+	require.Equal(t, "rss", data.CrossSeed.Mode)
+	require.Equal(t, "partial", data.CrossSeed.Status)
+
+	require.NotNil(t, data.ErrorMessage)
+	require.Equal(t, "indexer timeout", *data.ErrorMessage)
+	require.GreaterOrEqual(t, len(data.ErrorMessages), 2)
+	require.Equal(t, "indexer timeout", data.ErrorMessages[0])
+	require.True(t, slices.Contains(data.ErrorMessages, "upstream 502"))
+	require.False(t, slices.Contains(data.ErrorMessages, ""))
+	require.False(t, slices.Contains(data.ErrorMessages, "   "))
+	require.NotEmpty(t, strings.TrimSpace(data.Description))
 }

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,32 +38,35 @@ type notifiarrMessage struct {
 }
 
 type notifiarrMessageData struct {
-	Subject                  string           `json:"subject,omitempty"`
-	Message                  string           `json:"message,omitempty"`
-	Event                    string           `json:"event"`
-	Timestamp                time.Time        `json:"timestamp"`
-	InstanceID               *int             `json:"instance_id,omitempty"`
-	InstanceName             *string          `json:"instance_name,omitempty"`
-	TorrentName              *string          `json:"torrent_name,omitempty"`
-	TorrentHash              *string          `json:"torrent_hash,omitempty"`
-	TrackerDomain            *string          `json:"tracker_domain,omitempty"`
-	Category                 *string          `json:"category,omitempty"`
-	Tags                     []string         `json:"tags,omitempty"`
-	BackupKind               *string          `json:"backup_kind,omitempty"`
-	BackupRunID              *int64           `json:"backup_run_id,omitempty"`
-	BackupTorrentCount       *int             `json:"backup_torrent_count,omitempty"`
-	DirScanRunID             *int64           `json:"dir_scan_run_id,omitempty"`
-	DirScanMatchesFound      *int             `json:"dir_scan_matches_found,omitempty"`
-	DirScanTorrentsAdded     *int             `json:"dir_scan_torrents_added,omitempty"`
-	OrphanScanRunID          *int64           `json:"orphan_scan_run_id,omitempty"`
-	OrphanScanFilesDeleted   *int             `json:"orphan_scan_files_deleted,omitempty"`
-	OrphanScanFoldersDeleted *int             `json:"orphan_scan_folders_deleted,omitempty"`
-	ErrorMessage             *string          `json:"error_message,omitempty"`
-	StartedAt                *time.Time       `json:"started_at,omitempty"`
-	CompletedAt              *time.Time       `json:"completed_at,omitempty"`
-	DurationMs               *int64           `json:"duration_ms,omitempty"`
-	Description              string           `json:"description,omitempty"`
-	Fields                   []notifiarrField `json:"fields,omitempty"`
+	Subject                  string                              `json:"subject,omitempty"`
+	Message                  string                              `json:"message,omitempty"`
+	Event                    string                              `json:"event"`
+	Timestamp                time.Time                           `json:"timestamp"`
+	CrossSeed                *notifications.CrossSeedEventData   `json:"cross_seed,omitempty"`
+	Automations              *notifications.AutomationsEventData `json:"automations,omitempty"`
+	InstanceID               *int                                `json:"instance_id,omitempty"`
+	InstanceName             *string                             `json:"instance_name,omitempty"`
+	TorrentName              *string                             `json:"torrent_name,omitempty"`
+	TorrentHash              *string                             `json:"torrent_hash,omitempty"`
+	TrackerDomain            *string                             `json:"tracker_domain,omitempty"`
+	Category                 *string                             `json:"category,omitempty"`
+	Tags                     []string                            `json:"tags,omitempty"`
+	BackupKind               *string                             `json:"backup_kind,omitempty"`
+	BackupRunID              *int64                              `json:"backup_run_id,omitempty"`
+	BackupTorrentCount       *int                                `json:"backup_torrent_count,omitempty"`
+	DirScanRunID             *int64                              `json:"dir_scan_run_id,omitempty"`
+	DirScanMatchesFound      *int                                `json:"dir_scan_matches_found,omitempty"`
+	DirScanTorrentsAdded     *int                                `json:"dir_scan_torrents_added,omitempty"`
+	OrphanScanRunID          *int64                              `json:"orphan_scan_run_id,omitempty"`
+	OrphanScanFilesDeleted   *int                                `json:"orphan_scan_files_deleted,omitempty"`
+	OrphanScanFoldersDeleted *int                                `json:"orphan_scan_folders_deleted,omitempty"`
+	ErrorMessage             *string                             `json:"error_message,omitempty"`
+	ErrorMessages            []string                            `json:"error_messages,omitempty"`
+	StartedAt                *time.Time                          `json:"started_at,omitempty"`
+	CompletedAt              *time.Time                          `json:"completed_at,omitempty"`
+	DurationMs               *int64                              `json:"duration_ms,omitempty"`
+	Description              string                              `json:"description,omitempty"`
+	Fields                   []notifiarrField                    `json:"fields,omitempty"`
 }
 
 type notifiarrField struct {
@@ -287,8 +291,19 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedAutomationSucceeded,
 				InstanceName: "Cross-seed RSS",
-				StartedAt:    crossSeedAutoStart,
-				CompletedAt:  crossSeedAutoEnd,
+				CrossSeed: &notifications.CrossSeedEventData{
+					RunID:      9,
+					Mode:       "rss",
+					Status:     "success",
+					FeedItems:  120,
+					Candidates: 8,
+					Added:      3,
+					Failed:     0,
+					Skipped:    5,
+					Samples:    []string{"Some.Movie.2025", "Another.Show.S01E01"},
+				},
+				StartedAt:   crossSeedAutoStart,
+				CompletedAt: crossSeedAutoEnd,
 				Message: strings.Join([]string{
 					"Run: 9",
 					"Mode: rss",
@@ -307,8 +322,21 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedAutomationFailed,
 				InstanceName: "Cross-seed RSS",
-				StartedAt:    crossSeedAutoStart,
-				CompletedAt:  crossSeedAutoEnd,
+				CrossSeed: &notifications.CrossSeedEventData{
+					RunID:      10,
+					Mode:       "rss",
+					Status:     "partial",
+					FeedItems:  95,
+					Candidates: 4,
+					Added:      1,
+					Failed:     2,
+					Skipped:    1,
+					Samples:    []string{"Example.Release.2024"},
+				},
+				ErrorMessage:  "indexer timeout",
+				ErrorMessages: []string{"indexer timeout"},
+				StartedAt:     crossSeedAutoStart,
+				CompletedAt:   crossSeedAutoEnd,
 				Message: strings.Join([]string{
 					"Run: 10",
 					"Mode: rss",
@@ -328,8 +356,18 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedSearchSucceeded,
 				InstanceName: instanceLabel,
-				StartedAt:    crossSeedSearchStart,
-				CompletedAt:  crossSeedSearchEnd,
+				CrossSeed: &notifications.CrossSeedEventData{
+					RunID:     31,
+					Status:    "success",
+					Processed: 200,
+					Total:     200,
+					Added:     4,
+					Failed:    0,
+					Skipped:   3,
+					Samples:   []string{"Movie.One.2025", "Movie.Two.2024"},
+				},
+				StartedAt:   crossSeedSearchStart,
+				CompletedAt: crossSeedSearchEnd,
 				Message: strings.Join([]string{
 					"Run: 31",
 					"Status: success",
@@ -346,8 +384,19 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedSearchFailed,
 				InstanceName: instanceLabel,
-				StartedAt:    crossSeedSearchStart,
-				CompletedAt:  crossSeedSearchEnd,
+				CrossSeed: &notifications.CrossSeedEventData{
+					RunID:     32,
+					Status:    "failed",
+					Processed: 40,
+					Total:     200,
+					Added:     0,
+					Failed:    1,
+					Skipped:   2,
+				},
+				ErrorMessage:  "canceled",
+				ErrorMessages: []string{"canceled"},
+				StartedAt:     crossSeedSearchStart,
+				CompletedAt:   crossSeedSearchEnd,
 				Message: strings.Join([]string{
 					"Run: 32",
 					"Status: failed",
@@ -364,8 +413,16 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedCompletionSucceeded,
 				InstanceName: instanceLabel,
-				StartedAt:    crossSeedCompletionStart,
-				CompletedAt:  crossSeedCompletionEnd,
+				TorrentName:  "Example.Movie.2025.1080p",
+				CrossSeed: &notifications.CrossSeedEventData{
+					Matches: 6,
+					Added:   2,
+					Failed:  0,
+					Skipped: 4,
+					Samples: []string{"Example.Movie.2025.REMUX", "Example.Movie.2025.BluRay"},
+				},
+				StartedAt:   crossSeedCompletionStart,
+				CompletedAt: crossSeedCompletionEnd,
 				Message: strings.Join([]string{
 					"Torrent: Example.Movie.2025.1080p",
 					"Matches: 6",
@@ -381,8 +438,18 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedCompletionFailed,
 				InstanceName: instanceLabel,
-				StartedAt:    crossSeedCompletionStart,
-				CompletedAt:  crossSeedCompletionEnd,
+				TorrentName:  "Example.Movie.2025.1080p",
+				CrossSeed: &notifications.CrossSeedEventData{
+					Matches: 2,
+					Added:   0,
+					Failed:  1,
+					Skipped: 1,
+					Samples: []string{"Example.Movie.2025.WEB"},
+				},
+				ErrorMessage:  "cross-seed completion failed",
+				ErrorMessages: []string{"cross-seed completion failed"},
+				StartedAt:     crossSeedCompletionStart,
+				CompletedAt:   crossSeedCompletionEnd,
 				Message: strings.Join([]string{
 					"Torrent: Example.Movie.2025.1080p",
 					"Matches: 2",
@@ -398,8 +465,16 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventCrossSeedWebhookSucceeded,
 				InstanceName: "Cross-seed webhook",
-				StartedAt:    webhookStart,
-				CompletedAt:  webhookEnd,
+				TorrentName:  "Example.Show.S01E01",
+				CrossSeed: &notifications.CrossSeedEventData{
+					Matches:        3,
+					Complete:       2,
+					Pending:        1,
+					Recommendation: "keep current torrent",
+					Samples:        []string{"Example.Show.S01E01.1080p", "Example.Show.S01E01.2160p"},
+				},
+				StartedAt:   webhookStart,
+				CompletedAt: webhookEnd,
 				Message: strings.Join([]string{
 					"Torrent: Example.Show.S01E01",
 					"Matches: 3",
@@ -413,10 +488,13 @@ func buildFixtures() []fixture {
 		{
 			Name: "cross_seed_webhook_failed",
 			Event: notifications.Event{
-				Type:         notifications.EventCrossSeedWebhookFailed,
-				InstanceName: "Cross-seed webhook",
-				StartedAt:    webhookStart,
-				CompletedAt:  webhookEnd,
+				Type:          notifications.EventCrossSeedWebhookFailed,
+				InstanceName:  "Cross-seed webhook",
+				TorrentName:   "Example.Show.S01E01",
+				ErrorMessage:  "invalid request signature",
+				ErrorMessages: []string{"invalid request signature"},
+				StartedAt:     webhookStart,
+				CompletedAt:   webhookEnd,
 				Message: strings.Join([]string{
 					"Torrent: Example.Show.S01E01",
 					"Error: invalid request signature",
@@ -428,6 +506,25 @@ func buildFixtures() []fixture {
 			Event: notifications.Event{
 				Type:         notifications.EventAutomationsActionsApplied,
 				InstanceName: instanceLabel,
+				Automations: &notifications.AutomationsEventData{
+					Applied: 4,
+					Failed:  1,
+					TopActions: []notifications.LabelCount{
+						{Label: "Deleted torrent (ratio rule)", Count: 2},
+						{Label: "Tags updated", Count: 2},
+					},
+					TopFailures: []notifications.LabelCount{
+						{Label: "Delete failed", Count: 1},
+					},
+					Rules: []notifications.LabelCount{
+						{Label: "Ratio rule", Count: 2},
+						{Label: "Tagger", Count: 2},
+					},
+					Samples: []string{"Example.Movie.2025", "Another.Show.S01E01"},
+					Errors:  []string{"permission denied", "missing category"},
+				},
+				ErrorMessage:  "permission denied",
+				ErrorMessages: []string{"permission denied", "missing category"},
 				Message: strings.Join([]string{
 					"Applied: 4",
 					"Failed: 1",
@@ -445,6 +542,10 @@ func buildFixtures() []fixture {
 				Type:         notifications.EventAutomationsRunFailed,
 				InstanceName: instanceLabel,
 				Message:      "database unavailable",
+				ErrorMessage: "database unavailable",
+				ErrorMessages: []string{
+					"database unavailable",
+				},
 			},
 		},
 	}
@@ -662,6 +763,13 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 		data.Message = trimmedMessage
 	}
 
+	if event.CrossSeed != nil {
+		data.CrossSeed = event.CrossSeed
+	}
+	if event.Automations != nil {
+		data.Automations = event.Automations
+	}
+
 	if event.InstanceID > 0 {
 		data.InstanceID = intPtr(event.InstanceID)
 	}
@@ -721,6 +829,16 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 	if strings.TrimSpace(event.ErrorMessage) != "" {
 		data.ErrorMessage = stringPtr(event.ErrorMessage)
 	}
+	if len(event.ErrorMessages) > 0 {
+		data.ErrorMessages = normalizeErrorMessages(event.ErrorMessages)
+	}
+	if data.ErrorMessage != nil {
+		if len(data.ErrorMessages) == 0 {
+			data.ErrorMessages = []string{*data.ErrorMessage}
+		} else if !slices.Contains(data.ErrorMessages, *data.ErrorMessage) {
+			data.ErrorMessages = append([]string{*data.ErrorMessage}, data.ErrorMessages...)
+		}
+	}
 
 	if event.StartedAt != nil && !event.StartedAt.IsZero() {
 		data.StartedAt = event.StartedAt
@@ -747,6 +865,32 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 	}
 
 	return data
+}
+
+func normalizeErrorMessages(messages []string) []string {
+	if len(messages) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(messages))
+	out := make([]string, 0, minInt(len(messages), 10))
+	for _, raw := range messages {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+		if len(out) >= 10 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func buildNotifiarrEventValue(eventType notifications.EventType) string {

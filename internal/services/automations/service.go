@@ -2558,10 +2558,46 @@ func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, s
 		return
 	}
 
+	var errorMessage string
+	var errorMessages []string
+	if summary.failed > 0 && len(summary.sampleErrors) > 0 {
+		errorMessages = append([]string(nil), summary.sampleErrors...)
+		errorMessage = summary.sampleErrors[0]
+	}
+
+	topCounts := func(counts map[string]int, limit int, labelFn func(string) string) []notifications.LabelCount {
+		items := sortedCountItems(counts)
+		if len(items) == 0 || limit <= 0 {
+			return nil
+		}
+		if limit > len(items) {
+			limit = len(items)
+		}
+		out := make([]notifications.LabelCount, 0, limit)
+		for i := 0; i < limit; i++ {
+			out = append(out, notifications.LabelCount{
+				Label: labelFn(items[i].key),
+				Count: items[i].count,
+			})
+		}
+		return out
+	}
+
 	s.notifier.Notify(ctx, notifications.Event{
 		Type:       notifications.EventAutomationsActionsApplied,
 		InstanceID: instanceID,
 		Message:    summary.message(),
+		Automations: &notifications.AutomationsEventData{
+			Applied:     summary.applied,
+			Failed:      summary.failed,
+			TopActions:  topCounts(summary.appliedByAction, 3, automationActionLabel),
+			TopFailures: topCounts(summary.failedByAction, 3, automationActionLabel),
+			Rules:       topCounts(summary.ruleCounts, 3, func(v string) string { return v }),
+			Samples:     append([]string(nil), summary.sampleTorrents...),
+			Errors:      append([]string(nil), summary.sampleErrors...),
+		},
+		ErrorMessage:  errorMessage,
+		ErrorMessages: errorMessages,
 	})
 }
 
@@ -2570,10 +2606,19 @@ func (s *Service) notifyAutomationFailure(ctx context.Context, instanceID int, e
 		return
 	}
 
+	errorMessage := strings.TrimSpace(err.Error())
+
 	s.notifier.Notify(ctx, notifications.Event{
-		Type:       notifications.EventAutomationsRunFailed,
-		InstanceID: instanceID,
-		Message:    err.Error(),
+		Type:         notifications.EventAutomationsRunFailed,
+		InstanceID:   instanceID,
+		Message:      err.Error(),
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if errorMessage == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
 	})
 }
 

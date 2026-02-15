@@ -1643,6 +1643,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	successCount := 0
 	failedCount := 0
 	skippedCount := 0
+	completionErrorsSeen := make(map[string]struct{}, 3)
+	completionErrors := make([]string, 0, 3)
 	results := make([]models.CrossSeedSearchResult, 0, len(searchResp.Results))
 	for _, match := range searchResp.Results {
 		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
@@ -1658,6 +1660,12 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			}
 		}
 		if attemptErr != nil {
+			if msg := strings.TrimSpace(attemptErr.Error()); msg != "" {
+				if _, ok := completionErrorsSeen[msg]; !ok && len(completionErrors) < 3 {
+					completionErrorsSeen[msg] = struct{}{}
+					completionErrors = append(completionErrors, msg)
+				}
+			}
 			log.Debug().
 				Err(attemptErr).
 				Int("instanceID", instanceID).
@@ -1689,6 +1697,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		if failedCount > 0 {
 			eventType = notifications.EventCrossSeedCompletionFailed
 		}
+		var errorMessage string
+		if eventType == notifications.EventCrossSeedCompletionFailed {
+			if len(completionErrors) > 0 {
+				errorMessage = completionErrors[0]
+			} else {
+				errorMessage = "cross-seed completion failed"
+			}
+		}
 		lines := []string{
 			"Torrent: " + torrent.Name,
 			fmt.Sprintf("Matches: %d", len(searchResp.Results)),
@@ -1696,14 +1712,32 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			fmt.Sprintf("Failed: %d", failedCount),
 			fmt.Sprintf("Skipped: %d", skippedCount),
 		}
-		if samples := collectSearchResultSamples(results, 3); len(samples) > 0 {
+		samples := collectSearchResultSamples(results, 3)
+		if len(samples) > 0 {
 			lines = append(lines, "Samples: "+formatSampleText(samples))
 		}
 		notifyCtx := context.WithoutCancel(ctx)
 		s.notifier.Notify(notifyCtx, notifications.Event{
 			Type:        eventType,
 			InstanceID:  instanceID,
+			TorrentName: torrent.Name,
 			Message:     strings.Join(lines, "\n"),
+			CrossSeed: &notifications.CrossSeedEventData{
+				Matches: len(searchResp.Results),
+				Added:   successCount,
+				Failed:  failedCount,
+				Skipped: skippedCount,
+				Samples: samples,
+			},
+			ErrorMessage: errorMessage,
+			ErrorMessages: func() []string {
+				if len(completionErrors) == 0 {
+					return nil
+				}
+				out := make([]string, len(completionErrors))
+				copy(out, completionErrors)
+				return out
+			}(),
 			StartedAt:   &startedAt,
 			CompletedAt: &completedAt,
 		})
@@ -7527,6 +7561,16 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 		eventType = notifications.EventCrossSeedAutomationFailed
 	}
 
+	var errorMessage string
+	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
+		errorMessage = strings.TrimSpace(*run.ErrorMessage)
+	} else if runErr != nil {
+		errorMessage = runErr.Error()
+	}
+	if errorMessage == "" && eventType == notifications.EventCrossSeedAutomationFailed {
+		errorMessage = fmt.Sprintf("status: %s", run.Status)
+	}
+
 	lines := []string{
 		fmt.Sprintf("Run: %d", run.ID),
 		fmt.Sprintf("Mode: %s", run.Mode),
@@ -7545,7 +7589,8 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 	} else if runErr != nil {
 		lines = append(lines, "Error: "+runErr.Error())
 	}
-	if samples := collectCrossSeedRunSamples(run.Results, 3); len(samples) > 0 {
+	samples := collectCrossSeedRunSamples(run.Results, 3)
+	if len(samples) > 0 {
 		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
@@ -7553,8 +7598,26 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 		Type:         eventType,
 		InstanceName: "Cross-seed RSS",
 		Message:      strings.Join(lines, "\n"),
-		StartedAt:    &run.StartedAt,
-		CompletedAt:  run.CompletedAt,
+		CrossSeed: &notifications.CrossSeedEventData{
+			RunID:      run.ID,
+			Mode:       string(run.Mode),
+			Status:     string(run.Status),
+			FeedItems:  run.TotalFeedItems,
+			Candidates: run.CandidatesFound,
+			Added:      run.TorrentsAdded,
+			Failed:     run.TorrentsFailed,
+			Skipped:    run.TorrentsSkipped,
+			Samples:    samples,
+		},
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if strings.TrimSpace(errorMessage) == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
+		StartedAt:   &run.StartedAt,
+		CompletedAt: run.CompletedAt,
 	})
 }
 
@@ -7566,6 +7629,16 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 	eventType := notifications.EventCrossSeedSearchSucceeded
 	if state.run.Status != models.CrossSeedSearchRunStatusSuccess {
 		eventType = notifications.EventCrossSeedSearchFailed
+	}
+
+	var errorMessage string
+	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
+		errorMessage = strings.TrimSpace(*state.run.ErrorMessage)
+	} else if canceled {
+		errorMessage = "canceled"
+	}
+	if errorMessage == "" && eventType == notifications.EventCrossSeedSearchFailed {
+		errorMessage = fmt.Sprintf("status: %s", state.run.Status)
 	}
 
 	lines := []string{
@@ -7581,14 +7654,32 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 	} else if canceled {
 		lines = append(lines, "Error: canceled")
 	}
-	if samples := collectSearchRunSamples(state); len(samples) > 0 {
+	samples := collectSearchRunSamples(state)
+	if len(samples) > 0 {
 		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
 	s.notifier.Notify(ctx, notifications.Event{
-		Type:        eventType,
-		InstanceID:  state.run.InstanceID,
-		Message:     strings.Join(lines, "\n"),
+		Type:       eventType,
+		InstanceID: state.run.InstanceID,
+		Message:    strings.Join(lines, "\n"),
+		CrossSeed: &notifications.CrossSeedEventData{
+			RunID:     state.run.ID,
+			Status:    string(state.run.Status),
+			Processed: state.run.Processed,
+			Total:     state.run.TotalTorrents,
+			Added:     state.run.TorrentsAdded,
+			Failed:    state.run.TorrentsFailed,
+			Skipped:   state.run.TorrentsSkipped,
+			Samples:   samples,
+		},
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if strings.TrimSpace(errorMessage) == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
 		StartedAt:   &state.run.StartedAt,
 		CompletedAt: state.run.CompletedAt,
 	})
@@ -7734,7 +7825,8 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 	if strings.TrimSpace(recommendation) != "" {
 		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
 	}
-	if samples := collectWebhookMatchSamples(matches, 3); len(samples) > 0 {
+	samples := collectWebhookMatchSamples(matches, 3)
+	if len(samples) > 0 {
 		lines = append(lines, "Samples: "+formatSampleText(samples))
 	}
 
@@ -7743,8 +7835,16 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 		Type:         notifications.EventCrossSeedWebhookSucceeded,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
-		StartedAt:    &startedAt,
-		CompletedAt:  &completedAt,
+		TorrentName:  strings.TrimSpace(req.TorrentName),
+		CrossSeed: &notifications.CrossSeedEventData{
+			Matches:        len(matches),
+			Complete:       completeCount,
+			Pending:        pendingCount,
+			Recommendation: strings.TrimSpace(recommendation),
+			Samples:        samples,
+		},
+		StartedAt:   &startedAt,
+		CompletedAt: &completedAt,
 	})
 }
 
@@ -7756,6 +7856,8 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 		return
 	}
 
+	errorMessage := strings.TrimSpace(err.Error())
+
 	lines := []string{
 		"Torrent: " + strings.TrimSpace(req.TorrentName),
 		"Error: " + err.Error(),
@@ -7766,8 +7868,16 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 		Type:         notifications.EventCrossSeedWebhookFailed,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
-		StartedAt:    &startedAt,
-		CompletedAt:  &completedAt,
+		TorrentName:  strings.TrimSpace(req.TorrentName),
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if errorMessage == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
+		StartedAt:   &startedAt,
+		CompletedAt: &completedAt,
 	})
 }
 
