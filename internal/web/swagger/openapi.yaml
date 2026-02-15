@@ -1735,6 +1735,35 @@ paths:
         '500':
           description: Failed to update file priorities
 
+  /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download:
+    get:
+      tags:
+        - Torrent Details
+      summary: Download a torrent content file
+      description: >
+        Streams a single file from the torrent's content on the local filesystem.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+        - $ref: '#/components/parameters/fileIndex'
+      responses:
+        '200':
+          description: Binary file stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid instance ID, hash, or file index
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Torrent, file index, or file on disk not found
+        '500':
+          description: Internal server error
+
   /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
       tags:
@@ -4791,6 +4820,14 @@ components:
       schema:
         type: string
       description: Torrent hash
+    fileIndex:
+      name: fileIndex
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+      description: Torrent file index
     directoryID:
       name: directoryID
       in: path

@@ -286,7 +286,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
@@ -459,6 +459,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
+							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 						})
 					})
 
