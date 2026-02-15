@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createRootRoute, Outlet } from "@tanstack/react-router"
+import { TransferTitleManager } from "@/components/TransferTitleManager"
 import { NotFound } from "@/pages/NotFound"
+import { createRootRoute, Outlet } from "@tanstack/react-router"
 
 export const Route = createRootRoute({
   component: () => (
     <>
+      <TransferTitleManager />
       <Outlet />
     </>
   ),
