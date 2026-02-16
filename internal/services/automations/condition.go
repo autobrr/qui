@@ -23,15 +23,25 @@ type (
 // Re-export constants
 const (
 	// String fields
-	FieldName        = models.FieldName
-	FieldHash        = models.FieldHash
-	FieldCategory    = models.FieldCategory
-	FieldTags        = models.FieldTags
-	FieldSavePath    = models.FieldSavePath
-	FieldContentPath = models.FieldContentPath
-	FieldState       = models.FieldState
-	FieldTracker     = models.FieldTracker
-	FieldComment     = models.FieldComment
+	FieldName          = models.FieldName
+	FieldHash          = models.FieldHash
+	FieldCategory      = models.FieldCategory
+	FieldTags          = models.FieldTags
+	FieldSavePath      = models.FieldSavePath
+	FieldContentPath   = models.FieldContentPath
+	FieldContentType   = models.FieldContentType
+	FieldEffectiveName = models.FieldEffectiveName
+
+	FieldRlsSource     = models.FieldRlsSource
+	FieldRlsResolution = models.FieldRlsResolution
+	FieldRlsCodec      = models.FieldRlsCodec
+	FieldRlsHDR        = models.FieldRlsHDR
+	FieldRlsAudio      = models.FieldRlsAudio
+	FieldRlsChannels   = models.FieldRlsChannels
+	FieldRlsGroup      = models.FieldRlsGroup
+	FieldState         = models.FieldState
+	FieldTracker       = models.FieldTracker
+	FieldComment       = models.FieldComment
 
 	// Numeric fields (bytes)
 	FieldSize       = models.FieldSize
@@ -68,11 +78,13 @@ const (
 	FieldNumComplete   = models.FieldNumComplete
 	FieldNumIncomplete = models.FieldNumIncomplete
 	FieldTrackersCount = models.FieldTrackersCount
+	FieldGroupSize     = models.FieldGroupSize
 
 	// Boolean fields
-	FieldPrivate        = models.FieldPrivate
-	FieldIsUnregistered = models.FieldIsUnregistered
+	FieldPrivate         = models.FieldPrivate
+	FieldIsUnregistered  = models.FieldIsUnregistered
 	FieldHasMissingFiles = models.FieldHasMissingFiles
+	FieldIsGrouped       = models.FieldIsGrouped
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope

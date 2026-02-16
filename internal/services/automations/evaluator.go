@@ -15,6 +15,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 const maxConditionDepth = 20
@@ -90,6 +92,19 @@ type EvalContext struct {
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
+
+	// ReleaseParser caches parsed release metadata for RLS-derived fields.
+	ReleaseParser *releases.Parser
+
+	// ActiveRuleID is used for rule-scoped evaluation helpers (grouping, free space sources, etc).
+	// It is set by the automations processor before evaluating a rule.
+	ActiveRuleID int
+
+	// activeGroupIndex is the currently active (rule-scoped) grouping index.
+	activeGroupIndex *groupIndex
+
+	// groupIndexCache caches group indices per rule ID + group ID to avoid rebuilding.
+	groupIndexCache map[int]map[string]*groupIndex
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -323,6 +338,24 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(torrent.SavePath, cond)
 	case FieldContentPath:
 		return compareString(torrent.ContentPath, cond)
+	case FieldContentType:
+		return compareString(torrentContentType(torrent, ctx), cond)
+	case FieldEffectiveName:
+		return compareString(torrentEffectiveName(torrent, ctx), cond)
+	case FieldRlsSource:
+		return compareString(torrentRlsSource(torrent, ctx), cond)
+	case FieldRlsResolution:
+		return compareString(torrentRlsResolution(torrent, ctx), cond)
+	case FieldRlsCodec:
+		return compareString(torrentRlsCodec(torrent, ctx), cond)
+	case FieldRlsHDR:
+		return compareString(torrentRlsHDR(torrent, ctx), cond)
+	case FieldRlsAudio:
+		return compareString(torrentRlsAudio(torrent, ctx), cond)
+	case FieldRlsChannels:
+		return compareString(torrentRlsChannels(torrent, ctx), cond)
+	case FieldRlsGroup:
+		return compareString(torrentRlsGroup(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
@@ -401,6 +434,11 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.NumIncomplete, cond)
 	case FieldTrackersCount:
 		return compareInt64(torrent.TrackersCount, cond)
+	case FieldGroupSize:
+		if ctx == nil || ctx.activeGroupIndex == nil {
+			return false
+		}
+		return compareInt64(int64(ctx.activeGroupIndex.SizeForHash(torrent.Hash)), cond)
 
 	// Boolean fields
 	case FieldPrivate:
@@ -446,6 +484,12 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown state - don't match
 		}
 		return compareBool(hasMissing, cond)
+
+	case FieldIsGrouped:
+		if ctx == nil || ctx.activeGroupIndex == nil {
+			return false
+		}
+		return compareBool(ctx.activeGroupIndex.SizeForHash(torrent.Hash) > 1, cond)
 
 	default:
 		return false

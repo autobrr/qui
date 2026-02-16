@@ -42,13 +42,16 @@ type torrentDesiredState struct {
 	tagActions  map[string]string // tag -> "add" | "remove"
 
 	// Category (last rule wins)
-	category                  *string
-	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
+	category        *string
+	categoryGroupID string // Optional group ID to expand category changes
+	categoryRuleID  int
 
 	// Delete (first rule to trigger wins)
 	shouldDelete           bool
 	deleteMode             string
 	deleteIncludeHardlinks bool // Whether to expand deletion to hardlink copies
+	deleteGroupID          string
+	deleteAtomic           string
 	deleteRuleID           int
 	deleteRuleName         string
 	deleteReason           string
@@ -178,7 +181,7 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, crossSeedIndex, ruleStats, torrents)
+			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents)
 		}
 
 		// Only store if there are actions to take
@@ -196,7 +199,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -206,6 +209,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	// This ensures FREE_SPACE conditions work correctly across all action types (not just delete).
 	if evalCtx != nil && rulesUseCondition([]*models.Automation{rule}, FieldFreeSpace) {
 		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+	}
+
+	// Activate rule-scoped grouping (GROUP_SIZE / IS_GROUPED) and allow action expansion to re-use cached indices.
+	if evalCtx != nil {
+		activateRuleGrouping(evalCtx, rule, allTorrents, sm)
 	}
 
 	// Speed limits
@@ -321,7 +329,12 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				stats.CategoryApplied++
 			}
 			state.category = &conditions.Category.Category
-			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
+			state.categoryRuleID = rule.ID
+			groupID := strings.TrimSpace(conditions.Category.GroupID)
+			if groupID == "" && conditions.Category.IncludeCrossSeeds {
+				groupID = GroupCrossSeedContentSavePath
+			}
+			state.categoryGroupID = groupID
 		} else if stats != nil {
 			stats.CategoryConditionNotMetOrBlocked++
 		}
@@ -363,6 +376,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 					state.deleteMode = DeleteModeKeepFiles
 				}
 				state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
+				state.deleteGroupID = strings.TrimSpace(conditions.Delete.GroupID)
+				state.deleteAtomic = strings.TrimSpace(conditions.Delete.Atomic)
 				state.deleteRuleID = rule.ID
 				state.deleteRuleName = rule.Name
 				state.deleteReason = "condition matched"

@@ -94,6 +94,17 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 |-------|-------------|
 | Hardlink Scope | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access) |
 | Has Missing Files | Boolean - completed torrent has files missing on disk (requires local filesystem access) |
+| Content Type | Derived from release name parsing (useful for grouping; may be empty) |
+| Effective Name | Normalized title derived from release parsing (useful for grouping; may be empty) |
+| Release Source | Parsed release specifier (e.g. `WEB`, `BluRay`; may be empty) |
+| Release Resolution | Parsed release specifier (e.g. `1080p`; may be empty) |
+| Release Codec | Parsed release specifier (e.g. `x265`; may be empty) |
+| Release HDR | Parsed release specifier (e.g. `DV`, `HDR`; may be empty) |
+| Release Audio | Parsed release specifier (e.g. `TrueHD`; may be empty) |
+| Release Channels | Parsed release specifier (e.g. `5.1`; may be empty) |
+| Release Group | Parsed release specifier (e.g. `NTb`; may be empty) |
+| Group Size | Size of the active group (requires grouping; see [Grouping](#grouping)) |
+| Is Grouped | Boolean - true if the torrent belongs to a group (requires grouping; see [Grouping](#grouping)) |
 
 ### State Values
 
@@ -161,6 +172,52 @@ This is sort of not needed, since you can already scope trackers outside the wor
 
 Separate multiple patterns with commas, semicolons, or pipes. All matching is case-insensitive.
 
+## Grouping
+
+Grouping lets an automation treat "related torrents" as a single unit for:
+
+- **Group-aware conditions**: `GROUP_SIZE`, `IS_GROUPED`
+- **Group expansion**: apply an action to every torrent in the group (instead of only the matched torrent)
+- **Atomic behavior**: optionally require all-or-none group membership for certain actions
+
+### Group-Scoped Condition Fields
+
+To use `GROUP_SIZE` and `IS_GROUPED`, set:
+
+- `conditions.grouping.defaultGroupId`
+
+If no default group is configured, these fields evaluate to "not grouped" (size `0`, boolean `false`).
+
+### Action Expansion
+
+Some actions accept a `groupId`. When set, qui expands the action to all torrents in that group.
+
+Built-in group IDs:
+
+- `cross_seed_content_path`: same Content Path (normalized)
+- `cross_seed_content_save_path`: same Content Path + Save Path (normalized)
+- `release_item`: same Content Type + Effective Name
+- `tracker_release_item`: same Tracker + Content Type + Effective Name
+- `hardlink_signature`: same physical file set signature (requires local filesystem access)
+
+### Custom Groups (Advanced)
+
+Rules can define custom groups via `conditions.grouping.groups[]` with:
+
+- `id`: string
+- `keys`: list of key names combined to form the group key
+
+Supported keys:
+
+- `contentPath`, `savePath`, `effectiveName`, `contentType`, `tracker`
+- `rlsSource`, `rlsResolution`, `rlsCodec`, `rlsHDR`, `rlsAudio`, `rlsChannels`, `rlsGroup`
+- `hardlinkSignature`
+
+For content-path based grouping where `Content Path == Save Path` (ambiguous), you can set:
+
+- `ambiguousPolicy: "verify_overlap"` (default for cross-seed groups) with `minFileOverlapPercent` (default `90`)
+- `ambiguousPolicy: "skip"`
+
 ## Actions
 
 Actions can be combined (except Delete which must be standalone). Each action supports an optional condition override.
@@ -213,6 +270,13 @@ Remove torrents from qBittorrent. **Must be standalone** - cannot combine with o
 | `deleteWithFilesPreserveCrossSeeds` | Remove files but preserve if cross-seeds detected |
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
 
+**Optional grouping (advanced):**
+
+Delete actions can specify a `groupId` to expand the deletion to all torrents in that group.
+
+- For `delete` (keep files): this is useful when you want "remove from client" to be cross-seed aware.
+- `atomic: "all"` (keep files only): if any group member would not be removed, qui removes **none** of them.
+
 **Include cross-seeds mode behavior:**
 
 When a torrent matches the rule, the system finds other torrents that point to the same downloaded files (cross-seeds/duplicates) and deletes them together. This is useful when you want to fully remove content and all its cross-seeded copies at once.
@@ -256,6 +320,7 @@ Move torrents to a different category.
 
 Options:
 - **Include Cross-Seeds** - Also move cross-seeds (matching ContentPath AND SavePath)
+- **Group ID (advanced)** - Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this takes precedence over "Include Cross-Seeds".
 - **Block If Cross-Seed In Categories** - Prevent move if another cross-seed is in protected categories
 
 ### Move

@@ -23,6 +23,8 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/pkg/pathcmp"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -106,6 +108,7 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 	externalProgramService    *externalprograms.Service // for executing external programs
 	activityRuns              *activityRunStore
+	releaseParser             *releases.Parser
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
@@ -142,6 +145,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		externalProgramService:    externalProgramService,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
+		releaseParser:             releases.NewDefaultParser(),
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
@@ -365,6 +369,9 @@ func sortTorrentsStable(torrents []qbt.Torrent) {
 // initPreviewEvalContext initializes an EvalContext for preview with common setup.
 func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, torrents []qbt.Torrent) (*EvalContext, *models.Instance) {
 	evalCtx := &EvalContext{}
+	if s != nil {
+		evalCtx.ReleaseParser = s.releaseParser
+	}
 
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
@@ -763,7 +770,7 @@ func (s *Service) verifyGroupForPreview(
 		if _, exists := alreadyIncluded[other.Hash]; exists {
 			continue
 		}
-		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, *trigger, *other)
+		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, *trigger, *other, minFileOverlapPercent)
 		if err != nil || !hasOverlap {
 			// Any failure means skip the entire group
 			return false, nil
@@ -1164,6 +1171,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Initialize evaluation context
 	evalCtx := &EvalContext{
 		InstanceHasLocalAccess: instance.HasLocalFilesystemAccess,
+		ReleaseParser:          s.releaseParser,
 	}
 
 	// Build category index for EXISTS_IN/CONTAINS_IN operators
@@ -1340,6 +1348,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		torrentByHash[t.Hash] = t
 	}
 
+	ruleByID := make(map[int]*models.Automation, len(eligibleRules))
+	for _, r := range eligibleRules {
+		ruleByID[r.ID] = r
+	}
+
 	// Build batches from desired states
 	shareBatches := make(map[shareKey][]string)
 	uploadBatches := make(map[int64][]string)
@@ -1397,7 +1410,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						if _, processed := includedCrossSeedHashes[other.Hash]; processed {
 							continue
 						}
-						hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, other)
+						hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, other, minFileOverlapPercent)
 						if err != nil {
 							log.Warn().Err(err).
 								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
@@ -1483,6 +1496,97 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					keepingFiles = false
 				}
 			case DeleteModeKeepFiles:
+				// Optional group-aware, atomic keep-files deletion:
+				// if groupId is set and atomic=all, delete the whole group only if ALL members match this rule.
+				if state.deleteGroupID != "" && strings.EqualFold(state.deleteAtomic, "all") && state.deleteRuleID > 0 {
+					rule := ruleByID[state.deleteRuleID]
+					if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Condition != nil {
+						idx := getOrBuildGroupIndexForRule(evalCtx, rule, state.deleteGroupID, torrents, s.syncManager)
+						if idx != nil {
+							members := idx.MembersForHash(hash)
+							if len(members) > 0 {
+								// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
+								def := (*models.GroupDefinition)(nil)
+								if rule.Conditions.Grouping != nil {
+									def = findGroupDefinition(rule.Conditions.Grouping, state.deleteGroupID)
+								}
+								if def == nil {
+									def = builtinGroupDefinition(state.deleteGroupID)
+								}
+
+								if def != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
+									policy := strings.TrimSpace(def.AmbiguousPolicy)
+									if policy == "" {
+										policy = groupAmbiguousVerifyOverlap
+									}
+									if policy == groupAmbiguousSkip {
+										continue
+									}
+									minPercent := def.MinFileOverlapPercent
+									if minPercent <= 0 {
+										minPercent = minFileOverlapPercent
+									}
+									// Verify overlap against all members; any failure skips entire group.
+									skipGroup := false
+									for _, otherHash := range members {
+										if otherHash == hash {
+											continue
+										}
+										otherTorrent, ok := torrentByHash[otherHash]
+										if !ok {
+											skipGroup = true
+											break
+										}
+										hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, otherTorrent, minPercent)
+										if err != nil || !hasOverlap {
+											skipGroup = true
+											break
+										}
+									}
+									if skipGroup {
+										continue
+									}
+								}
+
+								// All-or-nothing eligibility check for the whole group.
+								allMatch := true
+								// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
+								if evalCtx != nil && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+									evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+								}
+								activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+
+								for _, memberHash := range members {
+									memberTorrent, ok := torrentByHash[memberHash]
+									if !ok {
+										allMatch = false
+										break
+									}
+									trackerDomains := collectTrackerDomains(memberTorrent, s.syncManager)
+									if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+										allMatch = false
+										break
+									}
+									if !EvaluateConditionWithContext(rule.Conditions.Delete.Condition, memberTorrent, evalCtx, 0) {
+										allMatch = false
+										break
+									}
+								}
+
+								if !allMatch {
+									continue
+								}
+
+								hashesToDelete = members
+								actualMode = DeleteModeKeepFiles
+								logMsg = "automations: removing torrent group (keeping files)"
+								keepingFiles = true
+								break
+							}
+						}
+					}
+				}
+
 				hashesToDelete = []string{hash}
 				actualMode = DeleteModeKeepFiles
 				logMsg = "automations: removing torrent (keeping files)"
@@ -1989,17 +2093,43 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		hashes := categoryBatches[category]
 		expandedHashes := hashes
 
-		// Find torrents whose winning category rule had IncludeCrossSeeds=true
-		// and expand with their cross-seeds (require BOTH ContentPath AND SavePath match)
-		keysToExpand := make(map[crossSeedKey]struct{})
+		type groupExpandKey struct {
+			ruleID  int
+			groupID string
+		}
+
+		// Find torrents whose winning category rule requested grouping expansion (via groupId
+		// or legacy includeCrossSeeds), then expand other torrents that share the same group key.
+		keysToExpand := make(map[groupExpandKey]map[string]struct{})
+		groupIndexByKey := make(map[groupExpandKey]*groupIndex)
 		for _, hash := range hashes {
-			if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
-				if t, exists := torrentByHash[hash]; exists {
-					if key, ok := makeCrossSeedKey(t); ok {
-						keysToExpand[key] = struct{}{}
-					}
-				}
+			state, exists := states[hash]
+			if !exists || state == nil || state.categoryGroupID == "" || state.categoryRuleID <= 0 {
+				continue
 			}
+			rule := ruleByID[state.categoryRuleID]
+			if rule == nil {
+				continue
+			}
+
+			k := groupExpandKey{ruleID: rule.ID, groupID: state.categoryGroupID}
+			idx := groupIndexByKey[k]
+			if idx == nil {
+				idx = getOrBuildGroupIndexForRule(evalCtx, rule, state.categoryGroupID, torrents, s.syncManager)
+				groupIndexByKey[k] = idx
+			}
+			if idx == nil {
+				continue
+			}
+
+			groupKey := idx.KeyForHash(hash)
+			if groupKey == "" {
+				continue
+			}
+			if keysToExpand[k] == nil {
+				keysToExpand[k] = make(map[string]struct{})
+			}
+			keysToExpand[k][groupKey] = struct{}{}
 		}
 
 		if len(keysToExpand) > 0 {
@@ -2022,11 +2152,25 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						continue // Torrent's winning rule chose a different category
 					}
 				}
-				if key, ok := makeCrossSeedKey(t); ok {
-					if _, shouldExpand := keysToExpand[key]; shouldExpand {
-						expandedHashes = append(expandedHashes, t.Hash)
-						expandedSet[t.Hash] = struct{}{}
+
+				shouldExpand := false
+				for k, keySet := range keysToExpand {
+					idx := groupIndexByKey[k]
+					if idx == nil {
+						continue
 					}
+					gk := idx.KeyForHash(t.Hash)
+					if gk == "" {
+						continue
+					}
+					if _, ok := keySet[gk]; ok {
+						shouldExpand = true
+						break
+					}
+				}
+				if shouldExpand {
+					expandedHashes = append(expandedHashes, t.Hash)
+					expandedSet[t.Hash] = struct{}{}
 				}
 			}
 		}
@@ -2422,19 +2566,10 @@ func torrentHasTag(tags string, candidate string) bool {
 	return false
 }
 
-// normalizePath standardizes a file path for comparison by lowercasing,
-// converting backslashes to forward slashes, and removing trailing slashes.
+// normalizePath standardizes a file path for comparison.
+// Keep this consistent with cross-seed's path normalization.
 func normalizePath(p string) string {
-	if p == "" {
-		return ""
-	}
-	// Lowercase for case-insensitive comparison
-	p = strings.ToLower(p)
-	// Normalize path separators (Windows backslashes to forward slashes)
-	p = strings.ReplaceAll(p, "\\", "/")
-	// Remove trailing slash
-	p = strings.TrimSuffix(p, "/")
-	return p
+	return pathcmp.NormalizePathFold(p)
 }
 
 // crossSeedKey identifies torrents at the same on-disk location.
@@ -2510,10 +2645,10 @@ type fileOverlapKey struct {
 // accidental grouping of unrelated torrents that happen to share the same SavePath.
 const minFileOverlapPercent = 90
 
-// verifyFileOverlap checks if two torrents share at least minFileOverlapPercent of their files.
+// verifyFileOverlap checks if two torrents share at least minOverlapPercent of their files.
 // Returns true if verification passes, false if not enough overlap or verification failed.
 // This is used as a safety check when ContentPath matching is ambiguous.
-func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent1, torrent2 qbt.Torrent) (bool, error) {
+func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent1, torrent2 qbt.Torrent, minOverlapPercent int) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -2568,8 +2703,11 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 		return false, fmt.Errorf("cannot compute overlap: zero-size torrents")
 	}
 
+	if minOverlapPercent <= 0 {
+		minOverlapPercent = minFileOverlapPercent
+	}
 	overlapPercent := (matchedBytes * 100) / smallerBytes
-	return overlapPercent >= minFileOverlapPercent, nil
+	return overlapPercent >= int64(minOverlapPercent), nil
 }
 
 // deleteFreesSpace returns true if deleting this torrent with the given mode
@@ -2881,18 +3019,36 @@ func (s *Service) recordDryRunActivities(
 			hashes := categoryBatches[category]
 			expandedHashes := hashes
 
-			keysToExpand := make(map[crossSeedKey]struct{})
+			previewEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
+			keysToExpandByGroupID := make(map[string]map[string]struct{})
+			groupIndexByGroupID := make(map[string]*groupIndex)
 			for _, hash := range hashes {
-				if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
-					if t, exists := torrentByHash[hash]; exists {
-						if key, ok := makeCrossSeedKey(t); ok {
-							keysToExpand[key] = struct{}{}
-						}
-					}
+				state, exists := states[hash]
+				if !exists || state == nil || state.categoryGroupID == "" {
+					continue
 				}
+
+				gid := state.categoryGroupID
+				idx := groupIndexByGroupID[gid]
+				if idx == nil {
+					def := builtinGroupDefinition(gid)
+					if def == nil {
+						continue
+					}
+					idx = buildGroupIndex(gid, def, torrents, s.syncManager, previewEvalCtx)
+					groupIndexByGroupID[gid] = idx
+				}
+				groupKey := idx.KeyForHash(hash)
+				if groupKey == "" {
+					continue
+				}
+				if keysToExpandByGroupID[gid] == nil {
+					keysToExpandByGroupID[gid] = make(map[string]struct{})
+				}
+				keysToExpandByGroupID[gid][groupKey] = struct{}{}
 			}
 
-			if len(keysToExpand) > 0 {
+			if len(keysToExpandByGroupID) > 0 {
 				expandedSet := make(map[string]struct{})
 				for _, h := range expandedHashes {
 					expandedSet[h] = struct{}{}
@@ -2910,11 +3066,25 @@ func (s *Service) recordDryRunActivities(
 							continue
 						}
 					}
-					if key, ok := makeCrossSeedKey(t); ok {
-						if _, shouldExpand := keysToExpand[key]; shouldExpand {
-							expandedHashes = append(expandedHashes, t.Hash)
-							expandedSet[t.Hash] = struct{}{}
+
+					shouldExpand := false
+					for gid, keySet := range keysToExpandByGroupID {
+						idx := groupIndexByGroupID[gid]
+						if idx == nil {
+							continue
 						}
+						gk := idx.KeyForHash(t.Hash)
+						if gk == "" {
+							continue
+						}
+						if _, ok := keySet[gk]; ok {
+							shouldExpand = true
+							break
+						}
+					}
+					if shouldExpand {
+						expandedHashes = append(expandedHashes, t.Hash)
+						expandedSet[t.Hash] = struct{}{}
 					}
 				}
 			}

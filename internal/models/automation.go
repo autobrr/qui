@@ -439,15 +439,26 @@ type ConditionField string
 
 const (
 	// String fields
-	FieldName        ConditionField = "NAME"
-	FieldHash        ConditionField = "HASH"
-	FieldCategory    ConditionField = "CATEGORY"
-	FieldTags        ConditionField = "TAGS"
-	FieldSavePath    ConditionField = "SAVE_PATH"
-	FieldContentPath ConditionField = "CONTENT_PATH"
-	FieldState       ConditionField = "STATE"
-	FieldTracker     ConditionField = "TRACKER"
-	FieldComment     ConditionField = "COMMENT"
+	FieldName          ConditionField = "NAME"
+	FieldHash          ConditionField = "HASH"
+	FieldCategory      ConditionField = "CATEGORY"
+	FieldTags          ConditionField = "TAGS"
+	FieldSavePath      ConditionField = "SAVE_PATH"
+	FieldContentPath   ConditionField = "CONTENT_PATH"
+	FieldContentType   ConditionField = "CONTENT_TYPE"
+	FieldEffectiveName ConditionField = "EFFECTIVE_NAME"
+
+	// RLS-derived specifiers (from torrent name parsing)
+	FieldRlsSource     ConditionField = "RLS_SOURCE"
+	FieldRlsResolution ConditionField = "RLS_RESOLUTION"
+	FieldRlsCodec      ConditionField = "RLS_CODEC"
+	FieldRlsHDR        ConditionField = "RLS_HDR"
+	FieldRlsAudio      ConditionField = "RLS_AUDIO"
+	FieldRlsChannels   ConditionField = "RLS_CHANNELS"
+	FieldRlsGroup      ConditionField = "RLS_GROUP"
+	FieldState         ConditionField = "STATE"
+	FieldTracker       ConditionField = "TRACKER"
+	FieldComment       ConditionField = "COMMENT"
 
 	// Numeric fields (bytes)
 	FieldSize       ConditionField = "SIZE"
@@ -484,11 +495,13 @@ const (
 	FieldNumComplete   ConditionField = "NUM_COMPLETE"
 	FieldNumIncomplete ConditionField = "NUM_INCOMPLETE"
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
+	FieldGroupSize     ConditionField = "GROUP_SIZE"
 
 	// Boolean fields
 	FieldPrivate         ConditionField = "PRIVATE"
 	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
+	FieldIsGrouped       ConditionField = "IS_GROUPED"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
@@ -563,6 +576,7 @@ func (c *RuleCondition) CompileRegex() error {
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
 	SchemaVersion   string                 `json:"schemaVersion"`
+	Grouping        *GroupingConfig        `json:"grouping,omitempty"`
 	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
 	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
 	Pause           *PauseAction           `json:"pause,omitempty"`
@@ -607,6 +621,8 @@ type DeleteAction struct {
 	Enabled          bool           `json:"enabled"`
 	Mode             string         `json:"mode"`                       // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
 	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
+	GroupID          string         `json:"groupId,omitempty"`          // Optional grouping ID for expanding/atomically applying deletes
+	Atomic           string         `json:"atomic,omitempty"`           // Optional atomic policy: "all" (apply only if all group members match)
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
@@ -625,6 +641,7 @@ type CategoryAction struct {
 	Enabled           bool   `json:"enabled"`
 	Category          string `json:"category"`                    // Target category name
 	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
+	GroupID           string `json:"groupId,omitempty"`           // Optional grouping ID for expanding category changes
 	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent
 	// (same ContentPath + SavePath) is found in one of the listed categories.
 	BlockIfCrossSeedInCategories []string       `json:"blockIfCrossSeedInCategories,omitempty"`
@@ -635,7 +652,30 @@ type MoveAction struct {
 	Enabled          bool           `json:"enabled"`
 	Path             string         `json:"path"`
 	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty"`
+	GroupID          string         `json:"groupId,omitempty"` // Optional grouping ID for move cross-seed protection/atomicity
+	Atomic           string         `json:"atomic,omitempty"`  // Optional atomic policy: "all" (apply only if all group members match)
 	Condition        *RuleCondition `json:"condition,omitempty"`
+}
+
+// GroupingConfig defines how torrents can be grouped for group-aware actions and conditions.
+// Group definitions are per-rule (stored inside the rule's conditions JSON).
+type GroupingConfig struct {
+	// DefaultGroupID is the group to use for group-derived condition fields (e.g. GROUP_SIZE, IS_GROUPED).
+	DefaultGroupID string            `json:"defaultGroupId,omitempty"`
+	Groups         []GroupDefinition `json:"groups,omitempty"`
+}
+
+// GroupDefinition defines a single grouping strategy.
+type GroupDefinition struct {
+	ID string `json:"id"`
+	// Keys are combined to form a group key.
+	// Supported keys are documented in the automations service (built-ins include contentPath, savePath, effectiveName, contentType, tracker, rlsSource, rlsResolution, rlsCodec, rlsGroup, hardlinkSignature).
+	Keys []string `json:"keys"`
+	// AmbiguousPolicy controls how groups are handled when ContentPath is ambiguous (ContentPath == SavePath).
+	// Valid: "verify_overlap" (default for contentPath group), "skip".
+	AmbiguousPolicy string `json:"ambiguousPolicy,omitempty"`
+	// MinFileOverlapPercent applies when AmbiguousPolicy == "verify_overlap". Defaults to 90.
+	MinFileOverlapPercent int `json:"minFileOverlapPercent,omitempty"`
 }
 
 // ExternalProgramAction configures external program execution with optional conditions.
