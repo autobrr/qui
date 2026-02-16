@@ -234,7 +234,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		info.ContentType = "music"
 	case rls.Audiobook:
 		info.ContentType = "audiobook"
-	case rls.Book:
+	case rls.Book, rls.Education, rls.Magazine:
 		info.ContentType = "book"
 	case rls.Comic:
 		info.ContentType = "comic"
@@ -242,13 +242,18 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		info.ContentType = "game"
 	case rls.App:
 		info.ContentType = "app"
-	default:
-		// Fallback logic based on series/episode/year detection for unknown types.
-		if release.Series > 0 || release.Episode > 0 {
+	case rls.Unknown:
+		// Fall back below.
+	}
+
+	// Fallback logic based on series/episode/year detection for unknown types.
+	if info.ContentType == "" {
+		switch {
+		case release.Series > 0 || release.Episode > 0:
 			info.ContentType = "tv"
-		} else if release.Year > 0 {
+		case release.Year > 0:
 			info.ContentType = "movie"
-		} else {
+		default:
 			info.ContentType = "unknown"
 		}
 	}

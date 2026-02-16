@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -324,10 +325,5 @@ func buildGroupKey(keys []string, t qbt.Torrent, sm *qbittorrent.SyncManager, ev
 }
 
 func containsKey(list []string, want string) bool {
-	for _, v := range list {
-		if v == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, want)
 }
