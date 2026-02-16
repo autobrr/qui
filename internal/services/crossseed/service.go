@@ -1712,9 +1712,9 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			fmt.Sprintf("Failed: %d", failedCount),
 			fmt.Sprintf("Skipped: %d", skippedCount),
 		}
-		samples := collectSearchResultSamples(results, 3)
-		if len(samples) > 0 {
-			lines = append(lines, "Samples: "+formatSampleText(samples))
+		samples := collectSearchResultSamples(results, 0)
+		if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+			lines = append(lines, "Samples: "+sampleText)
 		}
 		notifyCtx := context.WithoutCancel(ctx)
 		s.notifier.Notify(notifyCtx, notifications.Event{
@@ -7589,9 +7589,9 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 	} else if runErr != nil {
 		lines = append(lines, "Error: "+runErr.Error())
 	}
-	samples := collectCrossSeedRunSamples(run.Results, 3)
-	if len(samples) > 0 {
-		lines = append(lines, "Samples: "+formatSampleText(samples))
+	samples := collectCrossSeedRunSamples(run.Results, 0)
+	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+		lines = append(lines, "Samples: "+sampleText)
 	}
 
 	s.notifier.Notify(ctx, notifications.Event{
@@ -7654,9 +7654,14 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 	} else if canceled {
 		lines = append(lines, "Error: canceled")
 	}
-	samples := collectSearchRunSamples(state)
-	if len(samples) > 0 {
-		lines = append(lines, "Samples: "+formatSampleText(samples))
+
+	results := state.recentResults
+	if len(results) == 0 && state.run != nil {
+		results = state.run.Results
+	}
+	samples := collectSearchResultSamples(results, 0)
+	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+		lines = append(lines, "Samples: "+sampleText)
 	}
 
 	s.notifier.Notify(ctx, notifications.Event{
@@ -7686,12 +7691,18 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 }
 
 func collectCrossSeedRunSamples(results []models.CrossSeedRunResult, limit int) []string {
-	if limit <= 0 || len(results) == 0 {
+	if len(results) == 0 {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, limit)
-	samples := make([]string, 0, limit)
+	capHint := 64
+	if limit > 0 {
+		capHint = min(limit, len(results))
+	} else {
+		capHint = min(capHint, len(results))
+	}
+	seen := make(map[string]struct{}, capHint)
+	samples := make([]string, 0, capHint)
 	for _, result := range results {
 		if !result.Success {
 			continue
@@ -7713,31 +7724,26 @@ func collectCrossSeedRunSamples(results []models.CrossSeedRunResult, limit int) 
 		}
 		seen[label] = struct{}{}
 		samples = append(samples, label)
-		if len(samples) >= limit {
+		if limit > 0 && len(samples) >= limit {
 			break
 		}
 	}
 	return samples
 }
 
-func collectSearchRunSamples(state *searchRunState) []string {
-	if state == nil {
-		return nil
-	}
-	results := state.recentResults
-	if len(results) == 0 && state.run != nil {
-		results = state.run.Results
-	}
-	return collectSearchResultSamples(results, 3)
-}
-
 func collectSearchResultSamples(results []models.CrossSeedSearchResult, limit int) []string {
-	if limit <= 0 || len(results) == 0 {
+	if len(results) == 0 {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, limit)
-	samples := make([]string, 0, limit)
+	capHint := 64
+	if limit > 0 {
+		capHint = min(limit, len(results))
+	} else {
+		capHint = min(capHint, len(results))
+	}
+	seen := make(map[string]struct{}, capHint)
+	samples := make([]string, 0, capHint)
 	for _, result := range results {
 		if !result.Added {
 			continue
@@ -7757,7 +7763,7 @@ func collectSearchResultSamples(results []models.CrossSeedSearchResult, limit in
 		}
 		seen[label] = struct{}{}
 		samples = append(samples, label)
-		if len(samples) >= limit {
+		if limit > 0 && len(samples) >= limit {
 			break
 		}
 	}
@@ -7771,13 +7777,39 @@ func formatSampleText(samples []string) string {
 	return strings.Join(samples, "; ")
 }
 
+func formatSamplesForMessage(samples []string, max int) string {
+	if len(samples) == 0 || max <= 0 {
+		return ""
+	}
+	shown := samples
+	more := 0
+	if len(samples) > max {
+		shown = samples[:max]
+		more = len(samples) - max
+	}
+	out := formatSampleText(shown)
+	if out == "" {
+		return ""
+	}
+	if more > 0 {
+		out = fmt.Sprintf("%s (+%d more)", out, more)
+	}
+	return out
+}
+
 func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string {
-	if limit <= 0 || len(matches) == 0 {
+	if len(matches) == 0 {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, limit)
-	samples := make([]string, 0, limit)
+	capHint := 64
+	if limit > 0 {
+		capHint = min(limit, len(matches))
+	} else {
+		capHint = min(capHint, len(matches))
+	}
+	seen := make(map[string]struct{}, capHint)
+	samples := make([]string, 0, capHint)
 	for _, match := range matches {
 		label := strings.TrimSpace(match.TorrentName)
 		if label == "" {
@@ -7794,7 +7826,7 @@ func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string
 		}
 		seen[label] = struct{}{}
 		samples = append(samples, label)
-		if len(samples) >= limit {
+		if limit > 0 && len(samples) >= limit {
 			break
 		}
 	}
@@ -7825,9 +7857,9 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 	if strings.TrimSpace(recommendation) != "" {
 		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
 	}
-	samples := collectWebhookMatchSamples(matches, 3)
-	if len(samples) > 0 {
-		lines = append(lines, "Samples: "+formatSampleText(samples))
+	samples := collectWebhookMatchSamples(matches, 0)
+	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+		lines = append(lines, "Samples: "+sampleText)
 	}
 
 	completedAt := time.Now().UTC()
