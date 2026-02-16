@@ -481,7 +481,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode)
 	}
 
-	return s.previewDeleteStandard(rule, torrents, evalCtx, deleteMode, eligibleMode, cfg)
+	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg)
 }
 
 // setupDeleteHardlinkContext sets up hardlink index if needed for delete preview.
@@ -548,6 +548,8 @@ func shouldDeleteTorrent(rule *models.Automation, torrent *qbt.Torrent, evalCtx 
 
 // previewDeleteStandard handles standard (non-include-cross-seeds) delete preview.
 func (s *Service) previewDeleteStandard(
+	ctx context.Context,
+	instanceID int,
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -557,6 +559,153 @@ func (s *Service) previewDeleteStandard(
 ) (*PreviewResult, error) {
 	result := &PreviewResult{
 		Examples: make([]PreviewTorrent, 0, cfg.limit),
+	}
+
+	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil &&
+		deleteMode == DeleteModeKeepFiles && strings.TrimSpace(rule.Conditions.Delete.GroupID) != "" {
+		deleteCond := rule.Conditions.Delete
+		groupID := strings.TrimSpace(deleteCond.GroupID)
+		atomicAll := strings.EqualFold(deleteCond.Atomic, "all")
+
+		torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+		for _, t := range torrents {
+			torrentByHash[t.Hash] = t
+		}
+
+		idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
+		def := (*models.GroupDefinition)(nil)
+		if rule.Conditions.Grouping != nil {
+			def = findGroupDefinition(rule.Conditions.Grouping, groupID)
+		}
+		if def == nil {
+			def = builtinGroupDefinition(groupID)
+		}
+
+		expandedSet := make(map[string]struct{})
+		directMatchSet := make(map[string]struct{})
+		processedGroupKeys := make(map[string]struct{})
+
+		for i := range torrents {
+			torrent := &torrents[i]
+
+			trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
+			if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+				continue
+			}
+			if !shouldDeleteTorrent(rule, torrent, evalCtx) {
+				continue
+			}
+
+			directMatchSet[torrent.Hash] = struct{}{}
+
+			members := []string{torrent.Hash}
+			groupKey := ""
+			if idx != nil {
+				groupKey = idx.KeyForHash(torrent.Hash)
+				if groupKey != "" {
+					if _, seen := processedGroupKeys[groupKey]; seen {
+						continue
+					}
+					processedGroupKeys[groupKey] = struct{}{}
+				}
+				if m := idx.MembersForHash(torrent.Hash); len(m) > 0 {
+					members = m
+				}
+			}
+
+			expandGroup := true
+			if def != nil && idx != nil && idx.IsAmbiguousForHash(torrent.Hash) && containsKey(def.Keys, groupKeyContentPath) {
+				policy := strings.TrimSpace(def.AmbiguousPolicy)
+				if policy == "" {
+					policy = groupAmbiguousVerifyOverlap
+				}
+				if policy == groupAmbiguousSkip {
+					if atomicAll {
+						continue
+					}
+					expandGroup = false
+				}
+				minPercent := def.MinFileOverlapPercent
+				if minPercent <= 0 {
+					minPercent = minFileOverlapPercent
+				}
+				skipGroup := false
+				triggerTorrent, ok := torrentByHash[torrent.Hash]
+				if !ok {
+					skipGroup = true
+				}
+				for _, otherHash := range members {
+					if skipGroup || otherHash == torrent.Hash {
+						continue
+					}
+					otherTorrent, ok := torrentByHash[otherHash]
+					if !ok {
+						skipGroup = true
+						break
+					}
+					hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
+					if err != nil || !hasOverlap {
+						skipGroup = true
+						break
+					}
+				}
+				if skipGroup {
+					if atomicAll {
+						continue
+					}
+					expandGroup = false
+				}
+			}
+
+			if expandGroup && atomicAll {
+				cond := deleteCond.Condition
+				allMatch := true
+				for _, memberHash := range members {
+					memberTorrent, ok := torrentByHash[memberHash]
+					if !ok {
+						allMatch = false
+						break
+					}
+					// Group expansion intentionally ignores tracker constraints.
+					if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
+						allMatch = false
+						break
+					}
+				}
+				if !allMatch {
+					continue
+				}
+			}
+
+			if expandGroup {
+				for _, memberHash := range members {
+					expandedSet[memberHash] = struct{}{}
+				}
+			} else {
+				expandedSet[torrent.Hash] = struct{}{}
+			}
+		}
+
+		matchIndex := 0
+		for i := range torrents {
+			torrent := &torrents[i]
+			if _, included := expandedSet[torrent.Hash]; !included {
+				continue
+			}
+			matchIndex++
+			if matchIndex <= cfg.offset {
+				continue
+			}
+			if len(result.Examples) >= cfg.limit {
+				continue
+			}
+			_, isDirect := directMatchSet[torrent.Hash]
+			tracker := getTrackerForTorrent(torrent, s.syncManager)
+			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false))
+		}
+
+		result.TotalMatches = matchIndex
+		return result, nil
 	}
 
 	matchIndex := 0
@@ -897,7 +1046,11 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	state := newCategoryPreviewState(catAction.targetCategory)
 
 	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeedIndex, catAction, state)
-	s.findCategoryCrossSeeds(torrents, catAction, state)
+	if catAction.groupID != "" {
+		s.findCategoryGroupMembers(rule, torrents, evalCtx, catAction, state)
+	} else {
+		s.findCategoryCrossSeeds(torrents, catAction, state)
+	}
 
 	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg), nil
 }
@@ -906,6 +1059,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 type categoryActionConfig struct {
 	targetCategory    string
 	includeCrossSeeds bool
+	groupID           string
 	blockCategories   []string
 	condition         *RuleCondition
 	enabled           bool
@@ -917,9 +1071,11 @@ func getCategoryAction(rule *models.Automation) categoryActionConfig {
 		return categoryActionConfig{}
 	}
 	cat := rule.Conditions.Category
+	groupID := strings.TrimSpace(cat.GroupID)
 	return categoryActionConfig{
 		targetCategory:    cat.Category,
-		includeCrossSeeds: cat.IncludeCrossSeeds,
+		includeCrossSeeds: groupID == "" && cat.IncludeCrossSeeds,
+		groupID:           groupID,
 		blockCategories:   cat.BlockIfCrossSeedInCategories,
 		condition:         cat.Condition,
 		enabled:           cat.Enabled,
@@ -1012,6 +1168,51 @@ func (s *Service) findCategoryCrossSeeds(torrents []qbt.Torrent, catAction categ
 		}
 		if key, ok := makeCrossSeedKey(*torrent); ok {
 			if _, matched := state.matchedKeys[key]; matched {
+				state.crossSeedSet[torrent.Hash] = struct{}{}
+			}
+		}
+	}
+}
+
+func (s *Service) findCategoryGroupMembers(
+	rule *models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	catAction categoryActionConfig,
+	state *categoryPreviewState,
+) {
+	if rule == nil || evalCtx == nil || state == nil {
+		return
+	}
+	groupID := strings.TrimSpace(catAction.groupID)
+	if groupID == "" {
+		return
+	}
+	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
+	if idx == nil {
+		return
+	}
+
+	keySet := make(map[string]struct{})
+	for h := range state.directMatchSet {
+		if gk := idx.KeyForHash(h); gk != "" {
+			keySet[gk] = struct{}{}
+		}
+	}
+	if len(keySet) == 0 {
+		return
+	}
+
+	for i := range torrents {
+		torrent := &torrents[i]
+		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
+			continue
+		}
+		if torrent.Category == state.targetCategory {
+			continue
+		}
+		if gk := idx.KeyForHash(torrent.Hash); gk != "" {
+			if _, ok := keySet[gk]; ok {
 				state.crossSeedSet[torrent.Hash] = struct{}{}
 			}
 		}
@@ -3144,6 +3345,31 @@ func (s *Service) recordDryRunActivities(
 		return
 	}
 
+	// Dry-run grouping expansion should behave like live runs when local filesystem access is available.
+	dryRunEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
+	if s.instanceStore != nil && ruleByID != nil {
+		instance, err := s.instanceStore.Get(ctx, instanceID)
+		if err == nil && instance != nil {
+			dryRunEvalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
+			if dryRunEvalCtx.InstanceHasLocalAccess {
+				needsHardlinkSignature := false
+				for _, rule := range ruleByID {
+					if ruleUsesHardlinkSignatureGrouping(rule) {
+						needsHardlinkSignature = true
+						break
+					}
+				}
+				if needsHardlinkSignature {
+					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+					if hardlinkIndex != nil {
+						dryRunEvalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+						dryRunEvalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+					}
+				}
+			}
+		}
+	}
+
 	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
 		detailsJSON, _ := json.Marshal(details)
 		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
@@ -3244,7 +3470,7 @@ func (s *Service) recordDryRunActivities(
 				groupID string
 			}
 
-			previewEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
+			previewEvalCtx := dryRunEvalCtx
 			keysToExpandByGroupID := make(map[ruleGroupKey]map[string]struct{})
 			groupIndexByGroupID := make(map[ruleGroupKey]*groupIndex)
 			for _, hash := range hashes {
@@ -3357,7 +3583,7 @@ func (s *Service) recordDryRunActivities(
 		movedHashes := make(map[string]struct{})
 		plannedCounts := make(map[string]int)
 		plannedHashesByPath := make(map[string][]string)
-		previewEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
+		previewEvalCtx := dryRunEvalCtx
 
 		for _, path := range sortedPaths {
 			hashes := moveBatches[path]
