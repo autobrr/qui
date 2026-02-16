@@ -494,13 +494,17 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 
 	cond := rule.Conditions.Delete.Condition
 	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) || rule.Conditions.Delete.IncludeHardlinks
-	if !needsHardlinkScope {
+	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
+	if !needsHardlinkScope && !needsHardlinkSignatureGrouping {
 		return nil
 	}
 
 	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
 	if hardlinkIndex != nil {
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+		if needsHardlinkSignatureGrouping {
+			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+		}
 	}
 	return hardlinkIndex
 }
@@ -930,13 +934,18 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 	}
 
 	cond := rule.Conditions.Category.Condition
-	if !ConditionUsesField(cond, FieldHardlinkScope) {
+	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope)
+	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
+	if !needsHardlinkScope && !needsHardlinkSignatureGrouping {
 		return
 	}
 
 	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
 	if hardlinkIndex != nil {
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+		if needsHardlinkSignatureGrouping {
+			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+		}
 	}
 }
 
@@ -1187,10 +1196,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// The cached index provides scope detection AND hardlink grouping in a single build.
 	var hardlinkIndex *HardlinkIndex
 	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
-	if instance.HasLocalFilesystemAccess && needsHardlinkScope {
+	needsHardlinkSignatureGrouping := rulesUseHardlinkSignatureGrouping(eligibleRules)
+	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping
+	if instance.HasLocalFilesystemAccess && needsHardlinkIndex {
 		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
+			if needsHardlinkSignatureGrouping {
+				evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+			}
 		}
 	}
 
@@ -2848,6 +2862,51 @@ func rulesNeedHardlinkSignatureMap(rules []*models.Automation) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func rulesUseHardlinkSignatureGrouping(rules []*models.Automation) bool {
+	return slices.ContainsFunc(rules, ruleUsesHardlinkSignatureGrouping)
+}
+
+func ruleUsesHardlinkSignatureGrouping(rule *models.Automation) bool {
+	if rule == nil || !rule.Enabled || rule.Conditions == nil {
+		return false
+	}
+
+	grouping := rule.Conditions.Grouping
+	if grouping == nil {
+		return false
+	}
+
+	groupUsesHardlinkSignature := func(groupID string) bool {
+		id := strings.TrimSpace(groupID)
+		if id == "" {
+			return false
+		}
+		if id == GroupHardlinkSignature {
+			return true
+		}
+		def := findGroupDefinition(grouping, id)
+		return def != nil && containsKey(def.Keys, groupKeyHardlinkSignature)
+	}
+
+	// Default group for group-aware conditions (GROUP_SIZE / IS_GROUPED).
+	if groupUsesHardlinkSignature(grouping.DefaultGroupID) {
+		return true
+	}
+
+	// Action-level grouping IDs.
+	if rule.Conditions.Delete != nil && groupUsesHardlinkSignature(rule.Conditions.Delete.GroupID) {
+		return true
+	}
+	if rule.Conditions.Category != nil && groupUsesHardlinkSignature(rule.Conditions.Category.GroupID) {
+		return true
+	}
+	if rule.Conditions.Move != nil && groupUsesHardlinkSignature(rule.Conditions.Move.GroupID) {
+		return true
+	}
+
 	return false
 }
 
