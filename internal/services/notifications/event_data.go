@@ -26,12 +26,24 @@ type CrossSeedEventData struct {
 	Samples        []string `json:"samples,omitempty"`
 }
 
+type AutomationActionSummary struct {
+	Action  string `json:"action"`
+	Label   string `json:"label"`
+	Applied int    `json:"applied"`
+	Failed  int    `json:"failed"`
+}
+
+type AutomationRuleSummary struct {
+	RuleID   int                       `json:"rule_id,omitempty"`
+	RuleName string                    `json:"rule_name"`
+	Applied  int                       `json:"applied"`
+	Failed   int                       `json:"failed"`
+	Actions  []AutomationActionSummary `json:"actions,omitempty"`
+}
+
 type AutomationsEventData struct {
-	Applied     int          `json:"applied,omitempty"`
-	Failed      int          `json:"failed,omitempty"`
-	TopActions  []LabelCount `json:"top_actions,omitempty"`
-	TopFailures []LabelCount `json:"top_failures,omitempty"`
-	Rules       []LabelCount `json:"rules,omitempty"`
-	Samples     []string     `json:"samples,omitempty"`
-	Errors      []string     `json:"errors,omitempty"`
+	Applied int                     `json:"applied"`
+	Failed  int                     `json:"failed"`
+	Rules   []AutomationRuleSummary `json:"rules,omitempty"`
+	Samples []string                `json:"samples,omitempty"`
 }

@@ -524,16 +524,26 @@ func buildFixtures() []fixture {
 				Automations: &notifications.AutomationsEventData{
 					Applied: 4,
 					Failed:  1,
-					TopActions: []notifications.LabelCount{
-						{Label: "Deleted torrent (ratio rule)", Count: 2},
-						{Label: "Tags updated", Count: 2},
-					},
-					TopFailures: []notifications.LabelCount{
-						{Label: "Delete failed", Count: 1},
-					},
-					Rules: []notifications.LabelCount{
-						{Label: "Ratio rule", Count: 2},
-						{Label: "Tagger", Count: 2},
+					Rules: []notifications.AutomationRuleSummary{
+						{
+							RuleID:   12,
+							RuleName: "Ratio rule",
+							Applied:  2,
+							Failed:   1,
+							Actions: []notifications.AutomationActionSummary{
+								{Action: models.ActivityActionDeletedRatio, Label: "Deleted torrent (ratio rule)", Applied: 2, Failed: 0},
+								{Action: models.ActivityActionDeleteFailed, Label: "Delete failed", Applied: 0, Failed: 1},
+							},
+						},
+						{
+							RuleID:   13,
+							RuleName: "Tagger",
+							Applied:  2,
+							Failed:   0,
+							Actions: []notifications.AutomationActionSummary{
+								{Action: models.ActivityActionTagsChanged, Label: "Tags updated", Applied: 2, Failed: 0},
+							},
+						},
 					},
 					Samples: []string{"Example.Movie.2025", "Another.Show.S01E01"},
 				},

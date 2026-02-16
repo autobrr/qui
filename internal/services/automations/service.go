@@ -69,17 +69,30 @@ type automationSummary struct {
 	failed          int
 	appliedByAction map[string]int
 	failedByAction  map[string]int
-	ruleCounts      map[string]int
+	rules           map[string]*automationRuleSummary
 	sampleTorrents  []string
 	sampleErrors    []string
 	sampleSeen      map[string]struct{}
+}
+
+type automationRuleSummary struct {
+	ruleID   int
+	ruleName string
+	applied  int
+	failed   int
+	actions  map[string]*automationActionCounts
+}
+
+type automationActionCounts struct {
+	applied int
+	failed  int
 }
 
 func newAutomationSummary() *automationSummary {
 	return &automationSummary{
 		appliedByAction: make(map[string]int),
 		failedByAction:  make(map[string]int),
-		ruleCounts:      make(map[string]int),
+		rules:           make(map[string]*automationRuleSummary),
 		sampleSeen:      make(map[string]struct{}),
 	}
 }
@@ -119,7 +132,7 @@ func (s *automationSummary) message() string {
 	if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
 		lines = append(lines, "Top failures: "+formatted)
 	}
-	if formatted := formatRuleCounts(s.ruleCounts, 3); formatted != "" {
+	if formatted := formatRuleCounts(s.ruleTotalsByName(), 3); formatted != "" {
 		lines = append(lines, "Rules: "+formatted)
 	}
 	if len(s.sampleTorrents) > 0 {
@@ -139,7 +152,7 @@ func (s *automationSummary) recordActivity(activity *models.AutomationActivity, 
 		count = 1
 	}
 	s.add(activity.Action, activity.Outcome, count)
-	s.addRuleCount(activity.RuleName, count)
+	s.addRuleAction(activity, count)
 	s.addSamplesFromActivity(activity)
 }
 
@@ -155,15 +168,70 @@ func (s *automationSummary) addSamplesFromActivity(activity *models.AutomationAc
 	}
 }
 
-func (s *automationSummary) addRuleCount(ruleName string, count int) {
-	if s == nil || count <= 0 {
+func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, count int) {
+	if s == nil || activity == nil || count <= 0 {
 		return
 	}
-	trimmed := strings.TrimSpace(ruleName)
-	if trimmed == "" {
-		return
+
+	ruleName := strings.TrimSpace(activity.RuleName)
+	ruleID := 0
+	if activity.RuleID != nil {
+		ruleID = *activity.RuleID
 	}
-	s.ruleCounts[trimmed] += count
+
+	key := ruleName
+	if ruleID > 0 {
+		key = fmt.Sprintf("%d:%s", ruleID, ruleName)
+	}
+
+	rule, ok := s.rules[key]
+	if !ok {
+		rule = &automationRuleSummary{
+			ruleID:   ruleID,
+			ruleName: ruleName,
+			actions:  make(map[string]*automationActionCounts),
+		}
+		s.rules[key] = rule
+	}
+
+	action := strings.TrimSpace(activity.Action)
+	if action == "" {
+		action = "unknown"
+	}
+
+	counts, ok := rule.actions[action]
+	if !ok {
+		counts = &automationActionCounts{}
+		rule.actions[action] = counts
+	}
+
+	switch activity.Outcome {
+	case models.ActivityOutcomeSuccess:
+		rule.applied += count
+		counts.applied += count
+	case models.ActivityOutcomeFailed:
+		rule.failed += count
+		counts.failed += count
+	}
+}
+
+func (s *automationSummary) ruleTotalsByName() map[string]int {
+	if s == nil || len(s.rules) == 0 {
+		return nil
+	}
+
+	out := make(map[string]int, len(s.rules))
+	for _, rule := range s.rules {
+		if rule == nil {
+			continue
+		}
+		name := strings.TrimSpace(rule.ruleName)
+		if name == "" {
+			name = "Unknown rule"
+		}
+		out[name] += rule.applied + rule.failed
+	}
+	return out
 }
 
 func (s *automationSummary) addSample(list *[]string, value string, limit int) {
@@ -2565,39 +2633,87 @@ func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, s
 		errorMessage = summary.sampleErrors[0]
 	}
 
-	topCounts := func(counts map[string]int, limit int, labelFn func(string) string) []notifications.LabelCount {
-		items := sortedCountItems(counts)
-		if len(items) == 0 || limit <= 0 {
-			return nil
-		}
-		if limit > len(items) {
-			limit = len(items)
-		}
-		out := make([]notifications.LabelCount, 0, limit)
-		for i := 0; i < limit; i++ {
-			out = append(out, notifications.LabelCount{
-				Label: labelFn(items[i].key),
-				Count: items[i].count,
-			})
-		}
-		return out
-	}
-
 	s.notifier.Notify(ctx, notifications.Event{
 		Type:       notifications.EventAutomationsActionsApplied,
 		InstanceID: instanceID,
 		Message:    summary.message(),
 		Automations: &notifications.AutomationsEventData{
-			Applied:     summary.applied,
-			Failed:      summary.failed,
-			TopActions:  topCounts(summary.appliedByAction, 3, automationActionLabel),
-			TopFailures: topCounts(summary.failedByAction, 3, automationActionLabel),
-			Rules:       topCounts(summary.ruleCounts, 3, func(v string) string { return v }),
-			Samples:     append([]string(nil), summary.sampleTorrents...),
+			Applied: summary.applied,
+			Failed:  summary.failed,
+			Rules:   buildAutomationRuleSummaries(summary),
+			Samples: append([]string(nil), summary.sampleTorrents...),
 		},
 		ErrorMessage:  errorMessage,
 		ErrorMessages: errorMessages,
 	})
+}
+
+func buildAutomationRuleSummaries(summary *automationSummary) []notifications.AutomationRuleSummary {
+	if summary == nil || len(summary.rules) == 0 {
+		return nil
+	}
+
+	type ruleItem struct {
+		key   string
+		rule  *automationRuleSummary
+		total int
+	}
+	items := make([]ruleItem, 0, len(summary.rules))
+	for key, rule := range summary.rules {
+		if rule == nil {
+			continue
+		}
+		items = append(items, ruleItem{
+			key:   key,
+			rule:  rule,
+			total: rule.applied + rule.failed,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].total == items[j].total {
+			return items[i].key < items[j].key
+		}
+		return items[i].total > items[j].total
+	})
+
+	out := make([]notifications.AutomationRuleSummary, 0, len(items))
+	for _, item := range items {
+		rule := item.rule
+
+		actions := make([]notifications.AutomationActionSummary, 0, len(rule.actions))
+		for action, counts := range rule.actions {
+			if counts == nil {
+				continue
+			}
+			if counts.applied == 0 && counts.failed == 0 {
+				continue
+			}
+			actions = append(actions, notifications.AutomationActionSummary{
+				Action:  action,
+				Label:   automationActionLabel(action),
+				Applied: counts.applied,
+				Failed:  counts.failed,
+			})
+		}
+		sort.Slice(actions, func(i, j int) bool {
+			ai := actions[i].Applied + actions[i].Failed
+			aj := actions[j].Applied + actions[j].Failed
+			if ai == aj {
+				return actions[i].Action < actions[j].Action
+			}
+			return ai > aj
+		})
+
+		out = append(out, notifications.AutomationRuleSummary{
+			RuleID:   rule.ruleID,
+			RuleName: rule.ruleName,
+			Applied:  rule.applied,
+			Failed:   rule.failed,
+			Actions:  actions,
+		})
+	}
+
+	return out
 }
 
 func (s *Service) notifyAutomationFailure(ctx context.Context, instanceID int, err error) {
