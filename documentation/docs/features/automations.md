@@ -96,9 +96,9 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Has Missing Files | Boolean - completed torrent has files missing on disk (requires local filesystem access) |
 | Content Type | Derived from release name parsing (useful for grouping; may be empty) |
 | Effective Name | Normalized title derived from release parsing (useful for grouping; may be empty) |
-| Release Source | Parsed release specifier (e.g. `WEB`, `BluRay`; may be empty) |
+| Release Source | Parsed release specifier (e.g. `WEBDL`, `WEBRIP`, `BLURAY`; may be empty) |
 | Release Resolution | Parsed release specifier (e.g. `1080p`; may be empty) |
-| Release Codec | Parsed release specifier (e.g. `x265`; may be empty) |
+| Release Codec | Parsed release specifier (e.g. `HEVC`; may be empty) |
 | Release HDR | Parsed release specifier (e.g. `DV`, `HDR`; may be empty) |
 | Release Audio | Parsed release specifier (e.g. `TrueHD`; may be empty) |
 | Release Channels | Parsed release specifier (e.g. `5.1`; may be empty) |

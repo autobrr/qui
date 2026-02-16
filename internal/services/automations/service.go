@@ -468,6 +468,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
@@ -886,6 +887,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
@@ -3091,17 +3093,23 @@ func (s *Service) recordDryRunActivities(
 			hashes := categoryBatches[category]
 			expandedHashes := hashes
 
+			type ruleGroupKey struct {
+				ruleID  int
+				groupID string
+			}
+
 			previewEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
-			keysToExpandByGroupID := make(map[string]map[string]struct{})
-			groupIndexByGroupID := make(map[string]*groupIndex)
+			keysToExpandByGroupID := make(map[ruleGroupKey]map[string]struct{})
+			groupIndexByGroupID := make(map[ruleGroupKey]*groupIndex)
 			for _, hash := range hashes {
 				state, exists := states[hash]
 				if !exists || state == nil || state.categoryGroupID == "" {
 					continue
 				}
 
+				rgk := ruleGroupKey{ruleID: state.categoryRuleID, groupID: state.categoryGroupID}
 				gid := state.categoryGroupID
-				idx := groupIndexByGroupID[gid]
+				idx := groupIndexByGroupID[rgk]
 				if idx == nil {
 					rule := (*models.Automation)(nil)
 					if ruleByID != nil && state.categoryRuleID > 0 {
@@ -3116,16 +3124,16 @@ func (s *Service) recordDryRunActivities(
 						}
 						idx = buildGroupIndex(gid, def, torrents, s.syncManager, previewEvalCtx)
 					}
-					groupIndexByGroupID[gid] = idx
+					groupIndexByGroupID[rgk] = idx
 				}
 				groupKey := idx.KeyForHash(hash)
 				if groupKey == "" {
 					continue
 				}
-				if keysToExpandByGroupID[gid] == nil {
-					keysToExpandByGroupID[gid] = make(map[string]struct{})
+				if keysToExpandByGroupID[rgk] == nil {
+					keysToExpandByGroupID[rgk] = make(map[string]struct{})
 				}
-				keysToExpandByGroupID[gid][groupKey] = struct{}{}
+				keysToExpandByGroupID[rgk][groupKey] = struct{}{}
 			}
 
 			if len(keysToExpandByGroupID) > 0 {
@@ -3148,8 +3156,8 @@ func (s *Service) recordDryRunActivities(
 					}
 
 					shouldExpand := false
-					for gid, keySet := range keysToExpandByGroupID {
-						idx := groupIndexByGroupID[gid]
+					for rgk, keySet := range keysToExpandByGroupID {
+						idx := groupIndexByGroupID[rgk]
 						if idx == nil {
 							continue
 						}
