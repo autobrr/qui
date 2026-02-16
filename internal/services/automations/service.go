@@ -1496,15 +1496,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					keepingFiles = false
 				}
 			case DeleteModeKeepFiles:
-				// Optional group-aware, atomic keep-files deletion:
-				// if groupId is set and atomic=all, delete the whole group only if ALL members match this rule.
-				if state.deleteGroupID != "" && strings.EqualFold(state.deleteAtomic, "all") && state.deleteRuleID > 0 {
+				// Optional group-aware keep-files deletion:
+				// if groupId is set, optionally expand deletion to the whole group.
+				// atomic=all enforces all-or-none: delete the whole group only if ALL members match this rule.
+				if state.deleteGroupID != "" && state.deleteRuleID > 0 {
 					rule := ruleByID[state.deleteRuleID]
 					if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Condition != nil {
 						idx := getOrBuildGroupIndexForRule(evalCtx, rule, state.deleteGroupID, torrents, s.syncManager)
 						if idx != nil {
 							members := idx.MembersForHash(hash)
 							if len(members) > 0 {
+								atomicAll := strings.EqualFold(state.deleteAtomic, "all")
+								expandGroup := true
+
 								// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
 								def := (*models.GroupDefinition)(nil)
 								if rule.Conditions.Grouping != nil {
@@ -1520,7 +1524,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 										policy = groupAmbiguousVerifyOverlap
 									}
 									if policy == groupAmbiguousSkip {
-										continue
+										if atomicAll {
+											continue
+										}
+										expandGroup = false
 									}
 									minPercent := def.MinFileOverlapPercent
 									if minPercent <= 0 {
@@ -1544,44 +1551,48 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 										}
 									}
 									if skipGroup {
+										if atomicAll {
+											continue
+										}
+										expandGroup = false
+									}
+								}
+
+								if expandGroup && atomicAll {
+									// All-or-nothing eligibility check for the whole group.
+									allMatch := true
+									// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
+									if evalCtx != nil && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+										evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+									}
+									activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+
+									for _, memberHash := range members {
+										memberTorrent, ok := torrentByHash[memberHash]
+										if !ok {
+											allMatch = false
+											break
+										}
+										// Group expansion intentionally ignores TrackerPattern to allow cross-tracker grouping.
+										// If you want to constrain by tracker, use a TRACKER condition in the rule.
+										if !EvaluateConditionWithContext(rule.Conditions.Delete.Condition, memberTorrent, evalCtx, 0) {
+											allMatch = false
+											break
+										}
+									}
+
+									if !allMatch {
 										continue
 									}
 								}
 
-								// All-or-nothing eligibility check for the whole group.
-								allMatch := true
-								// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
-								if evalCtx != nil && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
-									evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+								if expandGroup {
+									hashesToDelete = members
+									actualMode = DeleteModeKeepFiles
+									logMsg = "automations: removing torrent group (keeping files)"
+									keepingFiles = true
+									break
 								}
-								activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-
-								for _, memberHash := range members {
-									memberTorrent, ok := torrentByHash[memberHash]
-									if !ok {
-										allMatch = false
-										break
-									}
-									trackerDomains := collectTrackerDomains(memberTorrent, s.syncManager)
-									if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-										allMatch = false
-										break
-									}
-									if !EvaluateConditionWithContext(rule.Conditions.Delete.Condition, memberTorrent, evalCtx, 0) {
-										allMatch = false
-										break
-									}
-								}
-
-								if !allMatch {
-									continue
-								}
-
-								hashesToDelete = members
-								actualMode = DeleteModeKeepFiles
-								logMsg = "automations: removing torrent group (keeping files)"
-								keepingFiles = true
-								break
 							}
 						}
 					}
@@ -1789,6 +1800,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			torrentByHash,
 			torrents,
 			states,
+			ruleByID,
 		)
 		return nil
 	}
@@ -2919,6 +2931,7 @@ func (s *Service) recordDryRunActivities(
 	torrentByHash map[string]qbt.Torrent,
 	torrents []qbt.Torrent,
 	states map[string]*torrentDesiredState,
+	ruleByID map[int]*models.Automation,
 ) {
 	if s.activityStore == nil {
 		return
@@ -3031,11 +3044,19 @@ func (s *Service) recordDryRunActivities(
 				gid := state.categoryGroupID
 				idx := groupIndexByGroupID[gid]
 				if idx == nil {
-					def := builtinGroupDefinition(gid)
-					if def == nil {
-						continue
+					rule := (*models.Automation)(nil)
+					if ruleByID != nil && state.categoryRuleID > 0 {
+						rule = ruleByID[state.categoryRuleID]
 					}
-					idx = buildGroupIndex(gid, def, torrents, s.syncManager, previewEvalCtx)
+					if rule != nil {
+						idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, gid, torrents, s.syncManager)
+					} else {
+						def := builtinGroupDefinition(gid)
+						if def == nil {
+							continue
+						}
+						idx = buildGroupIndex(gid, def, torrents, s.syncManager, previewEvalCtx)
+					}
 					groupIndexByGroupID[gid] = idx
 				}
 				groupKey := idx.KeyForHash(hash)

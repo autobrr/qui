@@ -56,10 +56,11 @@ func JoinNormalizedCodecSlice(slice []string) string {
 // WEB-DL variants normalize to WEBDL, WEBRip variants to WEBRIP.
 // Plain "WEB" stays as "WEB" and is treated as ambiguous (matches both).
 var sourceAliases = map[string]string{
-	"WEB-DL": "WEBDL",
-	"WEBDL":  "WEBDL",
-	"WEBRIP": "WEBRIP",
-	"WEB":    "WEB",
+	"WEB-DL":  "WEBDL",
+	"WEBDL":   "WEBDL",
+	"WEB-RIP": "WEBRIP",
+	"WEBRIP":  "WEBRIP",
+	"WEB":     "WEB",
 }
 
 // NormalizeSource converts a source string to its canonical form.

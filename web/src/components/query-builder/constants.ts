@@ -192,6 +192,14 @@ export const FIELD_GROUPS = [
     fields: ["NAME", "HASH", "CATEGORY", "TAGS", "STATE"],
   },
   {
+    label: "Release",
+    fields: ["CONTENT_TYPE", "EFFECTIVE_NAME", "RLS_SOURCE", "RLS_RESOLUTION", "RLS_CODEC", "RLS_HDR", "RLS_AUDIO", "RLS_CHANNELS", "RLS_GROUP"],
+  },
+  {
+    label: "Grouping",
+    fields: ["GROUP_SIZE", "IS_GROUPED"],
+  },
+  {
     label: "Paths",
     fields: ["SAVE_PATH", "CONTENT_PATH"],
   },

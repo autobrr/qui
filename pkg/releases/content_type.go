@@ -200,13 +200,14 @@ func detectRIAJMediaType(title string) string {
 
 // DetermineContentType analyzes a parsed release and returns a best-effort content type.
 func DetermineContentType(release *rls.Release) ContentTypeInfo {
-	release = normalizeReleaseTypeForContent(release)
 	var info ContentTypeInfo
 
 	if release == nil {
 		info.ContentType = "unknown"
 		return info
 	}
+
+	release = normalizeReleaseTypeForContent(release)
 
 	// Adult detection first; if JAV-like token appears, attempt re-parse without it.
 	if isAdultContent(release) {

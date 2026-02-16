@@ -435,10 +435,11 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldTrackersCount:
 		return compareInt64(torrent.TrackersCount, cond)
 	case FieldGroupSize:
-		if ctx == nil || ctx.activeGroupIndex == nil {
-			return false
+		size := int64(0)
+		if ctx != nil && ctx.activeGroupIndex != nil {
+			size = int64(ctx.activeGroupIndex.SizeForHash(torrent.Hash))
 		}
-		return compareInt64(int64(ctx.activeGroupIndex.SizeForHash(torrent.Hash)), cond)
+		return compareInt64(size, cond)
 
 	// Boolean fields
 	case FieldPrivate:
@@ -486,10 +487,11 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareBool(hasMissing, cond)
 
 	case FieldIsGrouped:
-		if ctx == nil || ctx.activeGroupIndex == nil {
-			return false
+		grouped := false
+		if ctx != nil && ctx.activeGroupIndex != nil {
+			grouped = ctx.activeGroupIndex.SizeForHash(torrent.Hash) > 1
 		}
-		return compareBool(ctx.activeGroupIndex.SizeForHash(torrent.Hash) > 1, cond)
+		return compareBool(grouped, cond)
 
 	default:
 		return false

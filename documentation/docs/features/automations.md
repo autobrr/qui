@@ -213,7 +213,7 @@ Supported keys:
 - `rlsSource`, `rlsResolution`, `rlsCodec`, `rlsHDR`, `rlsAudio`, `rlsChannels`, `rlsGroup`
 - `hardlinkSignature`
 
-For content-path based grouping where `Content Path == Save Path` (ambiguous), you can set:
+For content-path-based grouping where `Content Path == Save Path` (ambiguous), you can set:
 
 - `ambiguousPolicy: "verify_overlap"` (default for cross-seed groups) with `minFileOverlapPercent` (default `90`)
 - `ambiguousPolicy: "skip"`
