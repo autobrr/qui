@@ -99,6 +99,7 @@ func main() {
 	endpoint := flag.String("endpoint", defaultEndpoint, "notifiarr endpoint")
 	eventFilter := flag.String("event", "", "send only these events (comma-separated)")
 	dryRun := flag.Bool("dry-run", false, "print payloads without sending")
+	format := flag.String("format", "pretty", "dry-run output format: pretty|json|jsonl")
 	timeout := flag.Duration("timeout", defaultTimeout, "http timeout")
 	flag.Parse()
 
@@ -114,6 +115,7 @@ func main() {
 	}
 
 	client := &http.Client{Timeout: *timeout}
+	var payloads []notifiarrMessage
 	for _, item := range fixtures {
 		title, message := formatEvent(item.Event)
 		if strings.TrimSpace(title) == "" && strings.TrimSpace(message) == "" {
@@ -126,7 +128,22 @@ func main() {
 		}
 
 		if *dryRun {
-			printPayload(item.Name, payload)
+			switch strings.ToLower(strings.TrimSpace(*format)) {
+			case "", "pretty":
+				printPayload(item.Name, payload)
+			case "json":
+				payloads = append(payloads, payload)
+			case "jsonl":
+				encoded, err := json.Marshal(payload)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "marshal %s failed: %v\n", item.Name, err)
+					continue
+				}
+				fmt.Println(string(encoded))
+			default:
+				fmt.Fprintf(os.Stderr, "invalid -format %q (expected: pretty|json|jsonl)\n", *format)
+				os.Exit(2)
+			}
 			continue
 		}
 
@@ -135,6 +152,15 @@ func main() {
 			continue
 		}
 		fmt.Printf("sent %s\n", item.Name)
+	}
+
+	if *dryRun && strings.EqualFold(strings.TrimSpace(*format), "json") {
+		encoded, err := json.MarshalIndent(payloads, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "marshal payloads failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(encoded))
 	}
 }
 
