@@ -2270,35 +2270,162 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		successfulMovesForPath := 0
 		failedMovesForPath := 0
 
-		// Before moving, we need to get all of the cross-seeds for each torrent to avoid breaking cross-seeds
+		normalizedDest := normalizePath(path)
+
+		// Before moving, we need to expand move targets to avoid breaking related torrents.
 		var expandedHashes []string
+		type ruleGroupKey struct {
+			ruleID  int
+			groupID string
+		}
+		groupIndexByKey := make(map[ruleGroupKey]*groupIndex)
+
+		legacyKeysToExpand := make(map[crossSeedKey]struct{})
+
 		for _, hash := range hashes {
 			if _, exists := movedHashes[hash]; exists {
 				continue // Already moved
 			}
+
+			state := states[hash]
+			if state != nil && state.moveGroupID != "" && state.moveRuleID > 0 && ruleByID != nil {
+				rule := ruleByID[state.moveRuleID]
+				if rule != nil {
+					rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
+					idx := groupIndexByKey[rgk]
+					if idx == nil {
+						idx = getOrBuildGroupIndexForRule(evalCtx, rule, state.moveGroupID, torrents, s.syncManager)
+						groupIndexByKey[rgk] = idx
+					}
+
+					members := []string{hash}
+					if idx != nil {
+						if m := idx.MembersForHash(hash); len(m) > 0 {
+							members = m
+						}
+					}
+
+					atomicAll := strings.EqualFold(state.moveAtomic, "all")
+					expandGroup := true
+
+					// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
+					def := (*models.GroupDefinition)(nil)
+					if rule.Conditions != nil && rule.Conditions.Grouping != nil {
+						def = findGroupDefinition(rule.Conditions.Grouping, state.moveGroupID)
+					}
+					if def == nil {
+						def = builtinGroupDefinition(state.moveGroupID)
+					}
+
+					if def != nil && idx != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
+						policy := strings.TrimSpace(def.AmbiguousPolicy)
+						if policy == "" {
+							policy = groupAmbiguousVerifyOverlap
+						}
+						if policy == groupAmbiguousSkip {
+							if atomicAll {
+								continue
+							}
+							expandGroup = false
+						}
+						minPercent := def.MinFileOverlapPercent
+						if minPercent <= 0 {
+							minPercent = minFileOverlapPercent
+						}
+						skipGroup := false
+						triggerTorrent, ok := torrentByHash[hash]
+						if !ok {
+							skipGroup = true
+						}
+						for _, otherHash := range members {
+							if skipGroup || otherHash == hash {
+								continue
+							}
+							otherTorrent, ok := torrentByHash[otherHash]
+							if !ok {
+								skipGroup = true
+								break
+							}
+							hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
+							if err != nil || !hasOverlap {
+								skipGroup = true
+								break
+							}
+						}
+						if skipGroup {
+							if atomicAll {
+								continue
+							}
+							expandGroup = false
+						}
+					}
+
+					if expandGroup && atomicAll {
+						// All-or-nothing eligibility check for the whole group.
+						cond := (*models.RuleCondition)(nil)
+						if rule.Conditions != nil && rule.Conditions.Move != nil {
+							cond = rule.Conditions.Move.Condition
+						}
+						activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+
+						allMatch := true
+						for _, memberHash := range members {
+							memberTorrent, ok := torrentByHash[memberHash]
+							if !ok {
+								allMatch = false
+								break
+							}
+							if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
+								allMatch = false
+								break
+							}
+						}
+						if !allMatch {
+							continue
+						}
+					}
+
+					if expandGroup {
+						for _, memberHash := range members {
+							if _, exists := movedHashes[memberHash]; exists {
+								continue
+							}
+							memberTorrent, ok := torrentByHash[memberHash]
+							if !ok {
+								continue
+							}
+							if normalizePath(memberTorrent.SavePath) == normalizedDest {
+								continue // Already in target path
+							}
+							expandedHashes = append(expandedHashes, memberHash)
+							movedHashes[memberHash] = struct{}{}
+						}
+						continue
+					}
+				}
+				// fallthrough to legacy behavior if the rule/group can't be resolved
+			}
+
+			// Legacy cross-seed expansion behavior
 			expandedHashes = append(expandedHashes, hash)
 			movedHashes[hash] = struct{}{}
-		}
-
-		keysToExpand := make(map[crossSeedKey]struct{})
-		for _, hash := range hashes {
 			if t, exists := torrentByHash[hash]; exists {
 				if key, ok := makeCrossSeedKey(t); ok {
-					keysToExpand[key] = struct{}{}
+					legacyKeysToExpand[key] = struct{}{}
 				}
 			}
 		}
 
-		if len(keysToExpand) > 0 {
+		if len(legacyKeysToExpand) > 0 {
 			for _, t := range torrents {
-				if normalizePath(t.SavePath) == normalizePath(path) {
+				if normalizePath(t.SavePath) == normalizedDest {
 					continue // Already in target path
 				}
 				if _, exists := movedHashes[t.Hash]; exists {
 					continue // Already moved
 				}
 				if key, ok := makeCrossSeedKey(t); ok {
-					if _, matched := keysToExpand[key]; matched {
+					if _, matched := legacyKeysToExpand[key]; matched {
 						expandedHashes = append(expandedHashes, t.Hash)
 						movedHashes[t.Hash] = struct{}{}
 					}
@@ -3211,37 +3338,161 @@ func (s *Service) recordDryRunActivities(
 		movedHashes := make(map[string]struct{})
 		plannedCounts := make(map[string]int)
 		plannedHashesByPath := make(map[string][]string)
+		previewEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
 
 		for _, path := range sortedPaths {
 			hashes := moveBatches[path]
+			normalizedDest := normalizePath(path)
 			var expandedHashes []string
+
+			type ruleGroupKey struct {
+				ruleID  int
+				groupID string
+			}
+			groupIndexByKey := make(map[ruleGroupKey]*groupIndex)
+			legacyKeysToExpand := make(map[crossSeedKey]struct{})
+
 			for _, hash := range hashes {
 				if _, exists := movedHashes[hash]; exists {
 					continue
 				}
+
+				state := states[hash]
+				if state != nil && state.moveGroupID != "" && state.moveRuleID > 0 && ruleByID != nil {
+					rule := ruleByID[state.moveRuleID]
+					if rule != nil {
+						rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
+						idx := groupIndexByKey[rgk]
+						if idx == nil {
+							idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, state.moveGroupID, torrents, s.syncManager)
+							groupIndexByKey[rgk] = idx
+						}
+
+						members := []string{hash}
+						if idx != nil {
+							if m := idx.MembersForHash(hash); len(m) > 0 {
+								members = m
+							}
+						}
+
+						atomicAll := strings.EqualFold(state.moveAtomic, "all")
+						expandGroup := true
+
+						// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
+						def := (*models.GroupDefinition)(nil)
+						if rule.Conditions != nil && rule.Conditions.Grouping != nil {
+							def = findGroupDefinition(rule.Conditions.Grouping, state.moveGroupID)
+						}
+						if def == nil {
+							def = builtinGroupDefinition(state.moveGroupID)
+						}
+
+						if def != nil && idx != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
+							policy := strings.TrimSpace(def.AmbiguousPolicy)
+							if policy == "" {
+								policy = groupAmbiguousVerifyOverlap
+							}
+							if policy == groupAmbiguousSkip {
+								if atomicAll {
+									continue
+								}
+								expandGroup = false
+							}
+							minPercent := def.MinFileOverlapPercent
+							if minPercent <= 0 {
+								minPercent = minFileOverlapPercent
+							}
+							skipGroup := false
+							triggerTorrent, ok := torrentByHash[hash]
+							if !ok {
+								skipGroup = true
+							}
+							for _, otherHash := range members {
+								if skipGroup || otherHash == hash {
+									continue
+								}
+								otherTorrent, ok := torrentByHash[otherHash]
+								if !ok {
+									skipGroup = true
+									break
+								}
+								hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
+								if err != nil || !hasOverlap {
+									skipGroup = true
+									break
+								}
+							}
+							if skipGroup {
+								if atomicAll {
+									continue
+								}
+								expandGroup = false
+							}
+						}
+
+						if expandGroup && atomicAll {
+							cond := (*models.RuleCondition)(nil)
+							if rule.Conditions != nil && rule.Conditions.Move != nil {
+								cond = rule.Conditions.Move.Condition
+							}
+							activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
+
+							allMatch := true
+							for _, memberHash := range members {
+								memberTorrent, ok := torrentByHash[memberHash]
+								if !ok {
+									allMatch = false
+									break
+								}
+								if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, previewEvalCtx, 0) {
+									allMatch = false
+									break
+								}
+							}
+							if !allMatch {
+								continue
+							}
+						}
+
+						if expandGroup {
+							for _, memberHash := range members {
+								if _, exists := movedHashes[memberHash]; exists {
+									continue
+								}
+								memberTorrent, ok := torrentByHash[memberHash]
+								if !ok {
+									continue
+								}
+								if normalizePath(memberTorrent.SavePath) == normalizedDest {
+									continue
+								}
+								expandedHashes = append(expandedHashes, memberHash)
+								movedHashes[memberHash] = struct{}{}
+							}
+							continue
+						}
+					}
+				}
+
 				expandedHashes = append(expandedHashes, hash)
 				movedHashes[hash] = struct{}{}
-			}
-
-			keysToExpand := make(map[crossSeedKey]struct{})
-			for _, hash := range hashes {
 				if t, exists := torrentByHash[hash]; exists {
 					if key, ok := makeCrossSeedKey(t); ok {
-						keysToExpand[key] = struct{}{}
+						legacyKeysToExpand[key] = struct{}{}
 					}
 				}
 			}
 
-			if len(keysToExpand) > 0 {
+			if len(legacyKeysToExpand) > 0 {
 				for _, t := range torrents {
-					if normalizePath(t.SavePath) == normalizePath(path) {
+					if normalizePath(t.SavePath) == normalizedDest {
 						continue
 					}
 					if _, exists := movedHashes[t.Hash]; exists {
 						continue
 					}
 					if key, ok := makeCrossSeedKey(t); ok {
-						if _, matched := keysToExpand[key]; matched {
+						if _, matched := legacyKeysToExpand[key]; matched {
 							expandedHashes = append(expandedHashes, t.Hash)
 							movedHashes[t.Hash] = struct{}{}
 						}

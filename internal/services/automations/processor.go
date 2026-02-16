@@ -57,8 +57,12 @@ type torrentDesiredState struct {
 	deleteReason           string
 
 	// Move (first rule to trigger wins)
-	shouldMove bool
-	movePath   string
+	shouldMove   bool
+	movePath     string
+	moveGroupID  string // Optional group ID to expand moves
+	moveAtomic   string
+	moveRuleID   int
+	moveRuleName string
 
 	// External program (last rule wins)
 	externalProgramID *int
@@ -396,11 +400,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Move (first rule to trigger wins - skip if already set)
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
-		evaluateMoveAction(conditions.Move, torrent, evalCtx, crossSeedIndex, stats, state)
+		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeedIndex, stats, state)
 	}
 }
 
-func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
+func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {
 	resolvedPath, pathValid := resolveMovePath(action.Path, torrent, state, evalCtx)
 	if !pathValid {
 		if stats != nil {
@@ -414,12 +418,23 @@ func evaluateMoveAction(action *models.MoveAction, torrent qbt.Torrent, evalCtx 
 	alreadyAtDest := inSavePath(torrent, resolvedPath)
 
 	// Only apply move if condition is met, not already in target path, and not blocked by cross-seed protection
-	if conditionMet && !alreadyAtDest && !shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx) {
+	blocked := false
+	// If groupId is set, move expansion/atomicity is handled via grouping; skip legacy cross-seed blocking.
+	if strings.TrimSpace(action.GroupID) == "" {
+		blocked = shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx)
+	}
+	if conditionMet && !alreadyAtDest && !blocked {
 		if stats != nil {
 			stats.MoveApplied++
 		}
 		state.shouldMove = true
 		state.movePath = resolvedPath
+		state.moveGroupID = strings.TrimSpace(action.GroupID)
+		state.moveAtomic = strings.TrimSpace(action.Atomic)
+		if rule != nil {
+			state.moveRuleID = rule.ID
+			state.moveRuleName = rule.Name
+		}
 		return
 	}
 	if stats == nil {

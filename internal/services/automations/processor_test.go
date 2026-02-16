@@ -169,6 +169,44 @@ func TestMoveSkippedWhenAlreadyInTargetPath(t *testing.T) {
 	require.Empty(t, state.movePath)
 }
 
+func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		SavePath: "/data/downloads",
+	}
+
+	rule := &models.Automation{
+		ID:      42,
+		Enabled: true,
+		Name:    "Move Group Rule",
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{
+				Enabled: true,
+				Path:    "/data/archive",
+				GroupID: "release_item",
+				Atomic:  "all",
+			},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+
+	require.True(t, state.shouldMove)
+	require.Equal(t, "/data/archive", state.movePath)
+	require.Equal(t, "release_item", state.moveGroupID)
+	require.Equal(t, "all", state.moveAtomic)
+	require.Equal(t, 42, state.moveRuleID)
+	require.Equal(t, "Move Group Rule", state.moveRuleName)
+}
+
 func TestMovePathNormalization(t *testing.T) {
 	// Test that path normalization works (case insensitive, trailing slashes)
 	torrent := qbt.Torrent{
@@ -198,6 +236,48 @@ func TestMovePathNormalization(t *testing.T) {
 	// Paths should be normalized and match, so move should be skipped
 	require.False(t, state.shouldMove)
 	require.Empty(t, state.movePath)
+}
+
+func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "source",
+			SavePath:    "/data/downloads",
+			ContentPath: "/data/downloads/contents",
+			Ratio:       2.5,
+		},
+		{
+			Hash:        "b",
+			Name:        "cross-seed",
+			SavePath:    "/data/downloads",
+			ContentPath: "/data/downloads/contents",
+			Ratio:       1.0,
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{
+				Enabled:          true,
+				Path:             "/data/archive",
+				BlockIfCrossSeed: true,
+				GroupID:          GroupCrossSeedContentSavePath,
+				Condition:        &models.RuleCondition{Field: models.FieldRatio, Operator: models.OperatorGreaterThan, Value: "2.0"},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	state, ok := states["a"]
+	require.True(t, ok, "expected move to apply; groupId should bypass legacy cross-seed blocking")
+	require.True(t, state.shouldMove)
+	require.Equal(t, GroupCrossSeedContentSavePath, state.moveGroupID)
 }
 
 func TestMoveBlockedByCrossSeed(t *testing.T) {

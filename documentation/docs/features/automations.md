@@ -328,7 +328,9 @@ Options:
 Move torrents to a different path on disk. This is needed to move the contents if AutoTMM is not enabled.
 
 Options:
-- **Skip if cross-seeds don't match the rule's conditions** - Skip the move if the torrent has cross-seeds that don't match the rule's conditions
+- **Group ID (advanced)** - Expand moves to all torrents in the specified group (see [Grouping](#grouping)). The move path is resolved for the matched torrent and then applied to the whole group.
+- **Atomic (advanced)** - `atomic: "all"` requires all group members to match the rule's move condition, otherwise qui moves **none** of them.
+- **Skip if cross-seeds don't match the rule's conditions** - (Legacy) Skip the move if the torrent has cross-seeds that don't match the rule's conditions. This is ignored when **Group ID** is set.
 
 #### Move path templates
 
