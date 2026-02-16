@@ -1718,7 +1718,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				// atomic=all enforces all-or-none: delete the whole group only if ALL members match this rule.
 				if state.deleteGroupID != "" && state.deleteRuleID > 0 {
 					rule := ruleByID[state.deleteRuleID]
-					if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Condition != nil {
+					if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
+						deleteCond := rule.Conditions.Delete
+						cond := deleteCond.Condition
 						idx := getOrBuildGroupIndexForRule(evalCtx, rule, state.deleteGroupID, torrents, s.syncManager)
 						if idx != nil {
 							members := idx.MembersForHash(hash)
@@ -1779,7 +1781,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 									// All-or-nothing eligibility check for the whole group.
 									allMatch := true
 									// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
-									if evalCtx != nil && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace) {
+									if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
 										evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 									}
 									activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
@@ -1792,7 +1794,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 										}
 										// Group expansion intentionally ignores TrackerPattern to allow cross-tracker grouping.
 										// If you want to constrain by tracker, use a TRACKER condition in the rule.
-										if !EvaluateConditionWithContext(rule.Conditions.Delete.Condition, memberTorrent, evalCtx, 0) {
+										if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
 											allMatch = false
 											break
 										}
