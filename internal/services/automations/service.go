@@ -2288,9 +2288,25 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 
 			state := states[hash]
-			if state != nil && state.moveGroupID != "" && state.moveRuleID > 0 && ruleByID != nil {
-				rule := ruleByID[state.moveRuleID]
-				if rule != nil {
+			if state != nil && state.moveGroupID != "" {
+				atomicAll := strings.EqualFold(state.moveAtomic, "all")
+
+				rule := (*models.Automation)(nil)
+				if ruleByID != nil && state.moveRuleID > 0 {
+					rule = ruleByID[state.moveRuleID]
+				}
+
+				// GroupId set but rule can't be resolved: treat as "move only the trigger" (or skip if atomic).
+				if rule == nil {
+					if atomicAll {
+						continue
+					}
+					expandedHashes = append(expandedHashes, hash)
+					movedHashes[hash] = struct{}{}
+					continue
+				}
+
+				{
 					rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
 					idx := groupIndexByKey[rgk]
 					if idx == nil {
@@ -2305,7 +2321,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						}
 					}
 
-					atomicAll := strings.EqualFold(state.moveAtomic, "all")
 					expandGroup := true
 
 					// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
@@ -2403,7 +2418,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						continue
 					}
 				}
-				// fallthrough to legacy behavior if the rule/group can't be resolved
+
+				// GroupId set but expansion was disabled (e.g. ambiguous skip/overlap failure): move only trigger.
+				expandedHashes = append(expandedHashes, hash)
+				movedHashes[hash] = struct{}{}
+				continue
 			}
 
 			// Legacy cross-seed expansion behavior
@@ -3358,9 +3377,23 @@ func (s *Service) recordDryRunActivities(
 				}
 
 				state := states[hash]
-				if state != nil && state.moveGroupID != "" && state.moveRuleID > 0 && ruleByID != nil {
-					rule := ruleByID[state.moveRuleID]
-					if rule != nil {
+				if state != nil && state.moveGroupID != "" {
+					atomicAll := strings.EqualFold(state.moveAtomic, "all")
+
+					rule := (*models.Automation)(nil)
+					if ruleByID != nil && state.moveRuleID > 0 {
+						rule = ruleByID[state.moveRuleID]
+					}
+					if rule == nil {
+						if atomicAll {
+							continue
+						}
+						expandedHashes = append(expandedHashes, hash)
+						movedHashes[hash] = struct{}{}
+						continue
+					}
+
+					{
 						rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
 						idx := groupIndexByKey[rgk]
 						if idx == nil {
@@ -3375,7 +3408,6 @@ func (s *Service) recordDryRunActivities(
 							}
 						}
 
-						atomicAll := strings.EqualFold(state.moveAtomic, "all")
 						expandGroup := true
 
 						// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
@@ -3472,6 +3504,10 @@ func (s *Service) recordDryRunActivities(
 							continue
 						}
 					}
+
+					expandedHashes = append(expandedHashes, hash)
+					movedHashes[hash] = struct{}{}
+					continue
 				}
 
 				expandedHashes = append(expandedHashes, hash)
