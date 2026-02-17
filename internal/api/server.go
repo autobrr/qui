@@ -81,6 +81,7 @@ type Server struct {
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	userDefinedViewStore             *models.UserDefinedViewStore
 }
 
 type Dependencies struct {
@@ -118,6 +119,7 @@ type Dependencies struct {
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	UserDefinedViewStore             *models.UserDefinedViewStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -162,6 +164,7 @@ func NewServer(deps *Dependencies) *Server {
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		userDefinedViewStore:             deps.UserDefinedViewStore,
 	}
 
 	return &s
@@ -310,6 +313,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
+	userDefinedViewHandler := handlers.NewUserDefinedViewHandler(s.userDefinedViewStore, s.instanceStore, s.config.Config.BaseURL)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -552,6 +556,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Get("/", orphanScanHandler.GetRun)
 							r.Post("/confirm", orphanScanHandler.ConfirmDeletion)
 							r.Delete("/", orphanScanHandler.CancelRun)
+						})
+					})
+
+					// User-defined views
+					r.Route("/user-defined-views", func(r chi.Router) {
+						r.Get("/", userDefinedViewHandler.List)
+						r.Post("/", userDefinedViewHandler.Create)
+						r.Route("/{viewID}", func(r chi.Router) {
+							r.Put("/", userDefinedViewHandler.Update)
+							r.Delete("/", userDefinedViewHandler.Delete)
 						})
 					})
 				})

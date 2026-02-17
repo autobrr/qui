@@ -110,6 +110,7 @@ import type {
   TrackerCustomizationInput,
   TransferInfo,
   User,
+  UserDefinedView,
   WarningResponse,
   WebSeed
 } from "@/types"
@@ -2389,6 +2390,24 @@ class ApiClient {
   async reprocessRSSRules(instanceId: number): Promise<void> {
     return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
       method: "POST",
+    })
+  }
+
+  // User-defined view management
+  async getUserDefinedViews(instanceId: number): Promise<UserDefinedView[]> {
+    return this.request<UserDefinedView[]>(`/instances/${instanceId}/user-defined-views`)
+  }
+
+  async saveUserDefinedView(instanceId: number, data: { name: string; filters: object }): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/user-defined-views`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteUserDefinedView(instanceId: number, data: { id: number }): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/user-defined-views/${data.id}`, {
+      method: "DELETE",
     })
   }
 }

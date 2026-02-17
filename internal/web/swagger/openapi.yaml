@@ -4721,6 +4721,104 @@ paths:
         '500':
           description: Failed to get RSS matching articles
 
+  /api/instances/{instanceID}/user-defined-views/:
+    get:
+      tags:
+        - UserDefinedViews
+      summary: List user-defined views
+      description: Get all user-defined views for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: List of user-defined views
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserDefinedView'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to get user-defined views
+    post:
+      tags:
+        - UserDefinedViews
+      summary: Create user-defined view
+      description: Create a new user-defined view for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDefinedView'
+      responses:
+        '201':
+          description: Created user-defined view
+        '400':
+          description: Invalid request
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to update user-defined view
+
+  /api/instances/{instanceID}/user-defined-views/{viewID}:
+    put:
+      tags:
+        - UserDefinedViews
+      summary: Update user-defined view
+      description: Update user-defined view parameters
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: user-defined view ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserDefinedView'
+      responses:
+        '200':
+          description: Updated
+        '400':
+          description: Invalid request
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to update user-defined view
+    delete:
+      tags:
+        - UserDefinedViews
+      summary: Delete user-defined view
+      description: Delete user-defined view
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: user-defined view ID
+      responses:
+        '200':
+          description: Deleted
+        '400':
+          description: Invalid request
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to delete user-defined view
+
   /health:
     get:
       tags:
@@ -7120,6 +7218,75 @@ components:
         add_to_top_of_queue:
           type: boolean
 
+    UserDefinedView:
+      type: object
+      description: A user-defined view
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        filters:
+          $ref: '#/components/schemas/UserDefinedViewFilters'
+
+    CreateUserDefinedView:
+      type: object
+      description: Properties required to create a user-defined view
+      required:
+        - name
+        - filters
+      properties:
+        name:
+          type: string
+        filters:
+          $ref: '#/components/schemas/UserDefinedViewFilters'
+
+    UpdateUserDefinedView:
+      type: object
+      required:
+        - filters
+      description: Properties required to update a user-defined view
+      properties:
+        filters:
+          $ref: '#/components/schemas/UserDefinedViewFilters'
+
+    UserDefinedViewFilters:
+      type: object
+      description: Filter criteria for user-defined view
+      properties:
+        status:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        trackers:
+          type: array
+          items:
+            type: string
+        excludeStatus:
+          type: array
+          items:
+            type: string
+        excludeCategories:
+          type: array
+          items:
+            type: string
+        excludeTags:
+          type: array
+          items:
+            type: string
+        excludeTrackers:
+          type: array
+          items:
+            type: string
+
 tags:
   - name: Authentication
     description: User authentication and session management
@@ -7151,3 +7318,5 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: UserDefinedView
+    description: User-defined view management

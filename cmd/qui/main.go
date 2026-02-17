@@ -513,6 +513,7 @@ func (app *Application) runServer() {
 	}
 	arrIDCacheStore := models.NewArrIDCacheStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
+	userDefinedViewStore := models.NewUserDefinedViewStore(db)
 
 	// Initialize services
 	authService := auth.NewService(db)
@@ -730,6 +731,7 @@ func (app *Application) runServer() {
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		UserDefinedViewStore:             userDefinedViewStore,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
