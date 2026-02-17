@@ -9642,7 +9642,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
 		for _, torrentView := range torrentsView {
-			torrent := &torrentView.Torrent
+			torrent := torrentView.Torrent
 
 			// Skip torrents that don't match webhook source filters
 			if hasWebhookSourceFilters {
