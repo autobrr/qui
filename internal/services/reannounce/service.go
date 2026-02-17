@@ -470,7 +470,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	}
 
 	targetDomains := make(map[string]struct{})
-	var targetURLs []string
+	targetURLs := make([]string, 0, len(cls.unhealthy))
 	for _, tracker := range cls.unhealthy {
 		u := strings.TrimSpace(tracker.Url)
 		if u == "" {
@@ -868,7 +868,7 @@ func (s *Service) domainsFromTrackers(trackers []qbt.TorrentTracker) string {
 	if len(trackers) == 0 {
 		return ""
 	}
-	var domains []string
+	domains := make([]string, 0, len(trackers))
 	seen := make(map[string]struct{})
 	for _, tracker := range trackers {
 		domain := s.extractTrackerDomain(tracker.Url)
