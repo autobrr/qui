@@ -960,9 +960,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
-		// Save all torrents for counts before applying manual filters
-		allTorrentsForCounts = make([]qbt.Torrent, len(filteredTorrents))
-		copy(allTorrentsForCounts, filteredTorrents)
+		// Keep reference to unfiltered torrents for counts (enrichment and filtering return new slices, so no copy needed)
+		allTorrentsForCounts = filteredTorrents
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
@@ -4374,12 +4373,14 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		return compare(i, j)
 	})
 
-	// Apply the sorted order to the torrents slice
-	sorted := make([]qbt.Torrent, len(torrents))
-	for i, srcIdx := range indices {
-		sorted[i] = torrents[srcIdx]
+	// Apply the sorted order via in-place cycle-based permutation to avoid temporary allocation
+	for i := 0; i < len(indices); i++ {
+		for indices[i] != i {
+			j := indices[i]
+			torrents[i], torrents[j] = torrents[j], torrents[i]
+			indices[i], indices[j] = indices[j], indices[i]
+		}
 	}
-	copy(torrents, sorted)
 }
 
 // sortCrossInstanceTorrentsByTracker sorts cross-instance torrents by tracker display name.
