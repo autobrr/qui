@@ -2709,12 +2709,17 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			continue
 		}
 
-		// Apply RSS source filters if configured
+		// Apply RSS source filters if configured - track filtering stats inline
+		var excludedCategories, includedCategories map[string]int
+		if hasRSSSourceFilters {
+			excludedCategories = make(map[string]int)
+			includedCategories = make(map[string]int)
+		}
+
+		// Filter torrents inline without creating intermediate copies
 		if hasRSSSourceFilters {
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
-			excludedCategories := make(map[string]int)
-			includedCategories := make(map[string]int)
 			for i := range torrents {
 				if matchesRSSSourceFilters(&torrents[i], settings) {
 					filtered = append(filtered, torrents[i])
@@ -2725,24 +2730,26 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			}
 			torrents = filtered
 
-			// Build summary of excluded categories
-			excludedSummary := make([]string, 0, len(excludedCategories))
-			for cat, count := range excludedCategories {
-				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-			includedSummary := make([]string, 0, len(includedCategories))
-			for cat, count := range includedCategories {
-				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
+			// Log filter results
+			if len(excludedCategories) > 0 || len(includedCategories) > 0 {
+				excludedSummary := make([]string, 0, len(excludedCategories))
+				for cat, count := range excludedCategories {
+					excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
+				}
+				includedSummary := make([]string, 0, len(includedCategories))
+				for cat, count := range includedCategories {
+					includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
+				}
 
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("instanceName", snap.instance.Name).
-				Int("original", originalCount).
-				Int("filtered", len(torrents)).
-				Strs("excludedCategories", excludedSummary).
-				Strs("includedCategories", includedSummary).
-				Msg("[RSS] Source filter results")
+				log.Debug().
+					Int("instanceID", instanceID).
+					Str("instanceName", snap.instance.Name).
+					Int("original", originalCount).
+					Int("filtered", len(torrents)).
+					Strs("excludedCategories", excludedSummary).
+					Strs("includedCategories", includedSummary).
+					Msg("[RSS] Source filter results")
+			}
 		}
 
 		snap.torrents = torrents
@@ -6998,6 +7005,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 	}
 
+	// Filter torrents inline without creating intermediate copies
 	filtered := make([]qbt.Torrent, 0, len(torrents))
 	for _, torrent := range torrents {
 		// Skip errored torrents when recovery is disabled
