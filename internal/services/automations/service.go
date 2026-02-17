@@ -2584,6 +2584,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						if rule.Conditions != nil && rule.Conditions.Move != nil {
 							cond = rule.Conditions.Move.Condition
 						}
+						if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
+							evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+						}
 						activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 						allMatch := true
@@ -3694,6 +3697,9 @@ func (s *Service) recordDryRunActivities(
 							cond := (*models.RuleCondition)(nil)
 							if rule.Conditions != nil && rule.Conditions.Move != nil {
 								cond = rule.Conditions.Move.Condition
+							}
+							if previewEvalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
+								previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 							}
 							activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
 
