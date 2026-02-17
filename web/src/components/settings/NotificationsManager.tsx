@@ -202,7 +202,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
     }
 
     for (const event of eventDefinitions) {
-      if (event.type === "torrent_completed") {
+      if (event.type.startsWith("torrent_")) {
         addToGroup("Torrent", event)
       } else if (
         event.type === "backup_succeeded" ||
@@ -472,7 +472,7 @@ export function NotificationsManager() {
     }
 
     const categorize = (eventType: string) => {
-      if (eventType === "torrent_completed") {
+      if (eventType.startsWith("torrent_")) {
         return "Torrent"
       }
       if (
