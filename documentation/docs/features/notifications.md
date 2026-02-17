@@ -6,7 +6,7 @@ description: Send events to Shoutrrr targets and Notifiarr.
 
 # Notifications
 
-qui supports both the Notifiarr API (rich JSON payloads) and Shoutrrr targets. Configure one or more targets in **Settings → Notifications** and choose which events to send.
+qui supports both the Notifiarr API and Shoutrrr targets. Configure one or more targets in **Settings → Notifications** and choose which events to send.
 
 ## Setup
 
@@ -24,6 +24,7 @@ Notes:
 
 | Event key | Description |
 | --- | --- |
+| `torrent_added` | A torrent is added (includes tracker, category, tags, and ETA when available). |
 | `torrent_completed` | A torrent finishes downloading (includes tracker, category, and tags when available). |
 | `backup_succeeded` | A backup run completes successfully. |
 | `backup_failed` | A backup run fails. |
@@ -42,14 +43,12 @@ Notes:
 | `automations_actions_applied` | Automation rules applied actions (summary counts and samples; only when actions occur). |
 | `automations_run_failed` | Automation rules failed to run for an instance (system error). |
 
-## Notifiarr API (rich JSON)
+## Notifiarr API
 
 For prettier output similar to Discord embeds, use the native Notifiarr API scheme:
 
 - `notifiarrapi://apikey`
 - Optional override: `notifiarrapi://apikey?endpoint=https://notifiarr.com/api/v1/notification/qui`
-
-This sends a JSON payload with stable keys for event metadata plus a human-friendly `message`.
 
 ## Shoutrrr URLs
 
