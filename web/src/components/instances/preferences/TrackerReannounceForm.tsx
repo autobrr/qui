@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS: InstanceReannounceSettings = {
   maxRetries: 50,
   aggressive: false,
   monitorAll: false,
+  healthFocusTrackers: [],
+  healthIgnoreTrackers: ["sptracker.cc"],
   excludeCategories: false,
   categories: [],
   excludeTags: false,
@@ -159,6 +161,38 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     return result
   }, [settings.trackers, trackerCustomizationMaps])
 
+  const selectedHealthFocusValues = useMemo(() => {
+    const { domainToCustomization } = trackerCustomizationMaps
+    const result: string[] = []
+    const seen = new Set<string>()
+
+    for (const domain of normalizeTrackerDomains(settings.healthFocusTrackers ?? [])) {
+      const customization = domainToCustomization.get(domain)
+      const value = customization ? customization.domains.join(",") : domain
+      if (seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+
+    return result
+  }, [settings.healthFocusTrackers, trackerCustomizationMaps])
+
+  const selectedHealthIgnoreValues = useMemo(() => {
+    const { domainToCustomization } = trackerCustomizationMaps
+    const result: string[] = []
+    const seen = new Set<string>()
+
+    for (const domain of normalizeTrackerDomains(settings.healthIgnoreTrackers ?? DEFAULT_SETTINGS.healthIgnoreTrackers)) {
+      const customization = domainToCustomization.get(domain)
+      const value = customization ? customization.domains.join(",") : domain
+      if (seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+
+    return result
+  }, [settings.healthIgnoreTrackers, trackerCustomizationMaps])
+
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
 
@@ -209,6 +243,22 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       return {
         ...prev,
         [field]: [...values, trimmed],
+      }
+    })
+  }
+
+  const appendUniqueHealthValue = (field: "healthFocusTrackers" | "healthIgnoreTrackers", rawValue: string) => {
+    const trimmed = rawValue.trim()
+    if (!trimmed) return
+    const normalized = trimmed.toLowerCase()
+    setSettings((prev) => {
+      const values = normalizeTrackerDomains(prev[field] ?? [])
+      if (values.some((entry) => entry.toLowerCase() === normalized)) {
+        return prev
+      }
+      return {
+        ...prev,
+        [field]: normalizeTrackerDomains([...values, trimmed]),
       }
     })
   }
@@ -457,6 +507,59 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             />
           </div>
 
+
+          <div className="space-y-3 rounded-lg border p-3 bg-muted/40">
+            <div className="flex items-center gap-2">
+              <Label className="text-base">Tracker Health</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[320px]">
+                  <p>
+                    Some torrents have multiple trackers. One tracker can be healthy while another is unregistered or not working. These settings help qui decide which trackers to consider and avoid perma-dead trackers causing repeated retries.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Optional: limit which tracker domains are considered when deciding whether to reannounce.
+            </p>
+
+            <div className="grid gap-4 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="health-focus" className="text-sm font-medium">Fix Only These Trackers (Optional)</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  If empty, qui considers all trackers (except ignored ones).
+                </p>
+                <MultiSelect
+                  options={trackerOptions}
+                  selected={selectedHealthFocusValues}
+                  onChange={(values) => setSettings((prev) => ({ ...prev, healthFocusTrackers: normalizeTrackerDomains(values) }))}
+                  placeholder="All trackers (except ignored)..."
+                  creatable
+                  onCreateOption={(value) => appendUniqueHealthValue("healthFocusTrackers", value)}
+                  hideCheckIcon
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="health-ignore" className="text-sm font-medium">Ignore These Trackers</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Ignore noisy or perma-dead trackers so they don’t trigger retries.
+                </p>
+                <MultiSelect
+                  options={trackerOptions}
+                  selected={selectedHealthIgnoreValues}
+                  onChange={(values) => setSettings((prev) => ({ ...prev, healthIgnoreTrackers: normalizeTrackerDomains(values) }))}
+                  placeholder="e.g. sptracker.cc"
+                  creatable
+                  onCreateOption={(value) => appendUniqueHealthValue("healthIgnoreTrackers", value)}
+                  hideCheckIcon
+                />
+              </div>
+            </div>
+          </div>
 
           <div className="grid gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
             {/* Categories */}
@@ -819,6 +922,8 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
     maxAgeSeconds: settings.maxAgeSeconds,
     maxRetries: settings.maxRetries,
     monitorAll: settings.monitorAll,
+    healthFocusTrackers: normalizeTrackerDomains(settings.healthFocusTrackers ?? []),
+    healthIgnoreTrackers: normalizeTrackerDomains(settings.healthIgnoreTrackers ?? DEFAULT_SETTINGS.healthIgnoreTrackers),
     excludeCategories: settings.excludeCategories,
     categories: [...settings.categories],
     excludeTags: settings.excludeTags,
@@ -844,6 +949,8 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
     maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_SETTINGS.maxAgeSeconds, REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE),
     maxRetries: clamp(settings.maxRetries, DEFAULT_SETTINGS.maxRetries, REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES, REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES),
     monitorAll: settings.monitorAll,
+    healthFocusTrackers: normalizeTrackerDomains(settings.healthFocusTrackers ?? []),
+    healthIgnoreTrackers: normalizeTrackerDomains(settings.healthIgnoreTrackers ?? DEFAULT_SETTINGS.healthIgnoreTrackers),
     excludeCategories: settings.excludeCategories,
     categories: normalizeList(settings.categories),
     excludeTags: settings.excludeTags,

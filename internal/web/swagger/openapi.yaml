@@ -766,6 +766,8 @@ paths:
                 fallbackToRegularMode:
                   type: boolean
                   description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
+                reannounceSettings:
+                  $ref: '#/components/schemas/InstanceReannounceSettings'
       responses:
         '201':
           description: Instance created
@@ -865,6 +867,8 @@ paths:
                 fallbackToRegularMode:
                   type: boolean
                   description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
+                reannounceSettings:
+                  $ref: '#/components/schemas/InstanceReannounceSettings'
       responses:
         '200':
           description: Instance updated
@@ -5012,6 +5016,54 @@ components:
         sortOrder:
           type: integer
           description: Display order preference for the instance.
+        reannounceSettings:
+          $ref: '#/components/schemas/InstanceReannounceSettings'
+
+    InstanceReannounceSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        initialWaitSeconds:
+          type: integer
+        reannounceIntervalSeconds:
+          type: integer
+        maxAgeSeconds:
+          type: integer
+        maxRetries:
+          type: integer
+        aggressive:
+          type: boolean
+        monitorAll:
+          type: boolean
+        healthFocusTrackers:
+          type: array
+          items:
+            type: string
+          description: Optional allowlist of tracker domains used for health evaluation and targeted reannounce.
+        healthIgnoreTrackers:
+          type: array
+          items:
+            type: string
+          description: Tracker domains ignored during health evaluation (e.g. perma-dead public trackers).
+        excludeCategories:
+          type: boolean
+        categories:
+          type: array
+          items:
+            type: string
+        excludeTags:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        excludeTrackers:
+          type: boolean
+        trackers:
+          type: array
+          items:
+            type: string
 
 
     InstanceCapabilities:

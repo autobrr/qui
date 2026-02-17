@@ -53,6 +53,8 @@ type reannounceJob struct {
 	lastRequested time.Time
 	isRunning     bool
 	lastCompleted time.Time
+	attempts      map[string]int      // domain -> attempts
+	givenUp       map[string]struct{} // domains we no longer attempt for this torrent
 }
 
 // ActivityOutcome describes a high-level outcome for a reannounce attempt.
@@ -171,10 +173,15 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if s.hasHealthyTracker(torrent.Trackers) {
-			continue
+		if len(torrent.Trackers) > 0 {
+			cls := s.classifyTrackers(torrent.Trackers, settings)
+			// Wait while trackers are updating / not yet contacted; only intervene on unhealthy trackers.
+			if len(cls.unhealthy) == 0 {
+				continue
+			}
 		}
-		trackers := s.getProblematicTrackers(torrent.Trackers)
+
+		trackers := s.getProblematicTrackers(torrent.Trackers, settings)
 		if s.enqueue(instanceID, hash, torrent.Name, trackers) {
 			handled = append(handled, hash)
 		}
@@ -250,13 +257,17 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		// Skip if we have tracker data and it shows healthy.
-		// For older qBittorrent without IncludeTrackers, Trackers will be empty
-		// and we'll enqueue the torrent - executeJob will check fresh tracker status.
-		if len(torrent.Trackers) > 0 && s.hasHealthyTracker(torrent.Trackers) {
-			continue
+		// If we have tracker data, only intervene when at least one relevant tracker is unhealthy.
+		// For older qBittorrent without IncludeTrackers, Trackers will be empty and we'll enqueue
+		// the torrent - executeJob will fetch fresh trackers and decide.
+		if len(torrent.Trackers) > 0 {
+			cls := s.classifyTrackers(torrent.Trackers, settings)
+			if len(cls.unhealthy) == 0 {
+				continue
+			}
 		}
-		trackers := s.getProblematicTrackers(torrent.Trackers)
+
+		trackers := s.getProblematicTrackers(torrent.Trackers, settings)
 		s.enqueue(instanceID, strings.ToUpper(torrent.Hash), torrent.Name, trackers)
 	}
 }
@@ -303,10 +314,19 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		// Check if torrent is still in initial wait period
 		inInitialWait := settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds)
 
-		healthy := s.hasHealthyTracker(torrent.Trackers)
-		updating := s.trackersUpdating(torrent.Trackers)
-		hasProblem := !healthy && !updating
-		waitingForTrackers := updating && !healthy
+		var (
+			hasProblem         bool
+			waitingForTrackers bool
+		)
+		if len(torrent.Trackers) == 0 {
+			// Old qBittorrent versions (or cache paths) may not include tracker health in snapshots.
+			// Treat empty trackers as "pending" so users can still see candidates.
+			waitingForTrackers = true
+		} else {
+			cls := s.classifyTrackers(torrent.Trackers, settings)
+			hasProblem = len(cls.unhealthy) > 0
+			waitingForTrackers = len(cls.unhealthy) == 0 && len(cls.updating) > 0
+		}
 
 		// Show torrent if: has problem, waiting for trackers, OR in initial wait
 		if !hasProblem && !waitingForTrackers && !inInitialWait {
@@ -329,7 +349,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			}
 		}
 
-		trackers := s.getProblematicTrackers(torrent.Trackers)
+		trackers := s.getProblematicTrackers(torrent.Trackers, settings)
 
 		result = append(result, MonitoredTorrent{
 			InstanceID:        instanceID,
@@ -368,7 +388,10 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	}
 	job, exists := instJobs[hash]
 	if !exists {
-		job = &reannounceJob{}
+		job = &reannounceJob{
+			attempts: make(map[string]int),
+			givenUp:  make(map[string]struct{}),
+		}
 		instJobs[hash] = job
 	}
 	now := s.currentTime()
@@ -411,7 +434,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 
 func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash string, torrentName string, initialTrackers string) {
 	defer s.finishJob(instanceID, hash)
-	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(parentCtx, 60*time.Second)
 	defer cancel()
 	settings := s.getSettings(ctx, instanceID)
 	if settings == nil {
@@ -429,27 +452,101 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
 		return
 	}
-	if s.hasHealthyTracker(trackerList) {
-		healthyTrackers := s.getHealthyTrackers(trackerList)
+
+	cls := s.classifyTrackers(trackerList, settings)
+	if len(cls.relevant) == 0 {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "no matching trackers in scope")
+		return
+	}
+	if len(cls.unhealthy) == 0 {
+		if len(cls.updating) > 0 {
+			updatingDomains := s.domainsFromTrackers(cls.updating)
+			s.recordActivity(instanceID, hash, torrentName, updatingDomains, ActivityOutcomeSkipped, "trackers updating")
+			return
+		}
+		healthyTrackers := s.getHealthyTrackers(trackerList, settings)
 		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
 		return
 	}
-	// No healthy tracker - proceed with reannounce (trackers may be updating or have errors)
-	freshTrackers := s.getProblematicTrackers(trackerList)
-	if freshTrackers == "" {
-		freshTrackers = initialTrackers
+
+	targetDomains := make(map[string]struct{})
+	var targetURLs []string
+	for _, tracker := range cls.unhealthy {
+		u := strings.TrimSpace(tracker.Url)
+		if u == "" {
+			continue
+		}
+		d := strings.ToLower(strings.TrimSpace(s.extractTrackerDomain(u)))
+		if d != "" {
+			targetDomains[d] = struct{}{}
+		}
+		targetURLs = append(targetURLs, u)
 	}
-	opts := &qbt.ReannounceOptions{
-		Interval:        settings.ReannounceIntervalSeconds,
-		MaxAttempts:     settings.MaxRetries,
-		DeleteOnFailure: false,
+
+	// Enforce per-torrent per-domain retry limits and give-up behavior.
+	s.jobsMu.Lock()
+	var job *reannounceJob
+	if instJobs, ok := s.j[instanceID]; ok {
+		job = instJobs[hash]
 	}
-	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: retry failed")
-		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
+	if job != nil {
+		if job.attempts == nil {
+			job.attempts = make(map[string]int)
+		}
+		if job.givenUp == nil {
+			job.givenUp = make(map[string]struct{})
+		}
+		for domain := range targetDomains {
+			if job.attempts[domain] >= settings.MaxRetries {
+				job.givenUp[domain] = struct{}{}
+			}
+		}
+	}
+	s.jobsMu.Unlock()
+
+	if job != nil && len(job.givenUp) > 0 {
+		filtered := targetURLs[:0]
+		for _, u := range targetURLs {
+			d := strings.ToLower(strings.TrimSpace(s.extractTrackerDomain(u)))
+			if d == "" {
+				filtered = append(filtered, u)
+				continue
+			}
+			if _, gaveUp := job.givenUp[d]; gaveUp {
+				continue
+			}
+			filtered = append(filtered, u)
+		}
+		targetURLs = filtered
+	}
+
+	problemDomains := s.domainsFromTrackers(cls.unhealthy)
+	if problemDomains == "" {
+		problemDomains = initialTrackers
+	}
+	if len(targetURLs) == 0 {
+		s.recordActivity(instanceID, hash, torrentName, problemDomains, ActivityOutcomeSkipped, "max retries reached for target trackers")
 		return
 	}
-	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce requested")
+
+	if err := client.ReannounceTrackersCtx(ctx, []string{hash}, targetURLs); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: request failed")
+		s.recordActivity(instanceID, hash, torrentName, problemDomains, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
+		return
+	}
+
+	s.jobsMu.Lock()
+	if job != nil {
+		for domain := range targetDomains {
+			if _, gaveUp := job.givenUp[domain]; gaveUp {
+				continue
+			}
+			job.attempts[domain]++
+		}
+	}
+	s.jobsMu.Unlock()
+
+	s.recordActivity(instanceID, hash, torrentName, problemDomains, ActivityOutcomeSucceeded, "reannounce requested")
 }
 
 func (s *Service) finishJob(instanceID int, hash string) {
@@ -655,49 +752,169 @@ func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.In
 // lenient approach: unregistered trackers are skipped, and we check if any
 // other tracker is healthy. For multi-tracker torrents, if one tracker is
 // working, reannouncing won't help.
-func (s *Service) hasHealthyTracker(trackers []qbt.TorrentTracker) bool {
+type trackerScope struct {
+	focus  map[string]struct{}
+	ignore map[string]struct{}
+}
+
+type trackerClassification struct {
+	relevant  []qbt.TorrentTracker
+	healthy   []qbt.TorrentTracker
+	updating  []qbt.TorrentTracker
+	unhealthy []qbt.TorrentTracker
+}
+
+func (s *Service) buildTrackerScope(settings *models.InstanceReannounceSettings) trackerScope {
+	scope := trackerScope{
+		focus:  make(map[string]struct{}),
+		ignore: make(map[string]struct{}),
+	}
+	if settings == nil {
+		return scope
+	}
+
+	// Health focus is optional. If not set, and the user configured a tracker allowlist
+	// for monitoring scope, treat it as an implicit health focus to avoid perma-dead
+	// side trackers from constantly triggering reannounce attempts.
+	focus := settings.HealthFocusTrackers
+	if len(focus) == 0 && !settings.ExcludeTrackers && len(settings.Trackers) > 0 {
+		focus = settings.Trackers
+	}
+
+	for _, domain := range focus {
+		d := strings.ToLower(strings.TrimSpace(domain))
+		if d == "" {
+			continue
+		}
+		scope.focus[d] = struct{}{}
+	}
+	for _, domain := range settings.HealthIgnoreTrackers {
+		d := strings.ToLower(strings.TrimSpace(domain))
+		if d == "" {
+			continue
+		}
+		scope.ignore[d] = struct{}{}
+	}
+	return scope
+}
+
+func (s *Service) trackerIncluded(domain string, scope trackerScope) bool {
+	d := strings.ToLower(strings.TrimSpace(domain))
+	if d == "" {
+		return false
+	}
+	if _, ok := scope.ignore[d]; ok {
+		return false
+	}
+	if len(scope.focus) == 0 {
+		return true
+	}
+	_, ok := scope.focus[d]
+	return ok
+}
+
+func (s *Service) trackerIsHealthy(tracker qbt.TorrentTracker) bool {
+	if tracker.Status != qbt.TrackerStatusOK {
+		return false
+	}
+	// Treat "OK but unregistered" as unhealthy.
+	return !qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+}
+
+func (s *Service) trackerIsUpdating(tracker qbt.TorrentTracker) bool {
+	switch tracker.Status {
+	case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
+		return true
+	case qbt.TrackerStatusDisabled, qbt.TrackerStatusOK, qbt.TrackerStatusNotWorking:
+		return false
+	}
+	return false
+}
+
+func (s *Service) classifyTrackers(trackers []qbt.TorrentTracker, settings *models.InstanceReannounceSettings) trackerClassification {
+	var out trackerClassification
+	if len(trackers) == 0 {
+		return out
+	}
+
+	scope := s.buildTrackerScope(settings)
+
 	for _, tracker := range trackers {
 		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
 		}
-		// Check message first to catch OK status with unregistered msg
-		if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
+		domain := s.extractTrackerDomain(tracker.Url)
+		if !s.trackerIncluded(domain, scope) {
 			continue
 		}
-		if tracker.Status == qbt.TrackerStatusOK {
-			return true
+
+		out.relevant = append(out.relevant, tracker)
+
+		if s.trackerIsHealthy(tracker) {
+			out.healthy = append(out.healthy, tracker)
+			continue
 		}
+		if s.trackerIsUpdating(tracker) {
+			out.updating = append(out.updating, tracker)
+			continue
+		}
+		out.unhealthy = append(out.unhealthy, tracker)
 	}
-	return false
+
+	return out
+}
+
+func (s *Service) domainsFromTrackers(trackers []qbt.TorrentTracker) string {
+	if len(trackers) == 0 {
+		return ""
+	}
+	var domains []string
+	seen := make(map[string]struct{})
+	for _, tracker := range trackers {
+		domain := s.extractTrackerDomain(tracker.Url)
+		if domain == "" {
+			continue
+		}
+		domainLower := strings.ToLower(domain)
+		if _, ok := seen[domainLower]; ok {
+			continue
+		}
+		seen[domainLower] = struct{}{}
+		domains = append(domains, domain)
+	}
+	return strings.Join(domains, ", ")
 }
 
 // getProblematicTrackers returns a comma-separated list of tracker domains
 // that are not healthy (anything other than TrackerStatusOK without an
 // unregistered message).
-func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
+func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker, settings *models.InstanceReannounceSettings) string {
 	if len(trackers) == 0 {
 		return ""
 	}
 	var problematicDomains []string
 	seenDomains := make(map[string]struct{})
+	scope := s.buildTrackerScope(settings)
 	for _, tracker := range trackers {
 		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
 		}
-		// A tracker is problematic if it's not healthy
-		// (i.e., not TrackerStatusOK, or OK but with unregistered message)
-		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
-			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
-		if !isHealthy {
-			domain := s.extractTrackerDomain(tracker.Url)
-			if domain != "" {
-				domainLower := strings.ToLower(domain)
-				if _, exists := seenDomains[domainLower]; !exists {
-					seenDomains[domainLower] = struct{}{}
-					problematicDomains = append(problematicDomains, domain)
-				}
-			}
+		domain := s.extractTrackerDomain(tracker.Url)
+		if !s.trackerIncluded(domain, scope) {
+			continue
 		}
+		if s.trackerIsHealthy(tracker) {
+			continue
+		}
+		if domain == "" {
+			continue
+		}
+		domainLower := strings.ToLower(domain)
+		if _, exists := seenDomains[domainLower]; exists {
+			continue
+		}
+		seenDomains[domainLower] = struct{}{}
+		problematicDomains = append(problematicDomains, domain)
 	}
 	return strings.Join(problematicDomains, ", ")
 }
@@ -705,49 +922,40 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 // getHealthyTrackers returns a comma-separated list of tracker domains that are
 // healthy (TrackerStatusOK without an unregistered message). Used for logging
 // when skipping a torrent because it has working trackers.
-func (s *Service) getHealthyTrackers(trackers []qbt.TorrentTracker) string {
+func (s *Service) getHealthyTrackers(trackers []qbt.TorrentTracker, settings *models.InstanceReannounceSettings) string {
 	if len(trackers) == 0 {
 		return ""
 	}
 	var healthyDomains []string
 	seenDomains := make(map[string]struct{})
+	scope := s.buildTrackerScope(settings)
 	for _, tracker := range trackers {
 		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
 		}
-		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
-			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
-		if isHealthy {
-			domain := s.extractTrackerDomain(tracker.Url)
-			if domain != "" {
-				domainLower := strings.ToLower(domain)
-				if _, exists := seenDomains[domainLower]; !exists {
-					seenDomains[domainLower] = struct{}{}
-					healthyDomains = append(healthyDomains, domain)
-				}
-			}
+		domain := s.extractTrackerDomain(tracker.Url)
+		if !s.trackerIncluded(domain, scope) {
+			continue
 		}
+		if !s.trackerIsHealthy(tracker) {
+			continue
+		}
+		if domain == "" {
+			continue
+		}
+		domainLower := strings.ToLower(domain)
+		if _, exists := seenDomains[domainLower]; exists {
+			continue
+		}
+		seenDomains[domainLower] = struct{}{}
+		healthyDomains = append(healthyDomains, domain)
 	}
 	return strings.Join(healthyDomains, ", ")
 }
 
-func (s *Service) trackersUpdating(trackers []qbt.TorrentTracker) bool {
-	if len(trackers) == 0 {
-		return false
-	}
-
-	var activeCount int
-	for _, tracker := range trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
-			continue
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
-			activeCount++
-		default:
-			return false
-		}
-	}
-	return activeCount > 0
+func (s *Service) trackersUpdating(trackers []qbt.TorrentTracker, settings *models.InstanceReannounceSettings) bool {
+	cls := s.classifyTrackers(trackers, settings)
+	return len(cls.relevant) > 0 && len(cls.unhealthy) == 0 && len(cls.updating) > 0
 }
 
 func splitTags(raw string) []string {

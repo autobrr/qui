@@ -85,6 +85,50 @@ func TestTorrentMeetsCriteria_ScopedByCategoryTagAndTracker(t *testing.T) {
 	require.False(t, service.torrentMeetsCriteria(nonMatch, settings), "expected non match to be filtered")
 }
 
+func TestClassifyTrackers_FocusAndIgnore(t *testing.T) {
+	service := &Service{}
+
+	tl := qbt.TorrentTracker{Url: "https://torrentleech.org/announce", Status: qbt.TrackerStatusNotWorking}
+	ok := qbt.TorrentTracker{Url: "https://othertracker.example/announce", Status: qbt.TrackerStatusOK}
+	dead := qbt.TorrentTracker{Url: "https://sptracker.cc/announce", Status: qbt.TrackerStatusNotWorking}
+
+	t.Run("Ignore list excludes perma-dead tracker from decision", func(t *testing.T) {
+		settings := &models.InstanceReannounceSettings{
+			Enabled:              true,
+			MonitorAll:           true,
+			HealthIgnoreTrackers: []string{"sptracker.cc"},
+		}
+		cls := service.classifyTrackers([]qbt.TorrentTracker{dead, ok}, settings)
+		require.Len(t, cls.relevant, 1)
+		require.Len(t, cls.healthy, 1)
+		require.Empty(t, cls.unhealthy)
+	})
+
+	t.Run("Unhealthy tracker remains visible even if another tracker is OK", func(t *testing.T) {
+		settings := &models.InstanceReannounceSettings{
+			Enabled:    true,
+			MonitorAll: true,
+		}
+		cls := service.classifyTrackers([]qbt.TorrentTracker{tl, ok}, settings)
+		require.Len(t, cls.relevant, 2)
+		require.Len(t, cls.healthy, 1)
+		require.Len(t, cls.unhealthy, 1)
+	})
+
+	t.Run("Implicit focus uses tracker allowlist when explicit focus is empty", func(t *testing.T) {
+		settings := &models.InstanceReannounceSettings{
+			Enabled:         true,
+			MonitorAll:      false,
+			ExcludeTrackers: false,
+			Trackers:        []string{"torrentleech.org"},
+		}
+		cls := service.classifyTrackers([]qbt.TorrentTracker{tl, dead, ok}, settings)
+		require.Len(t, cls.relevant, 1)
+		require.Len(t, cls.unhealthy, 1)
+		assert.Equal(t, "https://torrentleech.org/announce", cls.unhealthy[0].Url)
+	})
+}
+
 func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 	type criteriaTestCase struct {
 		name     string
@@ -273,62 +317,74 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 	}
 }
 
-func TestHasHealthyTracker_BasicCases(t *testing.T) {
+func TestClassifyTrackers_BasicCases(t *testing.T) {
 	service := &Service{}
+	settings := &models.InstanceReannounceSettings{Enabled: true, MonitorAll: true}
 
-	// nil trackers = no healthy tracker
-	require.False(t, service.hasHealthyTracker(nil))
+	cls := service.classifyTrackers(nil, settings)
+	require.Empty(t, cls.relevant)
+	require.Empty(t, cls.healthy)
+	require.Empty(t, cls.unhealthy)
+	require.Empty(t, cls.updating)
 
 	// Working tracker only = healthy
-	okTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: ""}}
-	require.True(t, service.hasHealthyTracker(okTrackers))
+	okTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: "", Url: "https://example/announce"}}
+	cls = service.classifyTrackers(okTrackers, settings)
+	require.Len(t, cls.healthy, 1)
+	require.Empty(t, cls.unhealthy)
 
-	// Not working (any message) = not healthy
-	downTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "tracker is down for maintenance"}}
-	require.False(t, service.hasHealthyTracker(downTrackers))
-
-	// Not working with unknown message = still not healthy (this is the key fix!)
-	unknownMsgTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "some unknown error"}}
-	require.False(t, service.hasHealthyTracker(unknownMsgTrackers))
-
-	// OK tracker plus problematic one – overall should be considered healthy due to working tracker
-	mixed := []qbt.TorrentTracker{
-		{Status: qbt.TrackerStatusNotWorking, Message: "tracker is down"},
-		{Status: qbt.TrackerStatusOK, Message: ""},
-	}
-	require.True(t, service.hasHealthyTracker(mixed))
+	// Not working = unhealthy
+	downTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "down", Url: "https://down/announce"}}
+	cls = service.classifyTrackers(downTrackers, settings)
+	require.Empty(t, cls.healthy)
+	require.Len(t, cls.unhealthy, 1)
 
 	// OK tracker with unregistered message should NOT be treated as healthy
-	unregistered := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: "Torrent not registered"}}
-	require.False(t, service.hasHealthyTracker(unregistered))
+	unregistered := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: "Torrent not registered", Url: "https://unreg/announce"}}
+	cls = service.classifyTrackers(unregistered, settings)
+	require.Empty(t, cls.healthy)
+	require.Len(t, cls.unhealthy, 1)
 
 	// Disabled trackers should be ignored
-	disabledOnly := []qbt.TorrentTracker{{Status: qbt.TrackerStatusDisabled, Message: ""}}
-	require.False(t, service.hasHealthyTracker(disabledOnly))
+	disabledOnly := []qbt.TorrentTracker{{Status: qbt.TrackerStatusDisabled, Message: "", Url: "https://disabled/announce"}}
+	cls = service.classifyTrackers(disabledOnly, settings)
+	require.Empty(t, cls.relevant)
 
-	// Updating trackers = not healthy yet
-	updatingTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusUpdating, Message: ""}}
-	require.False(t, service.hasHealthyTracker(updatingTrackers))
+	// Updating trackers = updating
+	updatingTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusUpdating, Message: "", Url: "https://updating/announce"}}
+	cls = service.classifyTrackers(updatingTrackers, settings)
+	require.Len(t, cls.updating, 1)
 
-	// Not contacted (common state for newly-added torrents) = not healthy
-	notContactedTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotContacted, Message: ""}}
-	require.False(t, service.hasHealthyTracker(notContactedTrackers))
+	// Not contacted = updating (common state for newly-added torrents)
+	notContactedTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotContacted, Message: "", Url: "https://notcontacted/announce"}}
+	cls = service.classifyTrackers(notContactedTrackers, settings)
+	require.Len(t, cls.updating, 1)
+
+	// Mixed OK + unhealthy retains unhealthy visibility even when another tracker is OK
+	mixed := []qbt.TorrentTracker{
+		{Status: qbt.TrackerStatusNotWorking, Message: "down", Url: "https://bad/announce"},
+		{Status: qbt.TrackerStatusOK, Message: "", Url: "https://good/announce"},
+	}
+	cls = service.classifyTrackers(mixed, settings)
+	require.Len(t, cls.healthy, 1)
+	require.Len(t, cls.unhealthy, 1)
 }
 
 func TestTrackersUpdating(t *testing.T) {
 	service := &Service{}
+	settings := &models.InstanceReannounceSettings{Enabled: true, MonitorAll: true}
 
 	updating := []qbt.TorrentTracker{
-		{Status: qbt.TrackerStatusUpdating},
-		{Status: qbt.TrackerStatusNotContacted},
+		{Status: qbt.TrackerStatusUpdating, Url: "https://a/announce"},
+		{Status: qbt.TrackerStatusNotContacted, Url: "https://b/announce"},
 	}
-	require.True(t, service.trackersUpdating(updating))
+	require.True(t, service.trackersUpdating(updating, settings))
 
 	mixed := []qbt.TorrentTracker{
-		{Status: qbt.TrackerStatusUpdating},
-		{Status: qbt.TrackerStatusOK},
+		{Status: qbt.TrackerStatusUpdating, Url: "https://a/announce"},
+		{Status: qbt.TrackerStatusOK, Url: "https://b/announce"},
 	}
-	require.False(t, service.trackersUpdating(mixed))
+	require.True(t, service.trackersUpdating(mixed, settings))
 }
 
 func TestSplitTagsAndNormalizeHashes(t *testing.T) {

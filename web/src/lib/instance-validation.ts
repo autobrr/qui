@@ -14,6 +14,8 @@ export const DEFAULT_REANNOUNCE_SETTINGS: InstanceReannounceSettings = {
   maxRetries: 50,
   aggressive: false,
   monitorAll: false,
+  healthFocusTrackers: [],
+  healthIgnoreTrackers: ["sptracker.cc"],
   excludeCategories: false,
   categories: [],
   excludeTags: false,
