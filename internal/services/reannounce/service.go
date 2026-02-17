@@ -53,8 +53,7 @@ type reannounceJob struct {
 	lastRequested time.Time
 	isRunning     bool
 	lastCompleted time.Time
-	attempts      map[string]int      // domain -> attempts
-	givenUp       map[string]struct{} // domains we no longer attempt for this torrent
+	attempts      map[string]int // domain -> attempts
 }
 
 // ActivityOutcome describes a high-level outcome for a reannounce attempt.
@@ -390,7 +389,6 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	if !exists {
 		job = &reannounceJob{
 			attempts: make(map[string]int),
-			givenUp:  make(map[string]struct{}),
 		}
 		instJobs[hash] = job
 	}
@@ -434,38 +432,29 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 
 func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash string, torrentName string, initialTrackers string) {
 	defer s.finishJob(instanceID, hash)
-	ctx, cancel := context.WithTimeout(parentCtx, 60*time.Second)
-	defer cancel()
-	settings := s.getSettings(ctx, instanceID)
+
+	settings := s.getSettings(parentCtx, instanceID)
 	if settings == nil {
 		settings = models.DefaultInstanceReannounceSettings(instanceID)
 	}
+
+	timeout := 60 * time.Second
+	if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 && settings.MaxRetries > 1 {
+		desired := time.Duration(settings.MaxRetries-1)*interval + 30*time.Second
+		if desired > timeout {
+			timeout = desired
+		}
+		if timeout > 20*time.Minute {
+			timeout = 20 * time.Minute
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
+	defer cancel()
 	client, err := s.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: client unavailable")
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("client unavailable: %v", err))
-		return
-	}
-	trackerList, err := client.GetTorrentTrackersCtx(ctx, hash)
-	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to load trackers")
-		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
-		return
-	}
-
-	cls := s.classifyTrackers(trackerList, settings)
-	if len(cls.relevant) == 0 {
-		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "no matching trackers in scope")
-		return
-	}
-	if len(cls.unhealthy) == 0 {
-		if len(cls.updating) > 0 {
-			updatingDomains := s.domainsFromTrackers(cls.updating)
-			s.recordActivity(instanceID, hash, torrentName, updatingDomains, ActivityOutcomeSkipped, "trackers updating")
-			return
-		}
-		healthyTrackers := s.getHealthyTrackers(trackerList, settings)
-		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
 		return
 	}
 
@@ -477,20 +466,6 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		return strings.ToLower(strings.TrimSpace(s.extractTrackerDomain(u)))
 	}
 
-	targetDomains := make(map[string]struct{})
-	targetURLs := make([]string, 0, len(cls.unhealthy))
-	for _, tracker := range cls.unhealthy {
-		u := strings.TrimSpace(tracker.Url)
-		if u == "" {
-			continue
-		}
-		if d := domainForURL(u); d != "" {
-			targetDomains[d] = struct{}{}
-		}
-		targetURLs = append(targetURLs, u)
-	}
-
-	// Enforce per-torrent per-domain retry limits and give-up behavior.
 	s.jobsMu.Lock()
 	var job *reannounceJob
 	if instJobs, ok := s.j[instanceID]; ok {
@@ -500,57 +475,146 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		if job.attempts == nil {
 			job.attempts = make(map[string]int)
 		}
-		if job.givenUp == nil {
-			job.givenUp = make(map[string]struct{})
-		}
-		for domain := range targetDomains {
-			if job.attempts[domain] >= settings.MaxRetries {
-				job.givenUp[domain] = struct{}{}
-			}
-		}
 	}
 	s.jobsMu.Unlock()
 
-	if job != nil && len(job.givenUp) > 0 {
-		filtered := targetURLs[:0]
-		for _, u := range targetURLs {
-			if d := domainForURL(u); d != "" {
-				if _, gaveUp := job.givenUp[d]; gaveUp {
-					continue
-				}
-			}
-			filtered = append(filtered, u)
+	interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second
+	maxRetries := settings.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 1
+	}
+
+	var (
+		lastProblemDomains string
+		requestLogged      bool
+	)
+
+retryLoop:
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		trackerList, err := client.GetTorrentTrackersCtx(ctx, hash)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to load trackers")
+			s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
+			return
 		}
-		targetURLs = filtered
-	}
 
-	problemDomains := s.domainsFromTrackers(cls.unhealthy)
-	if problemDomains == "" {
-		problemDomains = initialTrackers
-	}
-	if len(targetURLs) == 0 {
-		s.recordActivity(instanceID, hash, torrentName, problemDomains, ActivityOutcomeSkipped, "max retries reached for target trackers")
-		return
-	}
+		cls := s.classifyTrackers(trackerList, settings)
+		if len(cls.relevant) == 0 {
+			s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "no matching trackers in scope")
+			return
+		}
+		if len(cls.unhealthy) == 0 {
+			if len(cls.updating) > 0 {
+				updatingDomains := s.domainsFromTrackers(cls.updating)
+				s.recordActivity(instanceID, hash, torrentName, updatingDomains, ActivityOutcomeSkipped, "trackers updating")
+				return
+			}
 
-	if err := client.ReannounceTrackersCtx(ctx, []string{hash}, targetURLs); err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: request failed")
-		s.recordActivity(instanceID, hash, torrentName, problemDomains, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
-		return
-	}
+			healthyTrackers := s.getHealthyTrackers(trackerList, settings)
+			outcome := ActivityOutcomeSkipped
+			reason := "tracker healthy"
+			if requestLogged {
+				outcome = ActivityOutcomeSucceeded
+				reason = "tracker healthy after reannounce"
+			}
 
-	s.jobsMu.Lock()
-	if job != nil {
-		for domain := range targetDomains {
-			if _, gaveUp := job.givenUp[domain]; gaveUp {
+			s.jobsMu.Lock()
+			if job != nil {
+				job.attempts = nil
+			}
+			s.jobsMu.Unlock()
+
+			s.recordActivity(instanceID, hash, torrentName, healthyTrackers, outcome, reason)
+			return
+		}
+
+		targetDomains := make(map[string]struct{})
+		targetURLs := make([]string, 0, len(cls.unhealthy))
+		for _, tracker := range cls.unhealthy {
+			u := strings.TrimSpace(tracker.Url)
+			if u == "" {
 				continue
 			}
-			job.attempts[domain]++
+			if d := domainForURL(u); d != "" {
+				targetDomains[d] = struct{}{}
+			}
+			targetURLs = append(targetURLs, u)
+		}
+
+		// Filter out domains that have reached the retry cap.
+		if job != nil && len(targetURLs) > 0 {
+			s.jobsMu.Lock()
+			filtered := targetURLs[:0]
+			for _, u := range targetURLs {
+				d := domainForURL(u)
+				if d != "" && job.attempts[d] >= settings.MaxRetries {
+					continue
+				}
+				filtered = append(filtered, u)
+			}
+			targetURLs = filtered
+			s.jobsMu.Unlock()
+		}
+
+		lastProblemDomains = s.domainsFromTrackers(cls.unhealthy)
+		if lastProblemDomains == "" {
+			lastProblemDomains = initialTrackers
+		}
+		if len(targetURLs) == 0 {
+			outcome := ActivityOutcomeSkipped
+			if requestLogged {
+				outcome = ActivityOutcomeFailed
+			}
+			s.recordActivity(instanceID, hash, torrentName, lastProblemDomains, outcome, "max retries reached for target trackers")
+			return
+		}
+
+		if err := client.ReannounceTrackersCtx(ctx, []string{hash}, targetURLs); err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: request failed")
+			s.recordActivity(instanceID, hash, torrentName, lastProblemDomains, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
+			return
+		}
+
+		if !requestLogged {
+			s.recordActivity(instanceID, hash, torrentName, lastProblemDomains, ActivityOutcomeSucceeded, "reannounce requested")
+			requestLogged = true
+		}
+
+		if job != nil {
+			s.jobsMu.Lock()
+			for domain := range targetDomains {
+				if job.attempts[domain] >= settings.MaxRetries {
+					continue
+				}
+				job.attempts[domain]++
+			}
+			s.jobsMu.Unlock()
+		}
+
+		if interval <= 0 || attempt == maxRetries-1 {
+			break
+		}
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			break retryLoop
+		case <-timer.C:
 		}
 	}
-	s.jobsMu.Unlock()
 
-	s.recordActivity(instanceID, hash, torrentName, problemDomains, ActivityOutcomeSucceeded, "reannounce requested")
+	if lastProblemDomains == "" {
+		lastProblemDomains = initialTrackers
+	}
+	outcome := ActivityOutcomeSkipped
+	if requestLogged {
+		outcome = ActivityOutcomeFailed
+	}
+	reason := "max retries reached for target trackers"
+	if ctx.Err() != nil {
+		reason = "reannounce timed out"
+	}
+	s.recordActivity(instanceID, hash, torrentName, lastProblemDomains, outcome, reason)
 }
 
 func (s *Service) finishJob(instanceID int, hash string) {
