@@ -246,12 +246,12 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
         <Label htmlFor="notification-url">Shoutrrr URL</Label>
         <Input
           id="notification-url"
-          placeholder="discord://token@id or notifiarr://apikey"
+          placeholder="discord://token@id or notifiarrapi://apikey"
           value={url}
           onChange={(e) => setUrl(normalizeNotificationUrl(e.target.value))}
         />
         <p className="text-xs text-muted-foreground">
-          Use any Shoutrrr-supported URL scheme. Notifiarr uses <span className="font-mono">notifiarr://apikey</span>.
+          Use any Shoutrrr-supported URL scheme. Notifiarr API uses <span className="font-mono">notifiarrapi://apikey</span>.
           Discord webhook URLs auto-convert to <span className="font-mono">discord://token@id</span>.
         </p>
       </div>
