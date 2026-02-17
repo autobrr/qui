@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Automation, AutomationInput, ActionConditions } from "@/types"
+import type { Automation, AutomationInput, ActionConditions, SortingConfig } from "@/types"
 
 /**
  * Export format for workflows. This is the clipboard JSON format.
@@ -16,6 +16,7 @@ export interface WorkflowExport {
   trackerPattern: string
   trackerDomains: string[]
   conditions: ActionConditions
+  sortingConfig?: SortingConfig
   intervalSeconds?: number
   dryRun?: boolean
 }
@@ -36,6 +37,7 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
     trackerPattern,
     trackerDomains,
     conditions: workflow.conditions,
+    sortingConfig: workflow.sortingConfig,
   }
 
   // Only include intervalSeconds if it differs from default
@@ -81,6 +83,7 @@ export function fromImportFormat(
     trackerPattern,
     trackerDomains,
     conditions: data.conditions,
+    sortingConfig: data.sortingConfig,
     enabled: false, // Always start disabled
     dryRun: data.dryRun ?? false,
   }
@@ -178,6 +181,7 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
     trackerPattern: hasValidTrackerPattern ? (obj.trackerPattern as string) : "",
     trackerDomains: hasValidTrackerDomains ? (obj.trackerDomains as string[]) : [],
     conditions: obj.conditions as ActionConditions,
+    sortingConfig: obj.sortingConfig as SortingConfig | undefined,
   }
 
   // Optional intervalSeconds
