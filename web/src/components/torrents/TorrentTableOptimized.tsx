@@ -339,6 +339,7 @@ interface CompactRowProps {
   rowIndex: number
   isSelected: boolean
   isRowSelected: boolean
+  showCheckbox: boolean
   onClick: (e: React.MouseEvent) => void
   onContextMenu: () => void
   onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
@@ -357,6 +358,7 @@ const CompactRow = memo(({
   rowIndex,
   isSelected,
   isRowSelected,
+  showCheckbox,
   onClick,
   onContextMenu,
   onCheckboxPointerDown,
@@ -412,18 +414,20 @@ const CompactRow = memo(({
       )}
       {/* Name with progress inline */}
       <div className="flex items-center gap-2">
-        <div
-          className="flex items-center justify-center flex-shrink-0"
-          data-slot="checkbox"
-          onPointerDown={onCheckboxPointerDown}
-        >
-          <Checkbox
-            checked={isRowSelected}
-            onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-            aria-label="Select torrent"
-            className="h-4 w-4"
-          />
-        </div>
+        {showCheckbox && (
+          <div
+            className="flex items-center justify-center flex-shrink-0"
+            data-slot="checkbox"
+            onPointerDown={onCheckboxPointerDown}
+          >
+            <Checkbox
+              checked={isRowSelected}
+              onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
+              aria-label="Select torrent"
+              className="h-4 w-4"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
           <TrackerIcon
             title={trackerTitle}
@@ -527,6 +531,7 @@ const CompactRow = memo(({
   prev.torrent.ratio === next.torrent.ratio &&
   prev.isSelected === next.isSelected &&
   prev.isRowSelected === next.isRowSelected &&
+  prev.showCheckbox === next.showCheckbox &&
   prev.incognitoMode === next.incognitoMode &&
   prev.speedUnit === next.speedUnit &&
   prev.supportsTrackerHealth === next.supportsTrackerHealth &&
@@ -2378,7 +2383,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             .getAllColumns()
                             .filter(
                               (column) =>
-                                column.id !== "select" && // Never show select in visibility options
                                 column.getCanHide()
                             )
                             .map((column) => {
@@ -2613,6 +2617,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           rowIndex={virtualRow.index}
                           isSelected={isSelected}
                           isRowSelected={isRowSelected}
+                          showCheckbox={table.getColumn("select")?.getIsVisible() !== false}
                           onClick={(e) => {
                             const target = e.target as HTMLElement
                             const isCheckboxElement = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]")
