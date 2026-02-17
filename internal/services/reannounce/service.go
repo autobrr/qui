@@ -582,6 +582,8 @@ retryLoop:
 
 		if job != nil {
 			s.jobsMu.Lock()
+			// targetDomains is built before the max-retries filtering of targetURLs, so keep the guard
+			// to avoid incrementing domains that were effectively skipped this round.
 			for domain := range targetDomains {
 				if job.attempts[domain] >= settings.MaxRetries {
 					continue
