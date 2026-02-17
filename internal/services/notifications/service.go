@@ -724,6 +724,8 @@ func discordEventColor(eventType EventType) int {
 		EventCrossSeedWebhookSucceeded,
 		EventAutomationsActionsApplied:
 		return discordColorSuccess
+	case EventTorrentAdded:
+		return discordColorInfo
 	default:
 		return discordColorInfo
 	}

@@ -150,7 +150,7 @@ func TestBuildNotifiarrAPIDataIncludesTorrentFields(t *testing.T) {
 	require.NotNil(t, data.Torrent.State)
 	require.Equal(t, "downloading", *data.Torrent.State)
 	require.NotNil(t, data.Torrent.Progress)
-	require.Equal(t, 0.25, *data.Torrent.Progress)
+	require.InDelta(t, 0.25, *data.Torrent.Progress, 1e-9)
 	require.NotNil(t, data.Torrent.TotalSizeBytes)
 	require.Equal(t, int64(20_000_000_000), *data.Torrent.TotalSizeBytes)
 	require.NotNil(t, data.Torrent.DownloadedBytes)
