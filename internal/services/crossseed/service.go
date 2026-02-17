@@ -9142,12 +9142,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			continue
 		}
 
-		// Convert CrossInstanceTorrentView to qbt.Torrent for matching
-		torrents := make([]qbt.Torrent, len(torrentsView))
-		for i, tv := range torrentsView {
-			torrents[i] = tv.Torrent
-		}
-
 		// Apply webhook source filters if configured
 		hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
 			len(settings.WebhookSourceTags) > 0 ||
@@ -9165,51 +9159,36 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Bool("hasFilters", hasWebhookSourceFilters).
 			Msg("[Webhook] Source filter settings for instance")
 
+		// Track filtering stats if we're logging them
+		var excludedCategories map[string]int
+		var includedCategories map[string]int
+		var filteredCount int
 		if hasWebhookSourceFilters {
-			originalCount := len(torrents)
-			filtered := make([]qbt.Torrent, 0, len(torrents))
-			excludedCategories := make(map[string]int)
-			includedCategories := make(map[string]int)
-			for i := range torrents {
-				if matchesWebhookSourceFilters(&torrents[i], settings) {
-					filtered = append(filtered, torrents[i])
-					includedCategories[torrents[i].Category]++
-				} else {
-					excludedCategories[torrents[i].Category]++
-				}
-			}
-			torrents = filtered
-
-			// Build summary of excluded categories
-			excludedSummary := make([]string, 0, len(excludedCategories))
-			for cat, count := range excludedCategories {
-				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-			includedSummary := make([]string, 0, len(includedCategories))
-			for cat, count := range includedCategories {
-				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-
-			log.Debug().
-				Str("source", "cross-seed.webhook").
-				Int("instanceID", instance.ID).
-				Str("instanceName", instance.Name).
-				Int("original", originalCount).
-				Int("filtered", len(torrents)).
-				Strs("excludedCategories", excludedSummary).
-				Strs("includedCategories", includedSummary).
-				Msg("[Webhook] Source filter results")
+			excludedCategories = make(map[string]int)
+			includedCategories = make(map[string]int)
 		}
 
 		log.Debug().
 			Str("source", "cross-seed.webhook").
 			Int("instanceId", instance.ID).
 			Str("instanceName", instance.Name).
-			Int("torrentCount", len(torrents)).
+			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
-		// Check each torrent for a match
-		for _, torrent := range torrents {
+		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
+		for _, torrentView := range torrentsView {
+			torrent := &torrentView.Torrent
+
+			// Skip torrents that don't match webhook source filters
+			if hasWebhookSourceFilters {
+				if matchesWebhookSourceFilters(torrent, settings) {
+					filteredCount++
+					includedCategories[torrent.Category]++
+				} else {
+					excludedCategories[torrent.Category]++
+					continue
+				}
+			}
 			// Parse the existing torrent's release info
 			existingRelease := s.releaseCache.Parse(torrent.Name)
 
@@ -9292,6 +9271,28 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			} else {
 				hasPendingMatch = true
 			}
+		}
+
+		// Log filter results if we tracked them
+		if hasWebhookSourceFilters && (len(excludedCategories) > 0 || len(includedCategories) > 0) {
+			excludedSummary := make([]string, 0, len(excludedCategories))
+			for cat, count := range excludedCategories {
+				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
+			}
+			includedSummary := make([]string, 0, len(includedCategories))
+			for cat, count := range includedCategories {
+				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
+			}
+
+			log.Debug().
+				Str("source", "cross-seed.webhook").
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Int("original", len(torrentsView)).
+				Int("filtered", filteredCount).
+				Strs("excludedCategories", excludedSummary).
+				Strs("includedCategories", includedSummary).
+				Msg("[Webhook] Source filter results")
 		}
 	}
 
