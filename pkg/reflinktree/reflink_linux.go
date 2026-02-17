@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //go:build linux
@@ -6,11 +6,24 @@
 package reflinktree
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/sys/unix"
+)
+
+const (
+	reflinkCloneRetryAttempts  = 5
+	reflinkCloneRetryBaseDelay = 25 * time.Millisecond
+)
+
+var (
+	ioctlFileClone      = unix.IoctlFileClone
+	ioctlFileCloneRange = unix.IoctlFileCloneRange
+	sleepForRetry       = time.Sleep
 )
 
 // SupportsReflink tests whether the given directory supports reflinks
@@ -53,8 +66,8 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 }
 
 // cloneFile creates a reflink (copy-on-write clone) of src at dst.
-// On Linux, this uses the FICLONE ioctl.
-func cloneFile(src, dst string) error {
+// On Linux, this uses the FICLONE ioctl with a FICLONERANGE fallback.
+func cloneFile(src, dst string) (retErr error) {
 	// Open source file
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -73,9 +86,9 @@ func cloneFile(src, dst string) error {
 		return fmt.Errorf("create destination: %w", err)
 	}
 	defer func() {
-		dstFile.Close()
-		if err != nil {
-			os.Remove(dst)
+		_ = dstFile.Close()
+		if retErr != nil {
+			_ = os.Remove(dst)
 		}
 	}()
 
@@ -83,11 +96,40 @@ func cloneFile(src, dst string) error {
 	srcFd := int(srcFile.Fd())
 	dstFd := int(dstFile.Fd())
 
-	err = unix.IoctlFileClone(dstFd, srcFd)
-	if err != nil {
-		os.Remove(dst)
-		return fmt.Errorf("ioctl FICLONE: %w", err)
+	var cloneErr error
+	for attempt := range reflinkCloneRetryAttempts {
+		cloneErr = ioctlFileClone(dstFd, srcFd)
+		if cloneErr == nil {
+			return nil
+		}
+		if errors.Is(cloneErr, unix.EAGAIN) {
+			if attempt == reflinkCloneRetryAttempts-1 {
+				return fmt.Errorf("ioctl FICLONE: %w (retries exhausted)", cloneErr)
+			}
+			sleepForRetry(reflinkCloneRetryBaseDelay * time.Duration(1<<attempt))
+			continue
+		}
+		break
 	}
 
-	return nil
+	if shouldTryCloneRange(cloneErr) {
+		cloneRange := unix.FileCloneRange{
+			Src_fd:      int64(srcFd),
+			Src_offset:  0,
+			Src_length:  0,
+			Dest_offset: 0,
+		}
+		if rangeErr := ioctlFileCloneRange(dstFd, &cloneRange); rangeErr != nil {
+			return fmt.Errorf("ioctl FICLONERANGE: %w", rangeErr)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("ioctl FICLONE: %w", cloneErr)
+}
+
+func shouldTryCloneRange(err error) bool {
+	return errors.Is(err, unix.EOPNOTSUPP) ||
+		errors.Is(err, unix.ENOTTY) ||
+		errors.Is(err, unix.ENOSYS)
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models_test
@@ -64,7 +64,12 @@ func insertTestTorznabIndexer(t *testing.T, db *database.DB, name, baseURL strin
 
 func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
-	store := models.NewCrossSeedStore(db)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
 
 	ctx := context.Background()
 
@@ -110,7 +115,12 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 
 func TestCrossSeedStore_RunLifecycle(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
-	store := models.NewCrossSeedStore(db)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	now := time.Now().UTC()
@@ -150,7 +160,12 @@ func TestCrossSeedStore_RunLifecycle(t *testing.T) {
 
 func TestCrossSeedStore_FeedItems(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
-	store := models.NewCrossSeedStore(db)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	run, err := store.CreateRun(ctx, &models.CrossSeedRun{

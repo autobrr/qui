@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {
   // String fields
@@ -8,7 +13,7 @@ export const CONDITION_FIELDS = {
   SAVE_PATH: { label: "Save Path", type: "string" as const, description: "Download location" },
   CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
-  TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker URL" },
+  TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
   // Size fields (bytes)
@@ -28,7 +33,7 @@ export const CONDITION_FIELDS = {
 
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
-  PROGRESS: { label: "Progress", type: "float" as const, description: "Download progress (0-1)" },
+  PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
   AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
 
   // Speed fields (bytes/s)
@@ -45,12 +50,13 @@ export const CONDITION_FIELDS = {
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
+  HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -86,6 +92,15 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "BETWEEN", label: "between" },
   ],
   float: [
+    { value: "EQUAL", label: "=" },
+    { value: "NOT_EQUAL", label: "!=" },
+    { value: "GREATER_THAN", label: ">" },
+    { value: "GREATER_THAN_OR_EQUAL", label: ">=" },
+    { value: "LESS_THAN", label: "<" },
+    { value: "LESS_THAN_OR_EQUAL", label: "<=" },
+    { value: "BETWEEN", label: "between" },
+  ],
+  percentage: [
     { value: "EQUAL", label: "=" },
     { value: "NOT_EQUAL", label: "!=" },
     { value: "GREATER_THAN", label: ">" },
@@ -156,6 +171,7 @@ export const DELETE_MODES = [
   { value: "delete", label: "Remove from client" },
   { value: "deleteWithFiles", label: "Remove with files" },
   { value: "deleteWithFilesPreserveCrossSeeds", label: "Remove with files (preserve cross-seeds)" },
+  { value: "deleteWithFilesIncludeCrossSeeds", label: "Remove with files (include cross-seeds)" },
 ];
 
 // Field groups for organized selection
@@ -194,7 +210,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE"],
+    fields: ["HARDLINK_SCOPE", "HAS_MISSING_FILES"],
   },
 ];
 
@@ -244,3 +260,37 @@ export const SPEED_UNITS = [
   { value: 1024, label: "KiB/s" },
   { value: 1024 * 1024, label: "MiB/s" },
 ];
+
+// Capability types for disabling fields/states in query builder
+export type CapabilityKey = "trackerHealth" | "localFilesystemAccess"
+
+export type Capabilities = Record<CapabilityKey, boolean>
+
+export interface DisabledField {
+  field: string
+  reason: string
+}
+
+export interface DisabledStateValue {
+  value: string
+  reason: string
+}
+
+// Capability requirements for disabling fields/states in query builder
+export const CAPABILITY_REASONS = {
+  trackerHealth: "Requires qBittorrent 5.1+",
+  localFilesystemAccess: "Requires Local Filesystem Access",
+} as const;
+
+export const FIELD_REQUIREMENTS = {
+  IS_UNREGISTERED: "trackerHealth",
+  HAS_MISSING_FILES: "localFilesystemAccess",
+  HARDLINK_SCOPE: "localFilesystemAccess",
+} as const;
+
+export const STATE_VALUE_REQUIREMENTS = {
+  tracker_down: "trackerHealth",
+} as const;
+
+// Uncategorized sentinel (Radix Select requires non-empty values)
+export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";

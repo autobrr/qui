@@ -1,12 +1,12 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-interface VisuallyHiddenProps extends React.HTMLAttributes<HTMLSpanElement> {}
+type VisuallyHiddenProps = React.HTMLAttributes<HTMLSpanElement>
 
 function VisuallyHidden({ className, ...props }: VisuallyHiddenProps) {
   return (

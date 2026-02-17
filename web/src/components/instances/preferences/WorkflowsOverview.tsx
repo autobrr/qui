@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -48,7 +48,9 @@ import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
+import { downloadBlob, toCsv, type CsvColumn } from "@/lib/csv-export"
+import { pickTrackerIconDomain } from "@/lib/tracker-icons"
+import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
   parseImportJSON,
@@ -56,7 +58,7 @@ import {
   toExportFormat,
   toExportJSON
 } from "@/lib/workflow-utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse } from "@/types"
+import type { Automation, AutomationActivity, AutomationPreviewResult, AutomationPreviewTorrent, InstanceResponse, PreviewView, RuleCondition } from "@/types"
 import type { DragEndEvent } from "@dnd-kit/core"
 import {
   DndContext,
@@ -75,11 +77,24 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
+import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+
+/**
+ * Recursively checks if a condition tree uses a specific field.
+ */
+function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
+  if (!condition) return false
+  if (condition.field === field) return true
+  if (condition.conditions) {
+    return condition.conditions.some(c => conditionUsesField(c, field))
+  }
+  return false
+}
 
 interface ActivityStats {
   deletionsToday: number
@@ -153,58 +168,112 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Share"
     case "paused":
       return "Pause"
+    case "resumed":
+      return "Resume"
+    case "moved":
+      return "Move"
+    case "external_program":
+      return "External program"
     default:
       return action
   }
 }
 
-function formatTagsChangedSummary(details: AutomationActivity["details"]): string {
-  const added = details?.added ?? {}
-  const removed = details?.removed ?? {}
-  const addedTotal = Object.values(added).reduce((sum, value) => {
+function sumRecordValues(values: Record<string, number> | undefined): number {
+  return Object.values(values ?? {}).reduce((sum, value) => {
     const asNumber = typeof value === "number" ? value : Number(value)
     return sum + (Number.isFinite(asNumber) ? asNumber : 0)
   }, 0)
-  const removedTotal = Object.values(removed).reduce((sum, value) => {
-    const asNumber = typeof value === "number" ? value : Number(value)
-    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
-  }, 0)
+}
+
+function formatCountWithVerb(count: number, noun: string, verb: string): string {
+  return `${count} ${noun}${count !== 1 ? "s" : ""} ${verb}`
+}
+
+function formatTagsChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const addedTotal = sumRecordValues(details?.added)
+  const removedTotal = sumRecordValues(details?.removed)
   const parts: string[] = []
-  if (addedTotal > 0) parts.push(`+${addedTotal} tagged`)
-  if (removedTotal > 0) parts.push(`-${removedTotal} untagged`)
+  const prefix = outcome === "dry-run" ? "would be " : ""
+  if (addedTotal > 0) parts.push(`+${addedTotal} ${prefix}tagged`)
+  if (removedTotal > 0) parts.push(`-${removedTotal} ${prefix}untagged`)
   return parts.join(", ") || "Tag operation"
 }
 
-function formatCategoryChangedSummary(details: AutomationActivity["details"]): string {
-  const categories = details?.categories ?? {}
-  const total = Object.values(categories).reduce((sum, value) => {
-    const asNumber = typeof value === "number" ? value : Number(value)
-    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
-  }, 0)
-  return `${total} torrent${total !== 1 ? "s" : ""} moved`
+function formatCategoryChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const total = sumRecordValues(details?.categories)
+  const verb = outcome === "dry-run" ? "would be moved" : "moved"
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
-function formatSpeedLimitsSummary(details: AutomationActivity["details"]): string {
-  const limits = details?.limits ?? {}
-  const total = Object.values(limits).reduce((sum, value) => {
-    const asNumber = typeof value === "number" ? value : Number(value)
-    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
-  }, 0)
-  return `${total} torrent${total !== 1 ? "s" : ""} limited`
+function formatSpeedLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const total = sumRecordValues(details?.limits)
+  const verb = outcome === "dry-run" ? "would be limited" : "limited"
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
-function formatShareLimitsSummary(details: AutomationActivity["details"]): string {
-  const limits = details?.limits ?? {}
-  const total = Object.values(limits).reduce((sum, value) => {
-    const asNumber = typeof value === "number" ? value : Number(value)
-    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
-  }, 0)
-  return `${total} torrent${total !== 1 ? "s" : ""} limited`
+function formatShareLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const total = sumRecordValues(details?.limits)
+  const verb = outcome === "dry-run" ? "would be limited" : "limited"
+  return formatCountWithVerb(total, "torrent", verb)
 }
 
-function formatPausedSummary(details: AutomationActivity["details"]): string {
+function formatPausedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  return `${count} torrent${count !== 1 ? "s" : ""} paused`
+  const verb = outcome === "dry-run" ? "would be paused" : "paused"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
+function formatResumedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const verb = outcome === "dry-run" ? "would be resumed" : "resumed"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
+function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = sumRecordValues(details?.paths)
+  if (outcome === "failed") {
+    return formatCountWithVerb(count, "torrent", "failed to move")
+  }
+  const verb = outcome === "dry-run" ? "would be moved" : "moved"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
+function formatExternalProgramSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const programName = details?.programName
+    ?? (typeof details?.programId === "number" ? `Program ${details.programId}` : "External program")
+  if (outcome === "dry-run") {
+    return `${programName} would run`
+  }
+  return outcome === "failed" ? `${programName} failed` : `${programName} executed`
+}
+
+function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
+  const count = details?.count ?? 0
+  const label = action === "deleted_ratio"
+    ? "ratio limit"
+    : action === "deleted_seeding"
+      ? "seeding limit"
+      : action === "deleted_unregistered"
+        ? "unregistered"
+        : "condition"
+  return `${count} torrent${count !== 1 ? "s" : ""} would be deleted (${label})`
+}
+
+const runSummaryActions = new Set<AutomationActivity["action"]>([
+  "tags_changed",
+  "category_changed",
+  "speed_limits_changed",
+  "share_limits_changed",
+  "paused",
+  "resumed",
+  "moved",
+])
+
+function isRunSummary(event: AutomationActivity): boolean {
+  if (event.hash !== "") return false
+  return event.outcome === "dry-run"
+    || (event.outcome === "success" && runSummaryActions.has(event.action))
 }
 
 interface WorkflowsOverviewProps {
@@ -238,7 +307,15 @@ export function WorkflowsOverview({
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
-  const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
+  const [enableConfirm, setEnableConfirm] = useState<{
+    instanceId: number
+    rule: Automation
+    preview: AutomationPreviewResult | null
+    isInitialLoading: boolean
+  } | null>(null)
+  const [previewView, setPreviewView] = useState<PreviewView>("needed")
+  const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const previewPageSize = 25
 
   const reorderRules = useMutation<
@@ -292,6 +369,7 @@ export function WorkflowsOverview({
   const [activitySearchMap, setActivitySearchMap] = useState<Record<number, string>>({})
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
   const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
+  const [activityRunDialog, setActivityRunDialog] = useState<{ instanceId: number; activity: AutomationActivity } | null>(null)
 
   // Tracker customizations for display names and icons
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -315,7 +393,7 @@ export function WorkflowsOverview({
     if (customization) {
       return {
         displayName: customization.displayName,
-        iconDomain: customization.domains[0],
+        iconDomain: pickTrackerIconDomain(trackerIcons, customization.domains, domain),
         isCustomized: true,
       }
     }
@@ -324,7 +402,7 @@ export function WorkflowsOverview({
       iconDomain: domain,
       isCustomized: false,
     }
-  }, [domainToCustomization])
+  }, [domainToCustomization, trackerIcons])
 
   const deleteRule = useMutation({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
@@ -350,23 +428,47 @@ export function WorkflowsOverview({
   })
 
   const previewRule = useMutation({
-    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
-    onSuccess: (preview, { instanceId, rule }) => {
-      // Last warning before enabling a delete rule (even if 0 matches right now).
-      setEnableConfirm({ instanceId, rule, preview })
+    mutationFn: async ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) => {
+      const minDelay = new Promise(resolve => setTimeout(resolve, 1000))
+      try {
+        const preview = await api.previewAutomation(instanceId, {
+          ...rule,
+          enabled: true,
+          previewLimit: previewPageSize,
+          previewOffset: 0,
+          previewView: view,
+        })
+        await minDelay
+        return preview
+      } catch (error) {
+        await minDelay
+        throw error
+      }
+    },
+    onSuccess: (preview) => {
+      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+      setEnableConfirm(null)
     },
   })
 
   const loadMorePreview = useMutation({
     mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
-      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset, previewView }),
     onSuccess: (preview) => {
-      setEnableConfirm(prev => prev? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }: prev
-      )
+      setEnableConfirm(prev => {
+        if (!prev?.preview) return prev
+        return {
+          ...prev,
+          preview: {
+            ...prev.preview,
+            examples: [...prev.preview.examples, ...preview.examples],
+            totalMatches: preview.totalMatches,
+          },
+        }
+      })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
@@ -481,10 +583,90 @@ export function WorkflowsOverview({
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
       // Enabling a delete or category rule - show preview first
-      previewRule.mutate({ instanceId, rule })
+      // Reset preview view to "needed" when starting a new preview
+      setPreviewView("needed")
+      setIsLoadingPreviewView(false)
+      setEnableConfirm({ instanceId, rule, preview: null, isInitialLoading: true })
+      previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
       // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
+    }
+  }
+
+  // Check if a delete rule uses FREE_SPACE field
+  const ruleUsesFreeSpace = (rule: Automation): boolean => {
+    if (!isDeleteRule(rule)) return false
+    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
+  }
+
+  // Handler for switching preview view - refetches with new view and resets pagination
+  const handlePreviewViewChange = async (newView: PreviewView) => {
+    if (!enableConfirm) return
+    setPreviewView(newView)
+    setIsLoadingPreviewView(true)
+    try {
+      const preview = await api.previewAutomation(enableConfirm.instanceId, {
+        ...enableConfirm.rule,
+        enabled: true,
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+        previewView: newView,
+      })
+      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+    } finally {
+      setIsLoadingPreviewView(false)
+    }
+  }
+
+  // CSV columns for automation preview export
+  const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
+    { header: "Name", accessor: t => t.name },
+    { header: "Hash", accessor: t => t.hash },
+    { header: "Tracker", accessor: t => t.tracker },
+    { header: "Size", accessor: t => formatBytes(t.size) },
+    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
+    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
+    { header: "Category", accessor: t => t.category },
+    { header: "Tags", accessor: t => t.tags },
+    { header: "State", accessor: t => t.state },
+    { header: "Added On", accessor: t => t.addedOn },
+    { header: "Path", accessor: t => t.contentPath ?? "" },
+  ]
+
+  const handleExportPreviewCsv = async () => {
+    if (!enableConfirm?.preview) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: AutomationPreviewTorrent[] = []
+      let offset = 0
+      const total = enableConfirm.preview.totalMatches
+
+      while (allItems.length < total) {
+        const result = await api.previewAutomation(enableConfirm.instanceId, {
+          ...enableConfirm.rule,
+          enabled: true,
+          previewLimit: pageSize,
+          previewOffset: offset,
+          previewView,
+        })
+        allItems.push(...result.examples)
+        offset += pageSize
+        if (result.examples.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      const ruleName = (enableConfirm.rule.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      downloadBlob(csv, `${ruleName}_preview.csv`)
+      toast.success(`Exported ${allItems.length} torrents to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -496,7 +678,7 @@ export function WorkflowsOverview({
   }
 
   const handleLoadMorePreview = () => {
-    if (!enableConfirm) {
+    if (!enableConfirm?.preview) {
       return
     }
     loadMorePreview.mutate({
@@ -545,6 +727,7 @@ export function WorkflowsOverview({
   const outcomeClasses: Record<AutomationActivity["outcome"], string> = {
     success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
+    "dry-run": "bg-sky-500/10 text-sky-500 border-sky-500/20",
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
@@ -559,6 +742,9 @@ export function WorkflowsOverview({
     speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
+    moved: "bg-green-500/10 text-green-500 border-green-500/20",
+    external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -597,7 +783,7 @@ export function WorkflowsOverview({
             </TooltipTrigger>
             <TooltipContent className="max-w-[340px]">
               <p>
-                Condition-based automation rules. Actions: speed limits, share limits, pause, delete, tag, and category changes.
+                Condition-based automation rules. Actions: speed limits, share limits, pause, resume, delete, tag, and category changes.
                 Match torrents by tracker, category, tag, ratio, seed time, size, and more.
                 Cross-seed and hardlink aware—safely delete or move without losing shared files.
               </p>
@@ -632,7 +818,7 @@ export function WorkflowsOverview({
 
             // Filter events
             const allFilteredEvents = events.filter((e) => {
-              if (activityFilter === "success" && e.outcome !== "success") return false
+              if (activityFilter === "success" && e.outcome !== "success" && e.outcome !== "dry-run") return false
               if (activityFilter === "errors" && e.outcome !== "failed") return false
               if (activitySearchTerm) {
                 const nameMatch = e.torrentName?.toLowerCase().includes(activitySearchTerm)
@@ -699,14 +885,24 @@ export function WorkflowsOverview({
                         <p className="text-sm text-muted-foreground">
                           No automations configured yet.
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateDialog(instance.id)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add your first rule
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateDialog(instance.id)}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add your first rule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openImportDialog(instance.id)}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -894,11 +1090,11 @@ export function WorkflowsOverview({
                           </p>
                         </div>
                       ) : activityQuery?.isLoading ? (
-                        <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
+                        <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
                           <p className="text-sm text-muted-foreground">Loading activity...</p>
                         </div>
                       ) : filteredEvents.length === 0 ? (
-                        <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
+                        <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
                           <p className="text-sm text-muted-foreground">
                             {activitySearchTerm ? "No matching events found." : "No activity recorded yet."}
                           </p>
@@ -909,258 +1105,316 @@ export function WorkflowsOverview({
                       ) : (
                         <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
                           <div className="divide-y divide-border">
-                            {filteredEvents.map((event) => (
-                              <div
-                                key={event.id}
-                                className="p-3 hover:bg-muted/30 transition-colors"
-                              >
-                                <div className="flex flex-col gap-2">
-                                  <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                    <div className="min-w-0">
-                                      {event.action === "tags_changed" ? (
-                                        <span className="font-medium text-sm block">
-                                          {formatTagsChangedSummary(event.details)}
-                                        </span>
-                                      ) : event.action === "category_changed" ? (
-                                        <span className="font-medium text-sm block">
-                                          {formatCategoryChangedSummary(event.details)}
-                                        </span>
-                                      ) : event.action === "speed_limits_changed" ? (
-                                        <span className="font-medium text-sm block">
-                                          {formatSpeedLimitsSummary(event.details)}
-                                        </span>
-                                      ) : event.action === "share_limits_changed" ? (
-                                        <span className="font-medium text-sm block">
-                                          {formatShareLimitsSummary(event.details)}
-                                        </span>
-                                      ) : event.action === "paused" ? (
-                                        <span className="font-medium text-sm block">
-                                          {formatPausedSummary(event.details)}
-                                        </span>
-                                      ) : (
-                                        <TruncatedText className="font-medium text-sm block cursor-default">
-                                          {event.torrentName || event.hash}
-                                        </TruncatedText>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                                          actionClasses[event.action]
+                            {filteredEvents.map((event) => {
+                              const canOpenRun = isRunSummary(event)
+                              return (
+                                <div
+                                  key={event.id}
+                                  role={canOpenRun ? "button" : undefined}
+                                  tabIndex={canOpenRun ? 0 : undefined}
+                                  onClick={() => {
+                                    if (canOpenRun) {
+                                      setActivityRunDialog({ instanceId: instance.id, activity: event })
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (!canOpenRun) return
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault()
+                                      setActivityRunDialog({ instanceId: instance.id, activity: event })
+                                    }
+                                  }}
+                                  className={cn(
+                                    "p-3 transition-colors",
+                                    canOpenRun ? "cursor-pointer hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "hover:bg-muted/30"
+                                  )}
+                                >
+                                  <div className="flex flex-col gap-2">
+                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                                      <div className="min-w-0">
+                                        {event.outcome === "dry-run" && event.action.startsWith("deleted_") ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatDeleteDryRunSummary(event.details, event.action)}
+                                          </span>
+                                        ) : event.action === "tags_changed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatTagsChangedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "category_changed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatCategoryChangedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "speed_limits_changed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatSpeedLimitsSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "share_limits_changed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatShareLimitsSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "paused" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatPausedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "resumed" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatResumedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "moved" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatMovedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "external_program" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatExternalProgramSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : (
+                                          <TruncatedText className="font-medium text-sm block cursor-default">
+                                            {event.torrentName || event.hash}
+                                          </TruncatedText>
                                         )}
-                                      >
-                                        {formatAction(event.action)}
-                                      </Badge>
-                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused"].includes(event.action) && (
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
                                         <Badge
                                           variant="outline"
                                           className={cn(
                                             "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                                            outcomeClasses[event.outcome]
+                                            actionClasses[event.action]
                                           )}
                                         >
-                                          {event.outcome === "success" ? "Removed" : "Failed"}
+                                          {formatAction(event.action)}
                                         </Badge>
-                                      )}
+                                        {(!runSummaryActions.has(event.action) || event.outcome === "dry-run") && (
+                                          <Badge
+                                            variant="outline"
+                                            className={cn(
+                                              "text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                              outcomeClasses[event.outcome]
+                                            )}
+                                          >
+                                            {event.outcome === "dry-run"
+                                              ? "Dry run"
+                                              : event.action === "external_program"
+                                                ? (event.outcome === "success" ? "Executed" : "Failed")
+                                                : (event.outcome === "success" ? "Removed" : "Failed")}
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
 
-                                  <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                                    {event.hash && (
-                                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                                        <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                        <button
-                                          type="button"
-                                          className="hover:text-foreground transition-colors"
-                                          onClick={() => {
-                                            copyTextToClipboard(event.hash)
-                                            toast.success("Hash copied")
-                                          }}
-                                          title="Copy hash"
-                                        >
-                                          <Copy className="h-3 w-3" />
-                                        </button>
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                                      {event.hash && (
+                                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                                          <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                          <button
+                                            type="button"
+                                            className="hover:text-foreground transition-colors"
+                                            onClick={(clickEvent) => {
+                                              clickEvent.stopPropagation()
+                                              copyTextToClipboard(event.hash)
+                                              toast.success("Hash copied")
+                                            }}
+                                            title="Copy hash"
+                                          >
+                                            <Copy className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                      {event.trackerDomain && (() => {
+                                        const tracker = getTrackerDisplay(event.trackerDomain)
+                                        return (
+                                          <>
+                                            <span className="text-muted-foreground/40">·</span>
+                                            <div className="flex items-center gap-1">
+                                              <TrackerIconImage tracker={tracker.iconDomain} trackerIcons={trackerIcons} />
+                                              {tracker.isCustomized ? (
+                                                <Tooltip>
+                                                  <TooltipTrigger asChild>
+                                                    <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
+                                                  </TooltipTrigger>
+                                                  <TooltipContent>
+                                                    <p className="text-xs">Original: {event.trackerDomain}</p>
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              ) : (
+                                                <span className="text-xs font-medium">{tracker.displayName}</span>
+                                              )}
+                                            </div>
+                                          </>
+                                        )
+                                      })()}
+                                      {(event.hash || event.trackerDomain) && (
+                                        <span className="text-muted-foreground/40">·</span>
+                                      )}
+                                      <span>{formatISOTimestamp(event.createdAt)}</span>
+                                    </div>
+
+                                    {event.reason && event.outcome === "failed" && (
+                                      <div className="text-xs bg-muted/40 p-2 rounded">
+                                        <span>{event.reason}</span>
                                       </div>
                                     )}
-                                    {event.trackerDomain && (() => {
-                                      const tracker = getTrackerDisplay(event.trackerDomain)
-                                      return (
-                                        <>
-                                          <span className="text-muted-foreground/40">·</span>
-                                          <div className="flex items-center gap-1">
-                                            <TrackerIconImage tracker={tracker.iconDomain} trackerIcons={trackerIcons} />
-                                            {tracker.isCustomized ? (
-                                              <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                  <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                  <p className="text-xs">Original: {event.trackerDomain}</p>
-                                                </TooltipContent>
-                                              </Tooltip>
-                                            ) : (
-                                              <span className="text-xs font-medium">{tracker.displayName}</span>
-                                            )}
-                                          </div>
-                                        </>
-                                      )
-                                    })()}
-                                    {(event.hash || event.trackerDomain) && (
-                                      <span className="text-muted-foreground/40">·</span>
+
+                                    {(event.details || event.ruleName) && (
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                                        {(() => {
+                                          const ratio = event.details?.ratio
+                                          const ratioLimit = event.details?.ratioLimit
+                                          const hasRatio = typeof ratio === "number" && Number.isFinite(ratio)
+                                          const hasRatioLimit = typeof ratioLimit === "number" && Number.isFinite(ratioLimit)
+
+                                          if (!hasRatio) return null
+
+                                          return (
+                                            <span>
+                                              Ratio: {ratio.toFixed(2)}
+                                              {hasRatioLimit ? `/${ratioLimit.toFixed(2)}` : ""}
+                                            </span>
+                                          )
+                                        })()}
+                                        {(() => {
+                                          const seedingMinutes = event.details?.seedingMinutes
+                                          const seedingLimitMinutes = event.details?.seedingLimitMinutes
+                                          const hasSeedingMinutes = typeof seedingMinutes === "number" && Number.isFinite(seedingMinutes)
+                                          const hasSeedingLimitMinutes = typeof seedingLimitMinutes === "number" && Number.isFinite(seedingLimitMinutes)
+
+                                          if (!hasSeedingMinutes) return null
+
+                                          return (
+                                            <span>
+                                              Seeding: {seedingMinutes}m
+                                              {hasSeedingLimitMinutes ? `/${seedingLimitMinutes}m` : ""}
+                                            </span>
+                                          )
+                                        })()}
+                                        {event.details?.filesKept !== undefined && (() => {
+                                          const { filesKept, deleteMode } = event.details
+                                          let label: string
+                                          const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
+
+                                          if (deleteMode === "delete") {
+                                            label = "Torrent only"
+                                          } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
+                                            label = "Files kept due to cross-seeds"
+                                          } else if (deleteMode === "deleteWithFilesIncludeCrossSeeds") {
+                                            label = "With files + cross-seeds"
+                                          } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
+                                            label = "With files"
+                                          } else {
+                                            label = filesKept ? "Files kept" : "Files deleted"
+                                          }
+
+                                          return (
+                                            <Badge variant="outline" className={badgeClassName}>
+                                              {label}
+                                            </Badge>
+                                          )
+                                        })()}
+                                        {event.action === "tags_changed" && event.details && (() => {
+                                          const added = event.details.added ?? {}
+                                          const removed = event.details.removed ?? {}
+                                          const addedTags = Object.entries(added)
+                                          const removedTags = Object.entries(removed)
+
+                                          return (
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {addedTags.map(([tag, count]) => (
+                                                <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                  +{tag} ({count})
+                                                </Badge>
+                                              ))}
+                                              {removedTags.map(([tag, count]) => (
+                                                <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                                                  -{tag} ({count})
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          )
+                                        })()}
+                                        {event.action === "category_changed" && event.details?.categories && (() => {
+                                          const categories = Object.entries(event.details.categories as Record<string, number>)
+
+                                          return (
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {categories.map(([category, count]) => (
+                                                <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                  {category} ({count})
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          )
+                                        })()}
+                                        {event.action === "speed_limits_changed" && event.details?.limits && (() => {
+                                          const limits = Object.entries(event.details.limits as Record<string, number>)
+
+                                          return (
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {limits.map(([key, count]) => {
+                                                const [type, limitKiB] = key.split(":")
+                                                const numKiB = Number(limitKiB)
+                                                // 0 = Unlimited in qBittorrent per-torrent speed limits
+                                                let label: string
+                                                if (numKiB === 0) {
+                                                  label = "Unlimited"
+                                                } else {
+                                                  const limitMiB = numKiB / 1024
+                                                  label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
+                                                }
+                                                return (
+                                                  <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
+                                                    {type === "upload" ? "↑" : "↓"} {label} ({count})
+                                                  </Badge>
+                                                )
+                                              })}
+                                            </div>
+                                          )
+                                        })()}
+                                        {event.action === "share_limits_changed" && event.details?.limits && (() => {
+                                          const limits = Object.entries(event.details.limits as Record<string, number>)
+
+                                          return (
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {limits.map(([key, count]) => {
+                                                const [ratio, seedMinutes] = key.split(":")
+                                                const parts = []
+                                                if (ratio !== "-1.00") parts.push(`${ratio}x`)
+                                                if (seedMinutes !== "-1") {
+                                                  const hours = Math.floor(Number(seedMinutes) / 60)
+                                                  parts.push(`${hours}h`)
+                                                }
+                                                return (
+                                                  <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
+                                                    {parts.join(" / ") || "limit"} ({count})
+                                                  </Badge>
+                                                )
+                                              })}
+                                            </div>
+                                          )
+                                        })()}
+                                        {event.action === "external_program" && event.details?.programName && (
+                                          <span className="text-muted-foreground">Program: {event.details.programName}</span>
+                                        )}
+                                        {event.ruleName && (
+                                          <span className="text-muted-foreground">Rule: {event.ruleName}</span>
+                                        )}
+                                        {event.details?.paths && (() => {
+                                          const paths = Object.entries(event.details.paths as Record<string, number>)
+                                          return (
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {paths.map(([path, count]) => (
+                                                <Badge key={path} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
+                                                  {path} ({count})
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          )
+                                        })()}
+                                      </div>
                                     )}
-                                    <span>{formatISOTimestamp(event.createdAt)}</span>
                                   </div>
-
-                                  {event.reason && event.outcome === "failed" && (
-                                    <div className="text-xs bg-muted/40 p-2 rounded">
-                                      <span>{event.reason}</span>
-                                    </div>
-                                  )}
-
-                                  {(event.details || event.ruleName) && (
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                                      {(() => {
-                                        const ratio = event.details?.ratio
-                                        const ratioLimit = event.details?.ratioLimit
-                                        const hasRatio = typeof ratio === "number" && Number.isFinite(ratio)
-                                        const hasRatioLimit = typeof ratioLimit === "number" && Number.isFinite(ratioLimit)
-
-                                        if (!hasRatio) return null
-
-                                        return (
-                                          <span>
-                                            Ratio: {ratio.toFixed(2)}
-                                            {hasRatioLimit ? `/${ratioLimit.toFixed(2)}` : ""}
-                                          </span>
-                                        )
-                                      })()}
-                                      {(() => {
-                                        const seedingMinutes = event.details?.seedingMinutes
-                                        const seedingLimitMinutes = event.details?.seedingLimitMinutes
-                                        const hasSeedingMinutes = typeof seedingMinutes === "number" && Number.isFinite(seedingMinutes)
-                                        const hasSeedingLimitMinutes = typeof seedingLimitMinutes === "number" && Number.isFinite(seedingLimitMinutes)
-
-                                        if (!hasSeedingMinutes) return null
-
-                                        return (
-                                          <span>
-                                            Seeding: {seedingMinutes}m
-                                            {hasSeedingLimitMinutes ? `/${seedingLimitMinutes}m` : ""}
-                                          </span>
-                                        )
-                                      })()}
-                                      {event.details?.filesKept !== undefined && (() => {
-                                        const { filesKept, deleteMode } = event.details
-                                        let label: string
-                                        const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
-
-                                        if (deleteMode === "delete") {
-                                          label = "Torrent only"
-                                        } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
-                                          label = "Files kept due to cross-seeds"
-                                        } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
-                                          label = "With files"
-                                        } else {
-                                          label = filesKept ? "Files kept" : "Files deleted"
-                                        }
-
-                                        return (
-                                          <Badge variant="outline" className={badgeClassName}>
-                                            {label}
-                                          </Badge>
-                                        )
-                                      })()}
-                                      {event.action === "tags_changed" && event.details && (() => {
-                                        const added = event.details.added ?? {}
-                                        const removed = event.details.removed ?? {}
-                                        const addedTags = Object.entries(added)
-                                        const removedTags = Object.entries(removed)
-
-                                        return (
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {addedTags.map(([tag, count]) => (
-                                              <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                                                +{tag} ({count})
-                                              </Badge>
-                                            ))}
-                                            {removedTags.map(([tag, count]) => (
-                                              <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
-                                                -{tag} ({count})
-                                              </Badge>
-                                            ))}
-                                          </div>
-                                        )
-                                      })()}
-                                      {event.action === "category_changed" && event.details?.categories && (() => {
-                                        const categories = Object.entries(event.details.categories as Record<string, number>)
-
-                                        return (
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {categories.map(([category, count]) => (
-                                              <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                                                {category} ({count})
-                                              </Badge>
-                                            ))}
-                                          </div>
-                                        )
-                                      })()}
-                                      {event.action === "speed_limits_changed" && event.details?.limits && (() => {
-                                        const limits = Object.entries(event.details.limits as Record<string, number>)
-
-                                        return (
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {limits.map(([key, count]) => {
-                                              const [type, limitKiB] = key.split(":")
-                                              const numKiB = Number(limitKiB)
-                                              // 0 = Unlimited in qBittorrent per-torrent speed limits
-                                              let label: string
-                                              if (numKiB === 0) {
-                                                label = "Unlimited"
-                                              } else {
-                                                const limitMiB = numKiB / 1024
-                                                label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
-                                              }
-                                              return (
-                                                <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
-                                                  {type === "upload" ? "↑" : "↓"} {label} ({count})
-                                                </Badge>
-                                              )
-                                            })}
-                                          </div>
-                                        )
-                                      })()}
-                                      {event.action === "share_limits_changed" && event.details?.limits && (() => {
-                                        const limits = Object.entries(event.details.limits as Record<string, number>)
-
-                                        return (
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {limits.map(([key, count]) => {
-                                              const [ratio, seedMinutes] = key.split(":")
-                                              const parts = []
-                                              if (ratio !== "-1.00") parts.push(`${ratio}x`)
-                                              if (seedMinutes !== "-1") {
-                                                const hours = Math.floor(Number(seedMinutes) / 60)
-                                                parts.push(`${hours}h`)
-                                              }
-                                              return (
-                                                <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
-                                                  {parts.join(" / ") || "limit"} ({count})
-                                                </Badge>
-                                              )
-                                            })}
-                                          </div>
-                                        )
-                                      })()}
-                                      {event.ruleName && (
-                                        <span className="text-muted-foreground">Rule: {event.ruleName}</span>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                           {hasMoreEvents && (
                             <div className="p-2 border-t">
@@ -1197,6 +1451,19 @@ export function WorkflowsOverview({
         />
       )}
 
+      {activityRunDialog && (
+        <AutomationActivityRunDialog
+          open={!!activityRunDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              setActivityRunDialog(null)
+            }
+          }}
+          instanceId={activityRunDialog.instanceId}
+          activity={activityRunDialog.activity}
+        />
+      )}
+
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1226,7 +1493,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`: "Enable Delete Rule"
+          enableConfirm && isCategoryRule(enableConfirm.rule) ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}` : "Enable Delete Rule"
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1258,6 +1525,7 @@ export function WorkflowsOverview({
           )
         }
         preview={enableConfirm?.preview ?? null}
+        condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
         onConfirm={confirmEnableRule}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
@@ -1265,17 +1533,24 @@ export function WorkflowsOverview({
         isConfirming={toggleEnabled.isPending}
         destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
+        previewView={previewView}
+        onPreviewViewChange={handlePreviewViewChange}
+        showPreviewViewToggle={enableConfirm ? ruleUsesFreeSpace(enableConfirm.rule) : false}
+        isLoadingPreview={isLoadingPreviewView}
+        onExport={handleExportPreviewCsv}
+        isExporting={isExporting}
+        isInitialLoading={enableConfirm?.isInitialLoading ?? false}
       />
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Workflow</DialogTitle>
             <DialogDescription>
               Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <Textarea
               placeholder='{"name": "My Workflow", "conditions": {...}}'
               value={importJSON}
@@ -1283,7 +1558,7 @@ export function WorkflowsOverview({
                 setImportJSON(e.target.value)
                 setImportError(null)
               }}
-              className="min-h-[200px] font-mono text-sm"
+              className="min-h-[200px] max-h-[50vh] font-mono text-sm"
             />
             {importError && (
               <p className="text-sm text-destructive">{importError}</p>
@@ -1416,9 +1691,12 @@ function RulePreview({
     (rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.condition) ||
     (rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.condition) ||
     (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
+    (rule.conditions?.resume?.enabled && rule.conditions.resume.condition) ||
     (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
     (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
-    (rule.conditions?.category?.enabled && rule.conditions.category.condition)
+    (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
+    (rule.conditions?.move?.enabled && rule.conditions.move.condition) ||
+    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition)
   )
 
   return (
@@ -1493,10 +1771,16 @@ function RulePreview({
             Pause
           </Badge>
         )}
+        {rule.conditions?.resume?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Play className="h-3 w-3" />
+            Resume
+          </Badge>
+        )}
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "+ XS": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
           </Badge>
         )}
         {rule.conditions?.tag?.enabled && (
@@ -1509,6 +1793,18 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
             <Folder className="h-3 w-3" />
             {rule.conditions.category.category}
+          </Badge>
+        )}
+        {rule.conditions?.move?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Move className="h-3 w-3" />
+            {rule.conditions.move.path}
+          </Badge>
+        )}
+        {rule.conditions?.externalProgram?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Terminal className="h-3 w-3" />
+            Program
           </Badge>
         )}
         <Button

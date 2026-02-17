@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -646,6 +649,13 @@ func TestNormalizeFileKey_UnicodeMatching(t *testing.T) {
 			require.Equal(t, norm1, norm2, "Expected %q and %q to normalize to the same key", tt.file1, tt.file2)
 		})
 	}
+}
+
+func TestNormalizeFileKey_AudioAliasMatching(t *testing.T) {
+	// DD+ and DDP represent the same Dolby Digital Plus codec and should normalize the same.
+	normDDPlus := normalizeFileKey("Example.Show.S03.720p.AMZN.WEB-DL.DD+5.1.H.264-GRP.mkv")
+	normDDP := normalizeFileKey("Example.Show.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv")
+	require.Equal(t, normDDP, normDDPlus)
 }
 
 func TestHasContentFileSizeMismatch(t *testing.T) {

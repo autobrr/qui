@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -22,14 +22,32 @@ const (
 	DeleteModeKeepFiles                   = "delete"
 	DeleteModeWithFiles                   = "deleteWithFiles"
 	DeleteModeWithFilesPreserveCrossSeeds = "deleteWithFilesPreserveCrossSeeds"
+	DeleteModeWithFilesIncludeCrossSeeds  = "deleteWithFilesIncludeCrossSeeds"
 )
 
 // Tag mode constants
 const (
 	TagModeFull   = "full"   // Add to matches, remove from non-matches
 	TagModeAdd    = "add"    // Only add to matches
-	TagModeRemove = "remove" // Only remove from non-matches
+	TagModeRemove = "remove" // Only remove from matches
 )
+
+// FreeSpaceSourceType defines the source for free space checks in workflows.
+type FreeSpaceSourceType string
+
+const (
+	// FreeSpaceSourceQBittorrent uses qBittorrent's reported free space (default download dir).
+	FreeSpaceSourceQBittorrent FreeSpaceSourceType = "qbittorrent"
+	// FreeSpaceSourcePath reads free space from a local filesystem path.
+	FreeSpaceSourcePath FreeSpaceSourceType = "path"
+	// Future: FreeSpaceSourceAgentPath for remote agent-based free space checks.
+)
+
+// FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
+type FreeSpaceSource struct {
+	Type FreeSpaceSourceType `json:"type"`           // "qbittorrent" or "path"
+	Path string              `json:"path,omitempty"` // Required when Type == "path"
+}
 
 type Automation struct {
 	ID              int               `json:"id"`
@@ -38,7 +56,9 @@ type Automation struct {
 	TrackerPattern  string            `json:"trackerPattern"`
 	TrackerDomains  []string          `json:"trackerDomains,omitempty"`
 	Conditions      *ActionConditions `json:"conditions"`
+	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
 	Enabled         bool              `json:"enabled"`
+	DryRun          bool              `json:"dryRun"`
 	SortOrder       int               `json:"sortOrder"`
 	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	CreatedAt       time.Time         `json:"createdAt"`
@@ -95,7 +115,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -110,6 +130,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		var automation Automation
 		var conditionsJSON string
 		var intervalSeconds sql.NullInt64
+		var freeSpaceSourceJSON sql.NullString
 
 		if err := rows.Scan(
 			&automation.ID,
@@ -118,8 +139,10 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&automation.TrackerPattern,
 			&conditionsJSON,
 			&automation.Enabled,
+			&automation.DryRun,
 			&automation.SortOrder,
 			&intervalSeconds,
+			&freeSpaceSourceJSON,
 			&automation.CreatedAt,
 			&automation.UpdatedAt,
 		); err != nil {
@@ -139,6 +162,14 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			automation.IntervalSeconds = &v
 		}
 
+		if freeSpaceSourceJSON.Valid && freeSpaceSourceJSON.String != "" {
+			var freeSpaceSource FreeSpaceSource
+			if err := json.Unmarshal([]byte(freeSpaceSourceJSON.String), &freeSpaceSource); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal free_space_source for automation %d: %w", automation.ID, err)
+			}
+			automation.FreeSpaceSource = &freeSpaceSource
+		}
+
 		automations = append(automations, &automation)
 	}
 
@@ -151,7 +182,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, created_at, updated_at
 		FROM automations
 		WHERE id = ? AND instance_id = ?
 	`, id, instanceID)
@@ -159,6 +190,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	var automation Automation
 	var conditionsJSON string
 	var intervalSeconds sql.NullInt64
+	var freeSpaceSourceJSON sql.NullString
 
 	if err := row.Scan(
 		&automation.ID,
@@ -167,8 +199,10 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 		&automation.TrackerPattern,
 		&conditionsJSON,
 		&automation.Enabled,
+		&automation.DryRun,
 		&automation.SortOrder,
 		&intervalSeconds,
+		&freeSpaceSourceJSON,
 		&automation.CreatedAt,
 		&automation.UpdatedAt,
 	); err != nil {
@@ -186,6 +220,14 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	if intervalSeconds.Valid {
 		v := int(intervalSeconds.Int64)
 		automation.IntervalSeconds = &v
+	}
+
+	if freeSpaceSourceJSON.Valid && freeSpaceSourceJSON.String != "" {
+		var freeSpaceSource FreeSpaceSource
+		if err := json.Unmarshal([]byte(freeSpaceSourceJSON.String), &freeSpaceSource); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal free_space_source for automation %d: %w", automation.ID, err)
+		}
+		automation.FreeSpaceSource = &freeSpaceSource
 	}
 
 	return &automation, nil
@@ -206,6 +248,9 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	}
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
+	}
+	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid external program action: %w", err)
 	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
@@ -229,12 +274,21 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		intervalSeconds = sql.NullInt64{Int64: int64(*automation.IntervalSeconds), Valid: true}
 	}
 
+	var freeSpaceSourceJSON sql.NullString
+	if automation.FreeSpaceSource != nil {
+		data, marshalErr := json.Marshal(automation.FreeSpaceSource)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal free_space_source: %w", marshalErr)
+		}
+		freeSpaceSourceJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds)
+			(instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder, intervalSeconds)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +308,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
+	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid external program action: %w", err)
+	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
@@ -267,11 +324,20 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		intervalSeconds = sql.NullInt64{Int64: int64(*automation.IntervalSeconds), Valid: true}
 	}
 
+	var freeSpaceSourceJSON sql.NullString
+	if automation.FreeSpaceSource != nil {
+		data, marshalErr := json.Marshal(automation.FreeSpaceSource)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal free_space_source: %w", marshalErr)
+		}
+		freeSpaceSourceJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
-		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?, interval_seconds = ?
+		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, dry_run = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?
 		WHERE id = ? AND instance_id = ?
-	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, intervalSeconds, automation.ID, automation.InstanceID)
+	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -311,6 +377,54 @@ func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedID
 	}
 
 	return tx.Commit()
+}
+
+// AutomationReference represents a minimal automation reference for cascade delete warnings.
+type AutomationReference struct {
+	ID         int    `json:"id"`
+	InstanceID int    `json:"instanceId"`
+	Name       string `json:"name"`
+}
+
+// FindByExternalProgramID returns automations that reference the given external program ID.
+// Uses SQLite's json_extract to query the conditions JSON column.
+// Returns all automations referencing the program, regardless of whether the action is enabled.
+func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID int) ([]*AutomationReference, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, instance_id, name
+		FROM automations
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
+	`, programID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []*AutomationReference
+	for rows.Next() {
+		var ref AutomationReference
+		if err := rows.Scan(&ref.ID, &ref.InstanceID, &ref.Name); err != nil {
+			return nil, err
+		}
+		refs = append(refs, &ref)
+	}
+	return refs, rows.Err()
+}
+
+// ClearExternalProgramAction removes the external program action from all automations
+// that reference the given program ID. This is used for cascade delete.
+// Clears references regardless of whether the action is enabled or disabled.
+func (s *AutomationStore) ClearExternalProgramAction(ctx context.Context, programID int) (int64, error) {
+	// Set externalProgram to null in the conditions JSON for all matching automations
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE automations
+		SET conditions = json_remove(conditions, '$.externalProgram')
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
+	`, programID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func boolToInt(v bool) int {
@@ -372,8 +486,9 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate        ConditionField = "PRIVATE"
-	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldPrivate         ConditionField = "PRIVATE"
+	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
+	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
@@ -447,13 +562,16 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	SpeedLimits   *SpeedLimitAction  `json:"speedLimits,omitempty"`
-	ShareLimits   *ShareLimitsAction `json:"shareLimits,omitempty"`
-	Pause         *PauseAction       `json:"pause,omitempty"`
-	Delete        *DeleteAction      `json:"delete,omitempty"`
-	Tag           *TagAction         `json:"tag,omitempty"`
-	Category      *CategoryAction    `json:"category,omitempty"`
+	SchemaVersion   string                 `json:"schemaVersion"`
+	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
+	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
+	Pause           *PauseAction           `json:"pause,omitempty"`
+	Resume          *ResumeAction          `json:"resume,omitempty"`
+	Delete          *DeleteAction          `json:"delete,omitempty"`
+	Tag             *TagAction             `json:"tag,omitempty"`
+	Category        *CategoryAction        `json:"category,omitempty"`
+	Move            *MoveAction            `json:"move,omitempty"`
+	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -478,11 +596,18 @@ type PauseAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
+// ResumeAction configures resume action with conditions.
+type ResumeAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
 // DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
-	Enabled   bool           `json:"enabled"`
-	Mode      string         `json:"mode"` // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled"`
+	Mode             string         `json:"mode"`                       // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
+	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
+	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
 // TagAction configures tagging with smart add/remove logic.
@@ -506,10 +631,35 @@ type CategoryAction struct {
 	Condition                    *RuleCondition `json:"condition,omitempty"`
 }
 
+type MoveAction struct {
+	Enabled          bool           `json:"enabled"`
+	Path             string         `json:"path"`
+	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty"`
+	Condition        *RuleCondition `json:"condition,omitempty"`
+}
+
+// ExternalProgramAction configures external program execution with optional conditions.
+type ExternalProgramAction struct {
+	Enabled   bool           `json:"enabled"`
+	ProgramID int            `json:"programId"` // FK to external_programs table
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// Validate checks that the ExternalProgramAction has valid configuration.
+func (a *ExternalProgramAction) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if a.Enabled && a.ProgramID <= 0 {
+		return errors.New("enabled external program action requires valid programId")
+	}
+	return nil
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Resume == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil && ac.ExternalProgram == nil
 }

@@ -1,7 +1,11 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -53,6 +57,10 @@ func (m *discPolicySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, h
 		}
 	}
 	return result, nil
+}
+
+func (*discPolicySyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*discPolicySyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -192,10 +200,12 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	}
 
 	service := &Service{
-		syncManager:      mockSync,
-		instanceStore:    mockInstances,
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		releaseCache:     NewReleaseCache(),
+		syncManager:       mockSync,
+		instanceStore:     mockInstances,
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		releaseCache:      NewReleaseCache(),
+		recheckResumeChan: make(chan *pendingResume, 10),
+		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
@@ -213,7 +223,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 		StartPaused: &startPausedFalse, // Explicitly set to false
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
@@ -226,11 +236,22 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	// Verify the status message mentions disc layout
 	assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
 	assert.Contains(t, result.Message, "BDMV", "Result message should mention the marker")
+
+	// Disc-layout torrents should be queued for resume only after a full (100%) recheck
+	select {
+	case pending := <-service.recheckResumeChan:
+		require.NotNil(t, pending)
+		assert.Equal(t, instanceID, pending.instanceID)
+		assert.Equal(t, newHash, pending.hash)
+		assert.Equal(t, 1.0, pending.threshold)
+	default:
+		require.Fail(t, "expected disc-layout torrent to be queued for recheck resume")
+	}
 }
 
 // TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch verifies that disc layout torrents
 // never get auto-resumed, even for a perfect match scenario that would normally resume.
-func TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch(t *testing.T) {
+func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -277,10 +298,12 @@ func TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch(t *testing.T) {
 	}
 
 	service := &Service{
-		syncManager:      mockSync,
-		instanceStore:    mockInstances,
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		releaseCache:     NewReleaseCache(),
+		syncManager:       mockSync,
+		instanceStore:     mockInstances,
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		releaseCache:      NewReleaseCache(),
+		recheckResumeChan: make(chan *pendingResume, 10),
+		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
@@ -299,13 +322,12 @@ func TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch(t *testing.T) {
 		SkipAutoResume: false, // Would normally allow auto-resume
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
 
-	// For a perfect match, auto-resume would normally be called.
-	// With disc layout, no resume should happen.
+	// We should not resume immediately; it must wait for a full recheck.
 	for _, action := range mockSync.bulkActions {
 		assert.NotContains(t, action, "resume", "No resume action should be called for disc layout torrents")
 	}
@@ -313,6 +335,16 @@ func TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch(t *testing.T) {
 	// Verify the status message mentions disc layout
 	assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
 	assert.Contains(t, result.Message, "VIDEO_TS", "Result message should mention the marker")
+
+	select {
+	case pending := <-service.recheckResumeChan:
+		require.NotNil(t, pending)
+		assert.Equal(t, instanceID, pending.instanceID)
+		assert.Equal(t, newHash, pending.hash)
+		assert.Equal(t, 1.0, pending.threshold)
+	default:
+		require.Fail(t, "expected disc-layout torrent to be queued for recheck resume")
+	}
 }
 
 // TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume verifies that non-disc torrents
@@ -384,7 +416,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 		SkipAutoResume: false,
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 
 	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)

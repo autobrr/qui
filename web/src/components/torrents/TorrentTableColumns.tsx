@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -22,8 +22,14 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
+import {
+  extractTrackerHost,
+  resolveTrackerDisplay,
+  type TrackerCustomizationLookup
+} from "@/lib/tracker-customizations"
+import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
-import type { AppPreferences, Torrent } from "@/types"
+import type { AppPreferences, CrossInstanceTorrent, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   AlertCircle,
@@ -67,15 +73,29 @@ function formatEta(seconds: number): string {
 }
 
 function formatReannounce(seconds: number): string {
+  // Negative values mean "never" or "not applicable"
   if (seconds < 0) return "-"
 
+  // Zero means "now" (just announced or about to announce)
+  if (seconds === 0) return "now"
+
   const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
 
   if (minutes < 1) {
     return "< 1m"
   }
 
-  return `${minutes}m`
+  if (hours < 1) {
+    return `${minutes}m`
+  }
+
+  const remainingMinutes = minutes % 60
+  if (remainingMinutes === 0) {
+    return `${hours}h`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
 }
 
 // Calculate minimum column width based on header text
@@ -120,7 +140,8 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
 })
 
 const getTrackerDisplayMeta = (tracker?: string) => {
-  if (!tracker) {
+  const host = extractTrackerHost(tracker)
+  if (!host) {
     return {
       host: "",
       fallback: "#",
@@ -128,18 +149,7 @@ const getTrackerDisplayMeta = (tracker?: string) => {
     }
   }
 
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-
-  let host = trimmed
-  try {
-    if (trimmed.includes("://")) {
-      const url = new URL(trimmed)
-      host = url.hostname
-    }
-  } catch {
-    // Keep host as trimmed value if URL parsing fails
-  }
+  const fallbackLetter = host.charAt(0).toUpperCase()
 
   return {
     host,
@@ -401,168 +411,18 @@ export const createColumns = (
   instancePreferences?: AppPreferences | null,
   supportsTrackerHealth: boolean = true,
   showInstanceColumn: boolean = false,
-  viewMode: TableViewMode = "normal"
+  viewMode: TableViewMode = "normal",
+  trackerCustomizationLookup?: TrackerCustomizationLookup
 ): ColumnDef<Torrent>[] => {
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
 
-  return [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <div className="flex items-center justify-center p-1 -m-1">
-        <Checkbox
-          checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
-          onCheckedChange={(checked) => {
-            if (selectionEnhancers?.customSelectAll?.onSelectAll) {
-              selectionEnhancers.customSelectAll.onSelectAll(!!checked)
-            } else {
-              // Fallback to default behavior
-              table.toggleAllPageRowsSelected(!!checked)
-            }
-          }}
-          aria-label="Select all"
-          className="hover:border-ring cursor-pointer transition-colors"
-        />
-      </div>
-    ),
-    cell: ({ row, table }) => {
-      const torrent = row.original
-      const hash = torrent.hash
-
-      // Determine if row is selected based on custom logic
-      const isRowSelected = (() => {
-        if (selectionEnhancers?.isAllSelected) {
-          // In "select all" mode, row is selected unless excluded
-          return !selectionEnhancers.excludedFromSelectAll?.has(hash)
-        } else {
-          // Regular mode, use table's selection state
-          return row.getIsSelected()
-        }
-      })()
-
-      return (
-        <div className="flex items-center justify-center p-1 -m-1">
-          <Checkbox
-            checked={isRowSelected}
-            onPointerDown={(e) => {
-              if (selectionEnhancers) {
-                selectionEnhancers.shiftPressedRef.current = e.shiftKey
-              }
-            }}
-            onCheckedChange={(checked: boolean | "indeterminate") => {
-              const isShift = selectionEnhancers?.shiftPressedRef.current === true
-              const allRows = table.getRowModel().rows
-              const currentIndex = allRows.findIndex(r => r.id === row.id)
-
-              if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
-                const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
-                const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
-
-                // For shift selection, use custom handler if available, otherwise fallback
-                if (selectionEnhancers?.onRowSelection) {
-                  for (let i = start; i <= end; i++) {
-                    const r = allRows[i]
-                    if (r) {
-                      const rTorrent = r.original as Torrent
-                      selectionEnhancers.onRowSelection(rTorrent.hash, !!checked, r.id)
-                    }
-                  }
-                } else {
-                  table.setRowSelection((prev: Record<string, boolean>) => {
-                    const next: Record<string, boolean> = { ...prev }
-                    for (let i = start; i <= end; i++) {
-                      const r = allRows[i]
-                      if (r) {
-                        next[r.id] = !!checked
-                      }
-                    }
-                    return next
-                  })
-                }
-              } else {
-                // Single row selection
-                if (selectionEnhancers?.onRowSelection) {
-                  selectionEnhancers.onRowSelection(hash, !!checked, row.id)
-                } else {
-                  row.toggleSelected(!!checked)
-                }
-              }
-
-              if (selectionEnhancers) {
-                selectionEnhancers.lastSelectedIndexRef.current = currentIndex
-                selectionEnhancers.shiftPressedRef.current = false
-              }
-            }}
-            aria-label="Select row"
-            className="hover:border-ring cursor-pointer transition-colors"
-          />
-        </div>
-      )
-    },
-    size: 40,
-    enableResizing: false,
-  },
-  {
-    accessorKey: "priority",
-    header: () => (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex items-center justify-center">
-            <ListOrdered className="h-4 w-4" />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>Priority</TooltipContent>
-      </Tooltip>
-    ),
-    meta: {
-      headerString: "Priority",
-    },
-    cell: ({ row }) => {
-      const priority = row.original.priority
-      const state = row.original.state
-      const isQueued = state === "queuedDL" || state === "queuedUP"
-
-      if (priority === 0 && !isQueued) {
-        return <span className="text-sm text-muted-foreground text-center block">-</span>
-      }
-
-      if (isQueued) {
-        const queueType = state === "queuedDL" ? "DL" : "UP"
-        const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
-        return (
-          <div className="flex items-center justify-center gap-1">
-            <Badge variant={badgeVariant} className="text-xs px-1 py-0">
-              Q{priority || "?"}
-            </Badge>
-            <span className="text-xs text-muted-foreground">{queueType}</span>
-          </div>
-        )
-      }
-
-      return <span className="text-sm font-medium text-center block">{priority}</span>
-    },
-    size: 65,
-  },
-  {
-    accessorKey: "name",
-    header: "Name",
-    cell: ({ row }) => {
-      const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
-          {displayName}
-        </div>
-      )
-    },
-    size: 200,
-  },
-  ...(showInstanceColumn ? [{
+  const instanceColumn: ColumnDef<Torrent> = {
     id: "instance",
     accessorKey: "instanceName",
     header: "Instance",
-    cell: ({ row }: { row: any }) => {
-      const instanceName = row.original.instanceName || ""
+    cell: ({ row }) => {
+      const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
           <Badge variant="outline" className="text-xs">
@@ -572,557 +432,740 @@ export const createColumns = (
       )
     },
     size: calculateMinWidth("Instance"),
-  }] : []),
-  {
-    accessorKey: "size",
-    header: "Size",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.size)}</span>,
-    size: 85,
-  },
-  {
-    accessorKey: "total_size",
-    header: "Total Size",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
-    size: 115,
-  },
-  {
-    accessorKey: "progress",
-    header: "Progress",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <Progress value={row.original.progress * 100} className="w-20" />
-        <span className="text-xs text-muted-foreground">
-          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
-            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
-          ) : (
-            Math.round(row.original.progress * 100)
-          )}%
-        </span>
-      </div>
-    ),
-    size: 120,
-  },
-  {
-    id: "status_icon",
-    accessorFn: (torrent) => torrent.state,
-    header: () => (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Status Icon">
-            <PlayCircle className="h-4 w-4" aria-hidden="true" />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>Status Icon</TooltipContent>
-      </Tooltip>
-    ),
-    meta: {
-      headerString: "Status Icon",
-    },
-    sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
-    cell: ({ row }) => {
-      const torrent = row.original
-      const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
-      const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
+  }
 
-      return (
-        <div
-          className="flex h-full w-full items-center justify-center"
-          title={statusLabel}
-          aria-label={statusLabel}
-        >
-          <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
+  return [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <div className="flex items-center justify-center p-1 -m-1">
+          <Checkbox
+            checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
+            onCheckedChange={(checked) => {
+              if (selectionEnhancers?.customSelectAll?.onSelectAll) {
+                selectionEnhancers.customSelectAll.onSelectAll(!!checked)
+              } else {
+              // Fallback to default behavior
+                table.toggleAllPageRowsSelected(!!checked)
+              }
+            }}
+            aria-label="Select all"
+            className="hover:border-ring cursor-pointer transition-colors"
+          />
         </div>
-      )
-    },
-    size: 48,
-    minSize: 48,
-    maxSize: 48,
-    enableResizing: false,
-    enableSorting: true,
-  },
-  {
-    accessorKey: "state",
-    header: "Status",
-    sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
-    cell: ({ row }) => {
-      const torrent = row.original
-      const state = torrent.state
-      const priority = torrent.priority
-      const isQueued = state === "queuedDL" || state === "queuedUP"
-      const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
+      ),
+      cell: ({ row, table }) => {
+        const torrent = row.original
+        const hash = torrent.hash
 
-      if (isQueued && priority > 0) {
+        // Determine if row is selected based on custom logic
+        const isRowSelected = (() => {
+          if (selectionEnhancers?.isAllSelected) {
+          // In "select all" mode, row is selected unless excluded
+            return !selectionEnhancers.excludedFromSelectAll?.has(hash)
+          } else {
+          // Regular mode, use table's selection state
+            return row.getIsSelected()
+          }
+        })()
+
         return (
-          <div className="flex items-center gap-1">
-            <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
-              {displayLabel}
-            </Badge>
-            <span className="text-xs text-muted-foreground">#{priority}</span>
+          <div className="flex items-center justify-center p-1 -m-1">
+            <Checkbox
+              checked={isRowSelected}
+              onPointerDown={(e) => {
+                if (selectionEnhancers) {
+                  selectionEnhancers.shiftPressedRef.current = e.shiftKey
+                }
+              }}
+              onCheckedChange={(checked: boolean | "indeterminate") => {
+                const isShift = selectionEnhancers?.shiftPressedRef.current === true
+                const allRows = table.getRowModel().rows
+                const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
+                  const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
+                  const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
+
+                  // For shift selection, use custom handler if available, otherwise fallback
+                  if (selectionEnhancers?.onRowSelection) {
+                    for (let i = start; i <= end; i++) {
+                      const r = allRows[i]
+                      if (r) {
+                        const rTorrent = r.original as Torrent
+                        selectionEnhancers.onRowSelection(rTorrent.hash, !!checked, r.id)
+                      }
+                    }
+                  } else {
+                    table.setRowSelection((prev: Record<string, boolean>) => {
+                      const next: Record<string, boolean> = { ...prev }
+                      for (let i = start; i <= end; i++) {
+                        const r = allRows[i]
+                        if (r) {
+                          next[r.id] = !!checked
+                        }
+                      }
+                      return next
+                    })
+                  }
+                } else {
+                // Single row selection
+                  if (selectionEnhancers?.onRowSelection) {
+                    selectionEnhancers.onRowSelection(hash, !!checked, row.id)
+                  } else {
+                    row.toggleSelected(!!checked)
+                  }
+                }
+
+                if (selectionEnhancers) {
+                  selectionEnhancers.lastSelectedIndexRef.current = currentIndex
+                  selectionEnhancers.shiftPressedRef.current = false
+                }
+              }}
+              aria-label="Select row"
+              className="hover:border-ring cursor-pointer transition-colors"
+            />
           </div>
         )
-      }
-
-      return (
-        <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
-          {displayLabel}
-        </Badge>
-      )
+      },
+      size: 40,
+      enableResizing: false,
+      meta: {
+        headerString: "Selection",
+      },
     },
-    size: 130,
-  },
-  {
-    accessorKey: "num_seeds",
-    header: "Seeds",
-    cell: ({ row }) => {
-      const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
-      const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
-      if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
-      return (
-        <span className="text-sm overflow-hidden whitespace-nowrap">
-          {connected} ({total})
-        </span>
-      )
-    },
-    size: 85,
-  },
-  {
-    accessorKey: "num_leechs",
-    header: "Peers",
-    cell: ({ row }) => {
-      const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
-      const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
-      if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
-      return (
-        <span className="text-sm overflow-hidden whitespace-nowrap">
-          {connected} ({total})
-        </span>
-      )
-    },
-    size: 85,
-  },
-  {
-    accessorKey: "dlspeed",
-    header: "Down Speed",
-    cell: ({ row }) => {
-      const speed = row.original.dlspeed
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
-    },
-    size: calculateMinWidth("Down Speed"),
-  },
-  {
-    accessorKey: "upspeed",
-    header: "Up Speed",
-    cell: ({ row }) => {
-      const speed = row.original.upspeed
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
-    },
-    size: calculateMinWidth("Up Speed"),
-  },
-  {
-    accessorKey: "eta",
-    header: "ETA",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatEta(row.original.eta)}</span>,
-    size: 80,
-  },
-  {
-    accessorKey: "ratio",
-    header: "Ratio",
-    cell: ({ row }) => {
-      const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
-      const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
-      const colorVar = getRatioColor(ratio)
-
-      return (
-        <span
-          className="text-sm font-medium overflow-hidden whitespace-nowrap"
-          style={{ color: colorVar }}
-        >
-          {displayRatio}
-        </span>
-      )
-    },
-    sortingFn: (rowA, rowB) => {
-      const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
-      const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
-      
-      // Handle infinity values: -1 should be treated as the highest value
-      if (ratioA === -1 && ratioB === -1) return 0
-      if (ratioA === -1) return 1  // ratioA is infinity, so it's greater
-      if (ratioB === -1) return -1 // ratioB is infinity, so it's greater
-      
-      // Normal numeric comparison
-      return ratioA - ratioB
-    },
-    size: 90,
-  },
-  {
-    accessorKey: "popularity",
-    header: "Popularity",
-    cell: ({ row }) => {
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {row.original.popularity.toFixed(2)}
-        </div>
-      )
-    },
-    size: 120,
-  },
-  {
-    accessorKey: "category",
-    header: "Category",
-    cell: ({ row }) => {
-      const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
-          {displayCategory || ""}
-        </div>
-      )
-    },
-    size: 150,
-  },
-  {
-    accessorKey: "tags",
-    header: "Tags",
-    cell: ({ row }) => {
-      const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
-      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
-          {displayTags}
-        </div>
-      )
-    },
-    size: 200,
-  },
-  {
-    accessorKey: "added_on",
-    header: "Added",
-    cell: ({ row }) => {
-      const addedOn = row.original.added_on
-      if (!addedOn || addedOn === 0) {
-        return "-"
-      }
-
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
-      )
-    },
-    size: 200,
-  },
-  {
-    accessorKey: "completion_on",
-    header: "Completed On",
-    cell: ({ row }) => {
-      const completionOn = row.original.completion_on
-      if (!completionOn || completionOn === -1) {
-        return "-"
-      }
-
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
-      )
-    },
-    size: 200,
-  },
-  {
-    id: "tracker_icon",
-    header: ({ table }) => {
-      const trackerColumn = table.getColumn("tracker")
-      const sortState = trackerColumn?.getIsSorted()
-      const Icon = sortState === "asc"
-        ? ArrowDownAZ
-        : sortState === "desc"
-          ? ArrowDownZA
-          : Globe
-
-      return (
+    {
+      accessorKey: "priority",
+      header: () => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
-              <Icon className="h-4 w-4" aria-hidden="true" />
+            <div className="flex items-center justify-center">
+              <ListOrdered className="h-4 w-4" />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Tracker Icon</TooltipContent>
+          <TooltipContent>Priority</TooltipContent>
         </Tooltip>
-      )
-    },
-    meta: {
-      headerString: "Tracker Icon",
-    },
-    cell: ({ row }) => {
-      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
-      const { host, fallback, title } = getTrackerDisplayMeta(tracker)
-      const iconSrc = host ? trackerIcons?.[host] ?? null : null
+      ),
+      meta: {
+        headerString: "Priority",
+      },
+      cell: ({ row }) => {
+        const priority = row.original.priority
+        const state = row.original.state
+        const isQueued = state === "queuedDL" || state === "queuedUP"
 
-      return (
-        <TrackerIconCell
-          title={title}
-          fallback={fallback}
-          src={iconSrc}
-        />
-      )
-    },
-    size: 48,
-    minSize: 48,
-    maxSize: 48,
-    enableResizing: false,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "tracker",
-    header: "Tracker",
-    cell: ({ row }) => {
-      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
-      let displayTracker = tracker
-      try {
-        if (tracker && tracker.includes("://")) {
-          const url = new URL(tracker)
-          displayTracker = url.hostname
+        if (priority === 0 && !isQueued) {
+          return <span className="text-sm text-muted-foreground text-center block">-</span>
         }
-      } catch {
-        // ignore
-      }
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={tracker}>
-          {displayTracker || "-"}
-        </div>
-      )
-    },
-    size: 150,
-  },
-  {
-    accessorKey: "dl_limit",
-    header: "Down Limit",
-    cell: ({ row }) => {
-      const downLimit = row.original.dl_limit
-      const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
 
-      return (
-        <span
-          className="text-sm font-medium overflow-hidden whitespace-nowrap"
-        >
-          {displayDownLimit}
-        </span>
-      )
-    },
-    size: calculateMinWidth("Down Limit", 30),
-  },
-  {
-    accessorKey: "up_limit",
-    header: "Up Limit",
-    cell: ({ row }) => {
-      const upLimit = row.original.up_limit
-      const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
+        if (isQueued) {
+          const queueType = state === "queuedDL" ? "DL" : "UP"
+          const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <Badge variant={badgeVariant} className="text-xs px-1 py-0">
+                Q{priority || "?"}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{queueType}</span>
+            </div>
+          )
+        }
 
-      return (
-        <span
-          className="text-sm font-medium overflow-hidden whitespace-nowrap"
-        >
-          {displayUpLimit}
-        </span>
-      )
+        return <span className="text-sm font-medium text-center block">{priority}</span>
+      },
+      size: 65,
     },
-    size: calculateMinWidth("Up Limit", 30),
-  },
-  {
-    accessorKey: "downloaded",
-    header: "Downloaded",
-    cell: ({ row }) => {
-      const downloaded = row.original.downloaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => {
+        const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
+            {displayName}
+          </div>
+        )
+      },
+      size: 200,
     },
-    size: calculateMinWidth("Downloaded"),
-  },
-  {
-    accessorKey: "uploaded",
-    header: "Uploaded",
-    cell: ({ row }) => {
-      const uploaded = row.original.uploaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+    ...(showInstanceColumn ? [instanceColumn] : []),
+    {
+      accessorKey: "size",
+      header: "Size",
+      cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.size)}</span>,
+      size: 85,
     },
-    size: calculateMinWidth("Uploaded"),
-  },
-  {
-    accessorKey: "downloaded_session",
-    header: "Session Downloaded",
-    cell: ({ row }) => {
-      const sessionDownloaded = row.original.downloaded_session
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
+    {
+      accessorKey: "total_size",
+      header: "Total Size",
+      cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
+      size: 115,
     },
-    size: calculateMinWidth("Session Downloaded"),
-  },
-  {
-    accessorKey: "uploaded_session",
-    header: "Session Uploaded",
-    cell: ({ row }) => {
-      const sessionUploaded = row.original.uploaded_session
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
-    },
-    size: calculateMinWidth("Session Uploaded"),
-  },
-  {
-    accessorKey: "amount_left",
-    header: "Remaining",
-    cell: ({ row }) => {
-      const amountLeft = row.original.amount_left
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
-    },
-    size: calculateMinWidth("Remaining"),
-  },
-  {
-    accessorKey: "time_active",
-    header: "Time Active",
-    cell: ({ row }) => {
-      const timeActive = row.original.time_active
-      return (
-        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeActive)}</span>
-      )
-    },
-    size: 250,
-  },
-  {
-    accessorKey: "seeding_time",
-    header: "Seeding Time",
-    cell: ({ row }) => {
-      const timeSeeded = row.original.seeding_time
-      return (
-        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeSeeded)}</span>
-      )
-    },
-    size: 250,
-  },
-  {
-    accessorKey: "save_path",
-    header: "Save Path",
-    cell: ({ row }) => {
-      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
-          {displayPath}
+    {
+      accessorKey: "progress",
+      header: "Progress",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <Progress value={row.original.progress * 100} className="w-20" />
+          <span className="text-xs text-muted-foreground">
+            {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+              (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+            ) : (
+              Math.round(row.original.progress * 100)
+            )}%
+          </span>
         </div>
-      )
+      ),
+      size: 120,
     },
-    size: 250,
-  },
-  {
-    accessorKey: "completed",
-    header: "Completed",
-    cell: ({ row }) => {
-      const completed = row.original.completed
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
-    },
-    size: calculateMinWidth("Completed"),
-  },
-  {
-    accessorKey: "ratio_limit",
-    header: "Ratio Limit",
-    cell: ({ row }) => {
-      const ratioLimit = row.original.ratio_limit
-      const instanceRatioLimit = instancePreferences?.max_ratio
-      const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
+    {
+      id: "status_icon",
+      accessorFn: (torrent) => torrent.state,
+      header: () => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Status Icon">
+              <PlayCircle className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Status Icon</TooltipContent>
+        </Tooltip>
+      ),
+      meta: {
+        headerString: "Status Icon",
+      },
+      sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
+      cell: ({ row }) => {
+        const torrent = row.original
+        const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
+        const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
 
-      return (
-        <span
-          className="text-sm font-medium overflow-hidden whitespace-nowrap"
-        >
-          {displayRatioLimit}
-        </span>
-      )
+        return (
+          <div
+            className="flex h-full w-full items-center justify-center"
+            title={statusLabel}
+            aria-label={statusLabel}
+          >
+            <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
+          </div>
+        )
+      },
+      size: 48,
+      minSize: 48,
+      maxSize: 48,
+      enableResizing: false,
+      enableSorting: true,
     },
-    size: calculateMinWidth("Ratio Limit", 24),
-  },
-  {
-    accessorKey: "seen_complete",
-    header: "Last Seen Complete",
-    cell: ({ row }) => {
-      const lastSeenComplete = row.original.seen_complete
-      if (!lastSeenComplete || lastSeenComplete === 0) {
-        return "-"
-      }
+    {
+      accessorKey: "state",
+      header: "Status",
+      sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
+      cell: ({ row }) => {
+        const torrent = row.original
+        const state = torrent.state
+        const priority = torrent.priority
+        const isQueued = state === "queuedDL" || state === "queuedUP"
+        const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
 
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
-      )
-    },
-    size: 200,
-  },
-  {
-    accessorKey: "last_activity",
-    header: "Last Activity",
-    cell: ({ row }) => {
-      const lastActivity = row.original.last_activity
-      if (!lastActivity || lastActivity === 0) {
-        return "-"
-      }
+        if (isQueued && priority > 0) {
+          return (
+            <div className="flex items-center gap-1">
+              <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
+                {displayLabel}
+              </Badge>
+              <span className="text-xs text-muted-foreground">#{priority}</span>
+            </div>
+          )
+        }
 
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
-      )
+        return (
+          <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
+            {displayLabel}
+          </Badge>
+        )
+      },
+      size: 130,
     },
-    size: 200,
-  },
-  {
-    accessorKey: "availability",
-    header: "Availability",
-    cell: ({ row }) => {
-      const availability = row.original.availability
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
+    {
+      accessorKey: "num_seeds",
+      header: "Seeds",
+      cell: ({ row }) => {
+        const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
+        const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
+        if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">
+            {connected} ({total})
+          </span>
+        )
+      },
+      size: 85,
     },
-    size: calculateMinWidth("Availability"),
-  },
-  // incomplete save path is not exposed by the API?
-  {
-    accessorKey: "infohash_v1",
-    header: "Info Hash v1",
-    cell: ({ row }) => {
-      const original = row.original.infohash_v1
-      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
-      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
-          {infoHash || "-"}
-        </div>
-      )
+    {
+      accessorKey: "num_leechs",
+      header: "Peers",
+      cell: ({ row }) => {
+        const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
+        const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
+        if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">
+            {connected} ({total})
+          </span>
+        )
+      },
+      size: 85,
     },
-    size: 370,
-  },
-  {
-    accessorKey: "infohash_v2",
-    header: "Info Hash v2",
-    cell: ({ row }) => {
-      const original = row.original.infohash_v2
-      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
-      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
-          {infoHash || "-"}
-        </div>
-      )
+    {
+      accessorKey: "dlspeed",
+      header: "Down Speed",
+      cell: ({ row }) => {
+        const speed = row.original.dlspeed
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+      },
+      size: calculateMinWidth("Down Speed"),
     },
-    size: 370,
-  },
-  {
-    accessorKey: "reannounce",
-    header: "Reannounce In",
-    cell: ({ row }) => {
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {formatReannounce(row.original.reannounce)}
-        </div>
-      )
+    {
+      accessorKey: "upspeed",
+      header: "Up Speed",
+      cell: ({ row }) => {
+        const speed = row.original.upspeed
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+      },
+      size: calculateMinWidth("Up Speed"),
     },
-    size: calculateMinWidth("Reannounce In"),
-  },
-  {
-    accessorKey: "private",
-    header: "Private",
-    cell: ({ row }) => {
-      return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {row.original.private ? "Yes" : "No"}
-        </div>
-      )
+    {
+      accessorKey: "eta",
+      header: "ETA",
+      cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatEta(row.original.eta)}</span>,
+      size: 80,
     },
-    size: calculateMinWidth("Private"),
-  },
-]}
+    {
+      accessorKey: "ratio",
+      header: "Ratio",
+      cell: ({ row }) => {
+        const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
+        const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
+        const colorVar = getRatioColor(ratio)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+            style={{ color: colorVar }}
+          >
+            {displayRatio}
+          </span>
+        )
+      },
+      sortingFn: (rowA, rowB) => {
+        const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
+        const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
+
+        // Handle infinity values: -1 should be treated as the highest value
+        if (ratioA === -1 && ratioB === -1) return 0
+        if (ratioA === -1) return 1  // ratioA is infinity, so it's greater
+        if (ratioB === -1) return -1 // ratioB is infinity, so it's greater
+
+        // Normal numeric comparison
+        return ratioA - ratioB
+      },
+      size: 90,
+    },
+    {
+      accessorKey: "popularity",
+      header: "Popularity",
+      cell: ({ row }) => {
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {row.original.popularity.toFixed(2)}
+          </div>
+        )
+      },
+      size: 120,
+    },
+    {
+      accessorKey: "category",
+      header: "Category",
+      cell: ({ row }) => {
+        const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
+            {displayCategory || ""}
+          </div>
+        )
+      },
+      size: 150,
+    },
+    {
+      accessorKey: "tags",
+      header: "Tags",
+      cell: ({ row }) => {
+        const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
+        const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
+            {displayTags}
+          </div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "added_on",
+      header: "Added",
+      cell: ({ row }) => {
+        const addedOn = row.original.added_on
+        if (!addedOn || addedOn === 0) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "completion_on",
+      header: "Completed On",
+      cell: ({ row }) => {
+        const completionOn = row.original.completion_on
+        if (!completionOn || completionOn === -1) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      id: "tracker_icon",
+      header: ({ table }) => {
+        const trackerColumn = table.getColumn("tracker")
+        const sortState = trackerColumn?.getIsSorted()
+        const Icon = sortState === "asc" ? ArrowDownAZ : sortState === "desc" ? ArrowDownZA : Globe
+
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Tracker Icon</TooltipContent>
+          </Tooltip>
+        )
+      },
+      meta: {
+        headerString: "Tracker Icon",
+      },
+      cell: ({ row }) => {
+        const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+        const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+        // Use primary domain from customization for icon lookup (if customized)
+        const trackerDisplayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : null
+        const iconDomain = trackerDisplayInfo?.primaryDomain || host
+        const iconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, host)
+
+        return (
+          <TrackerIconCell
+            title={title}
+            fallback={fallback}
+            src={iconSrc}
+          />
+        )
+      },
+      size: 48,
+      minSize: 48,
+      maxSize: 48,
+      enableResizing: false,
+      enableSorting: false,
+    },
+    {
+      accessorKey: "tracker",
+      header: "Tracker",
+      // For client-side sorting in cross-seed mode, use the resolved display name.
+      // Return undefined for empty/unknown so sortUndefined: "last" keeps them at the end.
+      accessorFn: trackerCustomizationLookup ? (torrent) => {
+        const tracker = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+        const host = extractTrackerHost(tracker)
+        if (!host || host === "unknown") {
+          return undefined
+        }
+        const displayInfo = resolveTrackerDisplay(host, trackerCustomizationLookup)
+        return displayInfo.displayName || undefined
+      } : undefined,
+      // Keep empty/unknown trackers at the end regardless of sort direction
+      sortUndefined: "last",
+      cell: ({ row }) => {
+        const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+        const host = extractTrackerHost(tracker)
+        // Resolve display name from customizations
+        const displayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : { displayName: host, primaryDomain: host, isCustomized: false }
+
+        // Build tooltip content: custom name (if any), hostname, and full URL
+        const tooltipParts: string[] = []
+        if (displayInfo.isCustomized) {
+          tooltipParts.push(`Name: ${displayInfo.displayName}`)
+          tooltipParts.push(`Host: ${host}`)
+        }
+        if (tracker && tracker !== host) {
+          tooltipParts.push(`URL: ${tracker}`)
+        }
+        const tooltipText = tooltipParts.length > 0 ? tooltipParts.join("\n") : (tracker || "")
+
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="overflow-hidden whitespace-nowrap text-sm cursor-default">
+                {displayInfo.displayName || "-"}
+              </div>
+            </TooltipTrigger>
+            {tooltipText && (
+              <TooltipContent className="max-w-xs">
+                <p className="whitespace-pre-line text-xs">{tooltipText}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        )
+      },
+      size: 150,
+    },
+    {
+      accessorKey: "dl_limit",
+      header: "Down Limit",
+      cell: ({ row }) => {
+        const downLimit = row.original.dl_limit
+        const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+          >
+            {displayDownLimit}
+          </span>
+        )
+      },
+      size: calculateMinWidth("Down Limit", 30),
+    },
+    {
+      accessorKey: "up_limit",
+      header: "Up Limit",
+      cell: ({ row }) => {
+        const upLimit = row.original.up_limit
+        const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+          >
+            {displayUpLimit}
+          </span>
+        )
+      },
+      size: calculateMinWidth("Up Limit", 30),
+    },
+    {
+      accessorKey: "downloaded",
+      header: "Downloaded",
+      cell: ({ row }) => {
+        const downloaded = row.original.downloaded
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+      },
+      size: calculateMinWidth("Downloaded"),
+    },
+    {
+      accessorKey: "uploaded",
+      header: "Uploaded",
+      cell: ({ row }) => {
+        const uploaded = row.original.uploaded
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+      },
+      size: calculateMinWidth("Uploaded"),
+    },
+    {
+      accessorKey: "downloaded_session",
+      header: "Session Downloaded",
+      cell: ({ row }) => {
+        const sessionDownloaded = row.original.downloaded_session
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
+      },
+      size: calculateMinWidth("Session Downloaded"),
+    },
+    {
+      accessorKey: "uploaded_session",
+      header: "Session Uploaded",
+      cell: ({ row }) => {
+        const sessionUploaded = row.original.uploaded_session
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
+      },
+      size: calculateMinWidth("Session Uploaded"),
+    },
+    {
+      accessorKey: "amount_left",
+      header: "Remaining",
+      cell: ({ row }) => {
+        const amountLeft = row.original.amount_left
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
+      },
+      size: calculateMinWidth("Remaining"),
+    },
+    {
+      accessorKey: "time_active",
+      header: "Time Active",
+      cell: ({ row }) => {
+        const timeActive = row.original.time_active
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeActive)}</span>
+        )
+      },
+      size: 250,
+    },
+    {
+      accessorKey: "seeding_time",
+      header: "Seeding Time",
+      cell: ({ row }) => {
+        const timeSeeded = row.original.seeding_time
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeSeeded)}</span>
+        )
+      },
+      size: 250,
+    },
+    {
+      accessorKey: "save_path",
+      header: "Save Path",
+      cell: ({ row }) => {
+        const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
+            {displayPath}
+          </div>
+        )
+      },
+      size: 250,
+    },
+    {
+      accessorKey: "completed",
+      header: "Completed",
+      cell: ({ row }) => {
+        const completed = row.original.completed
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
+      },
+      size: calculateMinWidth("Completed"),
+    },
+    {
+      accessorKey: "ratio_limit",
+      header: "Ratio Limit",
+      cell: ({ row }) => {
+        const ratioLimit = row.original.ratio_limit
+        const instanceRatioLimit = instancePreferences?.max_ratio
+        const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+          >
+            {displayRatioLimit}
+          </span>
+        )
+      },
+      size: calculateMinWidth("Ratio Limit", 24),
+    },
+    {
+      accessorKey: "seen_complete",
+      header: "Last Seen Complete",
+      cell: ({ row }) => {
+        const lastSeenComplete = row.original.seen_complete
+        if (!lastSeenComplete || lastSeenComplete === 0) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "last_activity",
+      header: "Last Activity",
+      cell: ({ row }) => {
+        const lastActivity = row.original.last_activity
+        if (!lastActivity || lastActivity === 0) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "availability",
+      header: "Availability",
+      cell: ({ row }) => {
+        const availability = row.original.availability
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
+      },
+      size: calculateMinWidth("Availability"),
+    },
+    // incomplete save path is not exposed by the API?
+    {
+      accessorKey: "infohash_v1",
+      header: "Info Hash v1",
+      cell: ({ row }) => {
+        const original = row.original.infohash_v1
+        const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+        const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+            {infoHash || "-"}
+          </div>
+        )
+      },
+      size: 370,
+    },
+    {
+      accessorKey: "infohash_v2",
+      header: "Info Hash v2",
+      cell: ({ row }) => {
+        const original = row.original.infohash_v2
+        const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+        const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+            {infoHash || "-"}
+          </div>
+        )
+      },
+      size: 370,
+    },
+    {
+      accessorKey: "reannounce",
+      header: "Reannounce In",
+      cell: ({ row }) => {
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {formatReannounce(row.original.reannounce)}
+          </div>
+        )
+      },
+      size: calculateMinWidth("Reannounce In"),
+    },
+    {
+      accessorKey: "private",
+      header: "Private",
+      cell: ({ row }) => {
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {row.original.private ? "Yes" : "No"}
+          </div>
+        )
+      },
+      size: calculateMinWidth("Private"),
+    },
+  ]}

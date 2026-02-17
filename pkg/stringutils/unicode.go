@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package stringutils
@@ -51,6 +51,7 @@ func NormalizeUnicode(s string) string {
 //   - Lowercase
 //   - Strip apostrophes (including Unicode variants)
 //   - Strip colons
+//   - Convert ampersand to "and"
 //   - Convert hyphens to spaces
 //   - Collapse multiple spaces to single space
 //
@@ -59,6 +60,7 @@ func NormalizeUnicode(s string) string {
 //   - "Bob's Burgers" → "bobs burgers"
 //   - "CSI: Miami" → "csi miami"
 //   - "Spider-Man" → "spider man"
+//   - "His & Hers" → "his and hers"
 func NormalizeForMatching(s string) string {
 	// First apply unicode normalization
 	s = NormalizeUnicode(s)
@@ -74,6 +76,10 @@ func NormalizeForMatching(s string) string {
 
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")
+
+	// Normalize ampersand to "and" - "His & Hers" → "His and Hers"
+	// Some trackers use & while others use "and" in release names
+	s = strings.ReplaceAll(s, "&", " and ")
 
 	// Normalize hyphens to spaces - "Spider-Man" → "spider man"
 	s = strings.ReplaceAll(s, "-", " ")

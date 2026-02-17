@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -40,7 +40,7 @@ import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
@@ -293,12 +293,12 @@ const FilterSidebarComponent = ({
 
   const visibleTorrentStates = useMemo(() => {
     let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
-    
+
     // Only show cross-seeds when there's an active cross-seed filter
     if (!selectedFilters.expr) {
       states = states.filter(state => state.value !== "cross-seeds")
     }
-    
+
     return states
   }, [supportsTrackerHealth, selectedFilters.expr])
 
@@ -506,9 +506,7 @@ const FilterSidebarComponent = ({
       } catch (err) {
         failCount++
         if (!firstError) {
-          firstError = typeof err === "string"
-            ? err
-            : (err as { message?: string })?.message ?? null
+          firstError = typeof err === "string"? err: (err as { message?: string })?.message ?? null
         }
       }
     }
@@ -765,36 +763,15 @@ const FilterSidebarComponent = ({
     return realTrackers
   }, [incognitoMode, torrentCounts, isLoading, isStaleData])
 
-  // Build lookup maps from tracker customizations for merging and nicknames
-  const trackerCustomizationMaps = useMemo(() => {
-    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
-    const secondaryDomains = new Set<string>()
-
-    for (const custom of trackerCustomizations ?? []) {
-      const domains = custom.domains
-      if (domains.length === 0) continue
-
-      for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].toLowerCase()
-        domainToCustomization.set(domain, {
-          displayName: custom.displayName,
-          domains: custom.domains,
-          id: custom.id,
-        })
-        // Secondary domains (not the first one) should be hidden/merged
-        if (i > 0) {
-          secondaryDomains.add(domain)
-        }
-      }
-    }
-
-    return { domainToCustomization, secondaryDomains }
-  }, [trackerCustomizations])
+  const trackerCustomizationMaps = useMemo(
+    () => buildTrackerCustomizationMaps(trackerCustomizations),
+    [trackerCustomizations]
+  )
 
   // Process trackers to apply customizations (nicknames and merged domains)
   // Returns a list of tracker groups with display names and all associated domains
   const processedTrackers = useMemo(() => {
-    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const { domainToCustomization } = trackerCustomizationMaps
 
     const processed: Array<{
       /** Unique key for React - uses primary domain */
@@ -813,11 +790,6 @@ const FilterSidebarComponent = ({
 
     for (const tracker of trackers) {
       const lowerTracker = tracker.toLowerCase()
-
-      // Skip secondary domains - they're merged into their primary
-      if (secondaryDomains.has(lowerTracker)) {
-        continue
-      }
 
       const customization = domainToCustomization.get(lowerTracker)
 
@@ -850,14 +822,14 @@ const FilterSidebarComponent = ({
     }
 
     // Sort by display name (case-insensitive) for consistent alphabetical ordering
-    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
+    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
 
     return processed
   }, [trackers, trackerCustomizationMaps])
 
-  // Helper to get count for a tracker group (uses primary domain's count)
-  // Merged trackers share the same torrents across multiple URLs, so we use the
-  // primary domain's count rather than summing (which would double-count)
+  // Helper to get count for a tracker group.
+  // Merged trackers can have activity on a non-primary domain, so we use the max count across
+  // all domains (and avoid summing, which can double-count).
   const getTrackerGroupCount = useCallback((domains: string[]): string => {
     if (incognitoMode) {
       return getLinuxCount(domains[0], 100).toString()
@@ -871,12 +843,12 @@ const FilterSidebarComponent = ({
       return "..."
     }
 
-    // Use the primary domain's count (first in the list)
-    return (torrentCounts[`tracker:${domains[0]}`] || 0).toString()
+    const maxCount = Math.max(0, ...domains.map(d => torrentCounts[`tracker:${d}`] || 0))
+    return maxCount.toString()
   }, [incognitoMode, isLoading, torrentCounts])
 
   // Use virtual scrolling for large lists to handle performance efficiently
-  const VIRTUAL_THRESHOLD = 30 // Use virtual scrolling for lists > 30 items
+  const VIRTUAL_THRESHOLD = 250 // Use virtual scrolling for lists > 250 items
 
   // Refs for virtual scrolling
   const categoryListRef = useRef<HTMLDivElement>(null)
@@ -954,7 +926,7 @@ const FilterSidebarComponent = ({
     if (status === "cross-seeds") {
       return selectedFilters.expr ? "include" : "neutral"
     }
-    
+
     if (includeStatusSet.has(status)) return "include"
     if (excludeStatusSet.has(status)) return "exclude"
     return "neutral"
@@ -974,7 +946,7 @@ const FilterSidebarComponent = ({
       // But do allow unchecking by returning after handling the neutral state
       return
     }
-    
+
     let nextIncluded = selectedFilters.status
     let nextExcluded = selectedFilters.excludeStatus
 
@@ -1266,7 +1238,7 @@ const FilterSidebarComponent = ({
     const activelyFilteredEntries = categoryEntries.filter(([name]) => getCategoryState(name) !== "neutral")
     const combined = new Map([
       ...categoryPartition.nonEmpty.map(entry => [entry[0], entry] as const),
-      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const)
+      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const),
     ])
     return Array.from(combined.values())
   }, [showHiddenCategories, categoryEntries, categoryPartition.nonEmpty, getCategoryState])
@@ -1278,7 +1250,7 @@ const FilterSidebarComponent = ({
     const activelyFilteredStates = visibleTorrentStates.filter(state => getStatusState(state.value) !== "neutral")
     const combined = new Map([
       ...statusPartition.nonEmpty.map(state => [state.value, state] as const),
-      ...activelyFilteredStates.map(state => [state.value, state] as const)
+      ...activelyFilteredStates.map(state => [state.value, state] as const),
     ])
     return Array.from(combined.values())
   }, [showHiddenStatuses, visibleTorrentStates, statusPartition.nonEmpty, getStatusState])
@@ -1533,7 +1505,7 @@ const FilterSidebarComponent = ({
 
   // Group-based tracker handlers for merged tracker customizations
   // These work with arrays of domains instead of single trackers
-  const handleTrackerGroupIncludeToggle = useCallback((domains: string[], _key: string) => {
+  const handleTrackerGroupIncludeToggle = useCallback((domains: string[]) => {
     const currentState = getTrackerGroupState(domains)
 
     if (currentState === "include" || currentState === "exclude") {
@@ -1558,7 +1530,7 @@ const FilterSidebarComponent = ({
     }
 
     skipNextToggleRef.current = null
-    handleTrackerGroupIncludeToggle(domains, key)
+    handleTrackerGroupIncludeToggle(domains)
   }, [handleTrackerGroupIncludeToggle, makeToggleKey])
 
   const handleTrackerGroupPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, domains: string[], key: string) => {
@@ -1667,6 +1639,8 @@ const FilterSidebarComponent = ({
   const accordionTriggerClass = viewMode === "dense" ? "px-2 py-1" : "px-3 py-2"
   const accordionContentClass = viewMode === "dense" ? "px-2 pb-1" : "px-3 pb-2"
   const filterItemClass = viewMode === "dense" ? "px-1.5 py-0.5" : "px-2 py-1.5"
+  const filterRowClass = "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
+  const filterRowWithIconClass = "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2"
 
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
@@ -1771,7 +1745,7 @@ const FilterSidebarComponent = ({
       }
       return next
     })
-  }, [])
+  }, [setCollapsedCategories])
 
   const handleEditCategoryByName = useCallback((categoryName: string) => {
     const category = categories[categoryName]
@@ -1858,7 +1832,7 @@ const FilterSidebarComponent = ({
       <ScrollArea className="h-full flex-1 overscroll-contain select-none">
         <div className={viewMode === "dense" ? "px-3 py-2" : "p-4"}>
           <div className={cn("flex items-center justify-between", viewMode === "dense" ? "mb-2" : "mb-4")}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-semibold">Filters</h3>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1881,7 +1855,7 @@ const FilterSidebarComponent = ({
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground shrink-0"
               >
                 Clear all
               </button>
@@ -1986,17 +1960,16 @@ const FilterSidebarComponent = ({
                     const statusItem = (
                       <label
                         key={state.value}
-                      className={cn(
-                        "flex items-center gap-2 rounded",
-                        filterItemClass,
-                        isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
-                        statusState === "exclude"
-                          ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                          : isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
-                      )}
-                      onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
-                      onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
-                    >
+                        className={cn(
+                          filterRowClass,
+                          "rounded w-full min-w-0",
+                          filterItemClass,
+                          isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
+                          statusState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
+                        )}
+                        onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
+                        onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
+                      >
                         <Checkbox
                           checked={getCheckboxVisualState(statusState)}
                           onCheckedChange={isCrossSeed && statusState === "neutral" ? undefined : () => handleStatusCheckboxChange(state.value)}
@@ -2004,17 +1977,17 @@ const FilterSidebarComponent = ({
                         />
                         <span
                           className={cn(
-                            "text-sm flex-1 flex items-center gap-2",
+                            "text-sm flex-1 min-w-0 flex items-center gap-2",
                             statusState === "exclude" ? "text-destructive" : undefined,
                             isCrossSeed && statusState === "neutral" ? "text-muted-foreground" : undefined
                           )}
                         >
-                          <state.icon className="h-4 w-4" />
-                          <span>{state.label}</span>
+                          <state.icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{state.label}</span>
                         </span>
                         <span
                           className={cn(
-                            "text-xs",
+                            "text-xs tabular-nums shrink-0",
                             statusState === "exclude" ? "text-destructive" : "text-muted-foreground"
                           )}
                         >
@@ -2022,7 +1995,7 @@ const FilterSidebarComponent = ({
                         </span>
                       </label>
                     )
-                    
+
                     if (isCrossSeed) {
                       return (
                         <Tooltip key={state.value}>
@@ -2035,7 +2008,7 @@ const FilterSidebarComponent = ({
                         </Tooltip>
                       )
                     }
-                    
+
                     return statusItem
                   })}
                 </div>
@@ -2108,7 +2081,8 @@ const FilterSidebarComponent = ({
                   {!allowSubcategories && (getRawCount("category:") > 0 || uncategorizedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterRowClass,
+                        "rounded cursor-pointer w-full min-w-0",
                         filterItemClass,
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
@@ -2122,7 +2096,7 @@ const FilterSidebarComponent = ({
                       />
                       <span
                         className={cn(
-                          "text-sm flex-1 italic",
+                          "text-sm flex-1 min-w-0 italic truncate",
                           uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
@@ -2132,7 +2106,7 @@ const FilterSidebarComponent = ({
                         <TooltipTrigger asChild>
                           <span
                             className={cn(
-                              "text-xs tabular-nums",
+                              "text-xs tabular-nums shrink-0",
                               uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                             )}
                           >
@@ -2158,9 +2132,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenCategories && hiddenCategorySearchMatches > 0
-                        ? 'All matching categories are empty. Click above to show them.'
-                        : `No categories found matching "${debouncedCategorySearch}"`}
+                      {!showHiddenCategories && hiddenCategorySearchMatches > 0? "All matching categories are empty. Click above to show them.": `No categories found matching "${debouncedCategorySearch}"`}
                     </div>
                   )}
 
@@ -2233,11 +2205,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
-                                      categoryState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleCategoryPointerDown(event, name)}
                                     onPointerLeave={handlePointerLeave}
@@ -2254,7 +2225,7 @@ const FilterSidebarComponent = ({
                                     )}
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         categoryState === "exclude" ? "text-destructive" : undefined
                                       )}
                                     >
@@ -2264,7 +2235,7 @@ const FilterSidebarComponent = ({
                                       <TooltipTrigger asChild>
                                         <span
                                           className={cn(
-                                            "text-xs tabular-nums",
+                                            "text-xs tabular-nums shrink-0",
                                             categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                           )}
                                         >
@@ -2342,16 +2313,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={name}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              categoryState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleCategoryPointerDown(event, name)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                filterRowClass,
+                                "rounded cursor-pointer w-full min-w-0",
+                                filterItemClass,
+                                categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(categoryState)}
                                 onCheckedChange={() => handleCategoryCheckboxChange(name)}
@@ -2364,7 +2334,7 @@ const FilterSidebarComponent = ({
                               )}
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   categoryState === "exclude" ? "text-destructive" : undefined
                                 )}
                               >
@@ -2374,7 +2344,7 @@ const FilterSidebarComponent = ({
                                 <TooltipTrigger asChild>
                                   <span
                                     className={cn(
-                                      "text-xs tabular-nums",
+                                      "text-xs tabular-nums shrink-0",
                                       categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                     )}
                                   >
@@ -2507,7 +2477,8 @@ const FilterSidebarComponent = ({
                   {(getRawCount("tag:") > 0 || untaggedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterRowClass,
+                        "rounded cursor-pointer w-full min-w-0",
                         filterItemClass,
                         untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                       )}
@@ -2521,7 +2492,7 @@ const FilterSidebarComponent = ({
                       />
                       <span
                         className={cn(
-                          "text-sm flex-1 italic",
+                          "text-sm flex-1 min-w-0 italic truncate",
                           untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
@@ -2531,7 +2502,7 @@ const FilterSidebarComponent = ({
                         <TooltipTrigger asChild>
                           <span
                             className={cn(
-                              "text-xs tabular-nums",
+                              "text-xs tabular-nums shrink-0",
                               untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                             )}
                           >
@@ -2557,9 +2528,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenTags && hiddenTagSearchMatches > 0
-                        ? 'All matching tags are empty. Click above to show them.'
-                        : `No tags found matching "${debouncedTagSearch}"`}
+                      {!showHiddenTags && hiddenTagSearchMatches > 0? "All matching tags are empty. Click above to show them.": `No tags found matching "${debouncedTagSearch}"`}
                     </div>
                   )}
 
@@ -2606,11 +2575,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
-                                      tagState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                     onPointerLeave={handlePointerLeave}
@@ -2621,7 +2589,7 @@ const FilterSidebarComponent = ({
                                     />
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         tagState === "exclude" ? "text-destructive" : undefined
                                       )}
                                     >
@@ -2631,7 +2599,7 @@ const FilterSidebarComponent = ({
                                       <TooltipTrigger asChild>
                                         <span
                                           className={cn(
-                                            "text-xs tabular-nums",
+                                            "text-xs tabular-nums shrink-0",
                                             tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                           )}
                                         >
@@ -2679,23 +2647,22 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tag}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              tagState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleTagPointerDown(event, tag)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                filterRowClass,
+                                "rounded cursor-pointer w-full min-w-0",
+                                filterItemClass,
+                                tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagCheckboxChange(tag)}
                               />
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   tagState === "exclude" ? "text-destructive" : undefined
                                 )}
                               >
@@ -2705,7 +2672,7 @@ const FilterSidebarComponent = ({
                                 <TooltipTrigger asChild>
                                   <span
                                     className={cn(
-                                      "text-xs tabular-nums",
+                                      "text-xs tabular-nums shrink-0",
                                       tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                     )}
                                   >
@@ -2777,11 +2744,10 @@ const FilterSidebarComponent = ({
                   {/* No tracker option */}
                   <label
                     className={cn(
-                      "flex items-center gap-2 rounded cursor-pointer",
+                      filterRowClass,
+                      "rounded cursor-pointer w-full min-w-0",
                       filterItemClass,
-                      noTrackerState === "exclude"
-                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                        : "hover:bg-muted"
+                      noTrackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTrackerPointerDown(event, "")}
                     onPointerLeave={handlePointerLeave}
@@ -2793,7 +2759,7 @@ const FilterSidebarComponent = ({
                     />
                     <span
                       className={cn(
-                        "text-sm flex-1 italic",
+                        "text-sm flex-1 min-w-0 italic truncate",
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
@@ -2801,7 +2767,7 @@ const FilterSidebarComponent = ({
                     </span>
                     <span
                       className={cn(
-                        "text-xs",
+                        "text-xs tabular-nums shrink-0",
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
@@ -2852,11 +2818,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowWithIconClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
-                                      trackerState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
                                     onPointerLeave={handlePointerLeave}
@@ -2868,7 +2833,7 @@ const FilterSidebarComponent = ({
                                     <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         trackerState === "exclude" ? "text-destructive" : undefined
                                       )}
                                       tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
@@ -2877,7 +2842,7 @@ const FilterSidebarComponent = ({
                                     </TruncatedText>
                                     <span
                                       className={cn(
-                                        "text-xs",
+                                        "text-xs tabular-nums shrink-0",
                                         trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                       )}
                                     >
@@ -2940,16 +2905,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={trackerGroup.key}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              trackerState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                filterRowWithIconClass,
+                                "rounded cursor-pointer w-full min-w-0",
+                                filterItemClass,
+                                trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(trackerState)}
                                 onCheckedChange={() => handleTrackerGroupCheckboxChange(trackerGroup.domains, trackerGroup.key)}
@@ -2957,7 +2921,7 @@ const FilterSidebarComponent = ({
                               <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   trackerState === "exclude" ? "text-destructive" : undefined
                                 )}
                                 tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
@@ -2966,7 +2930,7 @@ const FilterSidebarComponent = ({
                               </TruncatedText>
                               <span
                                 className={cn(
-                                  "text-xs",
+                                  "text-xs tabular-nums shrink-0",
                                   trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                 )}
                               >

@@ -1,7 +1,11 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"testing"
 
@@ -41,6 +45,10 @@ func (m *reflinkFallbackSafetySyncManager) GetTorrentFilesBatch(_ context.Contex
 		}
 	}
 	return result, nil
+}
+
+func (*reflinkFallbackSafetySyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*reflinkFallbackSafetySyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -185,7 +193,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 		SizeMismatchTolerancePercent: 5.0, // allow the initial "size match" candidate selection
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "rejected", result.Status)
 	require.Contains(t, result.Message, "Content file sizes do not match")

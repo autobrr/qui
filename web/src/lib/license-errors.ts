@@ -1,9 +1,7 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-
-import { POLAR_PORTAL_URL } from "./polar-constants"
 
 export function getLicenseErrorMessage(error: Error | null): string {
   if (!error) return ""
@@ -23,11 +21,13 @@ export function getLicenseErrorMessage(error: Error | null): string {
   } else if (errorMessage.includes("does not match")) {
     return "License key does not match required conditions."
   } else if (errorMessage.includes("activation limit exceeded")) {
-    return `License activation limit has been reached. Please deactivate on another machine at ${POLAR_PORTAL_URL}`
+    return "License activation limit has been reached. Deactivate it from the other machine in qui."
   } else if (errorMessage.includes("limit") && errorMessage.includes("reached")) {
     return "License activation limit has been reached."
   } else if (errorMessage.includes("usage")) {
     return "License usage limit exceeded."
+  } else if (errorMessage.includes("timeout") || errorMessage.includes("network") || errorMessage.includes("temporar")) {
+    return "Unable to reach the license service. Please try again shortly."
   } else if (errorMessage.includes("too many requests") || errorMessage.includes("429")) {
     return "Too many attempts. Please wait a moment and try again."
   } else if (errorMessage.includes("rate limit")) {

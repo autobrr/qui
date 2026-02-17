@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -24,22 +27,30 @@ type fileRenameInstruction struct {
 
 // alignCrossSeedContentPaths renames the incoming cross-seed torrent (display name, folders, files)
 // so that it matches the layout of the already-seeded torrent we're borrowing data from.
-// Returns true if alignment succeeded (or wasn't needed), false if alignment failed.
+// Returns true if alignment succeeded (or wasn't needed), false if alignment failed,
+// along with the active hash that qBittorrent exposes for the torrent.
 func (s *Service) alignCrossSeedContentPaths(
 	ctx context.Context,
 	instanceID int,
 	torrentHash string,
+	torrentHashV2 string,
 	sourceTorrentName string,
 	matchedTorrent *qbt.Torrent,
 	expectedSourceFiles qbt.TorrentFiles,
 	candidateFiles qbt.TorrentFiles,
-) bool {
+) (bool, string) {
+	hashes := dedupeHashes(torrentHash, torrentHashV2)
+	hashLabel := ""
+	if len(hashes) > 0 {
+		hashLabel = hashes[0]
+	}
+
 	if matchedTorrent == nil {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
+			Str("torrentHash", hashLabel).
 			Msg("alignCrossSeedContentPaths called with nil matchedTorrent")
-		return false
+		return false, ""
 	}
 
 	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
@@ -55,7 +66,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("sourceName", sourceTorrentName).
 			Str("matchedName", matchedTorrent.Name).
 			Msg("Skipping alignment: season pack cannot use single-episode files")
-		return false
+		return false, ""
 	}
 
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
@@ -65,25 +76,39 @@ func (s *Service) alignCrossSeedContentPaths(
 			Int("expectedSourceFiles", len(expectedSourceFiles)).
 			Int("candidateFiles", len(candidateFiles)).
 			Msg("Empty file list provided to alignment, skipping")
-		return false
+		return false, ""
 	}
 
-	if !s.waitForTorrentAvailability(ctx, instanceID, torrentHash, crossSeedRenameWaitTimeout) {
+	expectedSourceRoot := detectCommonRoot(expectedSourceFiles)
+	expectedCandidateRoot := detectCommonRoot(candidateFiles)
+	planPreview, _ := buildFileRenamePlan(expectedSourceFiles, candidateFiles)
+	needsRootRename := expectedSourceRoot != "" && expectedCandidateRoot != "" && expectedSourceRoot != expectedCandidateRoot
+	needsFileRename := len(planPreview) > 0
+	alignmentNeeded := shouldAlignFilesWithCandidate(sourceRelease, matchedRelease) && (needsRootRename || needsFileRename)
+
+	// Wait for torrent to become visible in qBittorrent before attempting renames
+	activeHash := s.waitForTorrentAvailability(ctx, instanceID, hashes, crossSeedRenameWaitTimeout)
+	if activeHash == "" {
+		if !alignmentNeeded {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", hashLabel).
+				Msg("Cross-seed torrent not visible yet, no alignment needed")
+			return true, ""
+		}
 		log.Warn().
 			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
+			Str("torrentHash", hashLabel).
 			Msg("Cross-seed torrent not visible yet, skipping rename alignment")
-		return false
+		return false, ""
 	}
 
-	canonicalHash := normalizeHash(torrentHash)
+	canonicalHash := normalizeHash(activeHash)
 
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
 
 	// Detect single-file → folder case (using expected files, before any qBittorrent updates)
-	expectedSourceRoot := detectCommonRoot(expectedSourceFiles)
-	expectedCandidateRoot := detectCommonRoot(candidateFiles)
 	isSingleFileToFolder := expectedSourceRoot == "" && expectedCandidateRoot != ""
 
 	// Determine if we should rename the torrent display name.
@@ -98,16 +123,16 @@ func (s *Service) alignCrossSeedContentPaths(
 	// Display name rename is best-effort - failure only affects UI label, not seeding functionality.
 	// Unlike folder/file renames which are critical for data location, we continue on failure here.
 	if shouldRename {
-		if err := s.syncManager.RenameTorrent(ctx, instanceID, torrentHash, trimmedMatchedName); err != nil {
+		if err := s.syncManager.RenameTorrent(ctx, instanceID, activeHash, trimmedMatchedName); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Msg("Failed to rename cross-seed torrent display name (cosmetic, continuing)")
 		} else {
 			log.Debug().
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Str("newName", trimmedMatchedName).
 				Msg("Renamed cross-seed torrent to match existing torrent name")
 		}
@@ -120,7 +145,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("sourceName", sourceTorrentName).
 			Str("matchedName", matchedTorrent.Name).
 			Msg("Skipping file alignment for episode matched to season pack")
-		return true // Episode-in-pack uses season pack path directly, no alignment needed
+		return true, activeHash // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
 	// Try to get current files from qBittorrent with a few retries for slow clients.
@@ -131,26 +156,26 @@ func (s *Service) alignCrossSeedContentPaths(
 		if ctx.Err() != nil {
 			break
 		}
-		filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{activeHash})
 		if err != nil {
 			log.Debug().
 				Err(err).
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Int("attempt", attempt+1).
 				Msg("Failed to get torrent files, retrying")
 		} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
 			sourceFiles = currentFiles
 			log.Debug().
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Int("fileCount", len(currentFiles)).
 				Msg("Got torrent files from qBittorrent")
 			break
 		} else {
 			log.Trace().
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Int("attempt", attempt+1).
 				Msg("Torrent files not yet available, retrying")
 		}
@@ -165,12 +190,12 @@ func (s *Service) alignCrossSeedContentPaths(
 			log.Trace().
 				Err(ctx.Err()).
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Msg("Context cancelled while getting torrent files, using expected source files")
 		} else {
 			log.Debug().
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Msg("Could not get torrent files after retries, using expected source files")
 		}
 		sourceFiles = expectedSourceFiles
@@ -215,14 +240,14 @@ func (s *Service) alignCrossSeedContentPaths(
 		}
 
 		// Attempt rename with verification and retry (qBittorrent rename is async and can silently fail)
-		if !s.renameFileWithVerification(ctx, instanceID, torrentHash, actualOldPath, actualNewPath) {
+		if !s.renameFileWithVerification(ctx, instanceID, activeHash, actualOldPath, actualNewPath) {
 			log.Warn().
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Str("from", actualOldPath).
 				Str("to", actualNewPath).
 				Msg("Failed to rename cross-seed file after retries, aborting alignment")
-			return false
+			return false, activeHash
 		}
 		renamed++
 	}
@@ -233,20 +258,20 @@ func (s *Service) alignCrossSeedContentPaths(
 	// to the existing files on disk (from the matched torrent).
 	rootRenamed := false
 	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
-		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, torrentHash, sourceRoot, targetRoot); err != nil {
+		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, activeHash, sourceRoot, targetRoot); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Str("torrentHash", activeHash).
 				Str("from", sourceRoot).
 				Str("to", targetRoot).
 				Msg("Failed to rename cross-seed root folder")
-			return false
+			return false, activeHash
 		}
 		rootRenamed = true
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
+			Str("torrentHash", activeHash).
 			Str("from", sourceRoot).
 			Str("to", targetRoot).
 			Msg("Renamed cross-seed root folder to match existing torrent")
@@ -263,16 +288,16 @@ func (s *Service) alignCrossSeedContentPaths(
 				Strs("unmatchedPaths", unmatched).
 				Msg("Some cross-seed files could not be mapped, recheck will handle verification")
 		}
-		return true // No renames needed - paths already match or recheck will verify
+		return true, activeHash // No renames needed - paths already match or recheck will verify
 	}
 
 	if renamed == 0 && !rootRenamed {
-		return true // No renames performed (paths already match or renames not required)
+		return true, activeHash // No renames performed (paths already match or renames not required)
 	}
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Str("torrentHash", torrentHash).
+		Str("torrentHash", activeHash).
 		Int("fileRenames", renamed).
 		Bool("folderRenamed", rootRenamed).
 		Msg("Aligned cross-seed torrent naming with existing torrent")
@@ -280,24 +305,25 @@ func (s *Service) alignCrossSeedContentPaths(
 	if len(unmatched) > 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
+			Str("torrentHash", activeHash).
 			Int("unmatchedFiles", len(unmatched)).
 			Msg("Some cross-seed files could not be mapped to existing files and will keep their original names")
 	}
 
-	return true
+	return true, activeHash
 }
 
-func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hash string, timeout time.Duration) bool {
-	if strings.TrimSpace(hash) == "" {
-		return false
+func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hashes []string, timeout time.Duration) string {
+	hashes = dedupeHashes(hashes...)
+	if len(hashes) == 0 {
+		return ""
 	}
 
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
-			return false
+			return ""
 		}
 
 		if qbtSyncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID); err == nil && qbtSyncManager != nil {
@@ -309,9 +335,15 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
 		if err == nil && len(torrents) > 0 {
-			return true
+			for _, torrent := range torrents {
+				active := strings.TrimSpace(torrent.Hash)
+				if active != "" {
+					return active
+				}
+			}
+			return hashes[0]
 		} else if err != nil {
 			log.Debug().
 				Err(err).
@@ -322,7 +354,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 		time.Sleep(crossSeedRenamePollInterval)
 	}
 
-	return false
+	return ""
 }
 
 func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {
@@ -464,11 +496,16 @@ func normalizeFileKey(path string) string {
 
 	// Normalize Unicode characters (Shōgun → Shogun, etc.)
 	base = stringutils.NormalizeUnicode(base)
+	base = strings.ToLower(base)
+
+	// Dolby Digital Plus commonly appears as either DDP or DD+ depending on indexer naming.
+	// Normalize to the same token so equivalent files match by key.
+	base = strings.ReplaceAll(base, "dd+", "ddp")
 
 	var b strings.Builder
 	for _, r := range base {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(unicode.ToLower(r))
+			b.WriteRune(r)
 		}
 	}
 

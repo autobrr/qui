@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -406,26 +411,41 @@ export function useCrossSeedSearch(instanceId: number) {
       // Count successes and failures from instance results
       let addedCount = 0
       let failedCount = 0
+      let completedWithoutDetails = 0
       for (const result of response.results) {
-        if (result.instanceResults) {
-          for (const ir of result.instanceResults) {
-            if (ir.status === "added") {
+        const instanceResults = result.instanceResults ?? []
+        if (instanceResults.length > 0) {
+          for (const ir of instanceResults) {
+            if (ir.status === "added" || ir.status === "added_hardlink" || ir.status === "added_reflink") {
               addedCount++
             } else if (!ir.success) {
               failedCount++
             }
           }
-        } else if (!result.success) {
+        } else if (result.success) {
+          completedWithoutDetails++
+        } else {
           failedCount++
         }
       }
 
-      if (addedCount > 0 && failedCount === 0) {
-        toast.success(`Added ${addedCount} cross-seed${addedCount > 1 ? "s" : ""}`)
-      } else if (addedCount > 0 && failedCount > 0) {
-        toast.warning(`Added ${addedCount}, ${failedCount} failed - check results for details`)
-      } else if (failedCount > 0) {
-        toast.error(`Failed to add ${failedCount} cross-seed${failedCount > 1 ? "s" : ""} - check results for details`)
+      // Build toast message based on results
+      const hasAdded = addedCount > 0
+      const hasFailed = failedCount > 0
+      const hasCompleted = completedWithoutDetails > 0
+      const plural = addedCount > 1 ? "s" : ""
+
+      if (hasAdded && !hasFailed) {
+        const completedSuffix = hasCompleted ? ` (+${completedWithoutDetails} completed)` : ""
+        toast.success(`Added ${addedCount} cross-seed${plural}${completedSuffix}`)
+      } else if (hasAdded && hasFailed) {
+        const completedPart = hasCompleted ? `, ${completedWithoutDetails} completed` : ""
+        toast.warning(`Added ${addedCount}, ${failedCount} failed${completedPart} - check results for details`)
+      } else if (hasFailed) {
+        const completedPrefix = hasCompleted ? `${completedWithoutDetails} completed, ` : ""
+        toast.error(`${completedPrefix}${failedCount} failed - check results for details`)
+      } else if (hasCompleted) {
+        toast.success("Cross-seed request completed (details unavailable)")
       } else {
         toast.info("No cross-seeds were added")
       }

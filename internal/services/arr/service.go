@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package arr
@@ -174,7 +174,23 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 			continue
 		}
 
-		client := NewClient(instance.BaseURL, apiKey, instance.Type, instance.TimeoutSeconds)
+		var basicPass string
+		if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+			basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+			if err != nil {
+				log.Warn().Err(err).
+					Int("instanceId", instance.ID).
+					Str("instanceName", instance.Name).
+					Msg("[ARR-LOOKUP] Failed to decrypt basic auth password")
+				continue
+			}
+		}
+		basicPassPtr := &basicPass
+		if basicPass == "" {
+			basicPassPtr = nil
+		}
+
+		client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 
 		ids, err := client.ParseTitle(ctx, title)
 		if err != nil {
@@ -242,9 +258,9 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 	}, nil
 }
 
-// TestConnection tests connectivity to an ARR instance
-func (s *Service) TestConnection(ctx context.Context, baseURL, apiKey string, instanceType models.ArrInstanceType) error {
-	client := NewClient(baseURL, apiKey, instanceType, 15)
+// TestConnection tests connectivity to an ARR instance.
+func (s *Service) TestConnection(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, instanceType models.ArrInstanceType) error {
+	client := NewClient(baseURL, apiKey, basicUsername, basicPassword, instanceType, 15)
 	return client.Ping(ctx)
 }
 
@@ -260,7 +276,19 @@ func (s *Service) TestInstance(ctx context.Context, instanceID int) error {
 		return err
 	}
 
-	client := NewClient(instance.BaseURL, apiKey, instance.Type, instance.TimeoutSeconds)
+	var basicPass string
+	if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+		basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+		if err != nil {
+			return err
+		}
+	}
+	basicPassPtr := &basicPass
+	if basicPass == "" {
+		basicPassPtr = nil
+	}
+
+	client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 	err = client.Ping(ctx)
 
 	// Update test status
@@ -319,7 +347,21 @@ func (s *Service) DebugResolve(ctx context.Context, title string, contentType Co
 					continue
 				}
 
-				client := NewClient(instance.BaseURL, apiKey, instance.Type, instance.TimeoutSeconds)
+				var basicPass string
+				if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+					basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+					if err != nil {
+						instanceResult.Error = "failed to decrypt basic auth password: " + err.Error()
+						result.InstanceResults = append(result.InstanceResults, instanceResult)
+						continue
+					}
+				}
+				basicPassPtr := &basicPass
+				if basicPass == "" {
+					basicPassPtr = nil
+				}
+
+				client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 				ids, err := client.ParseTitle(ctx, title)
 				if err != nil {
 					instanceResult.Error = err.Error()

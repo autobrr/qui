@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package arr
@@ -69,7 +69,7 @@ func TestClient_Ping(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-api-key", models.ArrInstanceTypeSonarr, 15)
+			client := NewClient(server.URL, "test-api-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
 			err := client.Ping(context.Background())
 
 			if tt.wantErr {
@@ -80,6 +80,26 @@ func TestClient_Ping(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClient_Ping_WithBasicAuth(t *testing.T) {
+	user := "alice"
+	pass := "secret"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser, gotPass, ok := r.BasicAuth()
+		assert.True(t, ok)
+		assert.Equal(t, user, gotUser)
+		assert.Equal(t, pass, gotPass)
+
+		assert.Equal(t, "test-api-key", r.Header.Get("X-Api-Key"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"appName":"Sonarr","version":"4.0.0.123"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-api-key", &user, &pass, models.ArrInstanceTypeSonarr, 15)
+	require.NoError(t, client.Ping(context.Background()))
 }
 
 func TestClient_ParseTitle_Sonarr(t *testing.T) {
@@ -177,7 +197,7 @@ func TestClient_ParseTitle_Sonarr(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-key", models.ArrInstanceTypeSonarr, 15)
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
 			ids, err := client.ParseTitle(context.Background(), "Test Title")
 
 			if tt.wantErr {
@@ -283,7 +303,7 @@ func TestClient_ParseTitle_Radarr(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "test-key", models.ArrInstanceTypeRadarr, 15)
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
 			ids, err := client.ParseTitle(context.Background(), "Test")
 
 			require.NoError(t, err)
@@ -451,14 +471,14 @@ func TestRadarrParseResponse_ExtractExternalIDs(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:8989/", "apikey123", models.ArrInstanceTypeSonarr, 30)
+	client := NewClient("http://localhost:8989/", "apikey123", nil, nil, models.ArrInstanceTypeSonarr, 30)
 
 	assert.Equal(t, "http://localhost:8989", client.BaseURL()) // trailing slash trimmed
 	assert.Equal(t, models.ArrInstanceTypeSonarr, client.InstanceType())
 }
 
 func TestNewClient_DefaultTimeout(t *testing.T) {
-	client := NewClient("http://localhost:8989", "key", models.ArrInstanceTypeRadarr, 0)
+	client := NewClient("http://localhost:8989", "key", nil, nil, models.ArrInstanceTypeRadarr, 0)
 
 	// Default timeout should be 15 seconds
 	assert.Equal(t, defaultTimeout, client.timeout)

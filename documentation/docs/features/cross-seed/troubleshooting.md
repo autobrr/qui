@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 7
 title: Troubleshooting
 ---
 
@@ -97,16 +97,16 @@ The incoming torrent has files not present in your matched torrent, and those fi
 
 ## Blu-ray or DVD cross-seed left paused
 
-Torrents containing disc-based media (Blu-ray `BDMV` or DVD `VIDEO_TS` folder structures) are always added paused and never auto-resumed, regardless of your settings.
+Torrents containing disc-based media (Blu-ray `BDMV` or DVD `VIDEO_TS` folder structures) are always added paused.
 
 **Why?** Disc layout torrents are sensitive to file alignment. Even minor path differences can cause qBittorrent to redownload large video segments, potentially corrupting your seeded content. Leaving them paused lets you verify the recheck completed at 100% before resuming.
 
 **What to do:**
-1. After the torrent is added, trigger a recheck in qBittorrent
-2. Verify it reaches 100% completion
-3. Resume manually
+1. If **Skip recheck** is enabled in Cross-Seed Rules, disc-layout matches will be skipped.
+2. Otherwise, qui triggers a recheck automatically and will only auto-resume once the recheck reaches **100%**.
+3. If you have auto-resume disabled, resume manually after verifying it reaches 100%.
 
-The result message will indicate when this policy applies: `"disc layout detected (BDMV), left paused"`
+The result message will indicate when this policy applies (example): `"disc layout detected (BDMV), full recheck required"`
 
 ## Webhook returns HTTP 400 "invalid character" error
 
@@ -142,6 +142,6 @@ The `toRawJson` function (from Sprig) properly escapes special characters and ou
 
 ## autoTMM unexpectedly enabled/disabled
 
-- In suffix mode, autoTMM mirrors the matched torrent's setting (intentional)
+- In affix mode, autoTMM mirrors the matched torrent's setting (intentional)
 - In indexer name or custom category mode, autoTMM is always disabled
 - Check the original torrent's autoTMM status in qBittorrent

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -15,14 +15,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { PathCell } from "@/components/ui/path-cell"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
-import type { AutomationPreviewResult, AutomationPreviewTorrent, RuleCondition } from "@/types"
-import { Loader2 } from "lucide-react"
+import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
+import { Download, Loader2 } from "lucide-react"
 import { useMemo } from "react"
+import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
+
+// Tabs component for needed/eligible toggle
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // Helper to get human-readable label from value/label arrays
 function getLabelFromValues(values: Array<{ value: string; label: string }>, value: string): string {
@@ -49,6 +54,20 @@ interface WorkflowPreviewDialogProps {
   destructive?: boolean
   /** Use warning styling (amber button) for category changes */
   warning?: boolean
+  /** Current preview view mode (only shown for delete rules with FREE_SPACE) */
+  previewView?: PreviewView
+  /** Callback when user switches preview view */
+  onPreviewViewChange?: (view: PreviewView) => void
+  /** Whether to show the preview view toggle (only for FREE_SPACE delete rules) */
+  showPreviewViewToggle?: boolean
+  /** Whether the preview is currently loading (e.g., when switching views) */
+  isLoadingPreview?: boolean
+  /** Callback to export all preview data to CSV */
+  onExport?: () => void
+  /** Whether export is in progress */
+  isExporting?: boolean
+  /** Whether the initial preview is loading (dialog just opened, waiting for first results) */
+  isInitialLoading?: boolean
 }
 
 // Extract all field names from a condition tree
@@ -229,6 +248,13 @@ export function WorkflowPreviewDialog({
   isLoadingMore = false,
   destructive = true,
   warning = false,
+  previewView = "needed",
+  onPreviewViewChange,
+  showPreviewViewToggle = false,
+  isLoadingPreview = false,
+  onExport,
+  isExporting = false,
+  isInitialLoading = false,
 }: WorkflowPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
@@ -242,6 +268,23 @@ export function WorkflowPreviewDialog({
     )
   }, [condition])
 
+  // Show loading state when initial preview is being fetched
+  if (isInitialLoading) {
+    return (
+      <AlertDialog open={open} onOpenChange={onOpenChange}>
+        <AlertDialogContent className="sm:max-w-md">
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <AnimatedLogo className="h-16 w-16" />
+            <p className="text-sm text-muted-foreground">Loading preview. This might take a while...</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    )
+  }
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="sm:max-w-5xl max-h-[85dvh] flex flex-col">
@@ -250,12 +293,40 @@ export function WorkflowPreviewDialog({
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               {description}
+              {showPreviewViewToggle && (
+                <div className="space-y-2 pt-1">
+                  <Tabs
+                    value={previewView}
+                    onValueChange={(v) => onPreviewViewChange?.(v as PreviewView)}
+                    className="w-full"
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="needed" disabled={isLoadingPreview}>
+                        Needed to reach target
+                      </TabsTrigger>
+                      <TabsTrigger value="eligible" disabled={isLoadingPreview}>
+                        All eligible
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <p className="text-xs text-muted-foreground">
+                    {previewView === "needed"
+                      ? "These are the torrents that would be removed now to reach your free-space target."
+                      : "These are all torrents this rule could remove while free space is low."}
+                  </p>
+                </div>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         {preview && preview.examples.length > 0 && (
-          <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
+          <div className="flex-1 min-h-0 overflow-hidden border rounded-lg relative">
+            {isLoadingPreview && (
+              <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
             <div className="overflow-auto max-h-[50vh]">
               <table className="w-full text-sm">
                 <thead className="sticky top-0">
@@ -274,6 +345,7 @@ export function WorkflowPreviewDialog({
                       </th>
                     ))}
                     <th className="text-left p-2 font-medium bg-muted">Category</th>
+                    <th className="text-left p-2 font-medium bg-muted">Path</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -295,9 +367,21 @@ export function WorkflowPreviewDialog({
                           </div>
                         </td>
                         <td className="p-2 max-w-[280px]">
-                          <TruncatedText className="block">
-                            {t.name}
-                          </TruncatedText>
+                          <div className="flex items-center gap-1.5">
+                            <TruncatedText className="block flex-1 min-w-0">
+                              {t.name}
+                            </TruncatedText>
+                            {/* Single cross-seed badge with appropriate variant based on expansion type */}
+                            {(t.isCrossSeed || t.isHardlinkCopy) && (
+                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
+                                t.isHardlinkCopy
+                                  ? "bg-violet-500/10 text-violet-600"
+                                  : "bg-blue-500/10 text-blue-600"
+                              }`}>
+                                {t.isHardlinkCopy ? "Cross-seed (hardlinked)" : "Cross-seed (same files)"}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatBytes(t.size)}
@@ -320,6 +404,9 @@ export function WorkflowPreviewDialog({
                           <TruncatedText className="block max-w-[80px] text-muted-foreground">
                             {t.category || "-"}
                           </TruncatedText>
+                        </td>
+                        <td className="p-2 max-w-[200px]">
+                          <PathCell path={t.contentPath} />
                         </td>
                       </tr>
                     )
@@ -346,22 +433,42 @@ export function WorkflowPreviewDialog({
           </div>
         )}
 
-        <AlertDialogFooter className="mt-4">
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isConfirming}
-            className={
-              destructive
-                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                : warning
-                  ? "bg-amber-600 text-white hover:bg-amber-700"
-                  : ""
-            }
-          >
-            {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {confirmLabel}
-          </AlertDialogAction>
+        <AlertDialogFooter className="mt-4 sm:justify-between">
+          <div>
+            {onExport && preview && preview.totalMatches > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onExport}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Export CSV
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onConfirm}
+              disabled={isConfirming}
+              className={
+                destructive
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : warning
+                    ? "bg-amber-600 text-white hover:bg-amber-700"
+                    : ""
+              }
+            >
+              {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {confirmLabel}
+            </AlertDialogAction>
+          </div>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

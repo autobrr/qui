@@ -23,6 +23,14 @@ A web interface for qBittorrent. Manage multiple qBittorrent instances from a si
 - **Backups & Restore**: Scheduled snapshots with incremental, overwrite, and complete restore modes
 - **Cross-Seed**: Automatically find and add matching torrents across trackers with autobrr webhook integration
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps like autobrr, Sonarr, and Radarr—no credential sharing needed
+- **Incognito Mode**: Disguise torrents as Linux ISOs for screen sharing and screenshots
+
+## Browser Extensions
+
+Right-click any magnet or torrent link to add it directly to your qBittorrent instances:
+
+- [Chrome Extension](https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili)
+- [Firefox Add-on](https://addons.mozilla.org/en-US/firefox/addon/qui/)
 
 ## Quick Start
 
@@ -41,3 +49,9 @@ Join our friendly and welcoming community on [Discord](https://discord.autobrr.c
 ## License
 
 GPL-2.0-or-later
+
+## Supported Torrent Clients
+
+qui currently only supports qBittorrent. It communicates directly with the qBittorrent Web API. Support for other torrent clients such as Deluge, rTorrent, and Transmission is not yet available, but we hope to support them all in the future.
+
+For details on which qBittorrent versions are compatible, see the [qBittorrent Version Compatibility](./advanced/compatibility.md) page.

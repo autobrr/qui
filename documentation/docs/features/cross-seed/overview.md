@@ -28,6 +28,8 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
 
+Optional: qui can also query OPS/RED via the trackers' Gazelle JSON APIs. This complements Torznab (and excludes OPS/RED Torznab indexers for per-torrent searches only when **both** Gazelle keys are configured). See [OPS/RED (Gazelle)](gazelle-ops-red).
+
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
 
 ## Discovery Methods
@@ -50,11 +52,11 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 
 - **Source instance** - The qBittorrent instance to scan
 - **Categories/Tags** - Filter which torrents to include
-- **Interval** - Delay between processing each torrent (minimum 60 seconds)
+- **Interval** - Delay between processing each torrent (minimum 60 seconds with Torznab enabled; minimum 5 seconds when Torznab is disabled and Gazelle is configured (recommended 10+ seconds))
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
 
 :::warning
-Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
+Run sparingly. This deep scan touches every matching torrent and queries Torznab and/or Gazelle for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
 :::
 
 ### Auto-Search on Completion
@@ -62,6 +64,7 @@ Run sparingly. This deep scan touches every matching torrent and queries indexer
 Triggers a cross-seed search when torrents finish downloading. Configure in the **Auto** tab under "Auto-search on completion".
 
 - **Categories/Tags** - Filter which completed torrents trigger searches
+- **Target indexers** - Limit completion searches to specific indexers (empty means all enabled)
 - **Exclude categories/tags** - Skip torrents matching these filters
 
 ### Manual Search
@@ -70,3 +73,10 @@ Right-click any torrent in the list to access cross-seed actions:
 
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+## Blocklist
+
+Use the per-instance blocklist to prevent specific infohashes from being injected again.
+
+- **Manage**: Cross-Seed page → Blocklist tab
+- **Quick add**: Delete dialog checkbox (only shown for torrents tagged `cross-seed`)

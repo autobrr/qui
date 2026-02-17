@@ -1,9 +1,12 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package automations
 
 import (
+	"math"
+	"net"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -27,6 +30,20 @@ type categoryEntry struct {
 	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
 }
 
+// FreeSpaceSourceState tracks free space projection state for a single source.
+// Each source (qBittorrent or path) has its own state to correctly handle
+// workflows that target different disks.
+type FreeSpaceSourceState struct {
+	// FreeSpace is the base free space in bytes from this source.
+	FreeSpace int64
+	// SpaceToClear is the cumulative disk space that will be freed by deletions.
+	SpaceToClear int64
+	// FilesToClear tracks cross-seed keys already counted to avoid double-counting.
+	FilesToClear map[crossSeedKey]struct{}
+	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
+	HardlinkSignaturesToClear map[string]struct{}
+}
+
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
@@ -35,10 +52,28 @@ type EvalContext struct {
 	TrackerDownSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
+	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
+	HasMissingFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
-	// FreeSpace is the free space on the instance's filesystem
+	// FreeSpace is the free space on the instance's filesystem (current active source)
 	FreeSpace int64
+	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
+	SpaceToClear int64
+	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
+	FilesToClear map[crossSeedKey]struct{}
+	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
+	// Only populated when includeHardlinks is enabled for FREE_SPACE rules.
+	HardlinkSignatureByHash map[string]string
+	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection (current active source).
+	// Torrents with the same signature share physical files and should only be counted once.
+	HardlinkSignaturesToClear map[string]struct{}
+	// FreeSpaceStates maps rule keys to their projection state.
+	// Rule keys are "sourceKey|rule:<id>" where sourceKey is "qbt" or "path:/some/path".
+	// Each rule gets its own state to prevent interference between rules with different thresholds.
+	FreeSpaceStates map[string]*FreeSpaceSourceState
+	// ActiveFreeSpaceSource is the rule key currently loaded into the top-level fields.
+	ActiveFreeSpaceSource string
 
 	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
@@ -291,7 +326,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
-		return compareString(torrent.Tracker, cond)
+		return compareTracker(torrent.Tracker, cond, ctx)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -310,7 +345,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		if ctx == nil {
 			return false
 		}
-		return compareInt64(ctx.FreeSpace, cond)
+		return compareInt64(ctx.FreeSpace+ctx.SpaceToClear, cond)
 
 	// Timestamp/duration fields (int64)
 	case FieldAddedOn:
@@ -328,8 +363,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAddedOnAge:
 		return compareAge(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOnAge:
-		// If completion_on is 0 (never completed), don't match
-		if torrent.CompletionOn == 0 {
+		// If completion_on is 0 or -1 (never completed), don't match
+		// qBittorrent uses -1 for incomplete torrents
+		if torrent.CompletionOn <= 0 {
 			return false
 		}
 		return compareAge(torrent.CompletionOn, cond, ctx)
@@ -344,7 +380,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldRatio:
 		return compareFloat64(torrent.Ratio, cond)
 	case FieldProgress:
-		return compareFloat64(torrent.Progress, cond)
+		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
 		return compareFloat64(torrent.Availability, cond)
 
@@ -393,6 +429,23 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown scope - don't match
 		}
 		return compareHardlinkScope(scope, cond)
+
+	case FieldHasMissingFiles:
+		// Instances without local filesystem access cannot detect missing files.
+		// Return false so the condition doesn't match and rules won't trigger unintended actions.
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		// If missing files couldn't be computed for this torrent (incomplete, etc.),
+		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
+		if ctx.HasMissingFilesByHash == nil {
+			return false
+		}
+		hasMissing, ok := ctx.HasMissingFilesByHash[torrent.Hash]
+		if !ok {
+			return false // Unknown state - don't match
+		}
+		return compareBool(hasMissing, cond)
 
 	default:
 		return false
@@ -520,7 +573,11 @@ func compareString(value string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(value)
+		matched := cond.Compiled.MatchString(value)
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			return !matched
+		}
+		return matched
 	}
 
 	switch cond.Operator {
@@ -541,6 +598,131 @@ func compareString(value string, cond *RuleCondition) bool {
 	}
 }
 
+func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bool {
+	// Candidates: raw URL, extracted domain, optional customization display name.
+	raw := strings.TrimSpace(trackerURL)
+	domain := extractTrackerDomain(raw)
+	displayName := ""
+	if ctx != nil && ctx.TrackerDisplayNameByDomain != nil && domain != "" {
+		if name, ok := ctx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
+			displayName = strings.TrimSpace(name)
+		}
+	}
+
+	candidates := make([]string, 0, 3)
+	if raw != "" {
+		candidates = append(candidates, raw)
+	}
+	if domain != "" && !strings.EqualFold(domain, raw) {
+		candidates = append(candidates, domain)
+	}
+	if displayName != "" && !strings.EqualFold(displayName, domain) && !strings.EqualFold(displayName, raw) {
+		candidates = append(candidates, displayName)
+	}
+
+	// Preserve existing empty-string behavior (e.g., equals "").
+	if len(candidates) == 0 {
+		return compareString("", cond)
+	}
+
+	if cond.Regex || cond.Operator == OperatorMatches {
+		if cond.Compiled == nil {
+			return false
+		}
+		anyMatch := false
+		for _, c := range candidates {
+			if cond.Compiled.MatchString(c) {
+				anyMatch = true
+				break
+			}
+		}
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			// Negative operators apply to the combined candidate set: fail if any candidate matches.
+			return !anyMatch
+		}
+		// Regex-enabled string operators: succeed if any candidate matches.
+		return anyMatch
+	}
+
+	// Important: negative operators must apply to the combined candidate set.
+	// Example: NOT_EQUAL "BHD" must be false if any candidate equals "BHD".
+	if cond.Operator == OperatorNotEqual {
+		for _, c := range candidates {
+			if strings.EqualFold(c, cond.Value) {
+				return false
+			}
+		}
+		return true
+	}
+	if cond.Operator == OperatorNotContains {
+		condLower := strings.ToLower(cond.Value)
+		for _, c := range candidates {
+			if strings.Contains(strings.ToLower(c), condLower) {
+				return false
+			}
+		}
+		return true
+	}
+
+	for _, c := range candidates {
+		if compareString(c, cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractTrackerDomain(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	// URL parsing with scheme (http/https/udp/etc).
+	if u, err := url.Parse(raw); err == nil {
+		if h := u.Hostname(); h != "" {
+			return strings.ToLower(h)
+		}
+	}
+
+	// Scheme-less input (tracker.example.com/announce).
+	if !strings.Contains(raw, "://") {
+		if u, err := url.Parse("//" + raw); err == nil {
+			if h := u.Hostname(); h != "" {
+				return strings.ToLower(h)
+			}
+		}
+	}
+
+	// Manual fallback: host[:port][/path]
+	candidate := raw
+	if idx := strings.IndexAny(candidate, "/?#"); idx != -1 {
+		candidate = candidate[:idx]
+	}
+	candidate = strings.TrimPrefix(candidate, "//")
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return ""
+	}
+
+	// Try to split host:port (IPv6 requires brackets for SplitHostPort).
+	if host, _, err := net.SplitHostPort(candidate); err == nil {
+		return strings.ToLower(strings.Trim(host, "[]"))
+	}
+
+	// If it's a plain IP (including IPv6 without port), keep it.
+	if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
+		return strings.ToLower(candidate)
+	}
+
+	// Strip :port for hostnames/IPv4.
+	if idx := strings.Index(candidate, ":"); idx != -1 {
+		candidate = candidate[:idx]
+	}
+	candidate = strings.Trim(candidate, "[]")
+	return strings.ToLower(strings.TrimSpace(candidate))
+}
+
 // compareTags compares tags against the condition, treating tags as a set.
 // For string operators, checks individual tags rather than the full comma-separated string.
 // Regex matching still operates on the full string for flexibility.
@@ -550,7 +732,11 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 		if cond.Compiled == nil {
 			return false
 		}
-		return cond.Compiled.MatchString(tagsRaw)
+		matched := cond.Compiled.MatchString(tagsRaw)
+		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
+			return !matched
+		}
+		return matched
 	}
 
 	tags := splitTags(tagsRaw)
@@ -661,6 +847,48 @@ func compareFloat64(value float64, cond *RuleCondition) bool {
 	}
 }
 
+func normalizeProgressCondition(cond *RuleCondition) *RuleCondition {
+	if cond == nil {
+		return nil
+	}
+
+	normalized := *cond
+
+	if normalized.Value != "" {
+		if v, err := strconv.ParseFloat(normalized.Value, 64); err == nil {
+			v = normalizeProgressValue(v)
+			normalized.Value = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+	}
+
+	if normalized.MinValue != nil {
+		v := normalizeProgressValue(*normalized.MinValue)
+		normalized.MinValue = &v
+	}
+
+	if normalized.MaxValue != nil {
+		v := normalizeProgressValue(*normalized.MaxValue)
+		normalized.MaxValue = &v
+	}
+
+	return &normalized
+}
+
+func normalizeProgressValue(v float64) float64 {
+	// Older workflows stored progress conditions as 0-100 percentages; normalize to 0-1.
+	if v > 1 {
+		v /= 100
+	}
+
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
 // compareBool compares a boolean value against the condition.
 func compareBool(value bool, cond *RuleCondition) bool {
 	condValue := strings.ToLower(cond.Value) == "true" || cond.Value == "1"
@@ -716,4 +944,60 @@ func splitTags(raw string) []string {
 		}
 	}
 	return result
+}
+
+// LoadFreeSpaceSourceState loads the projection state for the given source key into evalCtx.
+// If the source key differs from the currently active source, the current state is persisted
+// to FreeSpaceStates before loading the new source.
+// Does nothing if sourceKey is empty or FreeSpaceStates is nil.
+func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
+	if ctx == nil || sourceKey == "" || ctx.FreeSpaceStates == nil {
+		return
+	}
+
+	// Already loaded
+	if ctx.ActiveFreeSpaceSource == sourceKey {
+		return
+	}
+
+	// Persist current state before switching
+	if ctx.ActiveFreeSpaceSource != "" {
+		ctx.PersistFreeSpaceSourceState()
+	}
+
+	// Load new source state
+	state, ok := ctx.FreeSpaceStates[sourceKey]
+	if !ok || state == nil {
+		// Source not found - set FreeSpace to MaxInt64 so FREE_SPACE conditions won't match.
+		// Using 0 would cause "< threshold" comparisons to always trigger, which is dangerous.
+		ctx.FreeSpace = math.MaxInt64
+		ctx.SpaceToClear = 0
+		ctx.FilesToClear = nil
+		ctx.HardlinkSignaturesToClear = nil
+		ctx.ActiveFreeSpaceSource = ""
+		return
+	}
+
+	ctx.FreeSpace = state.FreeSpace
+	ctx.SpaceToClear = state.SpaceToClear
+	ctx.FilesToClear = state.FilesToClear
+	ctx.HardlinkSignaturesToClear = state.HardlinkSignaturesToClear
+	ctx.ActiveFreeSpaceSource = sourceKey
+}
+
+// PersistFreeSpaceSourceState persists the current projection state back to FreeSpaceStates.
+// Does nothing if no source is currently active.
+func (ctx *EvalContext) PersistFreeSpaceSourceState() {
+	if ctx == nil || ctx.ActiveFreeSpaceSource == "" || ctx.FreeSpaceStates == nil {
+		return
+	}
+
+	state := ctx.FreeSpaceStates[ctx.ActiveFreeSpaceSource]
+	if state == nil {
+		return
+	}
+
+	state.SpaceToClear = ctx.SpaceToClear
+	state.FilesToClear = ctx.FilesToClear
+	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }

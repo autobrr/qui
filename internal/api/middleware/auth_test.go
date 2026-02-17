@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package middleware
@@ -17,7 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 )
 
-func TestIsAuthenticated_APIKeyQueryParam_CustomBaseURL(t *testing.T) {
+func TestIsAuthenticated_APIKeyHeaderAndUnauthorized(t *testing.T) {
 	ctx := t.Context()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -51,57 +51,27 @@ func TestIsAuthenticated_APIKeyQueryParam_CustomBaseURL(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:           "apply endpoint with apikey query param (no base URL)",
+			name:           "endpoint with X-API-Key header",
 			path:           "/api/cross-seed/apply",
-			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "apply endpoint with apikey query param (custom base URL /qui/)",
-			path:           "/qui/api/cross-seed/apply",
-			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "apply endpoint with apikey query param (custom base URL /foo/bar/)",
-			path:           "/foo/bar/api/cross-seed/apply",
-			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "webhook check with apikey query param (no base URL)",
-			path:           "/api/cross-seed/webhook/check",
-			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "webhook check with apikey query param (custom base URL /qui/)",
-			path:           "/qui/api/cross-seed/webhook/check",
-			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "apply endpoint with X-API-Key header",
-			path:           "/qui/api/cross-seed/apply",
 			apiKeyHeader:   apiKeyValue,
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "apply endpoint without auth",
-			path:           "/qui/api/cross-seed/apply",
-			expectedStatus: http.StatusForbidden,
+			name:           "endpoint without auth",
+			path:           "/api/cross-seed/apply",
+			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "apply endpoint with invalid apikey",
-			path:           "/qui/api/cross-seed/apply",
+			name:           "endpoint with invalid apikey",
+			path:           "/api/cross-seed/apply",
 			apiKeyQuery:    "invalid-key",
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "non-webhook endpoint should not accept apikey query param",
+			name:           "query param without middleware is rejected",
 			path:           "/api/torrents",
 			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusForbidden,
+			expectedStatus: http.StatusUnauthorized,
 		},
 	}
 

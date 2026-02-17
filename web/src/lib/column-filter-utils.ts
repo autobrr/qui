@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -541,18 +541,20 @@ export function filterSearchResult(result: TorznabSearchResult, filter: ColumnFi
     if (isNaN(compareDate1)) return true
 
     switch (operation) {
-      case "eq":
+      case "eq": {
         const d1 = new Date(dateValue)
         const d2 = new Date(compareDate1)
         return d1.getFullYear() === d2.getFullYear() &&
           d1.getMonth() === d2.getMonth() &&
           d1.getDate() === d2.getDate()
+      }
       case "gt": return dateValue > compareDate1
       case "lt": return dateValue < compareDate1
-      case "between":
+      case "between": {
         const compareDate2 = new Date(value2 || "").getTime()
         if (isNaN(compareDate2)) return true
         return dateValue >= compareDate1 && dateValue <= compareDate2
+      }
       default: return true
     }
   }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -283,6 +283,12 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	if err != nil {
 		return nil, err
 	}
+
+	// Localhost bypass auth uses an empty username, and the qBittorrent client should not attempt a login.
+	if username == "" {
+		password = ""
+	}
+
 	// Encrypt the password
 	encryptedPassword, err := s.encrypt(password)
 	if err != nil {
@@ -633,8 +639,12 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	// Handle password update - encrypt if provided
-	if password != "" {
-		encryptedPassword, err := s.encrypt(password)
+	passwordToStore := password
+	if username == "" {
+		passwordToStore = ""
+	}
+	if passwordToStore != "" || username == "" {
+		encryptedPassword, err := s.encrypt(passwordToStore)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt password: %w", err)
 		}

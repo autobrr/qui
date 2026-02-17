@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package database provides a SQLite database layer with string interning.
@@ -277,9 +277,7 @@ func (t *Tx) promoteStatementsToCache() {
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
-			// Log but don't fail - caching is an optimization
-			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
-			continue
+			continue // silently skip - caching is best-effort
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
@@ -957,8 +955,15 @@ func (db *DB) migrate() error {
 			filename TEXT NOT NULL UNIQUE,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
-	`); err != nil {
+		`); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	// Handle historical migration file renames.
+	// If we ever rename an embedded migration file, we must update the filename
+	// stored in the migrations table so existing databases don't re-run it.
+	if err := db.normalizeMigrationFilenames(ctx); err != nil {
+		return fmt.Errorf("failed to normalize migration filenames: %w", err)
 	}
 
 	// Get all migration files
@@ -990,6 +995,45 @@ func (db *DB) migrate() error {
 	// Apply all pending migrations in a single transaction
 	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
+	renames := []struct {
+		from string
+		to   string
+	}{
+		{
+			from: "052_add_dir_scan.sql",
+			to:   "053_add_dir_scan.sql",
+		},
+		{
+			from: "055_add_license_provider_dodo.sql",
+			to:   "057_add_license_provider_dodo.sql",
+		},
+	}
+
+	for _, r := range renames {
+		// If both entries exist, keep the new name.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			DELETE FROM migrations
+			WHERE filename = ?
+			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+		}
+
+		// Rename old -> new if the new entry doesn't already exist.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			UPDATE migrations
+			SET filename = ?
+			WHERE filename = ?
+			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.to, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+		}
 	}
 
 	return nil
@@ -1217,6 +1261,8 @@ const referencedStringsInsertQuery = `
 	UNION ALL
 	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
 	UNION ALL
+	SELECT basic_username_id AS string_id FROM torznab_indexers WHERE basic_username_id IS NOT NULL
+	UNION ALL
 	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
 	UNION ALL
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
@@ -1226,6 +1272,8 @@ const referencedStringsInsertQuery = `
 	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
 	UNION ALL
 	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT basic_username_id AS string_id FROM arr_instances WHERE basic_username_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
@@ -1279,7 +1327,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM string_pool 
+		DELETE FROM string_pool
 		WHERE NOT EXISTS (
 			SELECT 1 FROM temp_referenced_strings trs WHERE trs.string_id = string_pool.id
 		)

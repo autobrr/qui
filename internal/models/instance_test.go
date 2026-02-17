@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -326,10 +326,13 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with empty username (localhost bypass)
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "testpass", nil, nil, false, nil)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err, "Failed to create instance with empty username")
 	assert.Equal(t, "", instance.Username, "username should be empty")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
+	password, err := store.GetDecryptedPassword(instance)
+	require.NoError(t, err, "Failed to decrypt instance password")
+	assert.Equal(t, "", password, "password should be empty for bypass auth instances")
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
@@ -426,9 +429,12 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// This should work even without pre-inserted empty string (self-healing)
-	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "pass", nil, nil, false, nil)
+	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err, "Create with empty username should work even when empty string not pre-inserted")
 	assert.Equal(t, "", instance.Username, "username should be empty")
+	password, err := store.GetDecryptedPassword(instance)
+	require.NoError(t, err, "Failed to decrypt instance password")
+	assert.Equal(t, "", password, "password should be empty for bypass auth instances")
 
 	// Verify the empty string was created in string_pool
 	var count int
@@ -526,6 +532,9 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 	updated, err := store.Update(ctx, instance.ID, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, nil)
 	require.NoError(t, err, "Update to empty username should work even when empty string not pre-inserted")
 	assert.Equal(t, "", updated.Username, "username should be empty after update")
+	password, err := store.GetDecryptedPassword(updated)
+	require.NoError(t, err, "Failed to decrypt instance password")
+	assert.Equal(t, "", password, "password should be cleared when enabling bypass auth")
 
 	// Verify the empty string was created in string_pool
 	var count int

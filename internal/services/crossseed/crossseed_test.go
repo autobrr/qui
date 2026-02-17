@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -1414,7 +1414,9 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				UseCategoryFromIndexer: true,
-				UseCrossCategorySuffix: true,
+				UseCrossCategoryAffix:  true,
+				CategoryAffixMode:      models.CategoryAffixModeSuffix,
+				CategoryAffix:          ".cross",
 			},
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "IndexerCat",
@@ -1467,6 +1469,126 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "movies.cross",
 			expectedCrossCategory: "movies.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode adds prefix to category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "cross/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode with nested category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies/1080p",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies/1080p",
+			expectedCrossCategory: "cross/movies/1080p",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode with empty category stays empty",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "",
+			expectedCrossCategory: "",
+			expectedTags:          []string{},
+		},
+		{
+			name: "no double prefix for already prefixed category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "cross/movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross/movies",
+			expectedCrossCategory: "cross/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "suffix mode adds suffix to category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "tv",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModeSuffix,
+				CategoryAffix:         ".cross",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "tv",
+			expectedCrossCategory: "tv.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "affix disabled returns category unchanged",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: false,
+				CategoryAffixMode:     models.CategoryAffixModeSuffix,
+				CategoryAffix:         ".cross",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "movies",
 			expectedTags:          []string{},
 		},
 	}
@@ -2452,6 +2574,10 @@ func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 	return result, nil
 }
 
+func (f *fakeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
 	if torrents, ok := f.all[instanceID]; ok {
 		targets := make(map[string]struct{}, len(hashes))
@@ -3014,6 +3140,10 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 	return nil
 }
 
+func (m *mockRecoverSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 // Simulate state progression after recheck
 func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgress float64, finalState qbt.TorrentState) {
 	if torrent, ok := m.torrents[hash]; ok {
@@ -3396,6 +3526,10 @@ func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instan
 		}
 	}
 	return result, nil
+}
+
+func (f *infohashTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
@@ -4933,6 +5067,10 @@ func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, insta
 		}
 	}
 	return result, nil
+}
+
+func (m *rssFilterTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (m *rssFilterTestSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
