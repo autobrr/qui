@@ -41,3 +41,33 @@ func TestNormalizeMigrationFilenames_RenamesLicenseProviderDodo(t *testing.T) {
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations WHERE filename = '057_add_license_provider_dodo.sql'").Scan(&count057))
 	require.Equal(t, 1, count057)
 }
+
+func TestNormalizeMigrationFilenames_RenamesNotifications061To062(t *testing.T) {
+	ctx := context.Background()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	conn, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
+	_, err = conn.ExecContext(ctx, `
+		CREATE TABLE migrations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			filename TEXT NOT NULL UNIQUE,
+			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+		INSERT INTO migrations (filename) VALUES ('061_add_notifications.sql');
+	`)
+	require.NoError(t, err)
+
+	db := &DB{writerConn: conn}
+	require.NoError(t, db.normalizeMigrationFilenames(ctx))
+
+	var count061 int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations WHERE filename = '061_add_notifications.sql'").Scan(&count061))
+	require.Zero(t, count061)
+
+	var count062 int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations WHERE filename = '062_add_notifications.sql'").Scan(&count062))
+	require.Equal(t, 1, count062)
+}
