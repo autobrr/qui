@@ -430,17 +430,17 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	for _, t := range enriched {
 		// Health counts
-		if sm.torrentIsUnregistered(t) {
+		if sm.torrentIsUnregistered(&t) {
 			counts.Unregistered++
 			counts.UnregisteredSet[t.Hash] = struct{}{}
 		}
-		if sm.torrentTrackerIsDown(t) {
+		if sm.torrentTrackerIsDown(&t) {
 			counts.TrackerDown++
 			counts.TrackerDownSet[t.Hash] = struct{}{}
 		}
 
 		// Tracker domain mapping
-		domains := sm.getDomainsForTorrent(t)
+		domains := sm.getDomainsForTorrent(&t)
 		if len(domains) > 0 {
 			mapping.HashToDomains[t.Hash] = domains
 			for domain := range domains {
@@ -2574,11 +2574,11 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	// Count "all"
 	counts["all"]++
 
-	if sm.torrentIsUnregistered(torrent) {
+	if sm.torrentIsUnregistered(&torrent) {
 		counts["unregistered"]++
 	}
 
-	if sm.torrentTrackerIsDown(torrent) {
+	if sm.torrentTrackerIsDown(&torrent) {
 		counts["tracker_down"]++
 	}
 
@@ -4103,9 +4103,9 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
 	switch strings.ToLower(status) {
 	case "unregistered":
-		return sm.torrentIsUnregistered(torrent)
+		return sm.torrentIsUnregistered(&torrent)
 	case "tracker_down":
-		return sm.torrentTrackerIsDown(torrent)
+		return sm.torrentTrackerIsDown(&torrent)
 	}
 
 	// Handle special cases first
@@ -4143,7 +4143,7 @@ func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthS
 		return 10
 	}
 
-	switch sm.determineTrackerHealth(torrent) {
+	switch sm.determineTrackerHealth(&torrent) {
 	case TrackerHealthUnregistered:
 		return 0
 	case TrackerHealthDown:
@@ -4198,7 +4198,7 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		}
 		label := strings.ToLower(string(t.State))
 		if trackerHealthSupported {
-			switch sm.determineTrackerHealth(t) {
+			switch sm.determineTrackerHealth(&t) {
 			case TrackerHealthUnregistered:
 				label = "unregistered"
 			case TrackerHealthDown:
@@ -4387,22 +4387,13 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		return compare(i, j)
 	})
 
-	// Apply the pull permutation (indices[k] = source index for sorted position k) in-place.
-	// Follow each cycle with a single saved element; O(n) time, O(1) extra space.
-	for i := range len(indices) {
-		if indices[i] == i {
-			continue
+	// Apply the sorted order via in-place cycle-based permutation to avoid temporary allocation
+	for i := 0; i < len(indices); i++ {
+		for indices[i] != i {
+			j := indices[i]
+			torrents[i], torrents[j] = torrents[j], torrents[i]
+			indices[i], indices[j] = indices[j], indices[i]
 		}
-		temp := torrents[i]
-		j := i
-		for indices[j] != i {
-			next := indices[j]
-			torrents[j] = torrents[next]
-			indices[j] = j // mark position as settled
-			j = next
-		}
-		torrents[j] = temp
-		indices[j] = j // mark position as settled
 	}
 }
 
