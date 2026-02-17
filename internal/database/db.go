@@ -1006,6 +1006,10 @@ func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
 		to   string
 	}{
 		{
+			from: "061_add_notifications.sql",
+			to:   "062_add_notifications.sql",
+		},
+		{
 			from: "052_add_dir_scan.sql",
 			to:   "053_add_dir_scan.sql",
 		},

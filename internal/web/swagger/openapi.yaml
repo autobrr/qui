@@ -520,6 +520,147 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/notifications/events:
+    get:
+      tags:
+        - Notifications
+      summary: List notification events
+      description: Get supported notification event types
+      responses:
+        '200':
+          description: Notification event types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationEventDefinition'
+
+  /api/notifications/targets:
+    get:
+      tags:
+        - Notifications
+      summary: List notification targets
+      description: Get configured notification targets
+      responses:
+        '200':
+          description: List of notification targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationTarget'
+    post:
+      tags:
+        - Notifications
+      summary: Create notification target
+      description: Add a new notification target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTargetRequest'
+      responses:
+        '201':
+          description: Notification target created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTarget'
+        '400':
+          description: Invalid request
+        '500':
+          description: Internal server error
+
+  /api/notifications/targets/{id}:
+    put:
+      tags:
+        - Notifications
+      summary: Update notification target
+      description: Update an existing notification target
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTargetRequest'
+      responses:
+        '200':
+          description: Notification target updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTarget'
+        '400':
+          description: Invalid request
+        '404':
+          description: Notification target not found
+        '500':
+          description: Internal server error
+    delete:
+      tags:
+        - Notifications
+      summary: Delete notification target
+      description: Delete a notification target
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Notification target deleted
+        '404':
+          description: Notification target not found
+        '500':
+          description: Internal server error
+
+  /api/notifications/targets/{id}/test:
+    post:
+      tags:
+        - Notifications
+      summary: Test notification target
+      description: Send a test notification to a target
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTestRequest'
+      responses:
+        '200':
+          description: Test notification sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: Invalid request
+        '404':
+          description: Notification target not found
+        '502':
+          description: Failed to send test notification
+        '500':
+          description: Internal server error
+
   /api/arr/instances:
     get:
       tags:
@@ -4942,6 +5083,70 @@ components:
           type: string
           format: date-time
 
+    NotificationEventDefinition:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Notification event identifier
+        label:
+          type: string
+          description: Human-readable event label
+        description:
+          type: string
+          description: Event description
+
+    NotificationTarget:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        enabled:
+          type: boolean
+        eventTypes:
+          type: array
+          items:
+            type: string
+          description: List of event types this target subscribes to (empty means all events)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NotificationTargetRequest:
+      type: object
+      required:
+        - name
+        - url
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        enabled:
+          type: boolean
+        eventTypes:
+          type: array
+          items:
+            type: string
+          description: List of event types this target subscribes to (empty means all events)
+
+    NotificationTestRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        message:
+          type: string
+
     Instance:
       type: object
       properties:
@@ -7125,6 +7330,8 @@ tags:
     description: User authentication and session management
   - name: API Keys
     description: API key management
+  - name: Notifications
+    description: Notification-related endpoints for targets and events
   - name: ARR Integrations
     description: Sonarr/Radarr instance management for external ID lookups
   - name: Client API Keys
