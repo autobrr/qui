@@ -7942,7 +7942,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		}
 
 		// Skip searching indexers that already provided the source torrent
-		if sourceTorrent != nil && s.torrentMatchesIndexer(*sourceTorrent, indexerName) {
+		if sourceTorrent != nil && s.torrentMatchesIndexer(sourceTorrent, indexerName) {
 			shouldIncludeIndexer = false
 			exclusionReason = "already seeded from this tracker"
 		}
@@ -7978,7 +7978,11 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 }
 
 // torrentMatchesIndexer checks if a torrent came from a tracker associated with the given indexer.
-func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string) bool {
+func (s *Service) torrentMatchesIndexer(torrent *qbt.Torrent, indexerName string) bool {
+	if torrent == nil {
+		return false
+	}
+
 	trackerDomains := s.extractTrackerDomainsFromTorrent(torrent)
 	return s.trackerDomainsMatchIndexer(trackerDomains, indexerName)
 }
@@ -8283,7 +8287,11 @@ func (s *Service) normalizeDomainName(domainName string) string {
 }
 
 // extractTrackerDomainsFromTorrent extracts unique tracker domains from a torrent
-func (s *Service) extractTrackerDomainsFromTorrent(torrent qbt.Torrent) []string {
+func (s *Service) extractTrackerDomainsFromTorrent(torrent *qbt.Torrent) []string {
+	if torrent == nil {
+		return nil
+	}
+
 	domains := make(map[string]struct{})
 
 	// Add primary tracker domain
@@ -9143,9 +9151,12 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		}
 
 		// Convert CrossInstanceTorrentView to qbt.Torrent for matching
-		torrents := make([]qbt.Torrent, len(torrentsView))
-		for i, tv := range torrentsView {
-			torrents[i] = tv.Torrent
+		torrents := make([]qbt.Torrent, 0, len(torrentsView))
+		for _, tv := range torrentsView {
+			if tv.Torrent == nil {
+				continue
+			}
+			torrents = append(torrents, *tv.Torrent)
 		}
 
 		// Apply webhook source filters if configured

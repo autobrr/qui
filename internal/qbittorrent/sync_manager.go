@@ -4387,12 +4387,18 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		return compare(i, j)
 	})
 
-	// Apply the sorted order via in-place cycle-based permutation to avoid temporary allocation
-	for i := 0; i < len(indices); i++ {
-		for indices[i] != i {
-			j := indices[i]
+	// indices currently maps newPos -> oldPos; invert it to get elementPos -> targetPos,
+	// then apply in-place cycle permutation.
+	targets := make([]int, len(indices))
+	for newPos, oldPos := range indices {
+		targets[oldPos] = newPos
+	}
+
+	for i := range targets {
+		for targets[i] != i {
+			j := targets[i]
 			torrents[i], torrents[j] = torrents[j], torrents[i]
-			indices[i], indices[j] = indices[j], indices[i]
+			targets[i], targets[j] = targets[j], targets[i]
 		}
 	}
 }
