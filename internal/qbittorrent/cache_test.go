@@ -380,7 +380,7 @@ func createTestTorrentViews(count int) []TorrentView {
 func createTestTorrentViewsFromSlice(torrents []qbt.Torrent) []TorrentView {
 	views := make([]TorrentView, len(torrents))
 	for i, torrent := range torrents {
-		views[i] = TorrentView{Torrent: torrent}
+		views[i] = TorrentView{Torrent: &torrents[i]}
 	}
 	return views
 }

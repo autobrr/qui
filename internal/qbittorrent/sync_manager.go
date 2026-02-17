@@ -90,14 +90,16 @@ const (
 )
 
 // TorrentView extends qBittorrent's torrent with UI-specific metadata.
+// Uses pointer embedding to avoid unnecessary copies of the large qbt.Torrent struct.
 type TorrentView struct {
-	qbt.Torrent
+	*qbt.Torrent
 	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
 }
 
 // CrossInstanceTorrentView extends TorrentView with cross-instance metadata.
+// Uses pointer embedding to avoid unnecessary copies of the large qbt.Torrent struct.
 type CrossInstanceTorrentView struct {
-	TorrentView
+	*TorrentView
 	InstanceID   int    `json:"instance_id"`
 	InstanceName string `json:"instance_name"`
 }
@@ -576,8 +578,11 @@ func (sm *SyncManager) setValidatedTrackerMapping(instanceID int, mapping *Valid
 
 // getDomainsForTorrent extracts all tracker domains from a torrent.
 // Uses the Trackers slice if populated, otherwise falls back to the Tracker field.
-func (sm *SyncManager) getDomainsForTorrent(t qbt.Torrent) map[string]struct{} {
+func (sm *SyncManager) getDomainsForTorrent(t *qbt.Torrent) map[string]struct{} {
 	domains := make(map[string]struct{})
+	if t == nil {
+		return domains
+	}
 	if len(t.Trackers) > 0 {
 		for _, tracker := range t.Trackers {
 			if domain := sm.ExtractDomainFromURL(tracker.Url); domain != "" && domain != "Unknown" {
@@ -1172,9 +1177,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		for i, torrent := range paginatedTorrents {
-			view := TorrentView{Torrent: torrent}
+			view := TorrentView{Torrent: &torrent}
 			// First try to determine health from enriched tracker data
-			if health := sm.determineTrackerHealth(torrent); health != "" {
+			if health := sm.determineTrackerHealth(&torrent); health != "" {
 				view.TrackerHealth = health
 			} else if cachedHealth != nil {
 				// Fall back to cached hash sets if torrent wasn't enriched
@@ -1275,9 +1280,9 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i, torrent := range torrents {
-		view := TorrentView{Torrent: torrent}
+		view := &TorrentView{Torrent: &torrent}
 		// First try to determine health from enriched tracker data
-		if health := sm.determineTrackerHealth(torrent); health != "" {
+		if health := sm.determineTrackerHealth(&torrent); health != "" {
 			view.TrackerHealth = health
 		} else if cachedHealth != nil {
 			// Fall back to cached hash sets if torrent wasn't enriched
@@ -1347,7 +1352,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		// Convert TorrentView to CrossInstanceTorrentView
 		for _, torrentView := range instanceResponse.Torrents {
 			crossInstanceTorrent := CrossInstanceTorrentView{
-				TorrentView:  torrentView,
+				TorrentView:  &torrentView,
 				InstanceID:   instance.ID,
 				InstanceName: instance.Name,
 			}
@@ -2300,7 +2305,10 @@ func filtersRequireTrackerData(filters FilterOptions) bool {
 		statusFiltersRequireTrackerData(filters.ExcludeStatus)
 }
 
-func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
+func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
+	if torrent == nil {
+		return false
+	}
 	if torrent.AddedOn > 0 {
 		addedAt := time.Unix(torrent.AddedOn, 0)
 		if time.Since(addedAt) < time.Hour {
@@ -2328,7 +2336,10 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 	return hasUnregistered && !hasWorking
 }
 
-func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
+func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
+	if torrent == nil {
+		return false
+	}
 	var hasWorking bool
 	var hasDown bool
 
@@ -2352,7 +2363,10 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	return hasDown && !hasWorking
 }
 
-func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth {
+func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealth {
+	if torrent == nil {
+		return ""
+	}
 	if sm.torrentIsUnregistered(torrent) {
 		return TrackerHealthUnregistered
 	}
