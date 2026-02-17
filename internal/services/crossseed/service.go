@@ -8637,15 +8637,15 @@ func formatSampleText(samples []string) string {
 	return strings.Join(samples, "; ")
 }
 
-func formatSamplesForMessage(samples []string, max int) string {
-	if len(samples) == 0 || max <= 0 {
+func formatSamplesForMessage(samples []string, maxCount int) string {
+	if len(samples) == 0 || maxCount <= 0 {
 		return ""
 	}
 	shown := samples
 	more := 0
-	if len(samples) > max {
-		shown = samples[:max]
-		more = len(samples) - max
+	if len(samples) > maxCount {
+		shown = samples[:maxCount]
+		more = len(samples) - maxCount
 	}
 	out := formatSampleText(shown)
 	if out == "" {
