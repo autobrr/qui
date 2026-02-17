@@ -104,7 +104,7 @@ Thank you for your support ❤️
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome. Note: this repo restricts pull request creation to **collaborators only**. Please start with a Discussion/Issue (or Discord) so we can coordinate changes.
 
 ## License
 

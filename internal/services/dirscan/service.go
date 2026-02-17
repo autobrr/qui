@@ -56,6 +56,7 @@ func DefaultConfig() Config {
 type Service struct {
 	cfg            Config
 	store          *models.DirScanStore
+	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
@@ -108,6 +109,7 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 func NewService(
 	cfg Config,
 	store *models.DirScanStore,
+	crossSeedStore *models.CrossSeedStore,
 	instanceStore *models.InstanceStore,
 	syncManager *qbittorrent.SyncManager,
 	jackettService *jackett.Service,
@@ -134,6 +136,7 @@ func NewService(
 	return &Service{
 		cfg:                       cfg,
 		store:                     store,
+		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
 		syncManager:               syncManager,
 		jackettService:            jackettService,
@@ -1330,6 +1333,30 @@ func (s *Service) processSearchee(
 	contentType := normalizeContentType(contentInfo.ContentType)
 
 	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
+	if len(filteredIndexers) == 0 && s.jackettService != nil {
+		enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+		if err != nil {
+			if l != nil {
+				l.Warn().Err(err).Msg("dirscan: failed to probe enabled indexers")
+			}
+			return nil, searcheeOutcome{searchError: true}
+		}
+		if len(enabledInfo) > 0 {
+			filteredIndexers = make([]int, 0, len(enabledInfo))
+			for id := range enabledInfo {
+				filteredIndexers = append(filteredIndexers, id)
+			}
+			sort.Ints(filteredIndexers)
+		}
+	}
+	if len(filteredIndexers) == 0 {
+		if l != nil {
+			l.Debug().Msg("dirscan: no eligible indexers")
+		}
+		// Don't mark this as searched: if the user later enables indexers,
+		// we want this searchee to be retried rather than finalized as no_match.
+		return nil, searcheeOutcome{}
+	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
 	s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)

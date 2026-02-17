@@ -601,7 +601,10 @@ func (app *Application) runServer() {
 	}
 
 	// Initialize cross-seed automation store and service
-	crossSeedStore := models.NewCrossSeedStore(db)
+	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
+	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	crossSeedService := crossseed.NewService(
@@ -626,7 +629,7 @@ func (app *Application) runServer() {
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)

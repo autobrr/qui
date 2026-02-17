@@ -1839,6 +1839,10 @@ export interface CrossSeedAutomationSettings {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   createdAt?: string
   updatedAt?: string
 }
@@ -1886,6 +1890,10 @@ export interface CrossSeedAutomationSettingsPatch {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled?: boolean
+  redactedApiKey?: string
+  orpheusApiKey?: string
 }
 
 export interface CrossSeedAutomationStatus {
