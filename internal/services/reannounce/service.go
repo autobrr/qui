@@ -157,6 +157,26 @@ func (s *Service) Start(ctx context.Context) {
 	}()
 }
 
+// snapshotShouldEnqueue reports whether snapshot tracker data indicates we should enqueue a job.
+// Empty tracker snapshots are treated as "unknown" so we enqueue and fetch fresh tracker data in executeJob.
+func (s *Service) snapshotShouldEnqueue(trackers []qbt.TorrentTracker, settings *models.InstanceReannounceSettings) bool {
+	if len(trackers) == 0 {
+		return true
+	}
+	cls := s.classifyTrackers(trackers, settings)
+	return len(cls.unhealthy) > 0
+}
+
+// snapshotTrackerFlags translates snapshot tracker health into UI-friendly flags.
+// Empty tracker snapshots are treated as pending, so users can still see candidates.
+func (s *Service) snapshotTrackerFlags(trackers []qbt.TorrentTracker, settings *models.InstanceReannounceSettings) (hasProblem bool, waitingForTrackers bool) {
+	if len(trackers) == 0 {
+		return false, true
+	}
+	cls := s.classifyTrackers(trackers, settings)
+	return len(cls.unhealthy) > 0, len(cls.unhealthy) == 0 && len(cls.updating) > 0
+}
+
 // RequestReannounce schedules reannounce attempts for monitored torrents and returns handled hashes.
 func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes []string) []string {
 	if s == nil || len(hashes) == 0 {
@@ -173,12 +193,9 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if len(torrent.Trackers) > 0 {
-			cls := s.classifyTrackers(torrent.Trackers, settings)
-			// Wait while trackers are updating / not yet contacted; only intervene on unhealthy trackers.
-			if len(cls.unhealthy) == 0 {
-				continue
-			}
+		// Wait while trackers are updating / not yet contacted; only intervene on unhealthy trackers.
+		if !s.snapshotShouldEnqueue(torrent.Trackers, settings) {
+			continue
 		}
 
 		trackers := s.getProblematicTrackers(torrent.Trackers, settings)
@@ -257,14 +274,9 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		// If we have tracker data, only intervene when at least one relevant tracker is unhealthy.
-		// For older qBittorrent without IncludeTrackers, Trackers will be empty and we'll enqueue
-		// the torrent - executeJob will fetch fresh trackers and decide.
-		if len(torrent.Trackers) > 0 {
-			cls := s.classifyTrackers(torrent.Trackers, settings)
-			if len(cls.unhealthy) == 0 {
-				continue
-			}
+		// Empty snapshots still enqueue (executeJob will fetch fresh trackers).
+		if !s.snapshotShouldEnqueue(torrent.Trackers, settings) {
+			continue
 		}
 
 		trackers := s.getProblematicTrackers(torrent.Trackers, settings)
@@ -314,19 +326,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		// Check if torrent is still in initial wait period
 		inInitialWait := settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds)
 
-		var (
-			hasProblem         bool
-			waitingForTrackers bool
-		)
-		if len(torrent.Trackers) == 0 {
-			// Old qBittorrent versions (or cache paths) may not include tracker health in snapshots.
-			// Treat empty trackers as "pending" so users can still see candidates.
-			waitingForTrackers = true
-		} else {
-			cls := s.classifyTrackers(torrent.Trackers, settings)
-			hasProblem = len(cls.unhealthy) > 0
-			waitingForTrackers = len(cls.unhealthy) == 0 && len(cls.updating) > 0
-		}
+		hasProblem, waitingForTrackers := s.snapshotTrackerFlags(torrent.Trackers, settings)
 
 		// Show torrent if: has problem, waiting for trackers, OR in initial wait
 		if !hasProblem && !waitingForTrackers && !inInitialWait {
@@ -469,6 +469,14 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		return
 	}
 
+	domainForURL := func(raw string) string {
+		u := strings.TrimSpace(raw)
+		if u == "" {
+			return ""
+		}
+		return strings.ToLower(strings.TrimSpace(s.extractTrackerDomain(u)))
+	}
+
 	targetDomains := make(map[string]struct{})
 	targetURLs := make([]string, 0, len(cls.unhealthy))
 	for _, tracker := range cls.unhealthy {
@@ -476,8 +484,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		if u == "" {
 			continue
 		}
-		d := strings.ToLower(strings.TrimSpace(s.extractTrackerDomain(u)))
-		if d != "" {
+		if d := domainForURL(u); d != "" {
 			targetDomains[d] = struct{}{}
 		}
 		targetURLs = append(targetURLs, u)
@@ -507,13 +514,10 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	if job != nil && len(job.givenUp) > 0 {
 		filtered := targetURLs[:0]
 		for _, u := range targetURLs {
-			d := strings.ToLower(strings.TrimSpace(s.extractTrackerDomain(u)))
-			if d == "" {
-				filtered = append(filtered, u)
-				continue
-			}
-			if _, gaveUp := job.givenUp[d]; gaveUp {
-				continue
+			if d := domainForURL(u); d != "" {
+				if _, gaveUp := job.givenUp[d]; gaveUp {
+					continue
+				}
 			}
 			filtered = append(filtered, u)
 		}
