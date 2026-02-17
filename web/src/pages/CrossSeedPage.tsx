@@ -1172,22 +1172,49 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
   const gazelleSavedFullyConfigured = gazelleSavedEnabled && gazelleSavedHasOpsKey && gazelleSavedHasRedKey
 
-  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
+  const seededSearchForceGazelleOnly = useMemo(() => {
+    if (!seededSearchTorznabEnabled) {
+      return false
+    }
+    if (!gazelleSavedFullyConfigured) {
+      return false
+    }
+    if (searchIndexerIds.length === 0) {
+      return false
+    }
+
+    const selected = new Set(searchIndexerIds)
+    let hasSelection = false
+    for (const idx of enabledIndexers) {
+      if (!selected.has(idx.id)) {
+        continue
+      }
+      hasSelection = true
+      if (!isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
+        return false
+      }
+    }
+    return hasSelection
+  }, [enabledIndexers, gazelleSavedFullyConfigured, searchIndexerIds, seededSearchTorznabEnabled])
+
+  const seededSearchTorznabEffectiveEnabled = seededSearchTorznabEnabled && !seededSearchForceGazelleOnly
+
+  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEffectiveEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
-    if (!seededSearchTorznabEnabled && !gazelleSavedConfigured) {
+    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
       return "Enable Gazelle (OPS/RED) before running Seeded Torrent Search with Torznab disabled."
     }
     if (!hasEnabledIndexers && !gazelleSavedConfigured) {
       return "Configure at least one Torznab indexer, or enable Gazelle (OPS/RED), before running Seeded Torrent Search."
     }
     return undefined
-  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEnabled])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled])
   const seededSearchIntervalMinimum = useMemo(() => {
-    if (!seededSearchTorznabEnabled && gazelleSavedConfigured) {
+    if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
       return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
     }
     return MIN_SEEDED_SEARCH_INTERVAL_SECONDS
-  }, [gazelleSavedConfigured, seededSearchTorznabEnabled])
+  }, [gazelleSavedConfigured, seededSearchTorznabEffectiveEnabled])
 
   useEffect(() => {
     setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
@@ -1242,7 +1269,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   ), [enabledIndexers.length, seededSearchIndexerOptions.length, seededSearchIndexerExclusions.size])
 
   const seededSearchIndexerPlaceholder = useMemo(() => {
-    if (!seededSearchTorznabEnabled) {
+    if (!seededSearchTorznabEffectiveEnabled) {
+      if (seededSearchForceGazelleOnly) {
+        return "Torznab skipped (Gazelle-only selection)"
+      }
       return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
     }
     if (seededSearchIndexerOptions.length > 0) {
@@ -1252,7 +1282,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return "Only OPS/RED enabled (Gazelle)"
     }
     return "No Torznab indexers configured"
-  }, [gazelleSavedConfigured, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled])
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
 
   const seededSearchEffectiveIndexerIds = useMemo(() => {
     const allAllowed = enabledIndexers
@@ -1272,14 +1302,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const filtered = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
     if (filtered.length === 0) {
-      // Avoid empty meaning "all" when the user selected only excluded OPS/RED indexers.
-      return allAllowed
+      // Keep empty selection so we can preserve user intent by running Gazelle-only.
+      return []
     }
     return filtered
   }, [enabledIndexers, searchIndexerIds, seededSearchIndexerExclusions])
 
   const seededSearchIndexerHelpText = useMemo(() => {
-    if (!seededSearchTorznabEnabled) {
+    if (!seededSearchTorznabEffectiveEnabled) {
+      if (seededSearchForceGazelleOnly) {
+        return "Selected Torznab indexers are Gazelle-only (OPS/RED). This run will be Gazelle-only."
+      }
       if (gazelleSavedConfigured) {
         return "Torznab disabled. Gazelle will check RED/OPS for every source torrent."
       }
@@ -1307,7 +1340,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return `Only ${seededSearchEffectiveIndexerIds.length} selected Torznab indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried. Gazelle still checks RED/OPS.`
     }
     return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
-  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled])
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
 
   const seededSearchGazelleStatus = useMemo(() => {
     if (!settings) {
@@ -1324,7 +1357,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return "Gazelle: enabled (keys missing)"
   }, [settings])
 
-  const seededSearchGazelleOnlyMode = !seededSearchTorznabEnabled && gazelleSavedConfigured
+  const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
 
   const seededSearchIntervalPresets = useMemo(() => {
     if (seededSearchGazelleOnlyMode) {
@@ -1428,7 +1461,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     // Clear previous validation errors
     setValidationErrors({})
 
-    if (!seededSearchTorznabEnabled && !gazelleSavedConfigured) {
+    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
       toast.error("Seeded Torrent Search needs Gazelle", {
         description: "Enable Gazelle matching (OPS/RED) before running with Torznab disabled.",
       })
@@ -1466,8 +1499,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       categories: searchCategories,
       tags: searchTags,
       intervalSeconds: searchIntervalSeconds,
-      indexerIds: seededSearchTorznabEnabled ? seededSearchEffectiveIndexerIds : [],
-      disableTorznab: !seededSearchTorznabEnabled,
+      indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
+      disableTorznab: !seededSearchTorznabEffectiveEnabled,
       cooldownMinutes: searchCooldownMinutes,
     })
   }

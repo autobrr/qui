@@ -1835,13 +1835,22 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		if !hasGazelle {
 			return nil, errors.New("torznab search is not configured")
 		}
+		// No Torznab backend configured; run in Gazelle-only mode.
+		opts.DisableTorznab = true
 	} else if !opts.DisableTorznab {
 		indexers, indexersErr := s.jackettService.GetEnabledIndexersInfo(ctx)
 		if indexersErr != nil {
-			return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", indexersErr)
-		}
-		if len(indexers) == 0 && !hasGazelle {
-			return nil, ErrNoIndexersConfigured
+			if !hasGazelle {
+				return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", indexersErr)
+			}
+			log.Warn().Err(indexersErr).Msg("[CROSSSEED-SEARCH] Failed to probe Torznab indexers; continuing in Gazelle-only mode")
+			opts.DisableTorznab = true
+		} else if len(indexers) == 0 {
+			if !hasGazelle {
+				return nil, ErrNoIndexersConfigured
+			}
+			// No enabled indexers; Torznab contributes nothing for this run.
+			opts.DisableTorznab = true
 		}
 	}
 
