@@ -11,6 +11,7 @@ import (
 type EventType string
 
 const (
+	EventTorrentAdded                 EventType = "torrent_added"
 	EventTorrentCompleted             EventType = "torrent_completed"
 	EventBackupSucceeded              EventType = "backup_succeeded"
 	EventBackupFailed                 EventType = "backup_failed"
@@ -37,6 +38,7 @@ type EventDefinition struct {
 }
 
 var eventDefinitions = []EventDefinition{
+	{Type: EventTorrentAdded, Label: "Torrent added", Description: "A torrent is added (includes tracker, category, tags, and ETA when available)."},
 	{Type: EventTorrentCompleted, Label: "Torrent completed", Description: "A torrent finishes downloading (includes tracker, category, and tags when available)."},
 	{Type: EventBackupSucceeded, Label: "Backup succeeded", Description: "A backup run completes successfully."},
 	{Type: EventBackupFailed, Label: "Backup failed", Description: "A backup run fails."},

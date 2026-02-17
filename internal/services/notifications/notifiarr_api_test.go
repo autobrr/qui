@@ -115,3 +115,54 @@ func TestBuildNotifiarrAPIDataIncludesStructuredFields(t *testing.T) {
 	require.False(t, slices.Contains(data.ErrorMessages, "   "))
 	require.NotEmpty(t, strings.TrimSpace(data.Description))
 }
+
+func TestBuildNotifiarrAPIDataIncludesTorrentFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	addedOn := time.Now().Add(-10 * time.Second).Unix()
+	etaSeconds := int64(3600)
+	event := Event{
+		Type:                   EventTorrentAdded,
+		TorrentName:            "Example.Movie.2026.1080p",
+		TorrentHash:            "abcdef0123456789abcdef0123456789abcdef01",
+		TorrentAddedOn:         addedOn,
+		TorrentETASeconds:      etaSeconds,
+		TorrentState:           "downloading",
+		TorrentProgress:        0.25,
+		TorrentTotalSizeBytes:  20_000_000_000,
+		TorrentDownloadedBytes: 5_000_000_000,
+		TorrentAmountLeftBytes: 15_000_000_000,
+		TorrentDlSpeedBps:      25_000_000,
+		TorrentUpSpeedBps:      1_000_000,
+		TorrentNumSeeds:        120,
+		TorrentNumLeechs:       35,
+	}
+
+	data := svc.buildNotifiarrAPIData(context.Background(), event, "title", "message")
+	require.NotNil(t, data.Torrent)
+	require.NotNil(t, data.Torrent.AddedAt)
+	require.Equal(t, time.Unix(addedOn, 0).UTC(), *data.Torrent.AddedAt)
+	require.NotNil(t, data.Torrent.EtaSeconds)
+	require.Equal(t, etaSeconds, *data.Torrent.EtaSeconds)
+	require.NotNil(t, data.Torrent.EstimatedCompletionAt)
+	require.True(t, data.Torrent.EstimatedCompletionAt.Equal(data.Timestamp.Add(time.Duration(etaSeconds)*time.Second)))
+	require.NotNil(t, data.Torrent.State)
+	require.Equal(t, "downloading", *data.Torrent.State)
+	require.NotNil(t, data.Torrent.Progress)
+	require.Equal(t, 0.25, *data.Torrent.Progress)
+	require.NotNil(t, data.Torrent.TotalSizeBytes)
+	require.Equal(t, int64(20_000_000_000), *data.Torrent.TotalSizeBytes)
+	require.NotNil(t, data.Torrent.DownloadedBytes)
+	require.Equal(t, int64(5_000_000_000), *data.Torrent.DownloadedBytes)
+	require.NotNil(t, data.Torrent.AmountLeftBytes)
+	require.Equal(t, int64(15_000_000_000), *data.Torrent.AmountLeftBytes)
+	require.NotNil(t, data.Torrent.DlSpeedBps)
+	require.Equal(t, int64(25_000_000), *data.Torrent.DlSpeedBps)
+	require.NotNil(t, data.Torrent.UpSpeedBps)
+	require.Equal(t, int64(1_000_000), *data.Torrent.UpSpeedBps)
+	require.NotNil(t, data.Torrent.NumSeeds)
+	require.Equal(t, int64(120), *data.Torrent.NumSeeds)
+	require.NotNil(t, data.Torrent.NumLeechs)
+	require.Equal(t, int64(35), *data.Torrent.NumLeechs)
+}

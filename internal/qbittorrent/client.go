@@ -64,6 +64,10 @@ type Client struct {
 	completionState   map[string]bool
 	completionHandler TorrentCompletionHandler
 	completionInit    bool
+	addedMu           sync.Mutex
+	addedState        map[string]struct{}
+	addedHandler      TorrentAddedHandler
+	addedInit         bool
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -106,6 +110,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
 		completionState:   make(map[string]bool),
+		addedState:        make(map[string]struct{}),
 	}
 
 	if err := client.RefreshCapabilities(ctx); err != nil {
@@ -128,6 +133,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
 		client.handleCompletionUpdates(data)
+		client.handleAddedUpdates(data)
 		log.Trace().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
@@ -494,6 +500,16 @@ func (c *Client) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
 	c.completionMu.Unlock()
 }
 
+// SetTorrentAddedHandler registers a callback to be invoked when torrents are first seen as new.
+func (c *Client) SetTorrentAddedHandler(handler TorrentAddedHandler) {
+	c.addedMu.Lock()
+	c.addedHandler = handler
+	if c.addedState == nil {
+		c.addedState = make(map[string]struct{})
+	}
+	c.addedMu.Unlock()
+}
+
 func (c *Client) StartSyncManager(ctx context.Context) error {
 	c.mu.RLock()
 	syncManager := c.syncManager
@@ -507,6 +523,8 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 }
 
 const completionProgressThreshold = 0.9999
+
+const torrentAddedGraceWindow = 60 * time.Second
 
 func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	if data == nil {
@@ -568,6 +586,63 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 
 func normalizeHashForCompletion(hash string) string {
 	return strings.ToUpper(strings.TrimSpace(hash))
+}
+
+func (c *Client) handleAddedUpdates(data *qbt.MainData) {
+	if data == nil {
+		return
+	}
+
+	c.addedMu.Lock()
+	if c.addedState == nil {
+		c.addedState = make(map[string]struct{})
+	}
+
+	handler := c.addedHandler
+
+	for _, removed := range data.TorrentsRemoved {
+		delete(c.addedState, normalizeHashForCompletion(removed))
+	}
+
+	if !c.addedInit {
+		if len(data.Torrents) == 0 {
+			c.addedMu.Unlock()
+			return
+		}
+		for hash := range data.Torrents {
+			c.addedState[normalizeHashForCompletion(hash)] = struct{}{}
+		}
+		c.addedInit = true
+		c.addedMu.Unlock()
+		return
+	}
+
+	ready := make([]qbt.Torrent, 0)
+	for hash, torrent := range data.Torrents {
+		normalized := normalizeHashForCompletion(hash)
+		if _, ok := c.addedState[normalized]; ok {
+			continue
+		}
+		c.addedState[normalized] = struct{}{}
+		ready = append(ready, torrent)
+	}
+	c.addedMu.Unlock()
+
+	if handler == nil || len(ready) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for _, torrent := range ready {
+		if torrent.AddedOn > 0 {
+			addedAt := time.Unix(torrent.AddedOn, 0)
+			if now.Sub(addedAt) > torrentAddedGraceWindow {
+				continue
+			}
+		}
+		torrentCopy := torrent
+		go handler(context.Background(), c.instanceID, torrentCopy)
+	}
 }
 
 func isTorrentComplete(t *qbt.Torrent) bool {

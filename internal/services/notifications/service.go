@@ -45,6 +45,18 @@ type Event struct {
 	InstanceName             string
 	TorrentName              string
 	TorrentHash              string
+	TorrentAddedOn           int64
+	TorrentETASeconds        int64
+	TorrentState             string
+	TorrentProgress          float64
+	TorrentRatio             float64
+	TorrentTotalSizeBytes    int64
+	TorrentDownloadedBytes   int64
+	TorrentAmountLeftBytes   int64
+	TorrentDlSpeedBps        int64
+	TorrentUpSpeedBps        int64
+	TorrentNumSeeds          int64
+	TorrentNumLeechs         int64
 	TrackerDomain            string
 	Category                 string
 	Tags                     []string
@@ -284,6 +296,26 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 	customMessage := strings.TrimSpace(event.Message)
 
 	switch event.Type {
+	case EventTorrentAdded:
+		title := "Torrent added"
+		lines := []string{
+			formatLine("Torrent", fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash))),
+		}
+		if eta := formatETA(event.TorrentETASeconds); eta != "" {
+			lines = append(lines, formatLine("ETA", eta))
+		}
+		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
+			lines = append(lines, formatLine("Tracker", tracker))
+		}
+		if category := strings.TrimSpace(event.Category); category != "" {
+			lines = append(lines, formatLine("Category", category))
+		}
+		if len(event.Tags) > 0 {
+			tags := append([]string(nil), event.Tags...)
+			slices.Sort(tags)
+			lines = append(lines, formatLine("Tags", strings.Join(tags, ", ")))
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case EventTorrentCompleted:
 		title := "Torrent completed"
 		lines := []string{
@@ -415,6 +447,13 @@ func formatHashSuffix(hash string) string {
 		return ""
 	}
 	return fmt.Sprintf(" [%s]", trimmed[:8])
+}
+
+func formatETA(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	return (time.Duration(seconds) * time.Second).Round(time.Second).String()
 }
 
 func formatLine(label, value string) string {

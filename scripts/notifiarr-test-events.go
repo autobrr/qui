@@ -59,11 +59,24 @@ type notifiarrMessageData struct {
 }
 
 type notifiarrMessageTorrentData struct {
-	Name          *string  `json:"name,omitempty"`
-	Hash          *string  `json:"hash,omitempty"`
-	TrackerDomain *string  `json:"tracker_domain,omitempty"`
-	Category      *string  `json:"category,omitempty"`
-	Tags          []string `json:"tags,omitempty"`
+	Name                  *string    `json:"name,omitempty"`
+	Hash                  *string    `json:"hash,omitempty"`
+	AddedAt               *time.Time `json:"added_at,omitempty"`
+	EtaSeconds            *int64     `json:"eta_seconds,omitempty"`
+	EstimatedCompletionAt *time.Time `json:"estimated_completion_at,omitempty"`
+	State                 *string    `json:"state,omitempty"`
+	Progress              *float64   `json:"progress,omitempty"`
+	Ratio                 *float64   `json:"ratio,omitempty"`
+	TotalSizeBytes        *int64     `json:"total_size_bytes,omitempty"`
+	DownloadedBytes       *int64     `json:"downloaded_bytes,omitempty"`
+	AmountLeftBytes       *int64     `json:"amount_left_bytes,omitempty"`
+	DlSpeedBps            *int64     `json:"dl_speed_bps,omitempty"`
+	UpSpeedBps            *int64     `json:"up_speed_bps,omitempty"`
+	NumSeeds              *int64     `json:"num_seeds,omitempty"`
+	NumLeechs             *int64     `json:"num_leechs,omitempty"`
+	TrackerDomain         *string    `json:"tracker_domain,omitempty"`
+	Category              *string    `json:"category,omitempty"`
+	Tags                  []string   `json:"tags,omitempty"`
 }
 
 type notifiarrMessageBackupData struct {
@@ -245,6 +258,30 @@ func buildFixtures() []fixture {
 	webhookStart, webhookEnd := runTimes(baseTime, -5*time.Minute, 20*time.Second)
 
 	return []fixture{
+		{
+			Name: "torrent_added",
+			Event: notifications.Event{
+				Type:                   notifications.EventTorrentAdded,
+				InstanceName:           instanceLabel,
+				TorrentName:            "Some.Movie.2025.1080p.BluRay.x264",
+				TorrentHash:            "abcdef0123456789abcdef0123456789abcdef01",
+				TorrentAddedOn:         baseTime.Add(-10 * time.Second).Unix(),
+				TorrentETASeconds:      int64((90 * time.Minute).Seconds()),
+				TorrentState:           "downloading",
+				TorrentProgress:        0.25,
+				TorrentRatio:           0.0,
+				TorrentTotalSizeBytes:  20_000_000_000,
+				TorrentDownloadedBytes: 5_000_000_000,
+				TorrentAmountLeftBytes: 15_000_000_000,
+				TorrentDlSpeedBps:      25_000_000,
+				TorrentUpSpeedBps:      1_000_000,
+				TorrentNumSeeds:        120,
+				TorrentNumLeechs:       35,
+				TrackerDomain:          "tracker.example",
+				Category:               "movies",
+				Tags:                   []string{"seed", "bluray"},
+			},
+		},
 		{
 			Name: "torrent_completed",
 			Event: notifications.Event{
@@ -612,6 +649,26 @@ func formatEvent(event notifications.Event) (string, string) {
 	customMessage := strings.TrimSpace(event.Message)
 
 	switch event.Type {
+	case notifications.EventTorrentAdded:
+		title := "Torrent added"
+		lines := []string{
+			formatLine("Torrent", event.TorrentName+formatHashSuffix(event.TorrentHash)),
+		}
+		if eta := formatETA(event.TorrentETASeconds); eta != "" {
+			lines = append(lines, formatLine("ETA", eta))
+		}
+		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
+			lines = append(lines, formatLine("Tracker", tracker))
+		}
+		if category := strings.TrimSpace(event.Category); category != "" {
+			lines = append(lines, formatLine("Category", category))
+		}
+		if len(event.Tags) > 0 {
+			tags := append([]string(nil), event.Tags...)
+			sort.Strings(tags)
+			lines = append(lines, formatLine("Tags", strings.Join(tags, ", ")))
+		}
+		return title, buildMessage(instanceLabel, lines)
 	case notifications.EventTorrentCompleted:
 		title := "Torrent completed"
 		lines := []string{
@@ -782,6 +839,13 @@ func formatHashSuffix(hash string) string {
 	return " [" + trimmed[:8] + "]"
 }
 
+func formatETA(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	return (time.Duration(seconds) * time.Second).Round(time.Second).String()
+}
+
 func formatKind(kind models.BackupRunKind) string {
 	raw := strings.TrimSpace(string(kind))
 	if raw == "" {
@@ -845,10 +909,76 @@ func buildNotifiarrData(event notifications.Event, title, message string) notifi
 			TrackerDomain: stringPtr(event.TrackerDomain),
 			Category:      stringPtr(event.Category),
 		}
+		if event.TorrentAddedOn > 0 {
+			addedAt := time.Unix(event.TorrentAddedOn, 0).UTC()
+			t.AddedAt = &addedAt
+		}
+		if event.TorrentETASeconds > 0 {
+			eta := event.TorrentETASeconds
+			t.EtaSeconds = &eta
+			estimated := data.Timestamp.Add(time.Duration(eta) * time.Second)
+			t.EstimatedCompletionAt = &estimated
+		}
+		if strings.TrimSpace(event.TorrentState) != "" {
+			t.State = stringPtr(event.TorrentState)
+		}
+		if event.TorrentProgress > 0 {
+			progress := event.TorrentProgress
+			t.Progress = &progress
+		}
+		if event.TorrentRatio > 0 {
+			ratio := event.TorrentRatio
+			t.Ratio = &ratio
+		}
+		if event.TorrentTotalSizeBytes > 0 {
+			total := event.TorrentTotalSizeBytes
+			t.TotalSizeBytes = &total
+		}
+		if event.TorrentDownloadedBytes > 0 {
+			downloaded := event.TorrentDownloadedBytes
+			t.DownloadedBytes = &downloaded
+		}
+		if event.TorrentAmountLeftBytes > 0 {
+			left := event.TorrentAmountLeftBytes
+			t.AmountLeftBytes = &left
+		}
+		if event.TorrentDlSpeedBps > 0 {
+			dl := event.TorrentDlSpeedBps
+			t.DlSpeedBps = &dl
+		}
+		if event.TorrentUpSpeedBps > 0 {
+			ul := event.TorrentUpSpeedBps
+			t.UpSpeedBps = &ul
+		}
+		if event.TorrentNumSeeds > 0 {
+			seeds := event.TorrentNumSeeds
+			t.NumSeeds = &seeds
+		}
+		if event.TorrentNumLeechs > 0 {
+			leechs := event.TorrentNumLeechs
+			t.NumLeechs = &leechs
+		}
 		if len(tags) > 0 {
 			t.Tags = append([]string(nil), tags...)
 		}
-		if t.Name == nil && t.Hash == nil && t.TrackerDomain == nil && t.Category == nil && len(t.Tags) == 0 {
+		if t.Name == nil &&
+			t.Hash == nil &&
+			t.AddedAt == nil &&
+			t.EtaSeconds == nil &&
+			t.EstimatedCompletionAt == nil &&
+			t.State == nil &&
+			t.Progress == nil &&
+			t.Ratio == nil &&
+			t.TotalSizeBytes == nil &&
+			t.DownloadedBytes == nil &&
+			t.AmountLeftBytes == nil &&
+			t.DlSpeedBps == nil &&
+			t.UpSpeedBps == nil &&
+			t.NumSeeds == nil &&
+			t.NumLeechs == nil &&
+			t.TrackerDomain == nil &&
+			t.Category == nil &&
+			len(t.Tags) == 0 {
 			return nil
 		}
 		return t
