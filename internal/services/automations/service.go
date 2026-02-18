@@ -1743,7 +1743,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
 	resumeHashes := make([]string, 0)
-	speedRuleByHash := make(map[string]ruleRef)
+	uploadRuleByHash := make(map[string]ruleRef)
+	downloadRuleByHash := make(map[string]ruleRef)
 	shareRuleByHash := make(map[string]ruleRef)
 	pauseRuleByHash := make(map[string]ruleRef)
 	resumeRuleByHash := make(map[string]ruleRef)
@@ -1961,14 +1962,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			desired := *state.uploadLimitKiB * 1024
 			if torrent.UpLimit != desired {
 				uploadBatches[*state.uploadLimitKiB] = append(uploadBatches[*state.uploadLimitKiB], hash)
-				speedRuleByHash[hash] = state.speedRule
+				uploadRuleByHash[hash] = state.uploadRule
 			}
 		}
 		if state.downloadLimitKiB != nil {
 			desired := *state.downloadLimitKiB * 1024
 			if torrent.DlLimit != desired {
 				downloadBatches[*state.downloadLimitKiB] = append(downloadBatches[*state.downloadLimitKiB], hash)
-				speedRuleByHash[hash] = state.speedRule
+				downloadRuleByHash[hash] = state.downloadRule
 			}
 		}
 
@@ -2105,8 +2106,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	defer cancel()
 
 	// Apply speed limits and track success
-	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary, speedRuleByHash)
-	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary, speedRuleByHash)
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary, uploadRuleByHash)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary, downloadRuleByHash)
 
 	// Record aggregated speed limit activity
 	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
@@ -2132,7 +2133,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionSpeedLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess, downloadSuccess), speedRuleByHash),
+			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess), uploadRuleByHash),
+		)
+		summary.recordRuleCounts(
+			models.ActivityActionSpeedLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroups(downloadSuccess), downloadRuleByHash),
 		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
@@ -2468,6 +2474,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	for _, category := range sortedCategories {
 		hashes := categoryBatches[category]
 		expandedHashes := hashes
+		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, categoryRuleByHash)
 
 		// Find torrents whose winning category rule had IncludeCrossSeeds=true
 		// and expand with their cross-seeds (require BOTH ContentPath AND SavePath match)
@@ -2506,6 +2513,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					if _, shouldExpand := keysToExpand[key]; shouldExpand {
 						expandedHashes = append(expandedHashes, t.Hash)
 						expandedSet[t.Hash] = struct{}{}
+						inheritRuleRefForCrossSeed(t.Hash, key, categoryRuleByHash, ruleByCrossSeedKey)
 					}
 				}
 			}
@@ -2586,6 +2594,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		hashes := moveBatches[path]
 		successfulMovesForPath := 0
 		failedMovesForPath := 0
+		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, moveRuleByHash)
 
 		// Before moving, we need to get all of the cross-seeds for each torrent to avoid breaking cross-seeds
 		var expandedHashes []string
@@ -2618,6 +2627,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					if _, matched := keysToExpand[key]; matched {
 						expandedHashes = append(expandedHashes, t.Hash)
 						movedHashes[t.Hash] = struct{}{}
+						inheritRuleRefForCrossSeed(t.Hash, key, moveRuleByHash, ruleByCrossSeedKey)
 					}
 				}
 			}
@@ -3180,6 +3190,49 @@ func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
 		return crossSeedKey{}, false
 	}
 	return crossSeedKey{contentPath, savePath}, true
+}
+
+func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef) map[crossSeedKey]ruleRef {
+	if len(triggerHashes) == 0 || len(torrentByHash) == 0 || len(ruleByHash) == 0 {
+		return nil
+	}
+	byKey := make(map[crossSeedKey]ruleRef)
+	for _, hash := range triggerHashes {
+		ref, hasRef := ruleByHash[hash]
+		if !hasRef {
+			continue
+		}
+		torrent, hasTorrent := torrentByHash[hash]
+		if !hasTorrent {
+			continue
+		}
+		key, ok := makeCrossSeedKey(torrent)
+		if !ok {
+			continue
+		}
+		if _, exists := byKey[key]; exists {
+			continue
+		}
+		byKey[key] = ref
+	}
+	if len(byKey) == 0 {
+		return nil
+	}
+	return byKey
+}
+
+func inheritRuleRefForCrossSeed(expandedHash string, key crossSeedKey, ruleByHash map[string]ruleRef, ruleByCrossSeedKey map[crossSeedKey]ruleRef) {
+	if strings.TrimSpace(expandedHash) == "" || len(ruleByHash) == 0 || len(ruleByCrossSeedKey) == 0 {
+		return
+	}
+	if _, exists := ruleByHash[expandedHash]; exists {
+		return
+	}
+	ref, ok := ruleByCrossSeedKey[key]
+	if !ok {
+		return
+	}
+	ruleByHash[expandedHash] = ref
 }
 
 // detectCrossSeeds checks if any other torrent shares the same ContentPath,

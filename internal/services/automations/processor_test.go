@@ -1252,6 +1252,63 @@ func TestProcessTorrents_PauseResume(t *testing.T) {
 	require.False(t, state.shouldResume)
 }
 
+func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndependently(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "a",
+			Name:    "test",
+			UpLimit: 0,
+			DlLimit: 0,
+		},
+	}
+
+	downloadLimit := int64(1024)
+	uploadLimit := int64(2048)
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			Name:           "Download rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				SpeedLimits: &models.SpeedLimitAction{
+					Enabled:     true,
+					DownloadKiB: &downloadLimit,
+				},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			Name:           "Upload rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				SpeedLimits: &models.SpeedLimitAction{
+					Enabled:   true,
+					UploadKiB: &uploadLimit,
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, nil, sm, nil, nil)
+
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.NotNil(t, state.downloadLimitKiB)
+	require.NotNil(t, state.uploadLimitKiB)
+	require.Equal(t, downloadLimit, *state.downloadLimitKiB)
+	require.Equal(t, uploadLimit, *state.uploadLimitKiB)
+	require.Equal(t, 1, state.downloadRule.id)
+	require.Equal(t, "Download rule", state.downloadRule.name)
+	require.Equal(t, 2, state.uploadRule.id)
+	require.Equal(t, "Upload rule", state.uploadRule.name)
+}
+
 func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 

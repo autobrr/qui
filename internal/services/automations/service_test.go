@@ -329,6 +329,60 @@ func TestNormalizePath(t *testing.T) {
 	}
 }
 
+func TestCrossSeedRuleRefsByKey(t *testing.T) {
+	t.Parallel()
+
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": {Hash: "h1", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+		"h2": {Hash: "h2", ContentPath: "/downloads/group-b", SavePath: "/downloads"},
+		"h3": {Hash: "h3", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 20, name: "Rule B"},
+		"h3": {id: 30, name: "Rule A Override"},
+	}
+
+	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentByHash, ruleByHash)
+	require.Len(t, got, 2)
+
+	keyA, ok := makeCrossSeedKey(torrentByHash["h1"])
+	require.True(t, ok)
+	keyB, ok := makeCrossSeedKey(torrentByHash["h2"])
+	require.True(t, ok)
+
+	// First trigger for a key wins to keep attribution deterministic.
+	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, got[keyA])
+	require.Equal(t, ruleRef{id: 20, name: "Rule B"}, got[keyB])
+}
+
+func TestInheritRuleRefForCrossSeed(t *testing.T) {
+	t.Parallel()
+
+	key := crossSeedKey{
+		contentPath: "/downloads/group-a",
+		savePath:    "/downloads",
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+	}
+	ruleByCrossSeedKey := map[crossSeedKey]ruleRef{
+		key: {id: 10, name: "Rule A"},
+	}
+
+	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
+	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, ruleByHash["x1"])
+
+	// Existing explicit attribution should not be overwritten.
+	ruleByHash["x1"] = ruleRef{id: 99, name: "Explicit Rule"}
+	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
+	require.Equal(t, ruleRef{id: 99, name: "Explicit Rule"}, ruleByHash["x1"])
+
+	counts := buildRuleCountsFromHashes([]string{"h1", "x1"}, ruleByHash)
+	require.Equal(t, 1, counts[ruleRef{id: 10, name: "Rule A"}])
+	require.Equal(t, 1, counts[ruleRef{id: 99, name: "Explicit Rule"}])
+}
+
 // -----------------------------------------------------------------------------
 // limitHashBatch tests
 // -----------------------------------------------------------------------------

@@ -26,7 +26,8 @@ type torrentDesiredState struct {
 	// Speed limits (last rule wins)
 	uploadLimitKiB   *int64
 	downloadLimitKiB *int64
-	speedRule        ruleRef
+	uploadRule       ruleRef
+	downloadRule     ruleRef
 
 	// Share limits (last rule wins)
 	ratioLimit     *float64
@@ -232,11 +233,12 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			if conditions.SpeedLimits.UploadKiB != nil {
 				state.uploadLimitKiB = conditions.SpeedLimits.UploadKiB
+				state.uploadRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 			if conditions.SpeedLimits.DownloadKiB != nil {
 				state.downloadLimitKiB = conditions.SpeedLimits.DownloadKiB
+				state.downloadRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
-			state.speedRule = ruleRef{id: rule.ID, name: rule.Name}
 		} else if stats != nil {
 			stats.SpeedConditionNotMet++
 		}
