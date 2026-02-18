@@ -27,8 +27,8 @@ func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *te
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Name:        "WWE.NXT.2025.12.02.1080p.WEB.h264-KYR",
 				SavePath:    "/downloads",
 				ContentPath: "/downloads",
@@ -61,8 +61,8 @@ func TestDetermineLocalMatchType_ContentPathMatchWhenSpecific(t *testing.T) {
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Name:        "Different.Name.Same.Data.1080p.WEB.h264-OTHER",
 				SavePath:    "/downloads",
 				ContentPath: "/downloads/Some.Source.Release.1080p.WEB.h264-GROUP.mkv",
@@ -199,8 +199,8 @@ func TestDetermineLocalMatchType_AmbiguousDir_DifferentFiles_NoMatch(t *testing.
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Movie.B.2024.720p.WEB-OTHER",
 				SavePath:    "/downloads",
@@ -261,8 +261,8 @@ func TestDetermineLocalMatchType_AmbiguousDir_OverlappingFiles_Match(t *testing.
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "TV.Show.S01.1080p.WEB-OTHER",
 				SavePath:    "/downloads",
@@ -322,8 +322,8 @@ func TestDetermineLocalMatchType_AmbiguousDir_PartialOverlap_BelowThreshold(t *t
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Other.Release.2023-OTHER",
 				SavePath:    "/downloads",
@@ -490,8 +490,8 @@ func TestDetermineLocalMatchType_EmptyCandidateFiles_StoresError(t *testing.T) {
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Movie.2023.1080p.WEB-OTHER",
 				SavePath:    "/downloads",
@@ -553,8 +553,8 @@ func TestDetermineLocalMatchType_CandidateFetchError_StoresError(t *testing.T) {
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Movie.2023.1080p.WEB-OTHER",
 				SavePath:    "/downloads",
