@@ -167,7 +167,7 @@ func (s *CrossSeedBlocklistStore) FindBlocked(ctx context.Context, instanceID in
 }
 
 func normalizeInfoHash(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
+	return normalizeLowerTrim(value)
 }
 
 func normalizeInfoHashList(values []string) []string {

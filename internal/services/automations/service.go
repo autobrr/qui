@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -2766,14 +2765,14 @@ func matchesTracker(pattern string, domains []string) bool {
 	})
 
 	for _, token := range tokens {
-		normalized := strings.ToLower(strings.TrimSpace(token))
+		normalized := normalizeLowerTrim(token)
 		if normalized == "" {
 			continue
 		}
 		isGlob := strings.ContainsAny(normalized, "*?")
 
 		for _, domain := range domains {
-			d := strings.ToLower(domain)
+			d := normalizeLower(domain)
 			if isGlob {
 				ok, err := path.Match(normalized, d)
 				if err != nil {
@@ -2837,8 +2836,7 @@ func sanitizeTrackerHost(urlOrHost string) string {
 	// Remove URL-like path pieces
 	clean = strings.Split(clean, "/")[0]
 	clean = strings.Split(clean, ":")[0]
-	re := regexp.MustCompile(`[^a-zA-Z0-9\.-]`)
-	clean = re.ReplaceAllString(clean, "")
+	clean = trackerHostSanitizeRegexp.ReplaceAllString(clean, "")
 	return clean
 }
 
@@ -2857,16 +2855,7 @@ func torrentHasTag(tags string, candidate string) bool {
 // normalizePath standardizes a file path for comparison by lowercasing,
 // converting backslashes to forward slashes, and removing trailing slashes.
 func normalizePath(p string) string {
-	if p == "" {
-		return ""
-	}
-	// Lowercase for case-insensitive comparison
-	p = strings.ToLower(p)
-	// Normalize path separators (Windows backslashes to forward slashes)
-	p = strings.ReplaceAll(p, "\\", "/")
-	// Remove trailing slash
-	p = strings.TrimSuffix(p, "/")
-	return p
+	return pathComparisonNormalizer.Normalize(p)
 }
 
 // crossSeedKey identifies torrents at the same on-disk location.
@@ -2971,7 +2960,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	var totalBytes1 int64
 	for _, f := range files1 {
 		key := fileOverlapKey{
-			name: strings.ToLower(normalizePath(f.Name)),
+			name: normalizePath(f.Name),
 			size: f.Size,
 		}
 		fileSet1[key] = struct{}{}
@@ -2983,7 +2972,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	for _, f := range files2 {
 		totalBytes2 += f.Size
 		key := fileOverlapKey{
-			name: strings.ToLower(normalizePath(f.Name)),
+			name: normalizePath(f.Name),
 			size: f.Size,
 		}
 		if _, exists := fileSet1[key]; exists {
@@ -3138,7 +3127,7 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 	result := make(map[string]string)
 	for _, c := range customizations {
 		for _, domain := range c.Domains {
-			result[strings.ToLower(domain)] = c.DisplayName
+			result[normalizeLower(domain)] = c.DisplayName
 		}
 	}
 	return result
@@ -3649,8 +3638,8 @@ func buildMoveRunItems(
 
 func sortActivityRunItems(items []ActivityRunTorrent) {
 	sort.Slice(items, func(i, j int) bool {
-		nameA := strings.ToLower(items[i].Name)
-		nameB := strings.ToLower(items[j].Name)
+		nameA := normalizeLower(items[i].Name)
+		nameB := normalizeLower(items[j].Name)
 		if nameA == "" && nameB != "" {
 			return false
 		}
