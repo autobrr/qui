@@ -1501,6 +1501,70 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
+func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanic(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	targetCategory := "movies"
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "tv",
+		Tracker:  "https://tracker.example.com/announce",
+	}
+
+	states := map[string]*torrentDesiredState{
+		"abc123": {
+			category:        &targetCategory,
+			categoryGroupID: "unknown-group-id",
+			categoryRuleID:  42,
+		},
+	}
+	ruleByID := map[int]*models.Automation{
+		42: {
+			ID:         42,
+			Name:       "Category Rule",
+			Enabled:    true,
+			Conditions: &models.ActionConditions{},
+		},
+	}
+
+	require.NotPanics(t, func() {
+		s.recordDryRunActivities(
+			context.Background(),
+			1,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			map[string][]string{"movies": {"abc123"}},
+			nil,
+			nil,
+			nil,
+			map[string]qbt.Torrent{"abc123": torrent},
+			[]qbt.Torrent{torrent},
+			states,
+			ruleByID,
+			nil,
+		)
+	})
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
 // mockQuerier implements dbinterface.Querier for testing activity logging
 type mockQuerier struct {
 	activities []*models.AutomationActivity
