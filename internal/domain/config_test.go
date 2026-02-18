@@ -13,8 +13,8 @@ import (
 func TestValidateAuthDisabledConfig(t *testing.T) {
 	t.Run("does nothing when auth is enabled", func(t *testing.T) {
 		cfg := &Config{
-			AuthDisabled:           true,
-			IfIGetBannedItsMyFault: false,
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: false,
 		}
 
 		require.NoError(t, cfg.ValidateAuthDisabledConfig())
@@ -22,8 +22,8 @@ func TestValidateAuthDisabledConfig(t *testing.T) {
 
 	t.Run("fails when allowlist is missing", func(t *testing.T) {
 		cfg := &Config{
-			AuthDisabled:           true,
-			IfIGetBannedItsMyFault: true,
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
 		}
 
 		err := cfg.ValidateAuthDisabledConfig()
@@ -33,9 +33,9 @@ func TestValidateAuthDisabledConfig(t *testing.T) {
 
 	t.Run("fails on invalid entry", func(t *testing.T) {
 		cfg := &Config{
-			AuthDisabled:             true,
-			IfIGetBannedItsMyFault:   true,
-			AuthDisabledAllowedCIDRs: []string{"nope"},
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   []string{"nope"},
 		}
 
 		err := cfg.ValidateAuthDisabledConfig()
@@ -45,8 +45,8 @@ func TestValidateAuthDisabledConfig(t *testing.T) {
 
 	t.Run("accepts CIDR and single IP entries", func(t *testing.T) {
 		cfg := &Config{
-			AuthDisabled:           true,
-			IfIGetBannedItsMyFault: true,
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
 			AuthDisabledAllowedCIDRs: []string{
 				"192.168.1.0/24",
 				"10.0.0.5",

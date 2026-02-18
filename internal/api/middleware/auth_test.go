@@ -98,7 +98,7 @@ func TestIsAuthenticated_APIKeyHeaderAndUnauthorized(t *testing.T) {
 }
 
 func TestIsAuthenticated_AuthDisabled(t *testing.T) {
-	cfg := &domain.Config{AuthDisabled: true, IfIGetBannedItsMyFault: true}
+	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: true}
 
 	var capturedUsername string
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +117,7 @@ func TestIsAuthenticated_AuthDisabled(t *testing.T) {
 }
 
 func TestRequireSetup_AuthDisabled(t *testing.T) {
-	cfg := &domain.Config{AuthDisabled: true, IfIGetBannedItsMyFault: true}
+	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: true}
 
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -135,8 +135,8 @@ func TestRequireSetup_AuthDisabled(t *testing.T) {
 }
 
 func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
-	// AuthDisabled alone without IfIGetBannedItsMyFault should NOT bypass auth
-	cfg := &domain.Config{AuthDisabled: true, IfIGetBannedItsMyFault: false}
+	// AuthDisabled alone without IAcknowledgeThisIsABadIdea should NOT bypass auth
+	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: false}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := database.New(dbPath)

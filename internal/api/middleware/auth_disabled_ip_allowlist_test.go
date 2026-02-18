@@ -32,9 +32,9 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 
 	t.Run("allows request from configured CIDR", func(t *testing.T) {
 		cfg := &domain.Config{
-			AuthDisabled:             true,
-			IfIGetBannedItsMyFault:   true,
-			AuthDisabledAllowedCIDRs: []string{"127.0.0.1/32"},
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
 		}
 		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
 
@@ -48,9 +48,9 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 
 	t.Run("blocks request outside CIDR", func(t *testing.T) {
 		cfg := &domain.Config{
-			AuthDisabled:             true,
-			IfIGetBannedItsMyFault:   true,
-			AuthDisabledAllowedCIDRs: []string{"127.0.0.1/32"},
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
 		}
 		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
 
@@ -64,9 +64,9 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 
 	t.Run("blocks when configured list is invalid", func(t *testing.T) {
 		cfg := &domain.Config{
-			AuthDisabled:             true,
-			IfIGetBannedItsMyFault:   true,
-			AuthDisabledAllowedCIDRs: []string{"invalid-cidr"},
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   []string{"invalid-cidr"},
 		}
 		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
 

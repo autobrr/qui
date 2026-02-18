@@ -72,8 +72,8 @@ func TestValidateReturnsSyntheticUserWhenAuthDisabled(t *testing.T) {
 	handler := &AuthHandler{
 		sessionManager: scs.New(),
 		config: &domain.Config{
-			AuthDisabled:           true,
-			IfIGetBannedItsMyFault: true,
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
 		},
 	}
 

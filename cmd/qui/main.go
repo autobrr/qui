@@ -451,8 +451,8 @@ func (app *Application) runServer() {
 			log.Fatal().Err(err).Msg("Authentication is disabled but authDisabledAllowedCIDRs is invalid or empty")
 		}
 		log.Warn().Strs("authDisabledAllowedCIDRs", cfg.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
-	case cfg.Config.AuthDisabled != cfg.Config.IfIGetBannedItsMyFault:
-		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__IF_I_GET_BANNED_ITS_MY_FAULT is set. Authentication remains enabled. Set both to disable authentication.")
+	case cfg.Config.AuthDisabled != cfg.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)

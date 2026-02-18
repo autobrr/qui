@@ -39,11 +39,11 @@ type Config struct {
 	CrossSeedRecoverErroredTorrents bool `toml:"crossSeedRecoverErroredTorrents" mapstructure:"crossSeedRecoverErroredTorrents"`
 
 	// AuthDisabled disables all authentication when both QUI__AUTH_DISABLED=true and
-	// QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true are set. Intended for deployments behind
+	// QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true are set. Intended for deployments behind
 	// a reverse proxy that handles authentication. Use IsAuthDisabled() to check.
-	AuthDisabled             bool     `toml:"authDisabled" mapstructure:"authDisabled"`
-	IfIGetBannedItsMyFault   bool     `toml:"ifIGetBannedItsMyFault" mapstructure:"ifIGetBannedItsMyFault"`
-	AuthDisabledAllowedCIDRs []string `toml:"authDisabledAllowedCIDRs" mapstructure:"authDisabledAllowedCIDRs"`
+	AuthDisabled               bool     `toml:"authDisabled" mapstructure:"authDisabled"`
+	IAcknowledgeThisIsABadIdea bool     `toml:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA" mapstructure:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA"`
+	AuthDisabledAllowedCIDRs   []string `toml:"authDisabledAllowedCIDRs" mapstructure:"authDisabledAllowedCIDRs"`
 
 	// OIDC Configuration
 	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`
@@ -55,10 +55,10 @@ type Config struct {
 }
 
 // IsAuthDisabled returns true only when both AuthDisabled and
-// IfIGetBannedItsMyFault are set, requiring the operator to explicitly
+// IAcknowledgeThisIsABadIdea are set, requiring the operator to explicitly
 // acknowledge the risks of running without authentication.
 func (c *Config) IsAuthDisabled() bool {
-	return c.AuthDisabled && c.IfIGetBannedItsMyFault
+	return c.AuthDisabled && c.IAcknowledgeThisIsABadIdea
 }
 
 // ParseAuthDisabledAllowedCIDRs parses configured auth-disabled IP ranges.

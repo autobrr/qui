@@ -78,14 +78,14 @@ QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcr
 
 ```bash
 QUI__AUTH_DISABLED=true                 # Optional: disable built-in auth (default: false)
-QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true  # Required confirmation to actually disable auth
+QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true  # Required confirmation to actually disable auth
 QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24  # Required when auth is disabled (IPs or CIDRs)
 ```
 
 Built-in authentication is disabled only when:
 
 - `QUI__AUTH_DISABLED=true`
-- `QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true`
+- `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true`
 - `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is set to one or more allowed IPs/CIDR ranges
 
 If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start.

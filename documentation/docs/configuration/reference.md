@@ -59,8 +59,8 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |
 | `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:bcrypt_hash` or `user1:hash1,user2:hash2`. Restart required. |
 | `externalProgramAllowList` | (none) | string[] | empty list | Restricts which executables can be launched from the UI. Only configurable via `config.toml` (no env override). |
-| `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disable all built-in authentication. **Both** this and `ifIGetBannedItsMyFault` must be `true` for auth to be disabled. See [Authentication](#authentication) below. Restart required. |
-| `ifIGetBannedItsMyFault` | `QUI__IF_I_GET_BANNED_ITS_MY_FAULT` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers. Restart required. |
+| `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disable all built-in authentication. **Both** this and `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` must be `true` for auth to be disabled. See [Authentication](#authentication) below. Restart required. |
+| `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers. Restart required. |
 | `authDisabledAllowedCIDRs` | `QUI__AUTH_DISABLED_ALLOWED_CIDRS` | string[] | empty list | Required when auth is disabled. Restricts access to specific client IPs/CIDRs. Entries may be CIDRs or single IPs. Restart required. |
 | `oidcEnabled` | `QUI__OIDC_ENABLED` | bool | `false` | Enable OpenID Connect authentication. Restart required. |
 | `oidcIssuer` | `QUI__OIDC_ISSUER` | string | empty | OIDC issuer URL. Restart required. |
@@ -75,7 +75,7 @@ To disable qui's built-in authentication, all of the following are required:
 
 ```bash
 QUI__AUTH_DISABLED=true
-QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true
+QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true
 QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24
 ```
 
@@ -101,7 +101,7 @@ When authentication is disabled:
 If you use private trackers, running qui without authentication is especially dangerous. Anyone with network access can control your torrent clients — adding, removing, or modifying torrents. Actions performed by unauthorized users (hit-and-runs, ratio manipulation, uploading unwanted content) can get your accounts permanently banned from private trackers, with no way to recover.
 :::
 
-If `QUI__AUTH_DISABLED` is set without `QUI__IF_I_GET_BANNED_ITS_MY_FAULT`, qui will log a warning and keep authentication enabled.
+If `QUI__AUTH_DISABLED` is set without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui will log a warning and keep authentication enabled.
 
 ## Example `config.toml`
 

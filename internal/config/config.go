@@ -118,7 +118,7 @@ func (c *AppConfig) defaults() {
 
 	// Auth disabled
 	c.viper.SetDefault("authDisabled", false)
-	c.viper.SetDefault("ifIGetBannedItsMyFault", false)
+	c.viper.SetDefault("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", false)
 	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
 
 	// OIDC defaults
@@ -206,7 +206,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
 
 	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
-	c.viper.BindEnv("ifIGetBannedItsMyFault", envPrefix+"IF_I_GET_BANNED_ITS_MY_FAULT")
+	c.viper.BindEnv("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", envPrefix+"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
 	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
 
 	// OIDC environment variables
@@ -272,7 +272,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
 
 	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
-	c.Config.IfIGetBannedItsMyFault = c.viper.GetBool("ifIGetBannedItsMyFault")
+	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
 	c.Config.AuthDisabledAllowedCIDRs = c.viper.GetStringSlice("authDisabledAllowedCIDRs")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
