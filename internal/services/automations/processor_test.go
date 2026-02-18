@@ -1572,6 +1572,10 @@ func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T
 	action, hasTag := state.tagActions["TEST"]
 	require.True(t, hasTag, "expected tag action to be recorded")
 	require.Equal(t, "remove", action, "expected tag to be removed when condition matches")
+	ref, hasRef := state.tagRuleByTag["TEST"]
+	require.True(t, hasRef, "expected tag rule source to be recorded")
+	require.Equal(t, 1, ref.id)
+	require.Equal(t, "Remove Tag When Private False", ref.name)
 }
 
 func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) {
@@ -1619,6 +1623,10 @@ func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) 
 	tagAction, hasTag := state.tagActions["processed"]
 	require.True(t, hasTag, "expected tag action to be recorded")
 	require.Equal(t, "add", tagAction)
+	ref, hasRef := state.tagRuleByTag["processed"]
+	require.True(t, hasRef, "expected tag rule source to be recorded")
+	require.Equal(t, 1, ref.id)
+	require.Equal(t, "Combined Actions Rule", ref.name)
 }
 
 func TestHasActions_ExternalProgram(t *testing.T) {
