@@ -634,6 +634,18 @@ class ApiClient {
     return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/items/${encodedHash}/download`)
   }
 
+  downloadContentFile(instanceId: number, hash: string, fileIndex: number): void {
+    const url = new URL(
+      withBasePath(`/api/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/download`),
+      window.location.origin
+    )
+    const a = document.createElement("a")
+    a.href = url.toString()
+    a.download = ""
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
 
   // Torrent endpoints
   async getTorrents(
