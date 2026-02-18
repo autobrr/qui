@@ -43,6 +43,12 @@ type torrentDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
 
+type torrentContentResolver interface {
+	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
+	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
+	GetTorrents(ctx context.Context, instanceID int, options qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+}
+
 type TorrentsHandler struct {
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
@@ -50,6 +56,7 @@ type TorrentsHandler struct {
 	// Testing interfaces - when set, these are used instead of the concrete types
 	torrentAdder      torrentAdder
 	torrentDownloader torrentDownloader
+	contentResolver   torrentContentResolver
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -2128,20 +2135,10 @@ func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candid
 }
 
 // filePathCandidates returns resolved absolute paths to try, preferring
-// savePath then downloadPath, then contentPath-derived fallbacks.
+// contentPath, then savePath, then downloadPath.
 func filePathCandidates(savePath, downloadPath, contentPath, relativePath string, singleFile bool) []string {
 	var candidates []string
 	seen := make(map[string]struct{})
-	if savePath != "" {
-		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-	}
-	if downloadPath != "" {
-		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-	}
 	if contentPath != "" {
 		cleanContentPath := filepath.Clean(filepath.FromSlash(contentPath))
 		if singleFile {
@@ -2155,6 +2152,16 @@ func filePathCandidates(savePath, downloadPath, contentPath, relativePath string
 			if p, err := resolveTorrentFilePath(parent, relativePath); err == nil {
 				candidates = appendUniqueCandidate(candidates, seen, p)
 			}
+		}
+	}
+	if savePath != "" {
+		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+	if downloadPath != "" {
+		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
 		}
 	}
 	return candidates
@@ -2186,7 +2193,18 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	}
 
 	// Get file list and find target file by index
-	files, err := h.syncManager.GetTorrentFiles(r.Context(), instanceID, hash)
+	var resolver torrentContentResolver
+	switch {
+	case h.contentResolver != nil:
+		resolver = h.contentResolver
+	case h.syncManager != nil:
+		resolver = h.syncManager
+	default:
+		RespondError(w, http.StatusInternalServerError, "Download service unavailable")
+		return
+	}
+
+	files, err := resolver.GetTorrentFiles(r.Context(), instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:downloadContentFile") {
 			return
@@ -2215,7 +2233,7 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	}
 
 	// Get torrent properties for save/download paths
-	props, err := h.syncManager.GetTorrentProperties(r.Context(), instanceID, hash)
+	props, err := resolver.GetTorrentProperties(r.Context(), instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:downloadContentFile") {
 			return
@@ -2226,7 +2244,7 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	}
 
 	contentPath := ""
-	if torrents, err := h.syncManager.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
+	if torrents, err := resolver.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
 	} else if len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
@@ -2241,6 +2259,7 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	// Try each candidate path until we find the file
 	var file *os.File
 	for _, candidate := range candidates {
+		// #nosec G703 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
 		f, err := os.Open(candidate)
 		if err == nil {
 			file = f
