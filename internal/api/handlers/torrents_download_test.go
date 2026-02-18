@@ -332,6 +332,7 @@ func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 	require.Contains(t, rec.Header().Get("Content-Disposition"), "attachment")
 	require.Contains(t, rec.Header().Get("Content-Disposition"), "file.txt")
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/plain")

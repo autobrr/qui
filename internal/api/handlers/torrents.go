@@ -2317,5 +2317,6 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", disposition)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
