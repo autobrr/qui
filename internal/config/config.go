@@ -119,6 +119,7 @@ func (c *AppConfig) defaults() {
 	// Auth disabled
 	c.viper.SetDefault("authDisabled", false)
 	c.viper.SetDefault("ifIGetBannedItsMyFault", false)
+	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
 
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
@@ -206,6 +207,7 @@ func (c *AppConfig) loadFromEnv() {
 
 	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
 	c.viper.BindEnv("ifIGetBannedItsMyFault", envPrefix+"IF_I_GET_BANNED_ITS_MY_FAULT")
+	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
 
 	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
@@ -271,6 +273,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 
 	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
 	c.Config.IfIGetBannedItsMyFault = c.viper.GetBool("ifIGetBannedItsMyFault")
+	c.Config.AuthDisabledAllowedCIDRs = c.viper.GetStringSlice("authDisabledAllowedCIDRs")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
 	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")

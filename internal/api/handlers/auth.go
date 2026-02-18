@@ -358,6 +358,14 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
 // Validate checks if the user has a valid session (used for OIDC callback)
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
+	if h.config != nil && h.config.IsAuthDisabled() {
+		RespondJSON(w, http.StatusOK, map[string]any{
+			"username":    "admin",
+			"auth_method": "none",
+		})
+		return
+	}
+
 	authenticated := h.sessionManager.GetBool(r.Context(), "authenticated")
 	if !authenticated {
 		RespondError(w, http.StatusUnauthorized, "Not authenticated")

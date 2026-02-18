@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -65,4 +66,26 @@ func TestNewAuthHandlerFailsWhenOIDCInitFails(t *testing.T) {
 	_, err := NewAuthHandler(authService, sessionManager, config, nil, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "OIDC issuer is required")
+}
+
+func TestValidateReturnsSyntheticUserWhenAuthDisabled(t *testing.T) {
+	handler := &AuthHandler{
+		sessionManager: scs.New(),
+		config: &domain.Config{
+			AuthDisabled:           true,
+			IfIGetBannedItsMyFault: true,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/validate", nil)
+	resp := httptest.NewRecorder()
+
+	handler.Validate(resp, req)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	assert.Equal(t, "admin", body["username"])
+	assert.Equal(t, "none", body["auth_method"])
 }

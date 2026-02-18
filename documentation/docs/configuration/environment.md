@@ -79,9 +79,18 @@ QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcr
 ```bash
 QUI__AUTH_DISABLED=true                 # Optional: disable built-in auth (default: false)
 QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true  # Required confirmation to actually disable auth
+QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24  # Required when auth is disabled (IPs or CIDRs)
 ```
 
-**Both** variables must be `true` to disable authentication. The second variable exists as an explicit acknowledgement that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers.
+Built-in authentication is disabled only when:
+
+- `QUI__AUTH_DISABLED=true`
+- `QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true`
+- `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is set to one or more allowed IPs/CIDR ranges
+
+If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start.
+
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` accepts comma-separated entries. Each entry may be a CIDR (`192.168.1.0/24`) or a single IP (`10.0.0.5`, treated as `/32` or `/128`).
 
 Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
 

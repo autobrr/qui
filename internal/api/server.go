@@ -250,6 +250,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
 	// r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
+	// Enforce auth-disabled IP allowlist against the direct TCP peer.
+	// This runs before RealIP so forwarded headers cannot bypass restrictions.
+	r.Use(middleware.RequireAuthDisabledIPAllowlist(s.config.Config))
 	r.Use(middleware.RealIP)
 
 	// HTTP compression - handles gzip, brotli, zstd, deflate automatically

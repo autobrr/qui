@@ -61,6 +61,7 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `externalProgramAllowList` | (none) | string[] | empty list | Restricts which executables can be launched from the UI. Only configurable via `config.toml` (no env override). |
 | `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disable all built-in authentication. **Both** this and `ifIGetBannedItsMyFault` must be `true` for auth to be disabled. See [Authentication](#authentication) below. Restart required. |
 | `ifIGetBannedItsMyFault` | `QUI__IF_I_GET_BANNED_ITS_MY_FAULT` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers. Restart required. |
+| `authDisabledAllowedCIDRs` | `QUI__AUTH_DISABLED_ALLOWED_CIDRS` | string[] | empty list | Required when auth is disabled. Restricts access to specific client IPs/CIDRs. Entries may be CIDRs or single IPs. Restart required. |
 | `oidcEnabled` | `QUI__OIDC_ENABLED` | bool | `false` | Enable OpenID Connect authentication. Restart required. |
 | `oidcIssuer` | `QUI__OIDC_ISSUER` | string | empty | OIDC issuer URL. Restart required. |
 | `oidcClientId` | `QUI__OIDC_CLIENT_ID` | string | empty | OIDC client ID. Restart required. |
@@ -70,17 +71,28 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 
 ## Authentication
 
-To disable qui's built-in authentication, **both** environment variables must be set:
+To disable qui's built-in authentication, all of the following are required:
 
 ```bash
 QUI__AUTH_DISABLED=true
 QUI__IF_I_GET_BANNED_ITS_MY_FAULT=true
+QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24
 ```
 
-The second variable exists as an explicit acknowledgement of the risks. When authentication is disabled:
+The second variable exists as an explicit acknowledgement of the risks.
 
-- **All API endpoints are publicly accessible** to anyone who can reach qui over the network.
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` is mandatory and acts as a hard IP allowlist. If auth is disabled and the value is missing/invalid, qui will refuse to start.
+
+Entries can be:
+
+- CIDR ranges (`192.168.1.0/24`)
+- Single IPs (`10.0.0.5`), automatically treated as `/32` (IPv4) or `/128` (IPv6)
+
+When authentication is disabled:
+
+- Requests are allowed only if the direct client IP matches `authDisabledAllowedCIDRs`.
 - `/auth/me` returns a synthetic `admin` user so the frontend works without login.
+- `/auth/validate` returns a synthetic `admin` user so callback/session checks work without login.
 - The setup screen is skipped entirely.
 
 **Only use this if qui is behind a reverse proxy that already handles authentication** (e.g., Authelia, Authentik, Caddy with forward_auth).
