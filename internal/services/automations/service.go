@@ -1321,7 +1321,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 
 	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeedIndex, catAction, state)
 	if catAction.groupID != "" {
-		s.findCategoryGroupMembers(rule, torrents, evalCtx, catAction, state)
+		s.findCategoryGroupMembers(ctx, instanceID, rule, torrents, evalCtx, catAction, state)
 	} else {
 		s.findCategoryCrossSeeds(torrents, catAction, state)
 	}
@@ -1449,6 +1449,8 @@ func (s *Service) findCategoryCrossSeeds(torrents []qbt.Torrent, catAction categ
 }
 
 func (s *Service) findCategoryGroupMembers(
+	ctx context.Context,
+	instanceID int,
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -1467,9 +1469,17 @@ func (s *Service) findCategoryGroupMembers(
 		return
 	}
 
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, t := range torrents {
+		torrentByHash[t.Hash] = t
+	}
+
 	keySet := make(map[string]struct{})
 	for h := range state.directMatchSet {
 		if gk := idx.KeyForHash(h); gk != "" {
+			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, h, torrentByHash) {
+				continue
+			}
 			keySet[gk] = struct{}{}
 		}
 	}
@@ -2299,6 +2309,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			torrents,
 			states,
 			ruleByID,
+			evalCtx,
 		)
 		return nil
 	}
@@ -2661,6 +2672,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 			groupKey := idx.KeyForHash(hash)
 			if groupKey == "" {
+				continue
+			}
+			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, state.categoryGroupID, idx, hash, torrentByHash) {
 				continue
 			}
 			if keysToExpand[k] == nil {
@@ -3522,6 +3536,77 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	return overlapPercent >= int64(minOverlapPercent), nil
 }
 
+// shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied
+// for a trigger torrent when ContentPath is ambiguous (ContentPath == SavePath).
+//
+// This is only relevant for group definitions that include the contentPath key. When ambiguous:
+// - ambiguousPolicy == "skip": never expand
+// - ambiguousPolicy == "verify_overlap" (default): only expand if file overlap verification passes
+func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	groupID string,
+	idx *groupIndex,
+	triggerHash string,
+	torrentByHash map[string]qbt.Torrent,
+) bool {
+	if idx == nil || triggerHash == "" {
+		return true
+	}
+	if !idx.IsAmbiguousForHash(triggerHash) {
+		return true
+	}
+
+	def := (*models.GroupDefinition)(nil)
+	if rule != nil && rule.Conditions != nil && rule.Conditions.Grouping != nil {
+		def = findGroupDefinition(rule.Conditions.Grouping, groupID)
+	}
+	if def == nil {
+		def = builtinGroupDefinition(groupID)
+	}
+	if def == nil || !containsKey(def.Keys, groupKeyContentPath) {
+		return true
+	}
+
+	policy := strings.TrimSpace(def.AmbiguousPolicy)
+	if policy == "" {
+		policy = groupAmbiguousVerifyOverlap
+	}
+	if policy == groupAmbiguousSkip {
+		return false
+	}
+
+	if s == nil || s.syncManager == nil {
+		return false
+	}
+	triggerTorrent, ok := torrentByHash[triggerHash]
+	if !ok {
+		return false
+	}
+
+	minPercent := def.MinFileOverlapPercent
+	if minPercent <= 0 {
+		minPercent = minFileOverlapPercent
+	}
+
+	members := idx.MembersForHash(triggerHash)
+	for _, otherHash := range members {
+		if otherHash == triggerHash {
+			continue
+		}
+		otherTorrent, ok := torrentByHash[otherHash]
+		if !ok {
+			return false
+		}
+		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
+		if err != nil || !hasOverlap {
+			return false
+		}
+	}
+	return true
+}
+
 // deleteFreesSpace returns true if deleting this torrent with the given mode
 // will actually free disk space. This is used to determine whether to count
 // the torrent's size toward cumulative free space projection.
@@ -3782,13 +3867,19 @@ func (s *Service) recordDryRunActivities(
 	torrents []qbt.Torrent,
 	states map[string]*torrentDesiredState,
 	ruleByID map[int]*models.Automation,
+	evalCtx *EvalContext,
 ) {
 	if s.activityStore == nil {
 		return
 	}
 
 	// Dry-run grouping expansion should behave like live runs when local filesystem access is available.
-	dryRunEvalCtx := &EvalContext{ReleaseParser: s.releaseParser}
+	dryRunEvalCtx := evalCtx
+	if dryRunEvalCtx == nil {
+		dryRunEvalCtx = &EvalContext{ReleaseParser: s.releaseParser}
+	} else if dryRunEvalCtx.ReleaseParser == nil {
+		dryRunEvalCtx.ReleaseParser = s.releaseParser
+	}
 	if s.instanceStore != nil && ruleByID != nil {
 		instance, err := s.instanceStore.Get(ctx, instanceID)
 		if err == nil && instance != nil {
@@ -3921,14 +4012,15 @@ func (s *Service) recordDryRunActivities(
 					continue
 				}
 
+				rule := (*models.Automation)(nil)
+				if ruleByID != nil && state.categoryRuleID > 0 {
+					rule = ruleByID[state.categoryRuleID]
+				}
+
 				rgk := ruleGroupKey{ruleID: state.categoryRuleID, groupID: state.categoryGroupID}
 				gid := state.categoryGroupID
 				idx := groupIndexByGroupID[rgk]
 				if idx == nil {
-					rule := (*models.Automation)(nil)
-					if ruleByID != nil && state.categoryRuleID > 0 {
-						rule = ruleByID[state.categoryRuleID]
-					}
 					if rule != nil {
 						idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, gid, torrents, s.syncManager)
 					} else {
@@ -3942,6 +4034,9 @@ func (s *Service) recordDryRunActivities(
 				}
 				groupKey := idx.KeyForHash(hash)
 				if groupKey == "" {
+					continue
+				}
+				if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, gid, idx, hash, torrentByHash) {
 					continue
 				}
 				if keysToExpandByGroupID[rgk] == nil {

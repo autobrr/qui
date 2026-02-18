@@ -1333,6 +1333,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		[]qbt.Torrent{torrent},
 		map[string]*torrentDesiredState{},
 		nil,
+		nil,
 	)
 
 	require.Len(t, mockDB.activities, 1)
@@ -1376,6 +1377,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		map[string]qbt.Torrent{"abc123": torrent},
 		[]qbt.Torrent{torrent},
 		map[string]*torrentDesiredState{},
+		nil,
 		nil,
 	)
 
