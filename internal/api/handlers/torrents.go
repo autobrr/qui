@@ -2100,6 +2100,10 @@ func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Requ
 
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return false
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to look up instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to look up instance")
 		return false
@@ -2133,11 +2137,15 @@ func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candid
 	if candidate == "" {
 		return candidates
 	}
-	if _, ok := seen[candidate]; ok {
+	cleanCandidate := filepath.Clean(candidate)
+	if !filepath.IsAbs(cleanCandidate) {
 		return candidates
 	}
-	seen[candidate] = struct{}{}
-	return append(candidates, candidate)
+	if _, ok := seen[cleanCandidate]; ok {
+		return candidates
+	}
+	seen[cleanCandidate] = struct{}{}
+	return append(candidates, cleanCandidate)
 }
 
 // filePathCandidates returns resolved absolute paths to try, preferring

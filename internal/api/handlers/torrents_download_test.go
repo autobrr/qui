@@ -135,6 +135,26 @@ func TestDownloadTorrentContentFile_RejectsInvalidFileIndex(t *testing.T) {
 	}
 }
 
+func TestDownloadTorrentContentFile_ReturnsNotFoundForMissingInstance(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, _ := createInstanceStoreWithInstance(t, true)
+	resolver := &mockContentResolver{}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, 999999, "hash123", "0")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "Instance not found")
+	require.Equal(t, 0, resolver.filesCalls)
+}
+
 func TestDownloadTorrentContentFile_ReturnsForbiddenWithoutLocalAccess(t *testing.T) {
 	t.Parallel()
 
