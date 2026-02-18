@@ -12,6 +12,7 @@ import (
 func ptrBool(v bool) *bool        { return &v }
 func ptrInt(v int) *int           { return &v }
 func ptrFloat(v float64) *float64 { return &v }
+func ptrString(v string) *string  { return &v }
 
 func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
@@ -30,6 +31,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: 5.0,
 		UseCategoryFromIndexer:       false,
 		RunExternalProgramID:         ptrInt(42),
+		GazelleEnabled:               false,
+		RedactedAPIKey:               "",
+		OrpheusAPIKey:                "",
 	}
 
 	newCategory := " movies "
@@ -47,6 +51,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: ptrFloat(12.5),
 		UseCategoryFromIndexer:       ptrBool(true),
 		RunExternalProgramID:         optionalInt{Set: true, Value: nil},
+		GazelleEnabled:               ptrBool(true),
+		RedactedAPIKey:               ptrString("red-key"),
+		OrpheusAPIKey:                ptrString("ops-key"),
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -96,6 +103,15 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	}
 	if existing.RunExternalProgramID != nil {
 		t.Fatalf("expected runExternalProgramID to be nil")
+	}
+	if !existing.GazelleEnabled {
+		t.Fatalf("expected gazelleEnabled to be true")
+	}
+	if existing.RedactedAPIKey != "red-key" {
+		t.Fatalf("expected redacted api key to be set")
+	}
+	if existing.OrpheusAPIKey != "ops-key" {
+		t.Fatalf("expected orpheus api key to be set")
 	}
 }
 

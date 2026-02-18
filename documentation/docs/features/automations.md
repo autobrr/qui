@@ -24,75 +24,84 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 ### Available Condition Fields
 
 #### Identity Fields
-| Field | Description |
-|-------|-------------|
-| Name | Torrent display name (supports cross-category operators) |
-| Hash | Info hash |
-| Category | qBittorrent category |
-| Tags | Set-based tag matching |
-| State | Status filter (see State Values below) |
+
+| Field    | Description                                              |
+| -------- | -------------------------------------------------------- |
+| Name     | Torrent display name (supports cross-category operators) |
+| Hash     | Info hash                                                |
+| Category | qBittorrent category                                     |
+| Tags     | Set-based tag matching                                   |
+| State    | Status filter (see State Values below)                   |
 
 #### Path Fields
-| Field | Description |
-|-------|-------------|
-| Save Path | Download location |
+
+| Field        | Description          |
+| ------------ | -------------------- |
+| Save Path    | Download location    |
 | Content Path | Full path to content |
 
 #### Size Fields (bytes)
-| Field | Description |
-|-------|-------------|
-| Size | Selected file size |
-| Total Size | Total torrent size |
-| Downloaded | Bytes downloaded |
-| Uploaded | Bytes uploaded |
-| Amount Left | Remaining bytes |
-| Free Space | Free space on disk (configurable source - see [Free Space Source](#free-space-source)) |
+
+| Field       | Description                                                                            |
+| ----------- | -------------------------------------------------------------------------------------- |
+| Size        | Selected file size                                                                     |
+| Total Size  | Total torrent size                                                                     |
+| Downloaded  | Bytes downloaded                                                                       |
+| Uploaded    | Bytes uploaded                                                                         |
+| Amount Left | Remaining bytes                                                                        |
+| Free Space  | Free space on disk (configurable source - see [Free Space Source](#free-space-source)) |
 
 #### Time Fields
-| Field | Description |
-|-------|-------------|
-| Seeding Time | Time spent seeding (seconds) |
-| Time Active | Total active time (seconds) |
-| Added On Age | Time since added |
-| Completion On Age | Time since completed |
-| Last Activity Age | Time since last activity |
+
+| Field             | Description                  |
+| ----------------- | ---------------------------- |
+| Seeding Time      | Time spent seeding (seconds) |
+| Time Active       | Total active time (seconds)  |
+| Added On Age      | Time since added             |
+| Completion On Age | Time since completed         |
+| Last Activity Age | Time since last activity     |
 
 #### Progress Fields
-| Field | Description |
-|-------|-------------|
-| Ratio | Upload/download ratio |
-| Progress | Download progress (0-100%) |
+
+| Field        | Description                  |
+| ------------ | ---------------------------- |
+| Ratio        | Upload/download ratio        |
+| Progress     | Download progress (0-100%)   |
 | Availability | Distributed copies available |
 
 #### Speed Fields (bytes/s)
-| Field | Description |
-|-------|-------------|
+
+| Field          | Description            |
+| -------------- | ---------------------- |
 | Download Speed | Current download speed |
-| Upload Speed | Current upload speed |
+| Upload Speed   | Current upload speed   |
 
 #### Peer Fields
-| Field | Description |
-|-------|-------------|
-| Active Seeders | Currently connected seeders |
+
+| Field           | Description                  |
+| --------------- | ---------------------------- |
+| Active Seeders  | Currently connected seeders  |
 | Active Leechers | Currently connected leechers |
-| Total Seeders | Tracker-reported seeders |
-| Total Leechers | Tracker-reported leechers |
-| Trackers Count | Number of trackers |
+| Total Seeders   | Tracker-reported seeders     |
+| Total Leechers  | Tracker-reported leechers    |
+| Trackers Count  | Number of trackers           |
 
 #### Tracker/Status Fields
-| Field | Description |
-|-------|-------------|
-| Tracker | Primary tracker (URL, domain, or customization display name) |
-| Private | Boolean - is private tracker |
-| Is Unregistered | Boolean - tracker reports unregistered |
-| Comment | Torrent comment field |
+
+| Field           | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| Tracker         | Primary tracker (URL, domain, or customization display name) |
+| Private         | Boolean - is private tracker                                 |
+| Is Unregistered | Boolean - tracker reports unregistered                       |
+| Comment         | Torrent comment field                                        |
 
 Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
 
 #### Advanced Fields
-| Field | Description |
-|-------|-------------|
-| Hardlink Scope | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access) |
+
+| Field             | Description                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| Hardlink Scope    | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access)     |
 | Has Missing Files | Boolean - completed torrent has files missing on disk (requires local filesystem access) |
 | Content Type | Derived from release name parsing (useful for grouping; may be empty) |
 | Effective Name | Normalized title derived from release parsing (useful for grouping; may be empty) |
@@ -110,21 +119,21 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 
 The State field matches these status buckets:
 
-| State | Description |
-|-------|-------------|
-| `downloading` | Actively downloading |
-| `uploading` | Actively uploading |
-| `completed` | Download finished |
-| `stopped` | Paused by user |
-| `active` | Has transfer activity |
-| `inactive` | No current activity |
-| `running` | Not paused |
-| `stalled` | No peers available |
-| `errored` | Has errors |
-| `tracker_down` | Tracker unreachable |
-| `checking` | Verifying files |
-| `moving` | Moving files |
-| `missingFiles` | Files not found |
+| State          | Description                  |
+| -------------- | ---------------------------- |
+| `downloading`  | Actively downloading         |
+| `uploading`    | Actively uploading           |
+| `completed`    | Download finished            |
+| `stopped`      | Paused by user               |
+| `active`       | Has transfer activity        |
+| `inactive`     | No current activity          |
+| `running`      | Not paused                   |
+| `stalled`      | No peers available           |
+| `errored`      | Has errors                   |
+| `tracker_down` | Tracker unreachable          |
+| `checking`     | Verifying files              |
+| `moving`       | Moving files                 |
+| `missingFiles` | Files not found              |
 | `unregistered` | Tracker reports unregistered |
 
 ### Operators
@@ -138,12 +147,28 @@ The State field matches these status buckets:
 **State:** is, is not
 
 **Cross-Category (Name field only):**
+
 - `EXISTS_IN` - Exact name match in target category
 - `CONTAINS_IN` - Partial/normalized name match in target category
 
 ### Regex Support
 
-Full RE2 (Go regex) syntax supported. Patterns are case-insensitive by default.
+There are two ways to use regex in filter conditions:
+
+**The `matches regex` operator** is a dedicated operator where the value is always treated as a regex pattern. The condition is true if the pattern matches anywhere in the field value.
+
+**The regex toggle (`.*` button)** appears next to the value input on other string operators such as `equals`, `contains`, `not contains`, `starts with`, and `ends with`. When enabled, the value is treated as a regex pattern.
+
+:::warning Regex toggle overrides the selected operator
+
+When the regex toggle is enabled, the selected operator's logic (negation, containment, prefix/suffix matching) is **not applied**. The condition becomes a simple regex match, equivalent to `matches regex`, regardless of which operator is selected in the dropdown.
+
+This means `not contains` with the regex toggle enabled does **not** negate the match. It behaves the same as `matches regex` -- if the pattern is found, the condition evaluates to true.
+
+To negate a regex match, use the **NOT toggle** (the `IF / IF NOT` button at the start of the condition row) together with the `matches regex` operator.
+:::
+
+Full RE2 (Go regex) syntax is supported. Patterns are case-insensitive by default.
 
 Regex can be used either by selecting **matches regex** or by enabling the **Regex** toggle for a condition:
 
@@ -159,16 +184,64 @@ Field notes:
 
 The UI validates patterns and shows helpful error messages for invalid regex.
 
+### Tag conditions
+
+Each tag condition checks against a **single value**. The value field does not support comma-separated lists -- if you enter `tag1, tag2, tag3` as the value, it will be treated as one literal string, not three separate tags.
+
+Without regex enabled, tag operators (`equals`, `not equals`, `contains`, `not contains`) compare the condition value against each of the torrent's tags individually.
+
+- `equals` / `not equals`: exact tag membership (case-insensitive)
+- `contains` / `not contains`: substring match per tag (case-insensitive)
+
+:::warning Tag operators: `contains` is substring matching
+`Tags contains tag1` will also match torrents tagged `tag10`. For exact tag membership, prefer `equals` / `not equals` with one condition per tag and combine them with an **OR group**.
+:::
+
+#### Matching any of multiple tags
+
+To check whether a torrent has **any one of** several tags, create an **OR group** with one condition per tag (exact match):
+
+| #   | Field | Operator | Value |
+| --- | ----- | -------- | ----- |
+| 1   | Tags  | equals   | tag1  |
+| 2   | Tags  | equals   | tag2  |
+| 3   | Tags  | equals   | tag3  |
+
+Group these with **OR** logic so the rule matches when at least one tag is present.
+
+To **exclude** torrents that have any of several tags, create an **AND group** of `not equals` conditions (exact match):
+
+| #   | Field | Operator   | Value |
+| --- | ----- | ---------- | ----- |
+| 1   | Tags  | not equals | tag1  |
+| 2   | Tags  | not equals | tag2  |
+| 3   | Tags  | not equals | tag3  |
+
+Group these with **AND** logic -- all three must be true, meaning none of those tags are present.
+
+#### Using regex for tag matching
+
+As an alternative to multiple conditions, you can use regex to match against several tags in a single condition. When regex is enabled, the pattern matches against the **full raw tag string** (e.g. `cross-seed, noHL, racing`) rather than checking each tag individually.
+
+For example, to exclude torrents tagged with `tag1` or `tag2`, use a single condition:
+
+- Field: `Tags`
+- Toggle: `IF NOT` (negate the match)
+- Operator: `matches regex`
+- Value: `(^|,\s*)(tag1|tag2)(\s*,|$)`
+
+This evaluates the regex against the raw tags string. The delimiter-aware pattern ensures `tag1` does not match `tag10`. The `IF NOT` toggle then negates the result, so the condition is true only for torrents that do **not** have either tag.
+
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
 
-| Pattern | Example | Matches |
-|---------|---------|---------|
-| All | `*` | Every tracker |
-| Exact | `tracker.example.com` | Only that domain |
-| Glob | `*.example.com` | Subdomains |
-| Suffix | `.example.com` | Domain and subdomains |
+| Pattern | Example               | Matches               |
+| ------- | --------------------- | --------------------- |
+| All     | `*`                   | Every tracker         |
+| Exact   | `tracker.example.com` | Only that domain      |
+| Glob    | `*.example.com`       | Subdomains            |
+| Suffix  | `.example.com`        | Domain and subdomains |
 
 Separate multiple patterns with commas, semicolons, or pipes. All matching is case-insensitive.
 
@@ -226,11 +299,11 @@ Actions can be combined (except Delete which must be standalone). Each action su
 
 Set upload and/or download limits. Each field supports these modes:
 
-| Mode | Value | Description |
-|------|-------|-------------|
-| No change | - | Don't modify this field |
-| Unlimited | 0 | Remove speed limit (qBittorrent treats 0 as unlimited) |
-| Custom | >0 | Specific limit in KiB/s or MiB/s |
+| Mode      | Value | Description                                            |
+| --------- | ----- | ------------------------------------------------------ |
+| No change | -     | Don't modify this field                                |
+| Unlimited | 0     | Remove speed limit (qBittorrent treats 0 as unlimited) |
+| Custom    | >0    | Specific limit in KiB/s or MiB/s                       |
 
 Applied in batches for efficiency.
 
@@ -238,12 +311,12 @@ Applied in batches for efficiency.
 
 Set ratio limit and/or seeding time limit. Each field supports these modes:
 
-| Mode | Value | Description |
-|------|-------|-------------|
-| No change | - | Don't modify this field |
-| Use global | -2 | Follow qBittorrent's global share settings |
-| Unlimited | -1 | No limit for this field |
-| Custom | >=0 | Specific value (ratio as decimal, time in minutes) |
+| Mode       | Value | Description                                        |
+| ---------- | ----- | -------------------------------------------------- |
+| No change  | -     | Don't modify this field                            |
+| Use global | -2    | Follow qBittorrent's global share settings         |
+| Unlimited  | -1    | No limit for this field                            |
+| Custom     | >=0   | Specific value (ratio as decimal, time in minutes) |
 
 Torrents stop seeding when any enabled limit is reached.
 
@@ -263,12 +336,12 @@ If a pause action is also present, last action wins.
 
 Remove torrents from qBittorrent. **Must be standalone** - cannot combine with other actions.
 
-| Mode | Description |
-|------|-------------|
-| `delete` | Remove from client, keep files |
-| `deleteWithFiles` | Remove with files |
-| `deleteWithFilesPreserveCrossSeeds` | Remove files but preserve if cross-seeds detected |
-| `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
+| Mode                                | Description                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| `delete`                            | Remove from client, keep files                                                |
+| `deleteWithFiles`                   | Remove with files                                                             |
+| `deleteWithFilesPreserveCrossSeeds` | Remove files but preserve if cross-seeds detected                             |
+| `deleteWithFilesIncludeCrossSeeds`  | Remove files and also delete all cross-seeded torrents sharing the same files |
 
 **Optional grouping (advanced):**
 
@@ -300,17 +373,18 @@ This is useful when you have hardlinked copies of content across different locat
 
 Add or remove tags from torrents.
 
-| Mode | Description |
-|------|-------------|
-| `full` | Add to matches, remove from non-matches (smart toggle) |
-| `add` | Only add to matches |
-| `remove` | Only remove from non-matches |
+| Mode     | Description                                            |
+| -------- | ------------------------------------------------------ |
+| `full`   | Add to matches, remove from non-matches (smart toggle) |
+| `add`    | Only add to matches                                    |
+| `remove` | Only remove from non-matches                           |
 
 :::note
 Mode does not change the way torrents are flagged, meaning, even with `mode: remove`, tags will be removed if the torrent does **NOT** match the conditions. `mode: remove` simply means that tags will not be added to torrents that do match.
 :::
 
 Options:
+
 - **Use Tracker as Tag** - Derive tag from tracker domain
 - **Use Display Name** - Use tracker customization display name instead of raw domain
 
@@ -319,6 +393,7 @@ Options:
 Move torrents to a different category.
 
 Options:
+
 - **Include Cross-Seeds** - Also move cross-seeds (matching ContentPath AND SavePath)
 - **Group ID (advanced)** - Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this takes precedence over "Include Cross-Seeds".
 - **Block If Cross-Seed In Categories** - Prevent move if another cross-seed is in protected categories
@@ -330,7 +405,7 @@ Move torrents to a different path on disk. This is needed to move the contents i
 Options:
 - **Group ID (advanced)** - Expand moves to all torrents in the specified group (see [Grouping](#grouping)). The move path is resolved for the matched torrent and then applied to the whole group.
 - **Atomic (advanced)** - `atomic: "all"` requires all group members to match the rule's move condition, otherwise qui moves **none** of them.
-- **Skip if cross-seeds don't match the rule's conditions** - (Legacy) Skip the move if the torrent has cross-seeds that don't match the rule's conditions. This is ignored when **Group ID** is set.
+- **Skip if cross-seeds don't match the rule's conditions** - Skip the move if the torrent has cross-seeds that don't match the rule's conditions. This is ignored when **Group ID** is set.
 
 #### Move path templates
 
@@ -338,18 +413,18 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 
 **Available template variables:**
 
-| Variable | Description |
-|----------|-------------|
-| `.Name` | Torrent display name |
-| `.Hash` | Info hash |
-| `.Category` | qBittorrent category |
-| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name) |
-| `.Tracker` | Tracker display name (when available from instance config), otherwise the tracker domain |
+| Variable               | Description                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `.Name`                | Torrent display name                                                                     |
+| `.Hash`                | Info hash                                                                                |
+| `.Category`            | qBittorrent category                                                                     |
+| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
+| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
 
 **Template function:**
 
-| Function | Description |
-|----------|-------------|
+| Function   | Description                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sanitize` | Makes a string safe for use as a path segment (removes invalid characters). Use for user-controlled values like names, e.g. `{{ sanitize .Name }}`. |
 
 **Examples:**
@@ -364,9 +439,9 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 
 Run a pre-configured external program when torrents match the automation rule. Uses the same programs configured in **Settings → External Programs**.
 
-| Field | Description |
-|-------|-------------|
-| **Program** | Select from enabled external programs |
+| Field                  | Description                                |
+| ---------------------- | ------------------------------------------ |
+| **Program**            | Select from enabled external programs      |
 | **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
@@ -389,6 +464,7 @@ The program's executable path must be present in the application's allowlist. Pr
 :::
 
 **Use cases:**
+
 - Run post-processing scripts when torrents complete
 - Notify external systems (webhooks, notifications) when conditions are met
 - Trigger media library scans after category changes
@@ -418,11 +494,11 @@ When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by c
 
 It then counts how many unique file paths across the entire qBittorrent torrent set point to each inode. The scope for each torrent is determined by comparing these two numbers:
 
-| Scope | Condition | Meaning |
-|---|---|---|
-| `none` | No file has `nlink > 1` | No hardlinks detected. |
-| `torrents_only` | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links. |
-| `outside_qbittorrent` | Any file has `nlink > uniquePathCount` | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
+| Scope                 | Condition                                                                    | Meaning                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `none`                | No file has `nlink > 1`                                                      | No hardlinks detected.                                                                            |
+| `torrents_only`       | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links.             |
+| `outside_qbittorrent` | Any file has `nlink > uniquePathCount`                                       | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
 
 :::note
 `HARDLINK_SCOPE` only reflects hardlink metadata. Cross-seeds are detected separately (ContentPath matching), so a torrent can have `HARDLINK_SCOPE = none` and still be cross-seeded.
@@ -449,7 +525,7 @@ services:
   qui:
     volumes:
       - /home/user/docker/qui:/config
-      - /mnt/media/data:/data  # single mount covering both torrents and library
+      - /mnt/media/data:/data # single mount covering both torrents and library
 ```
 
 Avoid mounting both `/mnt/media/data/torrents:/data/torrents` **and** `/mnt/media/data:/data` — the overlapping mounts can cause inconsistent inode visibility. Use a single mount at the common parent.
@@ -491,9 +567,21 @@ Use `HARDLINK_SCOPE` with `NOT_EQUAL` to `outside_qbittorrent` rather than `EQUA
             "operator": "OR",
             "conditions": [
               { "field": "CATEGORY", "operator": "EQUAL", "value": "radarr" },
-              { "field": "CATEGORY", "operator": "EQUAL", "value": "radarr.cross" },
-              { "field": "CATEGORY", "operator": "EQUAL", "value": "tv-sonarr" },
-              { "field": "CATEGORY", "operator": "EQUAL", "value": "tv-sonarr.cross" }
+              {
+                "field": "CATEGORY",
+                "operator": "EQUAL",
+                "value": "radarr.cross"
+              },
+              {
+                "field": "CATEGORY",
+                "operator": "EQUAL",
+                "value": "tv-sonarr"
+              },
+              {
+                "field": "CATEGORY",
+                "operator": "EQUAL",
+                "value": "tv-sonarr.cross"
+              }
             ]
           },
           {
@@ -520,6 +608,7 @@ If the automation is matching torrents you expect to be protected, verify:
 1. qui can access all torrent files at the paths qBittorrent reports (check debug logs for inaccessible files).
 2. Your filesystem reports accurate nlink values (`stat <file>` should show Links > 1 for hardlinked files).
 3. Your Docker volume mounts do not overlap or subdivide the storage in a way that breaks inode consistency.
+
 ## Missing Files Detection
 
 The `Has Missing Files` field detects whether any files belonging to a completed torrent are missing from disk.
@@ -560,14 +649,15 @@ When using the **Free Space** condition in delete rules, the system uses intelli
 
 When previewing a delete rule with a Free Space condition, a toggle allows switching between two views:
 
-| View | Description |
-|------|-------------|
-| **Needed to reach target** | Shows only the torrents that would be removed right now to reach your free-space target. This is the default view and reflects actual delete behavior. |
-| **All eligible** | Shows all torrents this rule could remove while free space is low. Useful for understanding the full scope of what the rule could potentially delete (may include cross-seeds that don't directly match filters). |
+| View                       | Description                                                                                                                                                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Needed to reach target** | Shows only the torrents that would be removed right now to reach your free-space target. This is the default view and reflects actual delete behavior.                                                            |
+| **All eligible**           | Shows all torrents this rule could remove while free space is low. Useful for understanding the full scope of what the rule could potentially delete (may include cross-seeds that don't directly match filters). |
 
 The toggle only appears for delete rules that use the Free Space condition.
 
 **Preview features:**
+
 - **Path column** - Shows the content path for each torrent with copy-to-clipboard support
 - **Export CSV** - Download the full preview list (all pages) as a CSV file for external analysis
 
@@ -577,11 +667,11 @@ Cross-seeds are only expanded and displayed in the preview when using `Remove wi
 
 **Delete mode affects space projection:**
 
-| Delete Mode | Space Added to Projection |
-|-------------|---------------------------|
-| Remove with files | Full torrent size |
-| Preserve cross-seeds (no cross-seeds) | Full torrent size |
-| Preserve cross-seeds (has cross-seeds) | 0 (files kept) |
+| Delete Mode                            | Space Added to Projection |
+| -------------------------------------- | ------------------------- |
+| Remove with files                      | Full torrent size         |
+| Preserve cross-seeds (no cross-seeds)  | Full torrent size         |
+| Preserve cross-seeds (has cross-seeds) | 0 (files kept)            |
 
 **How preserve cross-seeds works:**
 
@@ -603,10 +693,10 @@ After removing files, qui waits ~5 minutes before running Free Space deletes aga
 
 By default, Free Space uses qBittorrent's reported free space (based on its default download location). If you have multiple disks or want to manage a specific mount point, select "Path on server" and enter the path to that disk.
 
-| Source | Description |
-|--------|-------------|
-| Default (qBittorrent) | Uses qBittorrent's reported free space |
-| Path on server | Reads free space from a specific filesystem path |
+| Source                | Description                                      |
+| --------------------- | ------------------------------------------------ |
+| Default (qBittorrent) | Uses qBittorrent's reported free space           |
+| Path on server        | Reads free space from a specific filesystem path |
 
 :::note
 Path on server requires "Local Filesystem Access" to be enabled on the instance.
@@ -625,6 +715,7 @@ Torrents are grouped by action value and sent to qBittorrent in batches of up to
 ## Activity Log
 
 All automation actions are logged with:
+
 - Torrent name and hash
 - Rule name and action type
 - Outcome (success/failed) with reasons
@@ -637,6 +728,7 @@ Activity is retained for 7 days by default. View the log in the Automations sect
 ### Delete Old Completed Torrents
 
 Remove torrents completed over 30 days ago when disk space is low:
+
 - Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
 - Action: Remove with files
 
@@ -645,6 +737,7 @@ Deletes oldest matching torrents first, stopping once enough space would be free
 ### Speed Limit Private Trackers
 
 Limit upload on private trackers:
+
 - Tracker: `*`
 - Condition: `Private is true`
 - Action: Upload limit 10000 KiB/s
@@ -652,6 +745,7 @@ Limit upload on private trackers:
 ### Tag Stalled Torrents
 
 Auto-tag torrents with no activity:
+
 - Tracker: `*`
 - Condition: `Last Activity Age > 7 days`
 - Action: Tag "stalled" (mode: add)
@@ -659,6 +753,7 @@ Auto-tag torrents with no activity:
 ### Clean Unregistered Torrents
 
 Remove torrents the tracker no longer recognizes:
+
 - Tracker: `*`
 - Condition: `Is Unregistered is true`
 - Action: Delete (keep files)
@@ -666,6 +761,7 @@ Remove torrents the tracker no longer recognizes:
 ### Maintain Minimum Free Space
 
 Keep at least 200GB free by removing oldest completed torrents:
+
 - Tracker: `*`
 - Condition: `Free Space < 200GB` AND `State is completed`
 - Action: Remove with files (preserve cross-seeds)
@@ -675,6 +771,7 @@ Removes torrents from the client, oldest first, until enough space is projected 
 ### Clean Up Old Content with Cross-Seeds
 
 Remove completed torrents and all their cross-seeded copies when they're old enough:
+
 - Tracker: `*`
 - Condition: `Completion On Age > 30 days` AND `State is completed`
 - Action: Remove with files (include cross-seeds)
@@ -684,12 +781,14 @@ When a torrent matches, any other torrents pointing to the same downloaded files
 ### Organize by Tracker
 
 Move torrents to tracker-named categories:
+
 - Tracker: `tracker.example.com`
 - Action: Category "example" with "Include Cross-Seeds" enabled
 
 ### Post-Processing on Completion
 
 Run a script when torrents finish downloading:
+
 - Tracker: `*`
 - Condition: `State is completed` AND `Progress = 100`
 - Action: External Program "post-process.sh"
@@ -697,6 +796,7 @@ Run a script when torrents finish downloading:
 ### Notify on Stalled Torrents
 
 Alert an external monitoring system when torrents stall:
+
 - Tracker: `*`
 - Condition: `State is stalled` AND `Last Activity Age > 24 hours`
 - Action: External Program "send-alert" + Tag "stalled" (mode: add)
