@@ -1618,6 +1618,80 @@ paths:
         '200':
           description: Action performed successfully
 
+  /api/instances/{instanceID}/torrents/field:
+    post:
+      tags:
+        - Torrents
+      summary: Get torrent field values
+      description: Returns field values for torrents matching the given filters. Used for select all copy operations (copy name, hash, or full path).
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - field
+              properties:
+                field:
+                  type: string
+                  description: The torrent field to retrieve.
+                  enum:
+                    - name
+                    - hash
+                    - full_path
+                sort:
+                  type: string
+                  description: Sort field. Defaults to added_on.
+                order:
+                  type: string
+                  description: Sort order. Defaults to desc.
+                  enum:
+                    - asc
+                    - desc
+                search:
+                  type: string
+                  description: Optional search query to filter torrents.
+                filters:
+                  type: object
+                  description: Filter criteria for selecting torrents.
+                  properties:
+                    status:
+                      type: array
+                      items:
+                        type: string
+                    categories:
+                      type: array
+                      items:
+                        type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    trackers:
+                      type: array
+                      items:
+                        type: string
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude from the results.
+      responses:
+        '200':
+          description: Field values returned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  values:
+                    type: array
+                    items:
+                      type: string
+                    description: List of field values for matching torrents.
 
   /api/instances/{instanceID}/torrents/{hash}/export:
     get:

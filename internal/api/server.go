@@ -460,6 +460,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 						r.Post("/add-peers", torrentsHandler.AddPeers)
 						r.Post("/ban-peers", torrentsHandler.BanPeers)
+						r.Post("/field", torrentsHandler.GetTorrentField)
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details

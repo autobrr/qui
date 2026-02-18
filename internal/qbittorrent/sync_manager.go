@@ -1260,6 +1260,74 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	return response, nil
 }
 
+type TorrentFieldResponse struct {
+	Values []string `json:"values"`
+	Total  int      `json:"total"`
+}
+
+// GetTorrentField returns field values for torrents matching the given filters.
+// Supported fields: "name", "hash", "full_path" (save_path/name).
+// excludeHashes removes specific torrents from the result
+func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, field, sort, order, search string, filters FilterOptions, excludeHashes []string) (*TorrentFieldResponse, error) {
+	response, err := sm.GetTorrentsWithFilters(ctx, instanceID, 0, 0, sort, order, search, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build exclusion set
+	var excluded map[string]struct{}
+	if len(excludeHashes) > 0 {
+		excluded = make(map[string]struct{}, len(excludeHashes))
+		for _, h := range excludeHashes {
+			excluded[h] = struct{}{}
+		}
+	}
+
+	values := make([]string, 0, len(response.Torrents))
+	for _, t := range response.Torrents {
+		if excluded != nil {
+			if _, skip := excluded[t.Hash]; skip {
+				continue
+			}
+		}
+
+		var v string
+		switch field {
+		case "name":
+			v = t.Name
+		case "hash":
+			v = canonicalizeHash(t.InfohashV1)
+			if v == "" {
+				candidate := canonicalizeHash(t.Hash)
+				v2 := canonicalizeHash(t.InfohashV2)
+				if candidate != "" && (v2 == "" || v2 != candidate) {
+					v = candidate
+				} else if v2 != "" {
+					v = v2
+				}
+			}
+		case "full_path":
+			// Normalize backslashes from Windows qBittorrent instances
+			savePath := strings.ReplaceAll(t.SavePath, "\\", "/")
+			if savePath != "" && t.Name != "" {
+				if strings.HasSuffix(savePath, "/") {
+					v = savePath + t.Name
+				} else {
+					v = savePath + "/" + t.Name
+				}
+			}
+		}
+		if v != "" {
+			values = append(values, v)
+		}
+	}
+
+	return &TorrentFieldResponse{
+		Values: values,
+		Total:  len(values),
+	}, nil
+}
+
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
 func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]CrossInstanceTorrentView, error) {
 	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
