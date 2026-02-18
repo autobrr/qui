@@ -235,12 +235,12 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		Field   string                    `json:"field"`
-		Sort    string                    `json:"sort"`
-		Order   string                    `json:"order"`
-		Search  string                    `json:"search"`
-		Filters qbittorrent.FilterOptions `json:"filters"`
-		ExcludeHashes []string            `json:"excludeHashes"`
+		Field         string                    `json:"field"`
+		Sort          string                    `json:"sort"`
+		Order         string                    `json:"order"`
+		Search        string                    `json:"search"`
+		Filters       qbittorrent.FilterOptions `json:"filters"`
+		ExcludeHashes []string                  `json:"excludeHashes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
