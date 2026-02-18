@@ -360,6 +360,62 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 	require.Equal(t, got[keyB], gotShuffled[keyB])
 }
 
+func TestCategoryExpandableHashes(t *testing.T) {
+	t.Parallel()
+
+	hashes := []string{"h1", "h2", "h3"}
+	states := map[string]*torrentDesiredState{
+		"h1": {categoryIncludeCrossSeeds: false},
+		"h2": {categoryIncludeCrossSeeds: true},
+	}
+
+	got := categoryExpandableHashes(hashes, states)
+	require.Equal(t, []string{"h2"}, got)
+}
+
+func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
+	t.Parallel()
+
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": {Hash: "h1", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+		"h2": {Hash: "h2", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Non expanding rule"},
+		"h2": {id: 20, name: "Expanding rule"},
+	}
+	states := map[string]*torrentDesiredState{
+		"h1": {categoryIncludeCrossSeeds: false},
+		"h2": {categoryIncludeCrossSeeds: true},
+	}
+
+	expandableHashes := categoryExpandableHashes([]string{"h1", "h2"}, states)
+	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash)
+
+	key, ok := makeCrossSeedKey(torrentByHash["h1"])
+	require.True(t, ok)
+	require.Len(t, got, 1)
+	require.Equal(t, ruleRef{id: 20, name: "Expanding rule"}, got[key])
+}
+
+func TestBuildRuleCountsFromHashMaps(t *testing.T) {
+	t.Parallel()
+
+	hashes := []string{"h1", "h2"}
+	ratioRuleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 10, name: "Rule A"},
+	}
+	seedingRuleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 20, name: "Rule B"},
+	}
+
+	counts := buildRuleCountsFromHashMaps(hashes, ratioRuleByHash, seedingRuleByHash)
+	require.Equal(t, 2, counts[ruleRef{id: 10, name: "Rule A"}])
+	require.Equal(t, 1, counts[ruleRef{id: 20, name: "Rule B"}])
+}
+
 func TestInheritRuleRefForCrossSeed(t *testing.T) {
 	t.Parallel()
 

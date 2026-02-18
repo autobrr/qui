@@ -2188,12 +2188,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			summary.recordRuleCounts(
 				models.ActivityActionLimitFailed,
 				models.ActivityOutcomeFailed,
-				buildRuleCountsFromHashes(batch, shareRatioRuleByHash),
-			)
-			summary.recordRuleCounts(
-				models.ActivityActionLimitFailed,
-				models.ActivityOutcomeFailed,
-				buildRuleCountsFromHashes(batch, shareSeedingRuleByHash),
+				buildRuleCountsFromHashMaps(batch, shareRatioRuleByHash, shareSeedingRuleByHash),
 			)
 			if s.activityStore != nil {
 				if actErr := s.activityStore.Create(ctx, activity); actErr != nil {
@@ -2224,12 +2219,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionShareLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash),
-		)
-		summary.recordRuleCounts(
-			models.ActivityActionShareLimitsChanged,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroupsByShareKey(shareLimitSuccess), shareSeedingRuleByHash),
+			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash, shareSeedingRuleByHash),
 		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
@@ -2491,20 +2481,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	for _, category := range sortedCategories {
 		hashes := categoryBatches[category]
 		expandedHashes := hashes
-		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, categoryRuleByHash)
 
 		// Find torrents whose winning category rule had IncludeCrossSeeds=true
 		// and expand with their cross-seeds (require BOTH ContentPath AND SavePath match)
 		keysToExpand := make(map[crossSeedKey]struct{})
-		for _, hash := range hashes {
-			if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
-				if t, exists := torrentByHash[hash]; exists {
-					if key, ok := makeCrossSeedKey(t); ok {
-						keysToExpand[key] = struct{}{}
-					}
+		expandableHashes := categoryExpandableHashes(hashes, states)
+		for _, hash := range expandableHashes {
+			if t, exists := torrentByHash[hash]; exists {
+				if key, ok := makeCrossSeedKey(t); ok {
+					keysToExpand[key] = struct{}{}
 				}
 			}
 		}
+		ruleByCrossSeedKey := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, categoryRuleByHash)
 
 		if len(keysToExpand) > 0 {
 			expandedSet := make(map[string]struct{})
@@ -2986,6 +2975,39 @@ func buildRuleCountsFromHashes(hashes []string, ruleByHash map[string]ruleRef) m
 	return counts
 }
 
+func buildRuleCountsFromHashMaps(hashes []string, ruleByHashMaps ...map[string]ruleRef) map[ruleRef]int {
+	if len(hashes) == 0 || len(ruleByHashMaps) == 0 {
+		return nil
+	}
+
+	counts := make(map[ruleRef]int)
+	for _, hash := range hashes {
+		refsForHash := make(map[ruleRef]struct{})
+		for _, ruleByHash := range ruleByHashMaps {
+			if len(ruleByHash) == 0 {
+				continue
+			}
+			ref, ok := ruleByHash[hash]
+			if !ok {
+				continue
+			}
+			ref.name = strings.TrimSpace(ref.name)
+			if ref.id <= 0 && ref.name == "" {
+				continue
+			}
+			refsForHash[ref] = struct{}{}
+		}
+		for ref := range refsForHash {
+			counts[ref]++
+		}
+	}
+
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
 func flattenHashGroups(groups ...map[int64][]string) []string {
 	if len(groups) == 0 {
 		return nil
@@ -3207,6 +3229,19 @@ func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
 		return crossSeedKey{}, false
 	}
 	return crossSeedKey{contentPath, savePath}, true
+}
+
+func categoryExpandableHashes(hashes []string, states map[string]*torrentDesiredState) []string {
+	if len(hashes) == 0 || len(states) == 0 {
+		return nil
+	}
+	expandableHashes := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
+			expandableHashes = append(expandableHashes, hash)
+		}
+	}
+	return expandableHashes
 }
 
 func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef) map[crossSeedKey]ruleRef {
