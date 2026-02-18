@@ -660,6 +660,33 @@ class ApiClient {
     )
   }
 
+  async getTorrentField(
+    instanceId: number,
+    field: "name" | "hash" | "full_path",
+    params: {
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+      excludeHashes?: string[]
+    }
+  ): Promise<{ values: string[]; total: number }> {
+    return this.request(
+      `/instances/${instanceId}/torrents/field`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          field,
+          sort: params.sort,
+          order: params.order,
+          search: params.search,
+          filters: params.filters,
+          excludeHashes: params.excludeHashes,
+        }),
+      }
+    )
+  }
+
   async getCrossInstanceTorrents(
     params: {
       page?: number

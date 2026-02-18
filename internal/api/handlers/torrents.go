@@ -225,6 +225,54 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, response)
 }
 
+// GetTorrentField returns field values for torrents matching the given filters.
+// Used for select all copy operations (Copy Name, Copy Hash, Copy Full Path).
+func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Field   string                    `json:"field"`
+		Sort    string                    `json:"sort"`
+		Order   string                    `json:"order"`
+		Search  string                    `json:"search"`
+		Filters qbittorrent.FilterOptions `json:"filters"`
+		ExcludeHashes []string            `json:"excludeHashes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" {
+		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, or full_path")
+		return
+	}
+
+	if req.Sort == "" {
+		req.Sort = "added_on"
+	}
+	if req.Order == "" {
+		req.Order = "desc"
+	}
+
+	response, err := h.syncManager.GetTorrentField(r.Context(), instanceID, req.Field, req.Sort, req.Order, req.Search, req.Filters, req.ExcludeHashes)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("field", req.Field).Msg("Failed to get torrent field")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
 // CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
 func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
