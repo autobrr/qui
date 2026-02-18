@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -384,4 +385,61 @@ func TestApplyDynamicChangesNotifiesOnValidAuthDisabledReload(t *testing.T) {
 	assert.Equal(t, "test", cfg.Config.Version)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
 	assert.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
+}
+
+func TestHydrateConfigFromViperSplitsStringSlices(t *testing.T) {
+	tests := []struct {
+		name                    string
+		authDisabledCIDRsValue  any
+		externalAllowListValue  any
+		wantAuthDisabledCIDRs   []string
+		wantExternalProgramList []string
+	}{
+		{
+			name:                    "splits comma separated values",
+			authDisabledCIDRsValue:  "127.0.0.1/32, 192.168.1.0/24",
+			externalAllowListValue:  "/usr/local/bin/a, /usr/local/bin/b",
+			wantAuthDisabledCIDRs:   []string{"127.0.0.1/32", "192.168.1.0/24"},
+			wantExternalProgramList: []string{"/usr/local/bin/a", "/usr/local/bin/b"},
+		},
+		{
+			name:                    "splits whitespace separated values",
+			authDisabledCIDRsValue:  "127.0.0.1/32 192.168.1.0/24",
+			externalAllowListValue:  "/usr/local/bin/a /usr/local/bin/b",
+			wantAuthDisabledCIDRs:   []string{"127.0.0.1/32", "192.168.1.0/24"},
+			wantExternalProgramList: []string{"/usr/local/bin/a", "/usr/local/bin/b"},
+		},
+		{
+			name:                    "trims and drops empty values",
+			authDisabledCIDRsValue:  " , 127.0.0.1/32,,   ",
+			externalAllowListValue:  "   ",
+			wantAuthDisabledCIDRs:   []string{"127.0.0.1/32"},
+			wantExternalProgramList: nil,
+		},
+		{
+			name:                    "preserves list values from config",
+			authDisabledCIDRsValue:  []string{" 127.0.0.1/32 ", "", "192.168.1.0/24"},
+			externalAllowListValue:  []any{" /usr/local/bin/a ", "", "/usr/local/bin/b"},
+			wantAuthDisabledCIDRs:   []string{"127.0.0.1/32", "192.168.1.0/24"},
+			wantExternalProgramList: []string{"/usr/local/bin/a", "/usr/local/bin/b"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := viper.New()
+			v.Set("authDisabledAllowedCIDRs", tt.authDisabledCIDRsValue)
+			v.Set("externalProgramAllowList", tt.externalAllowListValue)
+
+			cfg := &AppConfig{
+				Config: &domain.Config{},
+				viper:  v,
+			}
+
+			cfg.hydrateConfigFromViper()
+
+			assert.Equal(t, tt.wantAuthDisabledCIDRs, cfg.Config.AuthDisabledAllowedCIDRs)
+			assert.Equal(t, tt.wantExternalProgramList, cfg.Config.ExternalProgramAllowList)
+		})
+	}
 }

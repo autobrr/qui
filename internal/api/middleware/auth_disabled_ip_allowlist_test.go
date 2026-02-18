@@ -66,6 +66,26 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 			remoteAddr: "127.0.0.1:54321",
 			wantStatus: http.StatusForbidden,
 		},
+		{
+			name: "blocks when allowlist is empty in auth-disabled mode",
+			cfg: &domain.Config{
+				AuthDisabled:               true,
+				IAcknowledgeThisIsABadIdea: true,
+				AuthDisabledAllowedCIDRs:   []string{},
+			},
+			remoteAddr: "127.0.0.1:54321",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name: "blocks when remote address is malformed",
+			cfg: &domain.Config{
+				AuthDisabled:               true,
+				IAcknowledgeThisIsABadIdea: true,
+				AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
+			},
+			remoteAddr: "not-an-address",
+			wantStatus: http.StatusForbidden,
+		},
 	}
 
 	for _, tc := range tests {

@@ -386,14 +386,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 
 // CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
-	if h.config != nil && h.config.IsAuthDisabled() {
-		RespondJSON(w, http.StatusOK, map[string]any{
-			"setupRequired": false,
-		})
-		return
-	}
-
-	if h.config != nil && h.config.OIDCEnabled {
+	if h.config != nil && (h.config.IsAuthDisabled() || h.config.OIDCEnabled) {
 		RespondJSON(w, http.StatusOK, map[string]any{
 			"setupRequired": false,
 		})

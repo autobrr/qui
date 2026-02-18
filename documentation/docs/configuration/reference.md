@@ -95,8 +95,8 @@ Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
 When authentication is disabled:
 
 - Requests are allowed only if the direct client IP matches `authDisabledAllowedCIDRs`.
-- `/auth/me` returns a synthetic `admin` user so the frontend works without login.
-- `/auth/validate` returns a synthetic `admin` user so callback/session checks work without login.
+- `/api/auth/me` returns a synthetic `admin` user so the frontend works without login.
+- `/api/auth/validate` returns a synthetic `admin` user so callback/session checks work without login.
 - The setup screen is skipped entirely.
 
 **Only use this if qui is behind a reverse proxy that already handles authentication** (e.g., Authelia, Authentik, Caddy with forward_auth).

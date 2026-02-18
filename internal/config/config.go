@@ -17,6 +17,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -300,11 +301,11 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.MetricsPort = c.viper.GetInt("metricsPort")
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
-	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
 
 	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
 	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
-	c.Config.AuthDisabledAllowedCIDRs = c.viper.GetStringSlice("authDisabledAllowedCIDRs")
+	c.Config.AuthDisabledAllowedCIDRs = c.getNormalizedStringSlice("authDisabledAllowedCIDRs")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
 	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")
@@ -312,6 +313,55 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) getNormalizedStringSlice(key string) []string {
+	switch value := c.viper.Get(key).(type) {
+	case []string:
+		return normalizeStringSlice(value)
+	case []any:
+		normalized := make([]string, 0, len(value))
+		for _, item := range value {
+			entry, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(entry)
+			if trimmed != "" {
+				normalized = append(normalized, trimmed)
+			}
+		}
+		return normalized
+	case string:
+		return splitStringSliceValue(value)
+	default:
+		return normalizeStringSlice(c.viper.GetStringSlice(key))
+	}
+}
+
+func normalizeStringSlice(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			normalized = append(normalized, trimmed)
+		}
+	}
+
+	return normalized
+}
+
+func splitStringSliceValue(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+
+	return normalizeStringSlice(parts)
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
