@@ -2092,6 +2092,12 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 
 // requireLocalAccess checks that the instance has local filesystem access enabled.
 func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+	if h.instanceStore == nil {
+		log.Error().Msg("Instance store not configured")
+		RespondError(w, http.StatusInternalServerError, "Instance store not configured")
+		return false
+	}
+
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to look up instance")
@@ -2143,15 +2149,12 @@ func filePathCandidates(savePath, downloadPath, contentPath, relativePath string
 		cleanContentPath := filepath.Clean(filepath.FromSlash(contentPath))
 		if singleFile {
 			candidates = appendUniqueCandidate(candidates, seen, cleanContentPath)
-		}
-		if p, err := resolveTorrentFilePath(cleanContentPath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-		if singleFile {
 			parent := filepath.Dir(cleanContentPath)
 			if p, err := resolveTorrentFilePath(parent, relativePath); err == nil {
 				candidates = appendUniqueCandidate(candidates, seen, p)
 			}
+		} else if p, err := resolveTorrentFilePath(cleanContentPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
 		}
 	}
 	if savePath != "" {
@@ -2258,29 +2261,33 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 
 	// Try each candidate path until we find the file
 	var file *os.File
+	var info os.FileInfo
 	for _, candidate := range candidates {
 		// #nosec G703 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
 		f, err := os.Open(candidate)
-		if err == nil {
-			file = f
-			break
+		if err != nil {
+			continue
 		}
+
+		stat, err := f.Stat()
+		if err != nil {
+			_ = f.Close()
+			continue
+		}
+		if stat.IsDir() {
+			_ = f.Close()
+			continue
+		}
+
+		file = f
+		info = stat
+		break
 	}
 	if file == nil {
 		RespondError(w, http.StatusNotFound, "File not found on disk")
 		return
 	}
 	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to stat file")
-		return
-	}
-	if info.IsDir() {
-		RespondError(w, http.StatusBadRequest, "Path is a directory, not a file")
-		return
-	}
 
 	filename := filepath.Base(targetFileName)
 
