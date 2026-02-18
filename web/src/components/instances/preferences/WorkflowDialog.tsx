@@ -66,6 +66,7 @@ import type {
   AutomationInput,
   AutomationPreviewResult,
   AutomationPreviewTorrent,
+  GroupingConfig,
   PreviewView,
   RegexValidationError,
   RuleCondition
@@ -148,6 +149,8 @@ type FormState = {
   intervalSeconds: number | null // null = use global default (15m)
   // Shared condition for all actions
   actionCondition: RuleCondition | null
+  // Grouping settings (advanced)
+  exprGrouping?: GroupingConfig
   // Multi-action enabled flags
   speedLimitsEnabled: boolean
   shareLimitsEnabled: boolean
@@ -171,6 +174,8 @@ type FormState = {
   // Delete settings
   exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
+  exprDeleteGroupId: string
+  exprDeleteAtomic: "all" | ""
   // Free space source settings (for FREE_SPACE conditions)
   exprFreeSpaceSourceType: "qbittorrent" | "path"
   exprFreeSpaceSourcePath: string
@@ -182,10 +187,13 @@ type FormState = {
   // Category action settings
   exprCategory: string
   exprIncludeCrossSeeds: boolean
+  exprCategoryGroupId: string
   exprBlockIfCrossSeedInCategories: string[]
   // Move action settings
   exprMovePath: string
   exprMoveBlockIfCrossSeed: boolean
+  exprMoveGroupId: string
+  exprMoveAtomic: "all" | ""
   // External program action settings
   exprExternalProgramId: number | null
 }
@@ -199,6 +207,7 @@ const emptyFormState: FormState = {
   dryRun: false,
   intervalSeconds: null,
   actionCondition: null,
+  exprGrouping: undefined,
   speedLimitsEnabled: false,
   shareLimitsEnabled: false,
   pauseEnabled: false,
@@ -218,6 +227,8 @@ const emptyFormState: FormState = {
   exprSeedingTimeValue: undefined,
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
   exprIncludeHardlinks: false,
+  exprDeleteGroupId: "",
+  exprDeleteAtomic: "",
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
   exprTags: [],
@@ -226,9 +237,12 @@ const emptyFormState: FormState = {
   exprUseDisplayName: false,
   exprCategory: "",
   exprIncludeCrossSeeds: false,
+  exprCategoryGroupId: "",
   exprBlockIfCrossSeedInCategories: [],
   exprMovePath: "",
   exprMoveBlockIfCrossSeed: false,
+  exprMoveGroupId: "",
+  exprMoveAtomic: "",
   exprExternalProgramId: null,
 }
 
@@ -552,6 +566,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
         let exprExternalProgramId: number | null = null
+        let exprGrouping: GroupingConfig | undefined
+        let exprDeleteGroupId = ""
+        let exprDeleteAtomic: FormState["exprDeleteAtomic"] = ""
+        let exprCategoryGroupId = ""
+        let exprMoveGroupId = ""
+        let exprMoveAtomic: FormState["exprMoveAtomic"] = ""
 
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
@@ -562,6 +582,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         }
 
         if (conditions) {
+          exprGrouping = conditions.grouping
           // Get condition from any enabled action (they should all be the same)
           actionCondition = conditions.speedLimits?.condition
             ?? conditions.shareLimits?.condition
@@ -606,6 +627,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             deleteEnabled = true
             exprDeleteMode = conditions.delete.mode ?? "deleteWithFilesPreserveCrossSeeds"
             exprIncludeHardlinks = conditions.delete.includeHardlinks ?? false
+            exprDeleteGroupId = conditions.delete.groupId ?? ""
+            exprDeleteAtomic = conditions.delete.atomic ?? ""
           }
           if (conditions.tag?.enabled) {
             tagEnabled = true
@@ -618,12 +641,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             categoryEnabled = true
             exprCategory = conditions.category.category ?? ""
             exprIncludeCrossSeeds = conditions.category.includeCrossSeeds ?? false
+            exprCategoryGroupId = conditions.category.groupId ?? ""
             exprBlockIfCrossSeedInCategories = conditions.category.blockIfCrossSeedInCategories ?? []
           }
           if (conditions.move?.enabled) {
             moveEnabled = true
             exprMovePath = conditions.move.path ?? ""
             exprMoveBlockIfCrossSeed = conditions.move.blockIfCrossSeed ?? false
+            exprMoveGroupId = conditions.move.groupId ?? ""
+            exprMoveAtomic = conditions.move.atomic ?? ""
           }
           if (conditions.externalProgram?.enabled) {
             externalProgramEnabled = true
@@ -641,6 +667,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           sortOrder: rule.sortOrder,
           intervalSeconds: rule.intervalSeconds ?? null,
           actionCondition,
+          exprGrouping,
           speedLimitsEnabled,
           shareLimitsEnabled,
           pauseEnabled,
@@ -660,6 +687,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprSeedingTimeValue,
           exprDeleteMode,
           exprIncludeHardlinks,
+          exprDeleteGroupId,
+          exprDeleteAtomic,
           exprFreeSpaceSourceType,
           exprFreeSpaceSourcePath,
           exprTags,
@@ -670,7 +699,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprMovePath,
           exprMoveBlockIfCrossSeed,
           exprIncludeCrossSeeds,
+          exprCategoryGroupId,
           exprBlockIfCrossSeedInCategories,
+          exprMoveGroupId,
+          exprMoveAtomic,
           exprExternalProgramId,
         }
         setFormState(newState)
@@ -783,6 +815,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Build payload from form state (shared by preview and save)
   const buildPayload = (input: FormState): AutomationInput => {
     const conditions: ActionConditions = { schemaVersion: "1" }
+    if (input.exprGrouping) {
+      conditions.grouping = input.exprGrouping
+    }
 
     // Add all enabled actions
     if (input.speedLimitsEnabled) {
@@ -862,6 +897,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         mode: input.exprDeleteMode,
         // Only include includeHardlinks when using include cross-seeds mode
         includeHardlinks: input.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" ? input.exprIncludeHardlinks : undefined,
+        groupId: input.exprDeleteGroupId || undefined,
+        atomic: input.exprDeleteAtomic || undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -880,6 +917,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         enabled: true,
         category: input.exprCategory,
         includeCrossSeeds: input.exprIncludeCrossSeeds,
+        groupId: input.exprCategoryGroupId || undefined,
         blockIfCrossSeedInCategories: input.exprBlockIfCrossSeedInCategories,
         condition: input.actionCondition ?? undefined,
       }
@@ -890,6 +928,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         enabled: true,
         path: trimmedMovePath,
         blockIfCrossSeed: input.exprMoveBlockIfCrossSeed,
+        groupId: input.exprMoveGroupId || undefined,
+        atomic: input.exprMoveAtomic || undefined,
         condition: input.actionCondition ?? undefined,
       }
     }

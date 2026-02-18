@@ -158,6 +158,15 @@ export type ConditionField =
   | "TAGS"
   | "SAVE_PATH"
   | "CONTENT_PATH"
+  | "CONTENT_TYPE"
+  | "EFFECTIVE_NAME"
+  | "RLS_SOURCE"
+  | "RLS_RESOLUTION"
+  | "RLS_CODEC"
+  | "RLS_HDR"
+  | "RLS_AUDIO"
+  | "RLS_CHANNELS"
+  | "RLS_GROUP"
   | "STATE"
   | "TRACKER"
   | "COMMENT"
@@ -191,10 +200,12 @@ export type ConditionField =
   | "NUM_COMPLETE"
   | "NUM_INCOMPLETE"
   | "TRACKERS_COUNT"
+  | "GROUP_SIZE"
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
+  | "IS_GROUPED"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -256,10 +267,24 @@ export interface ResumeAction {
   condition?: RuleCondition
 }
 
+export interface GroupDefinition {
+  id: string
+  keys: string[]
+  ambiguousPolicy?: "verify_overlap" | "skip"
+  minFileOverlapPercent?: number
+}
+
+export interface GroupingConfig {
+  defaultGroupId?: string
+  groups?: GroupDefinition[]
+}
+
 export interface DeleteAction {
   enabled: boolean
   mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
+  groupId?: string
+  atomic?: "all"
   condition?: RuleCondition
 }
 
@@ -276,6 +301,7 @@ export interface CategoryAction {
   enabled: boolean
   category: string
   includeCrossSeeds?: boolean
+  groupId?: string
   blockIfCrossSeedInCategories?: string[]
   condition?: RuleCondition
 }
@@ -284,6 +310,8 @@ export interface MoveAction {
   enabled: boolean
   path: string
   blockIfCrossSeed?: boolean
+  groupId?: string
+  atomic?: "all"
   condition?: RuleCondition
 }
 
@@ -295,6 +323,7 @@ export interface ExternalProgramAction {
 
 export interface ActionConditions {
   schemaVersion: string
+  grouping?: GroupingConfig
   speedLimits?: SpeedLimitAction
   shareLimits?: ShareLimitsAction
   pause?: PauseAction
