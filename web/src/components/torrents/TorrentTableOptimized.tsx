@@ -1653,6 +1653,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize, selectAllFilters, filters])
 
+  // Callback for context menu to fetch field for matching torrents
+  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path"): Promise<string[]> => {
+    const response = await api.getTorrentField(instanceId, field, {
+      sort: activeSortField,
+      order: activeSortOrder,
+      search: effectiveSearch,
+      filters: {
+        status: filters?.status || [],
+        excludeStatus: filters?.excludeStatus || [],
+        categories: effectiveIncludedCategories,
+        excludeCategories: effectiveExcludedCategories,
+        tags: filters?.tags || [],
+        excludeTags: filters?.excludeTags || [],
+        trackers: filters?.trackers || [],
+        excludeTrackers: filters?.excludeTrackers || [],
+        expandedCategories: filters?.expandedCategories,
+        expandedExcludeCategories: filters?.expandedExcludeCategories,
+        expr: combinedFiltersExpr || undefined,
+      },
+      excludeHashes: excludedFromSelectAll.size > 0 ? Array.from(excludedFromSelectAll) : undefined,
+    })
+    return response.values
+  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, excludedFromSelectAll])
+
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
@@ -2610,6 +2634,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         onCrossSeedSearch={onCrossSeedSearch}
                         isCrossSeedSearching={isCrossSeedSearching}
                         onFilterChange={onFilterChange}
+                        onFetchAllField={fetchAllTorrentField}
                       >
                         <CompactRow
                           torrent={torrent}
@@ -2747,6 +2772,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onCrossSeedSearch={onCrossSeedSearch}
                       isCrossSeedSearching={isCrossSeedSearching}
                       onFilterChange={onFilterChange}
+                      onFetchAllField={fetchAllTorrentField}
                     >
                       <div
                         className={`flex cursor-pointer hover:bg-accent/40 ${getRowBackgroundClass(isRowSelected, isSelected, virtualRow.index)}`}

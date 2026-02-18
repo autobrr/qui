@@ -94,3 +94,43 @@ func TestBuildAutomationRuleSummariesGroupsActionsByRule(t *testing.T) {
 	}
 	require.True(t, ratioRuleFound)
 }
+
+func TestBuildAutomationRuleSummariesUsesRuleIDFallbackWhenNameMissing(t *testing.T) {
+	t.Parallel()
+
+	summary := newAutomationSummary()
+	ruleID := 99
+
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:  &ruleID,
+		Action:  models.ActivityActionTagsChanged,
+		Outcome: models.ActivityOutcomeSuccess,
+	}, 1)
+
+	msg := summary.message()
+	require.Contains(t, msg, "Rules: Rule #99")
+	require.NotContains(t, msg, "Unknown rule")
+
+	got := buildAutomationRuleSummaries(summary)
+	require.Len(t, got, 1)
+	require.Equal(t, 99, got[0].RuleID)
+	require.Equal(t, "Rule #99", got[0].RuleName)
+}
+
+func TestAutomationSummaryMessageIncludesTagDetailsAndSamples(t *testing.T) {
+	t.Parallel()
+
+	summary := newAutomationSummary()
+	summary.applied = 3
+	summary.addTagCounts(
+		map[string]int{"freeleech": 2},
+		map[string]int{"temp": 1},
+	)
+	summary.addTagSamples([]string{"Torrent B", "Torrent A", "Torrent A"}, 3)
+
+	msg := summary.message()
+	require.Contains(t, msg, "Tags: +freeleech=2; -temp=1")
+	require.Contains(t, msg, "Tag samples:")
+	require.Contains(t, msg, "Torrent A")
+	require.Contains(t, msg, "Torrent B")
+}

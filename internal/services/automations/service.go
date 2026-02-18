@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -24,7 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
-	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -67,14 +65,18 @@ var automationActionLabels = map[string]string{
 }
 
 type automationSummary struct {
-	applied         int
-	failed          int
-	appliedByAction map[string]int
-	failedByAction  map[string]int
-	rules           map[string]*automationRuleSummary
-	sampleTorrents  []string
-	sampleErrors    []string
-	sampleSeen      map[string]struct{}
+	applied          int
+	failed           int
+	appliedByAction  map[string]int
+	failedByAction   map[string]int
+	rules            map[string]*automationRuleSummary
+	tagAddedByName   map[string]int
+	tagRemovedByName map[string]int
+	tagSamples       []string
+	sampleTorrents   []string
+	sampleErrors     []string
+	sampleSeen       map[string]struct{}
+	tagSampleSeen    map[string]struct{}
 }
 
 type automationRuleSummary struct {
@@ -92,10 +94,13 @@ type automationActionCounts struct {
 
 func newAutomationSummary() *automationSummary {
 	return &automationSummary{
-		appliedByAction: make(map[string]int),
-		failedByAction:  make(map[string]int),
-		rules:           make(map[string]*automationRuleSummary),
-		sampleSeen:      make(map[string]struct{}),
+		appliedByAction:  make(map[string]int),
+		failedByAction:   make(map[string]int),
+		rules:            make(map[string]*automationRuleSummary),
+		tagAddedByName:   make(map[string]int),
+		tagRemovedByName: make(map[string]int),
+		sampleSeen:       make(map[string]struct{}),
+		tagSampleSeen:    make(map[string]struct{}),
 	}
 }
 
@@ -137,6 +142,12 @@ func (s *automationSummary) message() string {
 	if formatted := formatRuleCounts(s.ruleTotalsByName(), 3); formatted != "" {
 		lines = append(lines, "Rules: "+formatted)
 	}
+	if formatted := formatTagCounts(s.tagAddedByName, s.tagRemovedByName, 3); formatted != "" {
+		lines = append(lines, "Tags: "+formatted)
+	}
+	if len(s.tagSamples) > 0 {
+		lines = append(lines, "Tag samples: "+strings.Join(s.tagSamples, "; "))
+	}
 	if len(s.sampleTorrents) > 0 {
 		lines = append(lines, "Samples: "+strings.Join(s.sampleTorrents, "; "))
 	}
@@ -175,10 +186,13 @@ func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, c
 		return
 	}
 
-	ruleName := strings.TrimSpace(activity.RuleName)
+	ruleName := normalizeRuleName(activity.RuleID, activity.RuleName)
 	ruleID := 0
 	if activity.RuleID != nil {
 		ruleID = *activity.RuleID
+	}
+	if ruleID <= 0 && ruleName == "" {
+		return
 	}
 
 	key := ruleName
@@ -227,13 +241,76 @@ func (s *automationSummary) ruleTotalsByName() map[string]int {
 		if rule == nil {
 			continue
 		}
-		name := strings.TrimSpace(rule.ruleName)
+		name := normalizeRuleName(intPtrForRule(rule.ruleID), rule.ruleName)
 		if name == "" {
-			name = "Unknown rule"
+			continue
 		}
 		out[name] += rule.applied + rule.failed
 	}
 	return out
+}
+
+func (s *automationSummary) recordRuleCounts(action string, outcome string, counts map[ruleRef]int) {
+	if s == nil || len(counts) == 0 {
+		return
+	}
+	for ref, count := range counts {
+		if count <= 0 {
+			continue
+		}
+		refName := strings.TrimSpace(ref.name)
+		refID := ref.id
+		var ruleID *int
+		if refID > 0 {
+			ruleID = &refID
+		}
+		s.addRuleAction(&models.AutomationActivity{
+			Action:   action,
+			Outcome:  outcome,
+			RuleID:   ruleID,
+			RuleName: refName,
+		}, count)
+	}
+}
+
+func (s *automationSummary) addTagCounts(added map[string]int, removed map[string]int) {
+	if s == nil {
+		return
+	}
+	for tag, count := range added {
+		trimmedTag := strings.TrimSpace(tag)
+		if trimmedTag == "" || count <= 0 {
+			continue
+		}
+		s.tagAddedByName[trimmedTag] += count
+	}
+	for tag, count := range removed {
+		trimmedTag := strings.TrimSpace(tag)
+		if trimmedTag == "" || count <= 0 {
+			continue
+		}
+		s.tagRemovedByName[trimmedTag] += count
+	}
+}
+
+func (s *automationSummary) addTagSamples(names []string, limit int) {
+	if s == nil || limit <= 0 {
+		return
+	}
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		if _, seen := s.tagSampleSeen[trimmed]; seen {
+			continue
+		}
+		if len(s.tagSamples) >= limit {
+			return
+		}
+		s.tagSampleSeen[trimmed] = struct{}{}
+		s.tagSamples = append(s.tagSamples, trimmed)
+	}
 }
 
 func (s *automationSummary) addSample(list *[]string, value string, limit int) {
@@ -314,11 +391,50 @@ func formatRuleCounts(counts map[string]int, limit int) string {
 	return strings.Join(parts, "; ")
 }
 
+func formatTagCounts(added map[string]int, removed map[string]int, limit int) string {
+	parts := make([]string, 0, limit*2)
+
+	for _, item := range sortedCountItems(added) {
+		if len(parts) >= limit {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("+%s=%d", item.key, item.count))
+	}
+
+	for _, item := range sortedCountItems(removed) {
+		if len(parts) >= limit*2 {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("-%s=%d", item.key, item.count))
+	}
+
+	return strings.Join(parts, "; ")
+}
+
 func automationActionLabel(action string) string {
 	if label, ok := automationActionLabels[action]; ok {
 		return label
 	}
 	return strings.ReplaceAll(action, "_", " ")
+}
+
+func normalizeRuleName(ruleID *int, ruleName string) string {
+	name := strings.TrimSpace(ruleName)
+	if name != "" {
+		return name
+	}
+	if ruleID != nil && *ruleID > 0 {
+		return fmt.Sprintf("Rule #%d", *ruleID)
+	}
+	return ""
+}
+
+func intPtrForRule(ruleID int) *int {
+	if ruleID <= 0 {
+		return nil
+	}
+	id := ruleID
+	return &id
 }
 
 // ruleKey identifies a rule within an instance for per-rule cadence tracking.
@@ -1865,6 +1981,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
 	resumeHashes := make([]string, 0)
+	uploadRuleByHash := make(map[string]ruleRef)
+	downloadRuleByHash := make(map[string]ruleRef)
+	shareRatioRuleByHash := make(map[string]ruleRef)
+	shareSeedingRuleByHash := make(map[string]ruleRef)
+	pauseRuleByHash := make(map[string]ruleRef)
+	resumeRuleByHash := make(map[string]ruleRef)
+	categoryRuleByHash := make(map[string]ruleRef)
+	moveRuleByHash := make(map[string]ruleRef)
 
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
@@ -2181,12 +2305,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			desired := *state.uploadLimitKiB * 1024
 			if torrent.UpLimit != desired {
 				uploadBatches[*state.uploadLimitKiB] = append(uploadBatches[*state.uploadLimitKiB], hash)
+				uploadRuleByHash[hash] = state.uploadRule
 			}
 		}
 		if state.downloadLimitKiB != nil {
 			desired := *state.downloadLimitKiB * 1024
 			if torrent.DlLimit != desired {
 				downloadBatches[*state.downloadLimitKiB] = append(downloadBatches[*state.downloadLimitKiB], hash)
+				downloadRuleByHash[hash] = state.downloadRule
 			}
 		}
 
@@ -2217,22 +2343,31 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			currentRatio := normalizeRatio(torrent.RatioLimit)
 
 			// Check if update is needed (comparing normalized values)
-			needsUpdate := (state.ratioLimit != nil && currentRatio != ratio) ||
-				(state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes)
+			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
+			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
+			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate
 			if needsUpdate {
 				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes}
 				shareBatches[key] = append(shareBatches[key], hash)
+				if ratioNeedsUpdate {
+					shareRatioRuleByHash[hash] = state.ratioRule
+				}
+				if seedingNeedsUpdate {
+					shareSeedingRuleByHash[hash] = state.seedingRule
+				}
 			}
 		}
 
 		// Pause
 		if state.shouldPause {
 			pauseHashes = append(pauseHashes, hash)
+			pauseRuleByHash[hash] = state.pauseRule
 		}
 
 		// Resume
 		if state.shouldResume {
 			resumeHashes = append(resumeHashes, hash)
+			resumeRuleByHash[hash] = state.resumeRule
 		}
 
 		// Tags
@@ -2265,11 +2400,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		if state.category != nil {
 			if torrent.Category != *state.category {
 				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
+				categoryRuleByHash[hash] = state.categoryRule
 			}
 		}
 
 		if state.shouldMove {
 			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
+			moveRuleByHash[hash] = state.moveRule
 		}
 
 		// External program execution
@@ -2320,8 +2457,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	defer cancel()
 
 	// Apply speed limits and track success
-	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary)
-	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary)
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary, uploadRuleByHash)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary, downloadRuleByHash)
 
 	// Record aggregated speed limit activity
 	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
@@ -2344,6 +2481,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, totalUpdated)
+		summary.recordRuleCounts(
+			models.ActivityActionSpeedLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess), uploadRuleByHash),
+		)
+		summary.recordRuleCounts(
+			models.ActivityActionSpeedLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroups(downloadSuccess), downloadRuleByHash),
+		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
@@ -2382,6 +2529,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				Details:    detailsJSON,
 			}
 			summary.recordActivity(activity, len(batch))
+			summary.recordRuleCounts(
+				models.ActivityActionLimitFailed,
+				models.ActivityOutcomeFailed,
+				buildRuleCountsFromHashMaps(batch, shareRatioRuleByHash, shareSeedingRuleByHash),
+			)
 			if s.activityStore != nil {
 				if actErr := s.activityStore.Create(ctx, activity); actErr != nil {
 					log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
@@ -2408,6 +2560,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, totalUpdated)
+		summary.recordRuleCounts(
+			models.ActivityActionShareLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash, shareSeedingRuleByHash),
+		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
@@ -2448,6 +2605,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, pausedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionPaused,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(pausedHashesSuccess, pauseRuleByHash),
+		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
@@ -2488,6 +2650,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, resumedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionResumed,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(resumedHashesSuccess, resumeRuleByHash),
+		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
@@ -2503,6 +2670,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Execute tag actions for expression-based rules
 	if len(tagChanges) > 0 {
+		tagRuleCounts := make(map[ruleRef]int)
+
 		// Try SetTags first (more efficient for qBit 5.1+)
 		// Group by desired tag set for batching
 		setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
@@ -2589,12 +2758,25 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		addCounts := make(map[string]int)    // tag -> count of torrents
 		removeCounts := make(map[string]int) // tag -> count of torrents
 
-		for _, change := range tagChanges {
+		tagSampleHashes := make([]string, 0, len(tagChanges))
+		for hash, change := range tagChanges {
+			tagSampleHashes = append(tagSampleHashes, hash)
+			state := states[hash]
 			for _, tag := range change.toAdd {
 				addCounts[tag]++
+				if state != nil {
+					if ref, ok := state.tagRuleByTag[tag]; ok {
+						tagRuleCounts[ref]++
+					}
+				}
 			}
 			for _, tag := range change.toRemove {
 				removeCounts[tag]++
+				if state != nil {
+					if ref, ok := state.tagRuleByTag[tag]; ok {
+						tagRuleCounts[ref]++
+					}
+				}
 			}
 		}
 
@@ -2613,6 +2795,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 			changedCount := len(tagChanges)
 			summary.recordActivity(activity, changedCount)
+			summary.recordRuleCounts(models.ActivityActionTagsChanged, models.ActivityOutcomeSuccess, tagRuleCounts)
+			summary.addTagCounts(addCounts, removeCounts)
+			summary.addTagSamples(collectTorrentNamesForHashes(tagSampleHashes, torrentByHash), 3)
 			if s.activityStore != nil {
 				activityID, err := s.activityStore.CreateWithID(ctx, activity)
 				if err != nil {
@@ -2650,6 +2835,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// or legacy includeCrossSeeds), then expand other torrents that share the same group key.
 		keysToExpand := make(map[groupExpandKey]map[string]struct{})
 		groupIndexByKey := make(map[groupExpandKey]*groupIndex)
+		ruleByGroupKey := make(map[groupExpandKey]ruleRef)
 		for _, hash := range hashes {
 			state, exists := states[hash]
 			if !exists || state == nil || state.categoryGroupID == "" || state.categoryRuleID <= 0 {
@@ -2681,6 +2867,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				keysToExpand[k] = make(map[string]struct{})
 			}
 			keysToExpand[k][groupKey] = struct{}{}
+			if _, exists := ruleByGroupKey[k]; !exists {
+				ruleByGroupKey[k] = ruleRef{id: rule.ID, name: rule.Name}
+			}
 		}
 
 		if len(keysToExpand) > 0 {
@@ -2703,8 +2892,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						continue // Torrent's winning rule chose a different category
 					}
 				}
-
 				shouldExpand := false
+				matchedKey := groupExpandKey{}
 				for k, keySet := range keysToExpand {
 					idx := groupIndexByKey[k]
 					if idx == nil {
@@ -2716,12 +2905,18 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					}
 					if _, ok := keySet[gk]; ok {
 						shouldExpand = true
+						matchedKey = k
 						break
 					}
 				}
 				if shouldExpand {
 					expandedHashes = append(expandedHashes, t.Hash)
 					expandedSet[t.Hash] = struct{}{}
+					if _, exists := categoryRuleByHash[t.Hash]; !exists {
+						if ref, ok := ruleByGroupKey[matchedKey]; ok {
+							categoryRuleByHash[t.Hash] = ref
+						}
+					}
 				}
 			}
 		}
@@ -2768,6 +2963,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, len(successfulMoves))
+		summary.recordRuleCounts(
+			models.ActivityActionCategoryChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(categoryMoveHashes(successfulMoves), categoryRuleByHash),
+		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
@@ -2796,6 +2996,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		hashes := moveBatches[path]
 		successfulMovesForPath := 0
 		failedMovesForPath := 0
+		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, moveRuleByHash)
 
 		normalizedDest := normalizePath(path)
 
@@ -2977,6 +3178,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					if _, matched := legacyKeysToExpand[key]; matched {
 						expandedHashes = append(expandedHashes, t.Hash)
 						movedHashes[t.Hash] = struct{}{}
+						inheritRuleRefForCrossSeed(t.Hash, key, moveRuleByHash, ruleByCrossSeedKey)
 					}
 				}
 			}
@@ -3022,6 +3224,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, successCount)
+		summary.recordRuleCounts(
+			models.ActivityActionMoved,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), moveRuleByHash),
+		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
@@ -3244,7 +3451,7 @@ func buildAutomationRuleSummaries(summary *automationSummary) []notifications.Au
 
 		out = append(out, notifications.AutomationRuleSummary{
 			RuleID:   rule.ruleID,
-			RuleName: rule.ruleName,
+			RuleName: normalizeRuleName(intPtrForRule(rule.ruleID), rule.ruleName),
 			Applied:  rule.applied,
 			Failed:   rule.failed,
 			Actions:  actions,
@@ -3291,6 +3498,151 @@ func limitHashBatch(hashes []string, max int) [][]string {
 	return batches
 }
 
+func buildRuleCountsFromHashes(hashes []string, ruleByHash map[string]ruleRef) map[ruleRef]int {
+	if len(hashes) == 0 || len(ruleByHash) == 0 {
+		return nil
+	}
+	counts := make(map[ruleRef]int)
+	for _, hash := range hashes {
+		ref, ok := ruleByHash[hash]
+		if !ok {
+			continue
+		}
+		ref.name = strings.TrimSpace(ref.name)
+		if ref.id <= 0 && ref.name == "" {
+			continue
+		}
+		counts[ref]++
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
+func buildRuleCountsFromHashMaps(hashes []string, ruleByHashMaps ...map[string]ruleRef) map[ruleRef]int {
+	if len(hashes) == 0 || len(ruleByHashMaps) == 0 {
+		return nil
+	}
+
+	counts := make(map[ruleRef]int)
+	for _, hash := range hashes {
+		refsForHash := make(map[ruleRef]struct{})
+		for _, ruleByHash := range ruleByHashMaps {
+			if len(ruleByHash) == 0 {
+				continue
+			}
+			ref, ok := ruleByHash[hash]
+			if !ok {
+				continue
+			}
+			ref.name = strings.TrimSpace(ref.name)
+			if ref.id <= 0 && ref.name == "" {
+				continue
+			}
+			refsForHash[ref] = struct{}{}
+		}
+		for ref := range refsForHash {
+			counts[ref]++
+		}
+	}
+
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
+func flattenHashGroups(groups ...map[int64][]string) []string {
+	if len(groups) == 0 {
+		return nil
+	}
+	out := make([]string, 0)
+	for _, group := range groups {
+		for _, hashes := range group {
+			out = append(out, hashes...)
+		}
+	}
+	return out
+}
+
+func flattenHashGroupsByShareKey(group map[shareKey][]string) []string {
+	if len(group) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, hashes := range group {
+		for _, hash := range hashes {
+			if _, exists := seen[hash]; exists {
+				continue
+			}
+			seen[hash] = struct{}{}
+			out = append(out, hash)
+		}
+	}
+	return out
+}
+
+func flattenHashGroupsByPath(group map[string][]string) []string {
+	if len(group) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, hashes := range group {
+		for _, hash := range hashes {
+			if _, exists := seen[hash]; exists {
+				continue
+			}
+			seen[hash] = struct{}{}
+			out = append(out, hash)
+		}
+	}
+	return out
+}
+
+func categoryMoveHashes(moves []categoryMove) []string {
+	if len(moves) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(moves))
+	for _, move := range moves {
+		if _, exists := seen[move.hash]; exists {
+			continue
+		}
+		seen[move.hash] = struct{}{}
+		out = append(out, move.hash)
+	}
+	return out
+}
+
+func collectTorrentNamesForHashes(hashes []string, torrentByHash map[string]qbt.Torrent) []string {
+	if len(hashes) == 0 || len(torrentByHash) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		torrent, ok := torrentByHash[hash]
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(torrent.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func matchesTracker(pattern string, domains []string) bool {
 	if pattern == "*" {
 		return true // Match all trackers
@@ -3304,14 +3656,14 @@ func matchesTracker(pattern string, domains []string) bool {
 	})
 
 	for _, token := range tokens {
-		normalized := strings.ToLower(strings.TrimSpace(token))
+		normalized := normalizeLowerTrim(token)
 		if normalized == "" {
 			continue
 		}
 		isGlob := strings.ContainsAny(normalized, "*?")
 
 		for _, domain := range domains {
-			d := strings.ToLower(domain)
+			d := normalizeLower(domain)
 			if isGlob {
 				ok, err := path.Match(normalized, d)
 				if err != nil {
@@ -3375,8 +3727,7 @@ func sanitizeTrackerHost(urlOrHost string) string {
 	// Remove URL-like path pieces
 	clean = strings.Split(clean, "/")[0]
 	clean = strings.Split(clean, ":")[0]
-	re := regexp.MustCompile(`[^a-zA-Z0-9\.-]`)
-	clean = re.ReplaceAllString(clean, "")
+	clean = trackerHostSanitizeRegexp.ReplaceAllString(clean, "")
 	return clean
 }
 
@@ -3395,7 +3746,7 @@ func torrentHasTag(tags string, candidate string) bool {
 // normalizePath standardizes a file path for comparison.
 // Keep this consistent with cross-seed's path normalization.
 func normalizePath(p string) string {
-	return pathcmp.NormalizePathFold(p)
+	return pathComparisonNormalizer.Normalize(p)
 }
 
 // crossSeedKey identifies torrents at the same on-disk location.
@@ -3413,6 +3764,65 @@ func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
 		return crossSeedKey{}, false
 	}
 	return crossSeedKey{contentPath, savePath}, true
+}
+
+func categoryExpandableHashes(hashes []string, states map[string]*torrentDesiredState) []string {
+	if len(hashes) == 0 || len(states) == 0 {
+		return nil
+	}
+	expandableHashes := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
+			expandableHashes = append(expandableHashes, hash)
+		}
+	}
+	return expandableHashes
+}
+
+func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef) map[crossSeedKey]ruleRef {
+	if len(triggerHashes) == 0 || len(torrentByHash) == 0 || len(ruleByHash) == 0 {
+		return nil
+	}
+	sortedHashes := slices.Clone(triggerHashes)
+	sort.Strings(sortedHashes)
+
+	byKey := make(map[crossSeedKey]ruleRef)
+	for _, hash := range sortedHashes {
+		ref, hasRef := ruleByHash[hash]
+		if !hasRef {
+			continue
+		}
+		torrent, hasTorrent := torrentByHash[hash]
+		if !hasTorrent {
+			continue
+		}
+		key, ok := makeCrossSeedKey(torrent)
+		if !ok {
+			continue
+		}
+		if _, exists := byKey[key]; exists {
+			continue
+		}
+		byKey[key] = ref
+	}
+	if len(byKey) == 0 {
+		return nil
+	}
+	return byKey
+}
+
+func inheritRuleRefForCrossSeed(expandedHash string, key crossSeedKey, ruleByHash map[string]ruleRef, ruleByCrossSeedKey map[crossSeedKey]ruleRef) {
+	if strings.TrimSpace(expandedHash) == "" || len(ruleByHash) == 0 || len(ruleByCrossSeedKey) == 0 {
+		return
+	}
+	if _, exists := ruleByHash[expandedHash]; exists {
+		return
+	}
+	ref, ok := ruleByCrossSeedKey[key]
+	if !ok {
+		return
+	}
+	ruleByHash[expandedHash] = ref
 }
 
 // detectCrossSeeds checks if any other torrent shares the same ContentPath,
@@ -3500,7 +3910,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	var totalBytes1 int64
 	for _, f := range files1 {
 		key := fileOverlapKey{
-			name: strings.ToLower(normalizePath(f.Name)),
+			name: normalizePath(f.Name),
 			size: f.Size,
 		}
 		fileSet1[key] = struct{}{}
@@ -3512,7 +3922,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	for _, f := range files2 {
 		totalBytes2 += f.Size
 		key := fileOverlapKey{
-			name: strings.ToLower(normalizePath(f.Name)),
+			name: normalizePath(f.Name),
 			size: f.Size,
 		}
 		if _, exists := fileSet1[key]; exists {
@@ -3786,7 +4196,7 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 	result := make(map[string]string)
 	for _, c := range customizations {
 		for _, domain := range c.Domains {
-			result[strings.ToLower(domain)] = c.DisplayName
+			result[normalizeLower(domain)] = c.DisplayName
 		}
 	}
 	return result
@@ -3815,6 +4225,7 @@ func (s *Service) applySpeedLimits(
 	limitType string,
 	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
 	summary *automationSummary,
+	ruleByHash map[string]ruleRef,
 ) map[int64][]string {
 	successHashes := make(map[int64][]string)
 	for limit, hashes := range batches {
@@ -3836,6 +4247,11 @@ func (s *Service) applySpeedLimits(
 				}
 				if summary != nil {
 					summary.recordActivity(activity, len(batch))
+					summary.recordRuleCounts(
+						models.ActivityActionLimitFailed,
+						models.ActivityOutcomeFailed,
+						buildRuleCountsFromHashes(batch, ruleByHash),
+					)
 				}
 				if s.activityStore != nil {
 					if err := s.activityStore.Create(ctx, activity); err != nil {
@@ -4031,6 +4447,9 @@ func (s *Service) recordDryRunActivities(
 						idx = buildGroupIndex(gid, def, torrents, s.syncManager, previewEvalCtx)
 					}
 					groupIndexByGroupID[rgk] = idx
+				}
+				if idx == nil {
+					continue
 				}
 				groupKey := idx.KeyForHash(hash)
 				if groupKey == "" {
@@ -4523,8 +4942,8 @@ func buildMoveRunItems(
 
 func sortActivityRunItems(items []ActivityRunTorrent) {
 	sort.Slice(items, func(i, j int) bool {
-		nameA := strings.ToLower(items[i].Name)
-		nameB := strings.ToLower(items[j].Name)
+		nameA := normalizeLower(items[i].Name)
+		nameB := normalizeLower(items[j].Name)
 		if nameA == "" && nameB != "" {
 			return false
 		}

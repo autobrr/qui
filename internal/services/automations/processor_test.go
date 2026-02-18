@@ -1332,6 +1332,120 @@ func TestProcessTorrents_PauseResume(t *testing.T) {
 	require.False(t, state.shouldResume)
 }
 
+func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndependently(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "a",
+			Name:    "test",
+			UpLimit: 0,
+			DlLimit: 0,
+		},
+	}
+
+	downloadLimit := int64(1024)
+	uploadLimit := int64(2048)
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			Name:           "Download rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				SpeedLimits: &models.SpeedLimitAction{
+					Enabled:     true,
+					DownloadKiB: &downloadLimit,
+				},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			Name:           "Upload rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				SpeedLimits: &models.SpeedLimitAction{
+					Enabled:   true,
+					UploadKiB: &uploadLimit,
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, nil, sm, nil, nil)
+
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.NotNil(t, state.downloadLimitKiB)
+	require.NotNil(t, state.uploadLimitKiB)
+	require.Equal(t, downloadLimit, *state.downloadLimitKiB)
+	require.Equal(t, uploadLimit, *state.uploadLimitKiB)
+	require.Equal(t, 1, state.downloadRule.id)
+	require.Equal(t, "Download rule", state.downloadRule.name)
+	require.Equal(t, 2, state.uploadRule.id)
+	require.Equal(t, "Upload rule", state.uploadRule.name)
+}
+
+func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependently(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:             "a",
+			Name:             "test",
+			RatioLimit:       -2,
+			SeedingTimeLimit: -2,
+		},
+	}
+
+	ratioLimit := 1.5
+	seedingMinutes := int64(120)
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			Name:           "Ratio rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				ShareLimits: &models.ShareLimitsAction{
+					Enabled:    true,
+					RatioLimit: &ratioLimit,
+				},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			Name:           "Seeding rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				ShareLimits: &models.ShareLimitsAction{
+					Enabled:            true,
+					SeedingTimeMinutes: &seedingMinutes,
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, nil, sm, nil, nil)
+
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.NotNil(t, state.ratioLimit)
+	require.NotNil(t, state.seedingMinutes)
+	require.InDelta(t, ratioLimit, *state.ratioLimit, 0.0001)
+	require.Equal(t, seedingMinutes, *state.seedingMinutes)
+	require.Equal(t, 1, state.ratioRule.id)
+	require.Equal(t, "Ratio rule", state.ratioRule.name)
+	require.Equal(t, 2, state.seedingRule.id)
+	require.Equal(t, "Seeding rule", state.seedingRule.name)
+}
+
 func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
@@ -1652,6 +1766,10 @@ func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T
 	action, hasTag := state.tagActions["TEST"]
 	require.True(t, hasTag, "expected tag action to be recorded")
 	require.Equal(t, "remove", action, "expected tag to be removed when condition matches")
+	ref, hasRef := state.tagRuleByTag["TEST"]
+	require.True(t, hasRef, "expected tag rule source to be recorded")
+	require.Equal(t, 1, ref.id)
+	require.Equal(t, "Remove Tag When Private False", ref.name)
 }
 
 func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) {
@@ -1699,6 +1817,10 @@ func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) 
 	tagAction, hasTag := state.tagActions["processed"]
 	require.True(t, hasTag, "expected tag action to be recorded")
 	require.Equal(t, "add", tagAction)
+	ref, hasRef := state.tagRuleByTag["processed"]
+	require.True(t, hasRef, "expected tag rule source to be recorded")
+	require.Equal(t, 1, ref.id)
+	require.Equal(t, "Combined Actions Rule", ref.name)
 }
 
 func TestHasActions_ExternalProgram(t *testing.T) {

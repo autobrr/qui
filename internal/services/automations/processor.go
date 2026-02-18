@@ -26,25 +26,34 @@ type torrentDesiredState struct {
 	// Speed limits (last rule wins)
 	uploadLimitKiB   *int64
 	downloadLimitKiB *int64
+	uploadRule       ruleRef
+	downloadRule     ruleRef
 
 	// Share limits (last rule wins)
 	ratioLimit     *float64
 	seedingMinutes *int64
+	ratioRule      ruleRef
+	seedingRule    ruleRef
 
 	// Pause (OR - any rule can trigger)
 	shouldPause bool
+	pauseRule   ruleRef
 
 	// Resume (OR - any rule can trigger)
 	shouldResume bool
+	resumeRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
-	currentTags map[string]struct{}
-	tagActions  map[string]string // tag -> "add" | "remove"
+	currentTags  map[string]struct{}
+	tagActions   map[string]string // tag -> "add" | "remove"
+	tagRuleByTag map[string]ruleRef
 
 	// Category (last rule wins)
-	category        *string
-	categoryGroupID string // Optional group ID to expand category changes
-	categoryRuleID  int
+	category                  *string
+	categoryGroupID           string // Optional group ID to expand category changes
+	categoryRuleID            int
+	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
+	categoryRule              ruleRef
 
 	// Delete (first rule to trigger wins)
 	shouldDelete           bool
@@ -63,11 +72,17 @@ type torrentDesiredState struct {
 	moveAtomic   string
 	moveRuleID   int
 	moveRuleName string
+	moveRule     ruleRef
 
 	// External program (last rule wins)
 	externalProgramID *int
 	programRuleID     int
 	programRuleName   string
+}
+
+type ruleRef struct {
+	id   int
+	name string
 }
 
 type ruleRunStats struct {
@@ -166,10 +181,11 @@ func processTorrents(
 
 		// Initialize state for this torrent
 		state := &torrentDesiredState{
-			hash:        torrent.Hash,
-			name:        torrent.Name,
-			currentTags: parseTorrentTags(torrent.Tags),
-			tagActions:  make(map[string]string),
+			hash:         torrent.Hash,
+			name:         torrent.Name,
+			currentTags:  parseTorrentTags(torrent.Tags),
+			tagActions:   make(map[string]string),
+			tagRuleByTag: make(map[string]ruleRef),
 		}
 
 		// Get all tracker domains for this torrent
@@ -231,9 +247,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			if conditions.SpeedLimits.UploadKiB != nil {
 				state.uploadLimitKiB = conditions.SpeedLimits.UploadKiB
+				state.uploadRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 			if conditions.SpeedLimits.DownloadKiB != nil {
 				state.downloadLimitKiB = conditions.SpeedLimits.DownloadKiB
+				state.downloadRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 		} else if stats != nil {
 			stats.SpeedConditionNotMet++
@@ -251,9 +269,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			if conditions.ShareLimits.RatioLimit != nil {
 				state.ratioLimit = conditions.ShareLimits.RatioLimit
+				state.ratioRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 			if conditions.ShareLimits.SeedingTimeMinutes != nil {
 				state.seedingMinutes = conditions.ShareLimits.SeedingTimeMinutes
+				state.seedingRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 		} else if stats != nil {
 			stats.ShareConditionNotMet++
@@ -274,6 +294,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				torrent.State != qbt.TorrentStateStoppedUp && torrent.State != qbt.TorrentStateStoppedDl {
 				state.shouldPause = true
 				state.shouldResume = false // Clear conflicting resume from earlier rule if any
+				state.pauseRule = ruleRef{id: rule.ID, name: rule.Name}
+				state.resumeRule = ruleRef{}
 			}
 		} else if stats != nil {
 			stats.PauseConditionNotMet++
@@ -295,6 +317,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				torrent.State == qbt.TorrentStateStoppedUp || torrent.State == qbt.TorrentStateStoppedDl {
 				state.shouldResume = true
 				state.shouldPause = false // Clear conflicting pause from earlier rule if any
+				state.resumeRule = ruleRef{id: rule.ID, name: rule.Name}
+				state.pauseRule = ruleRef{}
 			}
 		} else if stats != nil {
 			stats.ResumeConditionNotMet++
@@ -311,7 +335,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				stats.TagSkippedMissingUnregisteredSet++
 			}
 		} else {
-			matches := processTagAction(conditions.Tag, torrent, state, evalCtx)
+			matches := processTagAction(rule, conditions.Tag, torrent, state, evalCtx)
 			if stats != nil {
 				if matches {
 					stats.TagConditionMet++
@@ -334,6 +358,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			state.category = &conditions.Category.Category
 			state.categoryRuleID = rule.ID
+			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
+			state.categoryRule = ruleRef{id: rule.ID, name: rule.Name}
 			groupID := strings.TrimSpace(conditions.Category.GroupID)
 			if groupID == "" && conditions.Category.IncludeCrossSeeds {
 				groupID = GroupCrossSeedContentSavePath
@@ -434,6 +460,7 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 		if rule != nil {
 			state.moveRuleID = rule.ID
 			state.moveRuleName = rule.Name
+			state.moveRule = ruleRef{id: rule.ID, name: rule.Name}
 		}
 		return
 	}
@@ -583,10 +610,13 @@ func buildCrossSeedIndex(torrents []qbt.Torrent) map[crossSeedKey][]qbt.Torrent 
 }
 
 // processTagAction handles tag add/remove logic for a single tag action.
-func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) bool {
+func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) bool {
 	tagMode := tagAction.Mode
 	if tagMode == "" {
 		tagMode = models.TagModeFull
+	}
+	if state.tagRuleByTag == nil {
+		state.tagRuleByTag = make(map[string]ruleRef)
 	}
 
 	// Evaluate condition
@@ -620,16 +650,28 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 		case models.TagModeAdd:
 			if !hasTag && matchesCondition {
 				state.tagActions[managedTag] = "add"
+				if rule != nil {
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+				}
 			}
 		case models.TagModeRemove:
 			if hasTag && matchesCondition {
 				state.tagActions[managedTag] = "remove"
+				if rule != nil {
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+				}
 			}
 		default: // full (incl. unknown/empty)
 			if !hasTag && matchesCondition {
 				state.tagActions[managedTag] = "add"
+				if rule != nil {
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+				}
 			} else if hasTag && !matchesCondition {
 				state.tagActions[managedTag] = "remove"
+				if rule != nil {
+					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+				}
 			}
 		}
 	}

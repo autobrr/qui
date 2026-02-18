@@ -116,7 +116,7 @@ var whitespaceCollapser = regexp.MustCompile(`\s+`)
 // normalizeName normalizes a torrent name for CONTAINS_IN comparison:
 // lowercase + replace . _ - with space + collapse whitespace.
 func normalizeName(s string) string {
-	s = strings.ToLower(s)
+	s = normalizeLower(s)
 	s = separatorReplacer.Replace(s)
 	s = whitespaceCollapser.ReplaceAllString(s, " ")
 	return strings.TrimSpace(s)
@@ -130,8 +130,8 @@ func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[strin
 
 	for _, t := range torrents {
 		// Use lowercased + trimmed category as key (empty string is valid for uncategorized)
-		catKey := strings.ToLower(strings.TrimSpace(t.Category))
-		nameLower := strings.ToLower(t.Name)
+		catKey := normalizeLowerTrim(t.Category)
+		nameLower := normalizeLower(t.Name)
 
 		// Build CategoryIndex for O(1) EXISTS_IN lookup
 		if categoryIndex[catKey] == nil {
@@ -160,12 +160,12 @@ func existsInCategory(torrentHash, torrentName, targetCategory string, ctx *Eval
 	}
 
 	// Normalize inputs
-	catKey := strings.ToLower(strings.TrimSpace(targetCategory))
+	catKey := normalizeLowerTrim(targetCategory)
 	// Treat all-whitespace as "no match" (but empty string is valid for uncategorized)
 	if targetCategory != "" && catKey == "" {
 		return false
 	}
-	nameLower := strings.ToLower(torrentName)
+	nameLower := normalizeLower(torrentName)
 
 	// Lookup category
 	nameMap, ok := ctx.CategoryIndex[catKey]
@@ -196,7 +196,7 @@ func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *Ev
 	}
 
 	// Normalize inputs
-	catKey := strings.ToLower(strings.TrimSpace(targetCategory))
+	catKey := normalizeLowerTrim(targetCategory)
 	// Treat all-whitespace as "no match" (but empty string is valid for uncategorized)
 	if targetCategory != "" && catKey == "" {
 		return false
@@ -727,7 +727,7 @@ func extractTrackerDomain(raw string) string {
 	// URL parsing with scheme (http/https/udp/etc).
 	if u, err := url.Parse(raw); err == nil {
 		if h := u.Hostname(); h != "" {
-			return strings.ToLower(h)
+			return normalizeLower(h)
 		}
 	}
 
@@ -735,7 +735,7 @@ func extractTrackerDomain(raw string) string {
 	if !strings.Contains(raw, "://") {
 		if u, err := url.Parse("//" + raw); err == nil {
 			if h := u.Hostname(); h != "" {
-				return strings.ToLower(h)
+				return normalizeLower(h)
 			}
 		}
 	}
@@ -753,12 +753,12 @@ func extractTrackerDomain(raw string) string {
 
 	// Try to split host:port (IPv6 requires brackets for SplitHostPort).
 	if host, _, err := net.SplitHostPort(candidate); err == nil {
-		return strings.ToLower(strings.Trim(host, "[]"))
+		return normalizeLower(strings.Trim(host, "[]"))
 	}
 
 	// If it's a plain IP (including IPv6 without port), keep it.
 	if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
-		return strings.ToLower(candidate)
+		return normalizeLower(candidate)
 	}
 
 	// Strip :port for hostnames/IPv4.
@@ -766,7 +766,7 @@ func extractTrackerDomain(raw string) string {
 		candidate = candidate[:idx]
 	}
 	candidate = strings.Trim(candidate, "[]")
-	return strings.ToLower(strings.TrimSpace(candidate))
+	return normalizeLowerTrim(candidate)
 }
 
 // compareTags compares tags against the condition, treating tags as a set.
@@ -786,7 +786,7 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 	}
 
 	tags := splitTags(tagsRaw)
-	condValue := strings.ToLower(strings.TrimSpace(cond.Value))
+	condValue := normalizeLowerTrim(cond.Value)
 
 	switch cond.Operator {
 	case OperatorEqual:
