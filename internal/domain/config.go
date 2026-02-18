@@ -78,7 +78,10 @@ func (c *Config) ParseAuthDisabledAllowedCIDRs() ([]netip.Prefix, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid authDisabledAllowedCIDRs entry %q: %w", entry, err)
 			}
-			prefixes = append(prefixes, prefix.Masked())
+			if prefix != prefix.Masked() {
+				return nil, fmt.Errorf("invalid authDisabledAllowedCIDRs entry %q: host bits must be zero for CIDR entries", entry)
+			}
+			prefixes = append(prefixes, prefix)
 			continue
 		}
 
@@ -96,6 +99,9 @@ func (c *Config) ParseAuthDisabledAllowedCIDRs() ([]netip.Prefix, error) {
 func (c *Config) ValidateAuthDisabledConfig() error {
 	if !c.IsAuthDisabled() {
 		return nil
+	}
+	if c.OIDCEnabled {
+		return errors.New("OIDC cannot be enabled when authentication is disabled")
 	}
 
 	prefixes, err := c.ParseAuthDisabledAllowedCIDRs()

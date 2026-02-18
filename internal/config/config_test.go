@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -302,4 +304,84 @@ func TestBindOrReadFromFile(t *testing.T) {
 			assert.Equal(t, tt.expectedValue, cfg.Config.SessionSecret)
 		})
 	}
+}
+
+func TestApplyDynamicChangesRejectsInvalidAuthDisabledReload(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	cfg := &AppConfig{
+		Config: &domain.Config{
+			LogLevel:                   "warn",
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
+			OIDCEnabled:                true, // invalid with auth-disabled
+		},
+		version:    "test",
+		logManager: NewLogManager("test"),
+	}
+
+	var listenerCalls int32
+	cfg.RegisterReloadListener(func(_ *domain.Config) {
+		atomic.AddInt32(&listenerCalls, 1)
+	})
+
+	previousAuth := authReloadSettings{
+		authDisabled:               true,
+		iAcknowledgeThisIsABadIdea: true,
+		authDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
+		oidcEnabled:                false,
+	}
+
+	cfg.applyDynamicChanges(previousAuth)
+
+	assert.Equal(t, "test", cfg.Config.Version)
+	assert.True(t, cfg.Config.AuthDisabled)
+	assert.True(t, cfg.Config.IAcknowledgeThisIsABadIdea)
+	assert.Equal(t, []string{"127.0.0.1/32"}, cfg.Config.AuthDisabledAllowedCIDRs)
+	assert.False(t, cfg.Config.OIDCEnabled)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, zerolog.WarnLevel, zerolog.GlobalLevel())
+	require.NoError(t, cfg.Config.ValidateAuthDisabledConfig())
+}
+
+func TestApplyDynamicChangesNotifiesOnValidAuthDisabledReload(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	cfg := &AppConfig{
+		Config: &domain.Config{
+			LogLevel:                   "error",
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   []string{"10.0.0.0/8"},
+		},
+		version:    "test",
+		logManager: NewLogManager("test"),
+	}
+
+	var listenerCalls int32
+	cfg.RegisterReloadListener(func(conf *domain.Config) {
+		atomic.AddInt32(&listenerCalls, 1)
+		assert.True(t, conf.IsAuthDisabled())
+		assert.Equal(t, []string{"10.0.0.0/8"}, conf.AuthDisabledAllowedCIDRs)
+	})
+
+	previousAuth := authReloadSettings{
+		authDisabled:               false,
+		iAcknowledgeThisIsABadIdea: false,
+		authDisabledAllowedCIDRs:   nil,
+		oidcEnabled:                false,
+	}
+
+	cfg.applyDynamicChanges(previousAuth)
+
+	assert.Equal(t, "test", cfg.Config.Version)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
 }

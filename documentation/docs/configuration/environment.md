@@ -88,9 +88,13 @@ Built-in authentication is disabled only when:
 - `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true`
 - `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is set to one or more allowed IPs/CIDR ranges
 
-If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start.
+If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start and rejects invalid live reloads.
 
-`QUI__AUTH_DISABLED_ALLOWED_CIDRS` accepts comma-separated entries. Each entry may be a CIDR (`192.168.1.0/24`) or a single IP (`10.0.0.5`, treated as `/32` or `/128`).
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` accepts comma-separated entries. Each entry may be a canonical CIDR (`192.168.1.0/24`) or a single IP (`10.0.0.5`, treated as `/32` or `/128`).
+
+Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
+
+`QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
 
 Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
 

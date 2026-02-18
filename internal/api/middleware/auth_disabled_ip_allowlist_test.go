@@ -18,63 +18,66 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	t.Run("passes when auth-disabled mode is off", func(t *testing.T) {
-		cfg := &domain.Config{}
-		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
+	tests := []struct {
+		name       string
+		cfg        *domain.Config
+		remoteAddr string
+		wantStatus int
+	}{
+		{
+			name:       "passes through when config is nil",
+			cfg:        nil,
+			remoteAddr: "203.0.113.10:12345",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "passes when auth-disabled mode is off",
+			cfg:        &domain.Config{},
+			remoteAddr: "203.0.113.10:12345",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "allows request from configured CIDR",
+			cfg: &domain.Config{
+				AuthDisabled:               true,
+				IAcknowledgeThisIsABadIdea: true,
+				AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
+			},
+			remoteAddr: "127.0.0.1:54321",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "blocks request outside CIDR",
+			cfg: &domain.Config{
+				AuthDisabled:               true,
+				IAcknowledgeThisIsABadIdea: true,
+				AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
+			},
+			remoteAddr: "203.0.113.10:54321",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name: "blocks when configured list is invalid",
+			cfg: &domain.Config{
+				AuthDisabled:               true,
+				IAcknowledgeThisIsABadIdea: true,
+				AuthDisabledAllowedCIDRs:   []string{"invalid-cidr"},
+			},
+			remoteAddr: "127.0.0.1:54321",
+			wantStatus: http.StatusForbidden,
+		},
+	}
 
-		req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
-		req.RemoteAddr = "203.0.113.10:12345"
-		resp := httptest.NewRecorder()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := RequireAuthDisabledIPAllowlist(tc.cfg)(inner)
 
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusOK, resp.Code)
-	})
+			req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
+			req.RemoteAddr = tc.remoteAddr
+			resp := httptest.NewRecorder()
 
-	t.Run("allows request from configured CIDR", func(t *testing.T) {
-		cfg := &domain.Config{
-			AuthDisabled:               true,
-			IAcknowledgeThisIsABadIdea: true,
-			AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
-		}
-		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
-		req.RemoteAddr = "127.0.0.1:54321"
-		resp := httptest.NewRecorder()
-
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusOK, resp.Code)
-	})
-
-	t.Run("blocks request outside CIDR", func(t *testing.T) {
-		cfg := &domain.Config{
-			AuthDisabled:               true,
-			IAcknowledgeThisIsABadIdea: true,
-			AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
-		}
-		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
-		req.RemoteAddr = "203.0.113.10:54321"
-		resp := httptest.NewRecorder()
-
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusForbidden, resp.Code)
-	})
-
-	t.Run("blocks when configured list is invalid", func(t *testing.T) {
-		cfg := &domain.Config{
-			AuthDisabled:               true,
-			IAcknowledgeThisIsABadIdea: true,
-			AuthDisabledAllowedCIDRs:   []string{"invalid-cidr"},
-		}
-		handler := RequireAuthDisabledIPAllowlist(cfg)(inner)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
-		req.RemoteAddr = "127.0.0.1:54321"
-		resp := httptest.NewRecorder()
-
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusForbidden, resp.Code)
-	})
+			handler.ServeHTTP(resp, req)
+			assert.Equal(t, tc.wantStatus, resp.Code)
+		})
+	}
 }

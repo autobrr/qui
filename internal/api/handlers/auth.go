@@ -311,14 +311,18 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func syntheticAdminResponse() map[string]any {
+	return map[string]any{
+		"username":    "admin",
+		"auth_method": "none",
+	}
+}
+
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	// When auth is disabled, return a synthetic user
 	if h.config != nil && h.config.IsAuthDisabled() {
-		RespondJSON(w, http.StatusOK, map[string]any{
-			"username":    "admin",
-			"auth_method": "none",
-		})
+		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
 		return
 	}
 
@@ -359,10 +363,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 // Validate checks if the user has a valid session (used for OIDC callback)
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && h.config.IsAuthDisabled() {
-		RespondJSON(w, http.StatusOK, map[string]any{
-			"username":    "admin",
-			"auth_method": "none",
-		})
+		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
 		return
 	}
 

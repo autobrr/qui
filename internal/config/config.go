@@ -226,6 +226,13 @@ func (c *AppConfig) watchConfig() {
 		c.configMu.Lock()
 		defer c.configMu.Unlock()
 
+		previousAuthSettings := authReloadSettings{
+			authDisabled:               c.Config.AuthDisabled,
+			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+			oidcEnabled:                c.Config.OIDCEnabled,
+		}
+
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
 			log.Error().Err(err).Msg("Failed to reload configuration")
@@ -234,14 +241,38 @@ func (c *AppConfig) watchConfig() {
 		c.hydrateConfigFromViper()
 
 		// Apply dynamic changes
-		c.applyDynamicChanges()
+		c.applyDynamicChanges(previousAuthSettings)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
+type authReloadSettings struct {
+	authDisabled               bool
+	iAcknowledgeThisIsABadIdea bool
+	authDisabledAllowedCIDRs   []string
+	oidcEnabled                bool
+}
+
+func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings) {
 	c.Config.Version = c.version
 	if err := c.ApplyLogConfig(); err != nil {
 		log.Error().Err(err).Msg("Failed to apply log configuration")
+	}
+
+	if err := c.Config.ValidateAuthDisabledConfig(); err != nil {
+		log.Error().Err(err).Msg("auth-disabled config is invalid after reload; keeping previous valid auth-disabled settings")
+		c.Config.AuthDisabled = previousAuthSettings.authDisabled
+		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
+		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
+		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+
+		return
+	}
+
+	switch {
+	case c.Config.IsAuthDisabled():
+		log.Warn().Strs("authDisabledAllowedCIDRs", c.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
+	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
 	c.notifyListeners()

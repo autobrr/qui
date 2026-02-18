@@ -77,7 +77,7 @@ func TestValidateReturnsSyntheticUserWhenAuthDisabled(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/validate", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/validate", nil)
 	resp := httptest.NewRecorder()
 
 	handler.Validate(resp, req)
