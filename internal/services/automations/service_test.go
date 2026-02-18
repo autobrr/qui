@@ -279,6 +279,48 @@ func TestDetectCrossSeeds(t *testing.T) {
 	}
 }
 
+func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/shared", SavePath: "/data", Ratio: 3.0},
+		{Hash: "b", ContentPath: "/data/shared", SavePath: "/data", Ratio: 1.0},
+	}
+	torrentByHash := map[string]qbt.Torrent{
+		"a": torrents[0],
+		"b": torrents[1],
+	}
+	crossSeedIndex := buildCrossSeedIndex(torrents)
+
+	t.Run("disabled block flag returns false", func(t *testing.T) {
+		state := &torrentDesiredState{moveBlockIfCrossSeed: false}
+		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
+	})
+
+	t.Run("nil condition does not block", func(t *testing.T) {
+		state := &torrentDesiredState{
+			moveBlockIfCrossSeed: true,
+			moveCondition:        nil,
+		}
+		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
+	})
+
+	t.Run("condition mismatch in cross-seed blocks fallback", func(t *testing.T) {
+		state := &torrentDesiredState{
+			moveBlockIfCrossSeed: true,
+			moveCondition: &models.RuleCondition{
+				Field:    models.FieldRatio,
+				Operator: models.OperatorGreaterThan,
+				Value:    "2.0",
+			},
+		}
+		require.True(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
+	})
+
+	t.Run("missing torrent is blocked conservatively", func(t *testing.T) {
+		state := &torrentDesiredState{moveBlockIfCrossSeed: true}
+		require.True(t, shouldBlockGroupedMoveTriggerFallback("missing", state, torrentByHash, crossSeedIndex, nil))
+	})
+}
+
 // -----------------------------------------------------------------------------
 // normalizePath tests
 // -----------------------------------------------------------------------------

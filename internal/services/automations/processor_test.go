@@ -174,6 +174,7 @@ func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
 		Hash:     "abc123",
 		Name:     "Test Torrent",
 		SavePath: "/data/downloads",
+		Ratio:    2.0,
 	}
 
 	rule := &models.Automation{
@@ -182,10 +183,16 @@ func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
 		Name:    "Move Group Rule",
 		Conditions: &models.ActionConditions{
 			Move: &models.MoveAction{
-				Enabled: true,
-				Path:    "/data/archive",
-				GroupID: "release_item",
-				Atomic:  "all",
+				Enabled:          true,
+				Path:             "/data/archive",
+				GroupID:          "release_item",
+				Atomic:           "all",
+				BlockIfCrossSeed: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "1.0",
+				},
 			},
 		},
 	}
@@ -203,6 +210,9 @@ func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
 	require.Equal(t, "/data/archive", state.movePath)
 	require.Equal(t, "release_item", state.moveGroupID)
 	require.Equal(t, "all", state.moveAtomic)
+	require.True(t, state.moveBlockIfCrossSeed)
+	require.NotNil(t, state.moveCondition)
+	require.Equal(t, models.FieldRatio, state.moveCondition.Field)
 	require.Equal(t, 42, state.moveRuleID)
 	require.Equal(t, "Move Group Rule", state.moveRuleName)
 }

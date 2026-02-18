@@ -66,13 +66,15 @@ type torrentDesiredState struct {
 	deleteReason           string
 
 	// Move (first rule to trigger wins)
-	shouldMove   bool
-	movePath     string
-	moveGroupID  string // Optional group ID to expand moves
-	moveAtomic   string
-	moveRuleID   int
-	moveRuleName string
-	moveRule     ruleRef
+	shouldMove           bool
+	movePath             string
+	moveGroupID          string // Optional group ID to expand moves
+	moveAtomic           string
+	moveBlockIfCrossSeed bool
+	moveCondition        *models.RuleCondition
+	moveRuleID           int
+	moveRuleName         string
+	moveRule             ruleRef
 
 	// External program (last rule wins)
 	externalProgramID *int
@@ -457,6 +459,8 @@ func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torr
 		state.movePath = resolvedPath
 		state.moveGroupID = strings.TrimSpace(action.GroupID)
 		state.moveAtomic = strings.TrimSpace(action.Atomic)
+		state.moveBlockIfCrossSeed = action.BlockIfCrossSeed
+		state.moveCondition = action.Condition
 		if rule != nil {
 			state.moveRuleID = rule.ID
 			state.moveRuleName = rule.Name

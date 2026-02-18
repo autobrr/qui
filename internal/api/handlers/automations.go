@@ -283,12 +283,12 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if payload.Conditions.Delete.Condition == nil {
 			return http.StatusBadRequest, "Delete action requires at least one condition", errors.New("delete condition required")
 		}
-	hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
-		(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
-		(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
-		(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
-		(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
-		(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
+		hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
+			(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
+			(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
+			(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
+			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
+			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
@@ -331,6 +331,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	// would match all eligible torrents indefinitely (foot-gun).
 	if deleteUsesKeepFilesWithFreeSpace(payload.Conditions) {
 		return http.StatusBadRequest, "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed.", errors.New("invalid delete mode for free space condition")
+	}
+
+	if deleteUsesGroupIDOutsideKeepFiles(payload.Conditions) {
+		return http.StatusBadRequest, "delete.groupId is only supported when delete mode is 'Keep files'", errors.New("invalid delete mode for delete.groupId")
 	}
 
 	// Validate includeHardlinks option
@@ -422,6 +426,19 @@ func deleteUsesKeepFilesWithFreeSpace(conditions *models.ActionConditions) bool 
 	// Check if mode is keep-files (or empty, which defaults to keep-files)
 	mode := conditions.Delete.Mode
 	return mode == "" || mode == models.DeleteModeKeepFiles
+}
+
+func deleteUsesGroupIDOutsideKeepFiles(conditions *models.ActionConditions) bool {
+	if conditions == nil || conditions.Delete == nil || !conditions.Delete.Enabled {
+		return false
+	}
+
+	if strings.TrimSpace(conditions.Delete.GroupID) == "" {
+		return false
+	}
+
+	mode := strings.TrimSpace(conditions.Delete.Mode)
+	return mode != "" && mode != models.DeleteModeKeepFiles
 }
 
 const (

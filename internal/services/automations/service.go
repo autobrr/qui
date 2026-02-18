@@ -2982,6 +2982,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Execute moves - sort paths for deterministic processing order
+	crossSeedIndex := buildCrossSeedIndex(torrents)
 	sortedPaths := make([]string, 0, len(moveBatches))
 	for path := range moveBatches {
 		sortedPaths = append(sortedPaths, path)
@@ -3027,6 +3028,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				// GroupId set but rule can't be resolved: treat as "move only the trigger" (or skip if atomic).
 				if rule == nil {
 					if atomicAll {
+						continue
+					}
+					if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, evalCtx) {
 						continue
 					}
 					expandedHashes = append(expandedHashes, hash)
@@ -3151,6 +3155,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 
 				// GroupId set but expansion was disabled (e.g. ambiguous skip/overlap failure): move only trigger.
+				if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, evalCtx) {
+					continue
+				}
 				expandedHashes = append(expandedHashes, hash)
 				movedHashes[hash] = struct{}{}
 				continue
@@ -3843,6 +3850,24 @@ func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
 	return false
 }
 
+func shouldBlockGroupedMoveTriggerFallback(hash string, state *torrentDesiredState, torrentByHash map[string]qbt.Torrent, crossSeedIndex map[crossSeedKey][]qbt.Torrent, evalCtx *EvalContext) bool {
+	if state == nil || !state.moveBlockIfCrossSeed {
+		return false
+	}
+
+	torrent, ok := torrentByHash[hash]
+	if !ok {
+		return true
+	}
+
+	action := &models.MoveAction{
+		BlockIfCrossSeed: true,
+		Condition:        state.moveCondition,
+	}
+
+	return shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx)
+}
+
 // isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
 // files unique to this torrent. This happens when ContentPath == SavePath, meaning
 // the torrent uses the SavePath directly (common for shared download directories).
@@ -4530,6 +4555,7 @@ func (s *Service) recordDryRunActivities(
 
 	// Moves (include cross-seed expansion)
 	if len(moveBatches) > 0 {
+		crossSeedIndex := buildCrossSeedIndex(torrents)
 		sortedPaths := make([]string, 0, len(moveBatches))
 		for path := range moveBatches {
 			sortedPaths = append(sortedPaths, path)
@@ -4568,6 +4594,9 @@ func (s *Service) recordDryRunActivities(
 					}
 					if rule == nil {
 						if atomicAll {
+							continue
+						}
+						if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, previewEvalCtx) {
 							continue
 						}
 						expandedHashes = append(expandedHashes, hash)
@@ -4690,6 +4719,9 @@ func (s *Service) recordDryRunActivities(
 						}
 					}
 
+					if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, previewEvalCtx) {
+						continue
+					}
 					expandedHashes = append(expandedHashes, hash)
 					movedHashes[hash] = struct{}{}
 					continue

@@ -173,3 +173,69 @@ func TestDeleteUsesKeepFilesWithFreeSpace(t *testing.T) {
 		require.True(t, result)
 	})
 }
+
+func TestDeleteUsesGroupIDOutsideKeepFiles(t *testing.T) {
+	t.Run("returns false for nil conditions", func(t *testing.T) {
+		require.False(t, deleteUsesGroupIDOutsideKeepFiles(nil))
+	})
+
+	t.Run("returns false when delete is disabled", func(t *testing.T) {
+		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: false,
+				GroupID: "release_item",
+				Mode:    models.DeleteModeWithFiles,
+			},
+		}))
+	})
+
+	t.Run("returns false when groupID is empty", func(t *testing.T) {
+		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				GroupID: "  ",
+				Mode:    models.DeleteModeWithFiles,
+			},
+		}))
+	})
+
+	t.Run("returns false when mode defaults to keep-files", func(t *testing.T) {
+		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				GroupID: "release_item",
+				Mode:    "",
+			},
+		}))
+	})
+
+	t.Run("returns false for explicit keep-files mode", func(t *testing.T) {
+		require.False(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				GroupID: "release_item",
+				Mode:    models.DeleteModeKeepFiles,
+			},
+		}))
+	})
+
+	t.Run("returns true for delete with files mode", func(t *testing.T) {
+		require.True(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				GroupID: "release_item",
+				Mode:    models.DeleteModeWithFiles,
+			},
+		}))
+	})
+
+	t.Run("returns true for include-cross-seeds mode", func(t *testing.T) {
+		require.True(t, deleteUsesGroupIDOutsideKeepFiles(&models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				GroupID: "release_item",
+				Mode:    models.DeleteModeWithFilesIncludeCrossSeeds,
+			},
+		}))
+	})
+}
