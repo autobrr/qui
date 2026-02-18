@@ -249,6 +249,29 @@ func TestDownloadTorrentContentFile_ReturnsNotFoundWhenFileMissingOnDisk(t *test
 	require.Contains(t, rec.Body.String(), "File not found on disk")
 }
 
+func TestDownloadTorrentContentFile_ReturnsServerErrorWhenPropertiesNil(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	files := qbt.TorrentFiles{{Index: 4, Name: "movie.txt"}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: nil,
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "4")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Contains(t, rec.Body.String(), "Failed to get torrent properties")
+}
+
 func TestDownloadTorrentContentFile_SkipsDirectoryCandidateAndStreamsFile(t *testing.T) {
 	t.Parallel()
 
@@ -329,12 +352,12 @@ func TestFilePathCandidates(t *testing.T) {
 			name:         "content_path_single_file_fallback",
 			savePath:     "/downloads/tv",
 			contentPath:  "/downloads/tv/Show.S01E01/Show.S01E01.mkv",
-			relativePath: "Show.S01E01.mkv",
+			relativePath: "Show.S01E01.v2.mkv",
 			singleFile:   true,
 			check: func(t *testing.T, candidates []string) {
 				savePath := "/downloads/tv"
 				contentPath := "/downloads/tv/Show.S01E01/Show.S01E01.mkv"
-				relativePath := "Show.S01E01.mkv"
+				relativePath := "Show.S01E01.v2.mkv"
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
 				require.Contains(t, candidates, filepath.Clean(contentPath))
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(filepath.Dir(contentPath), relativePath)))

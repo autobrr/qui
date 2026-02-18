@@ -2253,6 +2253,11 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
 		return
 	}
+	if props == nil {
+		log.Error().Int("instanceID", instanceID).Str("hash", hash).Msg("Torrent properties are nil")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
+		return
+	}
 
 	contentPath := ""
 	if torrents, err := resolver.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
@@ -2271,7 +2276,7 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	var file *os.File
 	var info os.FileInfo
 	for _, candidate := range candidates {
-		// #nosec G703 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
+		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
 		f, err := os.Open(candidate)
 		if err != nil {
 			continue
