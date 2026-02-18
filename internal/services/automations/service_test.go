@@ -344,16 +344,20 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 	}
 
 	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentByHash, ruleByHash)
+	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentByHash, ruleByHash)
 	require.Len(t, got, 2)
+	require.Len(t, gotShuffled, 2)
 
 	keyA, ok := makeCrossSeedKey(torrentByHash["h1"])
 	require.True(t, ok)
 	keyB, ok := makeCrossSeedKey(torrentByHash["h2"])
 	require.True(t, ok)
 
-	// First trigger for a key wins to keep attribution deterministic.
+	// Selection must be stable regardless of incoming hash order.
 	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, got[keyA])
 	require.Equal(t, ruleRef{id: 20, name: "Rule B"}, got[keyB])
+	require.Equal(t, got[keyA], gotShuffled[keyA])
+	require.Equal(t, got[keyB], gotShuffled[keyB])
 }
 
 func TestInheritRuleRefForCrossSeed(t *testing.T) {

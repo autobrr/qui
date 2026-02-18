@@ -1745,7 +1745,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeHashes := make([]string, 0)
 	uploadRuleByHash := make(map[string]ruleRef)
 	downloadRuleByHash := make(map[string]ruleRef)
-	shareRuleByHash := make(map[string]ruleRef)
+	shareRatioRuleByHash := make(map[string]ruleRef)
+	shareSeedingRuleByHash := make(map[string]ruleRef)
 	pauseRuleByHash := make(map[string]ruleRef)
 	resumeRuleByHash := make(map[string]ruleRef)
 	categoryRuleByHash := make(map[string]ruleRef)
@@ -2000,12 +2001,18 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			currentRatio := normalizeRatio(torrent.RatioLimit)
 
 			// Check if update is needed (comparing normalized values)
-			needsUpdate := (state.ratioLimit != nil && currentRatio != ratio) ||
-				(state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes)
+			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
+			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
+			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate
 			if needsUpdate {
 				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes}
 				shareBatches[key] = append(shareBatches[key], hash)
-				shareRuleByHash[hash] = state.shareRule
+				if ratioNeedsUpdate {
+					shareRatioRuleByHash[hash] = state.ratioRule
+				}
+				if seedingNeedsUpdate {
+					shareSeedingRuleByHash[hash] = state.seedingRule
+				}
 			}
 		}
 
@@ -2181,7 +2188,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			summary.recordRuleCounts(
 				models.ActivityActionLimitFailed,
 				models.ActivityOutcomeFailed,
-				buildRuleCountsFromHashes(batch, shareRuleByHash),
+				buildRuleCountsFromHashes(batch, shareRatioRuleByHash),
+			)
+			summary.recordRuleCounts(
+				models.ActivityActionLimitFailed,
+				models.ActivityOutcomeFailed,
+				buildRuleCountsFromHashes(batch, shareSeedingRuleByHash),
 			)
 			if s.activityStore != nil {
 				if actErr := s.activityStore.Create(ctx, activity); actErr != nil {
@@ -2212,7 +2224,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		summary.recordRuleCounts(
 			models.ActivityActionShareLimitsChanged,
 			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroupsByShareKey(shareLimitSuccess), shareRuleByHash),
+			buildRuleCountsFromHashes(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash),
+		)
+		summary.recordRuleCounts(
+			models.ActivityActionShareLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroupsByShareKey(shareLimitSuccess), shareSeedingRuleByHash),
 		)
 		if s.activityStore != nil {
 			activityID, err := s.activityStore.CreateWithID(ctx, activity)
@@ -3196,8 +3213,11 @@ func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt
 	if len(triggerHashes) == 0 || len(torrentByHash) == 0 || len(ruleByHash) == 0 {
 		return nil
 	}
+	sortedHashes := slices.Clone(triggerHashes)
+	sort.Strings(sortedHashes)
+
 	byKey := make(map[crossSeedKey]ruleRef)
-	for _, hash := range triggerHashes {
+	for _, hash := range sortedHashes {
 		ref, hasRef := ruleByHash[hash]
 		if !hasRef {
 			continue

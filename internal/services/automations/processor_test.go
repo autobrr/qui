@@ -1309,6 +1309,63 @@ func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndepende
 	require.Equal(t, "Upload rule", state.uploadRule.name)
 }
 
+func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependently(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:             "a",
+			Name:             "test",
+			RatioLimit:       -2,
+			SeedingTimeLimit: -2,
+		},
+	}
+
+	ratioLimit := 1.5
+	seedingMinutes := int64(120)
+	rules := []*models.Automation{
+		{
+			ID:             1,
+			Enabled:        true,
+			Name:           "Ratio rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				ShareLimits: &models.ShareLimitsAction{
+					Enabled:    true,
+					RatioLimit: &ratioLimit,
+				},
+			},
+		},
+		{
+			ID:             2,
+			Enabled:        true,
+			Name:           "Seeding rule",
+			TrackerPattern: "*",
+			Conditions: &models.ActionConditions{
+				SchemaVersion: "1",
+				ShareLimits: &models.ShareLimitsAction{
+					Enabled:            true,
+					SeedingTimeMinutes: &seedingMinutes,
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, rules, nil, sm, nil, nil)
+
+	state, ok := states["a"]
+	require.True(t, ok)
+	require.NotNil(t, state.ratioLimit)
+	require.NotNil(t, state.seedingMinutes)
+	require.InDelta(t, ratioLimit, *state.ratioLimit, 0.0001)
+	require.Equal(t, seedingMinutes, *state.seedingMinutes)
+	require.Equal(t, 1, state.ratioRule.id)
+	require.Equal(t, "Ratio rule", state.ratioRule.name)
+	require.Equal(t, 2, state.seedingRule.id)
+	require.Equal(t, "Seeding rule", state.seedingRule.name)
+}
+
 func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
