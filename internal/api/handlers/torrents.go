@@ -248,6 +248,11 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if len(req.ExcludeHashes) > 512 {
+		RespondError(w, http.StatusBadRequest, "Too many exclude hashes provided (maximum 512)")
+		return
+	}
+
 	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" {
 		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, or full_path")
 		return
