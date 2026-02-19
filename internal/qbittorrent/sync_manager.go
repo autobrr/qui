@@ -1563,10 +1563,6 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	paginatedTorrents := allTorrents[start:end]
 	hasMore := end < len(allTorrents)
 
-	if aggregatedCounts != nil {
-		aggregatedCounts.Total = totalCount
-	}
-
 	var categories map[string]qbt.Category
 	if len(aggregatedCategories) > 0 {
 		categories = aggregatedCategories

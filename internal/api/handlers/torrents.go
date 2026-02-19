@@ -890,6 +890,10 @@ func buildExcludeTargetSet(excludeTargets []BulkActionTarget) map[string]struct{
 	return result
 }
 
+func shouldResolveCrossInstanceHashes(instanceID int, req BulkActionRequest) bool {
+	return instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0
+}
+
 func appendTargetsFromCrossInstanceTorrents(
 	targetsByInstance map[int][]string,
 	seen map[int]map[string]struct{},
@@ -1099,7 +1103,9 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(req.Hashes) > 0 {
-			if instanceID == allInstancesID {
+			// Explicit targets are authoritative in unified scope; only resolve hashes when
+			// targets are not provided (backward-compatible payloads).
+			if shouldResolveCrossInstanceHashes(instanceID, req) {
 				requestedHashes := buildExcludeHashSet(req.Hashes)
 				response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
 					r.Context(),
@@ -1126,7 +1132,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 					}
 					addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, torrent.Hash)
 				}
-			} else {
+			} else if instanceID != allInstancesID {
 				for _, hash := range req.Hashes {
 					addBulkTarget(targetsByInstance, seenTargets, instanceID, hash)
 				}

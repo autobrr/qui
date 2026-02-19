@@ -538,20 +538,13 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
               )}
             </ResizablePanelGroup>
             {/* Global status bar - at bottom of desktop layout */}
-            {!isAllInstances && (
-              <GlobalStatusBar
-                instanceId={instanceId}
-                serverState={serverState}
-                instance={instance}
-                listenPort={listenPort}
-                selectionInfo={selectionInfo}
-              />
-            )}
-            {isAllInstances && selectionInfo && (
-              <div className="px-2 py-1.5 border-t text-xs text-muted-foreground">
-                Unified view spans all active instances.
-              </div>
-            )}
+            <GlobalStatusBar
+              instanceId={instanceId}
+              serverState={serverState}
+              instance={instance}
+              listenPort={listenPort}
+              selectionInfo={selectionInfo}
+            />
           </div>
         )}
 

@@ -36,6 +36,7 @@ import {
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { api } from "@/lib/api"
 import { useIncognitoMode } from "@/lib/incognito"
+import { isAllInstancesScope } from "@/lib/instances"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Instance, ServerState } from "@/types"
@@ -57,6 +58,8 @@ export interface SelectionInfo {
   emptyStateMessage: string
   safeLoadedRows: number
   rowsLength: number
+  totalDownloadSpeed?: number
+  totalUploadSpeed?: number
 }
 
 interface ExternalIPAddressProps {
@@ -115,6 +118,11 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
+  const isUnifiedScope = isAllInstancesScope(instanceId)
+  const combinedDownloadSpeed = selectionInfo?.totalDownloadSpeed ?? 0
+  const combinedUploadSpeed = selectionInfo?.totalUploadSpeed ?? 0
+  const downloadSpeed = isUnifiedScope ? combinedDownloadSpeed : (serverState?.dl_info_speed ?? 0)
+  const uploadSpeed = isUnifiedScope ? combinedUploadSpeed : (serverState?.up_info_speed ?? 0)
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -247,9 +255,9 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
         {/* Speed & Controls */}
         <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
-          <span className="font-medium">{formatSpeedWithUnit(serverState?.dl_info_speed ?? 0, speedUnit)}</span>
+          <span className="font-medium">{formatSpeedWithUnit(downloadSpeed, speedUnit)}</span>
           <ChevronUp className="h-3 w-3 text-muted-foreground" />
-          <span className="font-medium">{formatSpeedWithUnit(serverState?.up_info_speed ?? 0, speedUnit)}</span>
+          <span className="font-medium">{formatSpeedWithUnit(uploadSpeed, speedUnit)}</span>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -266,30 +274,32 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
             </TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void handleToggleAltSpeedLimits()}
-                disabled={isTogglingAltSpeed}
-                aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
-                aria-label={altSpeedAriaLabel}
-                className={cn(
-                  "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
-                  "disabled:opacity-60 disabled:cursor-not-allowed"
-                )}
-              >
-                {isTogglingAltSpeed ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{altSpeedTooltip}</TooltipContent>
-          </Tooltip>
-          {instance?.reannounceSettings?.enabled && (
+          {!isUnifiedScope && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void handleToggleAltSpeedLimits()}
+                  disabled={isTogglingAltSpeed}
+                  aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                  aria-label={altSpeedAriaLabel}
+                  className={cn(
+                    "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
+                    "disabled:opacity-60 disabled:cursor-not-allowed"
+                  )}
+                >
+                  {isTogglingAltSpeed ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{altSpeedTooltip}</TooltipContent>
+            </Tooltip>
+          )}
+          {!isUnifiedScope && instance?.reannounceSettings?.enabled && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -356,7 +366,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
         </div>
 
         {/* Free Space */}
-        {serverState?.free_space_on_disk !== undefined && (
+        {!isUnifiedScope && serverState?.free_space_on_disk !== undefined && (
           <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -371,36 +381,38 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
         )}
 
         {/* Network Status */}
-        <div className="flex items-center gap-2">
-          <ExternalIPAddress
-            address={serverState?.last_external_address_v4}
-            incognitoMode={incognitoMode}
-            label="IPv4"
-          />
-          <ExternalIPAddress
-            address={serverState?.last_external_address_v6}
-            incognitoMode={incognitoMode}
-            label="IPv6"
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                tabIndex={0}
-                aria-label={connectionStatusAriaLabel}
-                className={cn(
-                  "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
-                  "text-muted-foreground",
-                  connectionStatusIconClass
-                )}
-              >
-                <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true" />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[220px]">
-              <p>{connectionStatusTooltip}</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        {!isUnifiedScope && (
+          <div className="flex items-center gap-2">
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v4}
+              incognitoMode={incognitoMode}
+              label="IPv4"
+            />
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v6}
+              incognitoMode={incognitoMode}
+              label="IPv6"
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  aria-label={connectionStatusAriaLabel}
+                  className={cn(
+                    "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
+                    "text-muted-foreground",
+                    connectionStatusIconClass
+                  )}
+                >
+                  <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px]">
+                <p>{connectionStatusTooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </div>
     </div>
   )

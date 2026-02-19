@@ -1766,6 +1766,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       emptyStateMessage,
       safeLoadedRows,
       rowsLength: rows.length,
+      totalDownloadSpeed: stats?.totalDownloadSpeed ?? 0,
+      totalUploadSpeed: stats?.totalUploadSpeed ?? 0,
     })
   }, [
     onSelectionInfoUpdate,
@@ -1783,6 +1785,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     emptyStateMessage,
     safeLoadedRows,
     rows.length,
+    stats?.totalDownloadSpeed,
+    stats?.totalUploadSpeed,
   ])
 
   // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation

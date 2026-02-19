@@ -390,7 +390,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 disabled={isPending}
               >
                 <FastForward className="mr-2 h-4 w-4" />
-                {allForceStarted? `Disable Force Start ${count > 1 ? `(${count})` : ""}`: `Force Start ${count > 1 ? `(${count})` : ""}`}
+                {allForceStarted ? `Disable Force Start ${count > 1 ? `(${count})` : ""}` : `Force Start ${count > 1 ? `(${count})` : ""}`}
               </ContextMenuItem>
             )}
             <ContextMenuItem
@@ -437,7 +437,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 disabled={isPending}
               >
                 <Blocks className="mr-2 h-4 w-4" />
-                {allSeqDlEnabled? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`: `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
+                {allSeqDlEnabled ? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}` : `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
               </ContextMenuItem>
             )}
             <ContextMenuSeparator />

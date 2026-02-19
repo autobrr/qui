@@ -2173,6 +2173,7 @@ const FilterSidebarComponent = ({
                     <CategoryTree
                       categories={categoriesForTree}
                       counts={torrentCounts ?? {}}
+                      readOnly={isReadOnly}
                       useSubcategories={allowSubcategories}
                       collapsedCategories={collapsedCategories}
                       onToggleCollapse={handleToggleCollapse}
