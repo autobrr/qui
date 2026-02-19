@@ -128,6 +128,7 @@ const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
   resumed: "Resume",
   moved: "Move",
   external_program: "External program",
+  dry_run_no_match: "No matches",
 }
 
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
@@ -149,6 +150,8 @@ function getDryRunImpactCount(event: AutomationActivity): number {
       return sumDetailsRecord(details?.limits)
     case "moved":
       return sumDetailsRecord(details?.paths)
+    case "dry_run_no_match":
+      return 0
     default:
       return typeof details?.count === "number" ? details.count : 0
   }
@@ -178,6 +181,8 @@ function formatDryRunEventSummary(event: AutomationActivity): string {
       const moved = sumDetailsRecord(details?.paths)
       return `${moved} torrent${moved === 1 ? "" : "s"} would be moved`
     }
+    case "dry_run_no_match":
+      return "No torrents matched this dry-run"
     case "paused":
     case "resumed":
     case "external_program":
@@ -267,6 +272,8 @@ const BUILTIN_GROUPS = [
     description: "Group torrents that share the same physical files via hardlinks (requires local filesystem access)",
   },
 ] as const
+
+const AMBIGUOUS_POLICY_NONE_VALUE = "__none__"
 
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
@@ -1259,27 +1266,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     loadMorePreview.mutate()
   }
 
-  const loadDryRunActivities = useCallback(async (startedAtISO: string) => {
-    const startedAtMs = Math.max(0, Date.parse(startedAtISO) - 1000)
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const activities = await api.getAutomationActivity(instanceId, 200)
-      const matching = activities
-        .filter((activity) => {
-          if (activity.outcome !== "dry-run") return false
-          const createdAtMs = Date.parse(activity.createdAt)
-          return Number.isFinite(createdAtMs) && createdAtMs >= startedAtMs
-        })
-        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-      if (matching.length > 0 || attempt === 2) {
-        return matching
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250))
-    }
-    return []
-  }, [instanceId])
-
   const dryRunNowMutation = useMutation({
-    mutationFn: async ({ input }: { input: FormState; startedAtISO: string }) => {
+    mutationFn: async (input: FormState) => {
       const payload = buildPayload(input)
       return api.dryRunAutomation(instanceId, {
         ...payload,
@@ -1287,17 +1275,36 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         dryRun: true,
       })
     },
-    onSuccess: async (_, { startedAtISO }) => {
+    onSuccess: async (result) => {
       toast.success("Dry-run completed")
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
-      try {
-        const events = await loadDryRunActivities(startedAtISO)
+
+      if (result.activities && result.activities.length > 0) {
+        const events = [...result.activities].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
         setLatestDryRunEvents(events)
-        setLatestDryRunError(events.length === 0 ? "Dry-run completed, but no summary rows were found yet." : null)
-      } catch (error) {
-        setLatestDryRunEvents([])
-        setLatestDryRunError(error instanceof Error ? error.message : "Failed to load dry-run summary")
+        setLatestDryRunError(null)
+        return
       }
+
+      if (result.activityIds && result.activityIds.length > 0) {
+        try {
+          const activities = await api.getAutomationActivity(instanceId, 1000)
+          const activityIDSet = new Set(result.activityIds)
+          const events = activities
+            .filter((activity) => activityIDSet.has(activity.id))
+            .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+          setLatestDryRunEvents(events)
+          setLatestDryRunError(events.length === 0 ? "Dry-run completed, but activity details are not available yet." : null)
+          return
+        } catch (error) {
+          setLatestDryRunEvents([])
+          setLatestDryRunError(error instanceof Error ? error.message : "Failed to load dry-run summary")
+          return
+        }
+      }
+
+      setLatestDryRunEvents([])
+      setLatestDryRunError("Dry-run completed, but no activity IDs were returned.")
     },
     onError: (error) => {
       setLatestDryRunEvents([])
@@ -1422,12 +1429,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    const startedAtISO = new Date().toISOString()
-    setLatestDryRunStartedAt(startedAtISO)
+    setLatestDryRunStartedAt(new Date().toISOString())
     setLatestDryRunEvents([])
     setLatestDryRunError(null)
     setActivityRunDialog(null)
-    dryRunNowMutation.mutate({ input: dryRunInput, startedAtISO })
+    dryRunNowMutation.mutate(dryRunInput)
   }
 
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
@@ -2401,11 +2407,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         {formState.exprTagDeleteFromClient ? (
                           <div className="text-xs text-muted-foreground">
-                            Replace mode deletes these tags from qBittorrent first, then reapplies to matching torrents.
+                            Replace mode forces a full client-wide reset of these tags before applying this rule.
                           </div>
                         ) : (
                           <div className="text-xs text-muted-foreground">
-                            Managed mode updates matching torrents only.
+                            Managed mode keeps tags accurate; with Full sync it resets selected tags and re-adds only current matches.
                           </div>
                         )}
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
@@ -2944,15 +2950,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </div>
                           <div className="shrink-0 flex items-center gap-2">
                             <span className="text-[11px] text-muted-foreground">{getDryRunImpactCount(event)}</span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => setActivityRunDialog(event)}
-                            >
-                              View items
-                            </Button>
+                            {event.action !== "dry_run_no_match" && getDryRunImpactCount(event) > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setActivityRunDialog(event)}
+                              >
+                                View items
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -3232,14 +3240,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             <div className="space-y-1">
               <Label className="text-sm">Ambiguous policy (advanced)</Label>
               <Select
-                value={newGroupAmbiguousPolicy}
-                onValueChange={(value) => setNewGroupAmbiguousPolicy(value as "verify_overlap" | "skip" | "")}
+                value={newGroupAmbiguousPolicy || AMBIGUOUS_POLICY_NONE_VALUE}
+                onValueChange={(value) => setNewGroupAmbiguousPolicy(
+                  value === AMBIGUOUS_POLICY_NONE_VALUE ? "" : value as "verify_overlap" | "skip"
+                )}
               >
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="None" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">(None)</SelectItem>
+                  <SelectItem value={AMBIGUOUS_POLICY_NONE_VALUE}>None (default)</SelectItem>
                   <SelectItem value="verify_overlap">Verify overlap</SelectItem>
                   <SelectItem value="skip">Skip</SelectItem>
                 </SelectContent>

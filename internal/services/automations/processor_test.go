@@ -1934,6 +1934,46 @@ func TestProcessTorrents_Tag_DeleteFromClient_ReaddsForMatchingTorrents(t *testi
 	require.Equal(t, "add", action, "expected managed tag to be re-added after client reset")
 }
 
+func TestProcessTorrents_Tag_FullMode_ReaddsForMatchingTorrents(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash: "abc123",
+			Name: "Matching Torrent",
+			Tags: "managed",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Managed full-sync tag",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tag: &models.TagAction{
+				Enabled: true,
+				Tags:    []string{"managed"},
+				Mode:    models.TagModeFull,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldName,
+					Operator: models.OperatorContains,
+					Value:    "Matching",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+
+	action, hasTag := state.tagActions["managed"]
+	require.True(t, hasTag, "expected tag action to be recorded")
+	require.Equal(t, "add", action, "expected full mode managed tag to be re-added after client reset")
+}
+
 func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 

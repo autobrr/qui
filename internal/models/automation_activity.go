@@ -27,6 +27,7 @@ const (
 	ActivityActionPaused              = "paused"               // Batch pause operation
 	ActivityActionResumed             = "resumed"              // Batch resume operation
 	ActivityActionMoved               = "moved"                // Batch move operation
+	ActivityActionDryRunNoMatch       = "dry_run_no_match"     // Manual dry-run completed with no matching actions
 )
 
 // Activity outcome types

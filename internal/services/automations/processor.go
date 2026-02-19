@@ -637,12 +637,13 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 			tagsToManage = nil
 		}
 	}
+	resetFromClient := shouldResetTagActionInClient(tagAction)
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
 		_, hasTag := state.currentTags[managedTag]
-		if tagAction.DeleteFromClient {
-			// Reset mode starts from a clean slate: force re-add for current matches.
+		if resetFromClient {
+			// Managed reset mode starts from a clean slate: force re-add for current matches.
 			hasTag = false
 		}
 		// Apply pending action if exists

@@ -174,6 +174,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Move"
     case "external_program":
       return "External program"
+    case "dry_run_no_match":
+      return "Dry-run"
     default:
       return action
   }
@@ -271,6 +273,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
+  if (event.action === "dry_run_no_match") return false
   if (event.hash !== "") return false
   return event.outcome === "dry-run"
     || (event.outcome === "success" && runSummaryActions.has(event.action))
@@ -769,6 +772,7 @@ export function WorkflowsOverview({
     resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
+    dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -1192,6 +1196,10 @@ export function WorkflowsOverview({
                                         ) : event.action === "external_program" ? (
                                           <span className="font-medium text-sm block">
                                             {formatExternalProgramSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "dry_run_no_match" ? (
+                                          <span className="font-medium text-sm block">
+                                            No torrents matched this dry-run
                                           </span>
                                         ) : (
                                           <TruncatedText className="font-medium text-sm block cursor-default">

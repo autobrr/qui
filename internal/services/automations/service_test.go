@@ -398,10 +398,14 @@ func TestPrepareRuleForPreview_AssignsEphemeralRuleIDForUnsavedRules(t *testing.
 
 func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, (*Service)(nil).ApplyRuleDryRun(ctx, 1, nil))
+	activities, err := (*Service)(nil).ApplyRuleDryRun(ctx, 1, nil)
+	require.NoError(t, err)
+	require.Nil(t, activities)
 
 	svc := &Service{}
-	require.NoError(t, svc.ApplyRuleDryRun(ctx, 1, nil))
+	activities, err = svc.ApplyRuleDryRun(ctx, 1, nil)
+	require.NoError(t, err)
+	require.Nil(t, activities)
 }
 
 func TestCollectManagedTagsForClientReset(t *testing.T) {
@@ -409,9 +413,9 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 		{
 			Conditions: &models.ActionConditions{
 				Tag: &models.TagAction{
-					Enabled:          true,
-					DeleteFromClient: true,
-					Tags:             []string{"managed", " stale "},
+					Enabled: true,
+					Mode:    models.TagModeFull,
+					Tags:    []string{"managed", " stale "},
 				},
 			},
 		},
@@ -431,6 +435,15 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 					Enabled:          false,
 					DeleteFromClient: true,
 					Tags:             []string{"disabled"},
+				},
+			},
+		},
+		{
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled: true,
+					Mode:    models.TagModeAdd,
+					Tags:    []string{"add-only"},
 				},
 			},
 		},
@@ -1600,7 +1613,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		Tracker: "https://tracker.example.com/announce",
 	}
 
-	s.recordDryRunActivities(
+	_ = s.recordDryRunActivities(
 		context.Background(),
 		1,
 		nil,
@@ -1645,7 +1658,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		Tracker: "https://tracker.example.com/announce",
 	}
 
-	s.recordDryRunActivities(
+	_ = s.recordDryRunActivities(
 		context.Background(),
 		1,
 		nil,
@@ -1668,6 +1681,45 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 	require.Len(t, mockDB.activities, 1)
 	assert.Empty(t, mockDB.activities[0].Hash)
 	assert.Equal(t, models.ActivityActionResumed, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
+func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	activities := s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	require.Len(t, activities, 1)
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
 	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
@@ -1709,7 +1761,7 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 	}
 
 	require.NotPanics(t, func() {
-		s.recordDryRunActivities(
+		_ = s.recordDryRunActivities(
 			context.Background(),
 			1,
 			nil,
@@ -1730,7 +1782,8 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 		)
 	})
 
-	require.Empty(t, mockDB.activities)
+	require.Len(t, mockDB.activities, 1)
+	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
 }
 
 func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *testing.T) {
@@ -1805,7 +1858,7 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		},
 	}
 
-	s.recordDryRunActivities(
+	_ = s.recordDryRunActivities(
 		context.Background(),
 		1,
 		nil,
@@ -1825,7 +1878,8 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		nil,
 	)
 
-	require.Empty(t, mockDB.activities)
+	require.Len(t, mockDB.activities, 1)
+	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
 }
 
 // mockQuerier implements dbinterface.Querier for testing activity logging

@@ -62,6 +62,7 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionPaused:              "Paused torrents",
 	models.ActivityActionResumed:             "Resumed torrents",
 	models.ActivityActionMoved:               "Moved torrents",
+	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
 }
 
 type automationSummary struct {
@@ -650,16 +651,24 @@ func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) erro
 
 // ApplyRuleDryRun executes a single rule immediately in dry-run mode.
 // The rule is forced enabled for this execution only.
-func (s *Service) ApplyRuleDryRun(ctx context.Context, instanceID int, rule *models.Automation) error {
+// Returns the dry-run activity summaries created for this run.
+func (s *Service) ApplyRuleDryRun(ctx context.Context, instanceID int, rule *models.Automation) ([]*models.AutomationActivity, error) {
 	if s == nil || rule == nil {
-		return nil
+		return nil, nil
 	}
 	if s.syncManager == nil || s.instanceStore == nil {
-		return nil
+		return nil, nil
 	}
 
 	dryRunRule := prepareRuleForDryRun(rule, instanceID)
-	return s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{dryRunRule}, true)
+	activities, err := s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{dryRunRule}, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(activities) == 0 {
+		return s.recordDryRunNoMatch(ctx, instanceID), nil
+	}
+	return activities, nil
 }
 
 const dryRunEphemeralRuleIDBase = 1_000_000_000
@@ -1736,19 +1745,19 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	if err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
+	if _, err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
 		return err
 	}
-	if err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
+	if _, err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) error {
+func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
 	if len(rules) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Pre-filter rules by interval eligibility
@@ -1771,7 +1780,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		eligibleRules = append(eligibleRules, rule)
 	}
 	if len(eligibleRules) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Check FREE_SPACE delete cooldown for this instance
@@ -1801,7 +1810,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 		eligibleRules = filtered
 		if len(eligibleRules) == 0 {
-			return nil
+			return nil, nil
 		}
 	}
 
@@ -1820,11 +1829,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: unable to fetch torrents")
 		s.notifyAutomationFailure(ctx, instanceID, err)
-		return err
+		return nil, err
 	}
 
 	if len(torrents) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Get instance for local filesystem access check
@@ -1832,7 +1841,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance")
 		s.notifyAutomationFailure(ctx, instanceID, err)
-		return err
+		return nil, err
 	}
 
 	// Initialize evaluation context
@@ -1896,7 +1905,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
 				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
 				s.notifyAutomationFailure(ctx, instanceID, wrapped)
-				return wrapped
+				return nil, wrapped
 			}
 			freeSpaceBySourceKey[sourceKey] = freeSpace
 		}
@@ -2455,7 +2464,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	if dryRun {
-		s.recordDryRunActivities(
+		activities := s.recordDryRunActivities(
 			ctx,
 			instanceID,
 			uploadBatches,
@@ -2474,7 +2483,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			ruleByID,
 			evalCtx,
 		)
-		return nil
+		return activities, nil
 	}
 
 	summary := newAutomationSummary()
@@ -3398,7 +3407,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	s.notifyAutomationSummary(ctx, instanceID, summary)
-	return nil
+	return nil, nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary) {
@@ -4357,6 +4366,29 @@ func (s *Service) applySpeedLimits(
 	return successHashes
 }
 
+func (s *Service) recordDryRunNoMatch(ctx context.Context, instanceID int) []*models.AutomationActivity {
+	if s == nil || s.activityStore == nil {
+		return nil
+	}
+
+	detailsJSON, _ := json.Marshal(map[string]any{"count": 0})
+	activity := &models.AutomationActivity{
+		InstanceID: instanceID,
+		Hash:       "",
+		Action:     models.ActivityActionDryRunNoMatch,
+		Outcome:    models.ActivityOutcomeDryRun,
+		Details:    detailsJSON,
+		CreatedAt:  time.Now().UTC(),
+	}
+
+	activityID, err := s.activityStore.CreateWithID(ctx, activity)
+	if err != nil {
+		return nil
+	}
+	activity.ID = activityID
+	return []*models.AutomationActivity{activity}
+}
+
 func (s *Service) recordDryRunActivities(
 	ctx context.Context,
 	instanceID int,
@@ -4375,10 +4407,12 @@ func (s *Service) recordDryRunActivities(
 	states map[string]*torrentDesiredState,
 	ruleByID map[int]*models.Automation,
 	evalCtx *EvalContext,
-) {
+) []*models.AutomationActivity {
 	if s.activityStore == nil {
-		return
+		return nil
 	}
+
+	createdActivities := make([]*models.AutomationActivity, 0)
 
 	// Dry-run grouping expansion should behave like live runs when local filesystem access is available.
 	dryRunEvalCtx := evalCtx
@@ -4412,14 +4446,21 @@ func (s *Service) recordDryRunActivities(
 
 	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
 		detailsJSON, _ := json.Marshal(details)
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     action,
 			Outcome:    models.ActivityOutcomeDryRun,
 			Details:    detailsJSON,
-		})
-		if err != nil || s.activityRuns == nil || buildItems == nil {
+			CreatedAt:  time.Now().UTC(),
+		}
+		activityID, err := s.activityStore.CreateWithID(ctx, activity)
+		if err != nil {
+			return
+		}
+		activity.ID = activityID
+		createdActivities = append(createdActivities, activity)
+		if s.activityRuns == nil || buildItems == nil {
 			return
 		}
 		items := buildItems()
@@ -4842,6 +4883,12 @@ func (s *Service) recordDryRunActivities(
 			})
 		}
 	}
+
+	if len(createdActivities) == 0 {
+		return s.recordDryRunNoMatch(ctx, instanceID)
+	}
+
+	return createdActivities
 }
 
 func buildRunItemFromHash(hash string, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) ActivityRunTorrent {
@@ -5048,7 +5095,7 @@ func collectManagedTagsForClientReset(rules []*models.Automation) []string {
 			continue
 		}
 		action := rule.Conditions.Tag
-		if !action.Enabled || !action.DeleteFromClient || action.UseTrackerAsTag {
+		if !shouldResetTagActionInClient(action) {
 			continue
 		}
 		for _, tag := range models.SanitizeCommaSeparatedStringSlice(action.Tags) {

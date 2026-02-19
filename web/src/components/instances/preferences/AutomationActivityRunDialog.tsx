@@ -46,6 +46,7 @@ const actionLabels: Record<AutomationActivity["action"], string> = {
   resumed: "Resumed",
   moved: "Moved",
   external_program: "External program",
+  dry_run_no_match: "Dry-run (no match)",
 }
 
 interface AutomationActivityRunDialogProps {

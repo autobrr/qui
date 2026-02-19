@@ -55,7 +55,9 @@ type AutomationPayload struct {
 }
 
 type AutomationDryRunResult struct {
-	Status string `json:"status"`
+	Status      string                       `json:"status"`
+	ActivityIDs []int                        `json:"activityIds,omitempty"`
+	Activities  []*models.AutomationActivity `json:"activities,omitempty"`
 }
 
 // toModel converts the payload to an Automation model.
@@ -272,13 +274,26 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 	automation.Enabled = true
 	automation.DryRun = true
 
-	if err := h.service.ApplyRuleDryRun(r.Context(), instanceID, automation); err != nil {
+	activities, err := h.service.ApplyRuleDryRun(r.Context(), instanceID, automation)
+	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual dry-run failed")
 		RespondError(w, http.StatusInternalServerError, "Failed to run dry-run")
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{Status: "dry-run-completed"})
+	activityIDs := make([]int, 0, len(activities))
+	for _, activity := range activities {
+		if activity == nil || activity.ID <= 0 {
+			continue
+		}
+		activityIDs = append(activityIDs, activity.ID)
+	}
+
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      "dry-run-completed",
+		ActivityIDs: activityIDs,
+		Activities:  activities,
+	})
 }
 
 func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
