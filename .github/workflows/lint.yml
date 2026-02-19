@@ -79,5 +79,5 @@ jobs:
       - name: Lint backend
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.6
+          version: v2.10.1
           only-new-issues: true
