@@ -17,6 +17,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -116,6 +117,11 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
 
+	// Auth disabled
+	c.viper.SetDefault("authDisabled", false)
+	c.viper.SetDefault("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", false)
+	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
+
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
 	c.viper.SetDefault("oidcIssuer", "")
@@ -200,6 +206,10 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
 
+	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
+	c.viper.BindEnv("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", envPrefix+"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
+
 	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
 	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
@@ -217,6 +227,13 @@ func (c *AppConfig) watchConfig() {
 		c.configMu.Lock()
 		defer c.configMu.Unlock()
 
+		previousAuthSettings := authReloadSettings{
+			authDisabled:               c.Config.AuthDisabled,
+			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+			oidcEnabled:                c.Config.OIDCEnabled,
+		}
+
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
 			log.Error().Err(err).Msg("Failed to reload configuration")
@@ -225,14 +242,38 @@ func (c *AppConfig) watchConfig() {
 		c.hydrateConfigFromViper()
 
 		// Apply dynamic changes
-		c.applyDynamicChanges()
+		c.applyDynamicChanges(previousAuthSettings)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
+type authReloadSettings struct {
+	authDisabled               bool
+	iAcknowledgeThisIsABadIdea bool
+	authDisabledAllowedCIDRs   []string
+	oidcEnabled                bool
+}
+
+func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings) {
 	c.Config.Version = c.version
 	if err := c.ApplyLogConfig(); err != nil {
 		log.Error().Err(err).Msg("Failed to apply log configuration")
+	}
+
+	if err := c.Config.ValidateAuthDisabledConfig(); err != nil {
+		log.Error().Err(err).Msg("auth-disabled config is invalid after reload; keeping previous valid auth-disabled settings")
+		c.Config.AuthDisabled = previousAuthSettings.authDisabled
+		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
+		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
+		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+
+		return
+	}
+
+	switch {
+	case c.Config.IsAuthDisabled():
+		log.Warn().Strs("authDisabledAllowedCIDRs", c.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
+	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
 	c.notifyListeners()
@@ -260,7 +301,11 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.MetricsPort = c.viper.GetInt("metricsPort")
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
-	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+
+	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
+	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.Config.AuthDisabledAllowedCIDRs = c.getNormalizedStringSlice("authDisabledAllowedCIDRs")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
 	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")
@@ -268,6 +313,55 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) getNormalizedStringSlice(key string) []string {
+	switch value := c.viper.Get(key).(type) {
+	case []string:
+		return normalizeStringSlice(value)
+	case []any:
+		normalized := make([]string, 0, len(value))
+		for _, item := range value {
+			entry, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(entry)
+			if trimmed != "" {
+				normalized = append(normalized, trimmed)
+			}
+		}
+		return normalized
+	case string:
+		return splitStringSliceValue(value)
+	default:
+		return normalizeStringSlice(c.viper.GetStringSlice(key))
+	}
+}
+
+func normalizeStringSlice(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			normalized = append(normalized, trimmed)
+		}
+	}
+
+	return normalized
+}
+
+func splitStringSliceValue(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+
+	return normalizeStringSlice(parts)
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.

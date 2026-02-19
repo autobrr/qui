@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -23,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -46,6 +46,395 @@ const freeSpaceDeleteCooldown = 5 * time.Minute
 
 // Log messages for delete actions (reduces duplication)
 const logMsgRemoveTorrentWithFiles = "automations: removing torrent with files"
+
+var automationActionLabels = map[string]string{
+	models.ActivityActionDeletedRatio:        "Deleted torrent (ratio rule)",
+	models.ActivityActionDeletedSeeding:      "Deleted torrent (seeding rule)",
+	models.ActivityActionDeletedUnregistered: "Deleted torrent (unregistered)",
+	models.ActivityActionDeletedCondition:    "Deleted torrent (rule)",
+	models.ActivityActionDeleteFailed:        "Delete failed",
+	models.ActivityActionLimitFailed:         "Speed/share limit failed",
+	models.ActivityActionTagsChanged:         "Tags updated",
+	models.ActivityActionCategoryChanged:     "Category updated",
+	models.ActivityActionSpeedLimitsChanged:  "Speed limits updated",
+	models.ActivityActionShareLimitsChanged:  "Share limits updated",
+	models.ActivityActionPaused:              "Paused torrents",
+	models.ActivityActionResumed:             "Resumed torrents",
+	models.ActivityActionMoved:               "Moved torrents",
+}
+
+type automationSummary struct {
+	applied          int
+	failed           int
+	appliedByAction  map[string]int
+	failedByAction   map[string]int
+	rules            map[string]*automationRuleSummary
+	tagAddedByName   map[string]int
+	tagRemovedByName map[string]int
+	tagSamples       []string
+	sampleTorrents   []string
+	sampleErrors     []string
+	sampleSeen       map[string]struct{}
+	tagSampleSeen    map[string]struct{}
+}
+
+type automationRuleSummary struct {
+	ruleID   int
+	ruleName string
+	applied  int
+	failed   int
+	actions  map[string]*automationActionCounts
+}
+
+type automationActionCounts struct {
+	applied int
+	failed  int
+}
+
+func newAutomationSummary() *automationSummary {
+	return &automationSummary{
+		appliedByAction:  make(map[string]int),
+		failedByAction:   make(map[string]int),
+		rules:            make(map[string]*automationRuleSummary),
+		tagAddedByName:   make(map[string]int),
+		tagRemovedByName: make(map[string]int),
+		sampleSeen:       make(map[string]struct{}),
+		tagSampleSeen:    make(map[string]struct{}),
+	}
+}
+
+func (s *automationSummary) add(action, outcome string, count int) {
+	if s == nil || count <= 0 {
+		return
+	}
+	switch outcome {
+	case models.ActivityOutcomeSuccess:
+		s.applied += count
+		s.appliedByAction[action] += count
+	case models.ActivityOutcomeFailed:
+		s.failed += count
+		s.failedByAction[action] += count
+	}
+}
+
+func (s *automationSummary) hasActivity() bool {
+	if s == nil {
+		return false
+	}
+	return s.applied > 0 || s.failed > 0
+}
+
+func (s *automationSummary) message() string {
+	if s == nil {
+		return ""
+	}
+	lines := []string{fmt.Sprintf("Applied: %d", s.applied)}
+	if s.failed > 0 {
+		lines = append(lines, fmt.Sprintf("Failed: %d", s.failed))
+	}
+	if formatted := formatActionCounts(s.appliedByAction, 3); formatted != "" {
+		lines = append(lines, "Top actions: "+formatted)
+	}
+	if formatted := formatActionCounts(s.failedByAction, 3); formatted != "" {
+		lines = append(lines, "Top failures: "+formatted)
+	}
+	if formatted := formatRuleCounts(s.ruleTotalsByName(), 3); formatted != "" {
+		lines = append(lines, "Rules: "+formatted)
+	}
+	if formatted := formatTagCounts(s.tagAddedByName, s.tagRemovedByName, 3); formatted != "" {
+		lines = append(lines, "Tags: "+formatted)
+	}
+	if len(s.tagSamples) > 0 {
+		lines = append(lines, "Tag samples: "+strings.Join(s.tagSamples, "; "))
+	}
+	if len(s.sampleTorrents) > 0 {
+		lines = append(lines, "Samples: "+strings.Join(s.sampleTorrents, "; "))
+	}
+	if len(s.sampleErrors) > 0 {
+		lines = append(lines, "Errors: "+strings.Join(s.sampleErrors, "; "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (s *automationSummary) recordActivity(activity *models.AutomationActivity, count int) {
+	if s == nil || activity == nil {
+		return
+	}
+	if count <= 0 {
+		count = 1
+	}
+	s.add(activity.Action, activity.Outcome, count)
+	s.addRuleAction(activity, count)
+	s.addSamplesFromActivity(activity)
+}
+
+func (s *automationSummary) addSamplesFromActivity(activity *models.AutomationActivity) {
+	if s == nil || activity == nil {
+		return
+	}
+	if activity.TorrentName != "" && (strings.HasPrefix(activity.Action, "deleted_") || activity.Action == models.ActivityActionDeleteFailed) {
+		s.addSample(&s.sampleTorrents, activity.TorrentName, 3)
+	}
+	if activity.Outcome == models.ActivityOutcomeFailed && strings.TrimSpace(activity.Reason) != "" {
+		s.addSample(&s.sampleErrors, activity.Reason, 2)
+	}
+}
+
+func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, count int) {
+	if s == nil || activity == nil || count <= 0 {
+		return
+	}
+
+	ruleName := normalizeRuleName(activity.RuleID, activity.RuleName)
+	ruleID := 0
+	if activity.RuleID != nil {
+		ruleID = *activity.RuleID
+	}
+	if ruleID <= 0 && ruleName == "" {
+		return
+	}
+
+	key := ruleName
+	if ruleID > 0 {
+		key = fmt.Sprintf("%d:%s", ruleID, ruleName)
+	}
+
+	rule, ok := s.rules[key]
+	if !ok {
+		rule = &automationRuleSummary{
+			ruleID:   ruleID,
+			ruleName: ruleName,
+			actions:  make(map[string]*automationActionCounts),
+		}
+		s.rules[key] = rule
+	}
+
+	action := strings.TrimSpace(activity.Action)
+	if action == "" {
+		action = "unknown"
+	}
+
+	counts, ok := rule.actions[action]
+	if !ok {
+		counts = &automationActionCounts{}
+		rule.actions[action] = counts
+	}
+
+	switch activity.Outcome {
+	case models.ActivityOutcomeSuccess:
+		rule.applied += count
+		counts.applied += count
+	case models.ActivityOutcomeFailed:
+		rule.failed += count
+		counts.failed += count
+	}
+}
+
+func (s *automationSummary) ruleTotalsByName() map[string]int {
+	if s == nil || len(s.rules) == 0 {
+		return nil
+	}
+
+	out := make(map[string]int, len(s.rules))
+	for _, rule := range s.rules {
+		if rule == nil {
+			continue
+		}
+		name := normalizeRuleName(intPtrForRule(rule.ruleID), rule.ruleName)
+		if name == "" {
+			continue
+		}
+		out[name] += rule.applied + rule.failed
+	}
+	return out
+}
+
+func (s *automationSummary) recordRuleCounts(action string, outcome string, counts map[ruleRef]int) {
+	if s == nil || len(counts) == 0 {
+		return
+	}
+	for ref, count := range counts {
+		if count <= 0 {
+			continue
+		}
+		refName := strings.TrimSpace(ref.name)
+		refID := ref.id
+		var ruleID *int
+		if refID > 0 {
+			ruleID = &refID
+		}
+		s.addRuleAction(&models.AutomationActivity{
+			Action:   action,
+			Outcome:  outcome,
+			RuleID:   ruleID,
+			RuleName: refName,
+		}, count)
+	}
+}
+
+func (s *automationSummary) addTagCounts(added map[string]int, removed map[string]int) {
+	if s == nil {
+		return
+	}
+	for tag, count := range added {
+		trimmedTag := strings.TrimSpace(tag)
+		if trimmedTag == "" || count <= 0 {
+			continue
+		}
+		s.tagAddedByName[trimmedTag] += count
+	}
+	for tag, count := range removed {
+		trimmedTag := strings.TrimSpace(tag)
+		if trimmedTag == "" || count <= 0 {
+			continue
+		}
+		s.tagRemovedByName[trimmedTag] += count
+	}
+}
+
+func (s *automationSummary) addTagSamples(names []string, limit int) {
+	if s == nil || limit <= 0 {
+		return
+	}
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		if _, seen := s.tagSampleSeen[trimmed]; seen {
+			continue
+		}
+		if len(s.tagSamples) >= limit {
+			return
+		}
+		s.tagSampleSeen[trimmed] = struct{}{}
+		s.tagSamples = append(s.tagSamples, trimmed)
+	}
+}
+
+func (s *automationSummary) addSample(list *[]string, value string, limit int) {
+	if s == nil || list == nil || limit <= 0 {
+		return
+	}
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+	if _, exists := s.sampleSeen[trimmed]; exists {
+		return
+	}
+	if len(*list) >= limit {
+		return
+	}
+	s.sampleSeen[trimmed] = struct{}{}
+	*list = append(*list, trimmed)
+}
+
+type countItem struct {
+	key   string
+	count int
+}
+
+func sortedCountItems(counts map[string]int) []countItem {
+	if len(counts) == 0 {
+		return nil
+	}
+
+	items := make([]countItem, 0, len(counts))
+	for key, count := range counts {
+		items = append(items, countItem{key: key, count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].count == items[j].count {
+			return items[i].key < items[j].key
+		}
+		return items[i].count > items[j].count
+	})
+	return items
+}
+
+func formatActionCounts(counts map[string]int, limit int) string {
+	items := sortedCountItems(counts)
+	if len(items) == 0 {
+		return ""
+	}
+
+	maxItems := limit
+	if maxItems <= 0 || maxItems > len(items) {
+		maxItems = len(items)
+	}
+
+	parts := make([]string, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		label := automationActionLabel(items[i].key)
+		parts = append(parts, fmt.Sprintf("%s=%d", label, items[i].count))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func formatRuleCounts(counts map[string]int, limit int) string {
+	items := sortedCountItems(counts)
+	if len(items) == 0 {
+		return ""
+	}
+
+	maxItems := limit
+	if maxItems <= 0 || maxItems > len(items) {
+		maxItems = len(items)
+	}
+
+	parts := make([]string, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		parts = append(parts, items[i].key)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func formatTagCounts(added map[string]int, removed map[string]int, limit int) string {
+	parts := make([]string, 0, limit*2)
+
+	for _, item := range sortedCountItems(added) {
+		if len(parts) >= limit {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("+%s=%d", item.key, item.count))
+	}
+
+	for _, item := range sortedCountItems(removed) {
+		if len(parts) >= limit*2 {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("-%s=%d", item.key, item.count))
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+func automationActionLabel(action string) string {
+	if label, ok := automationActionLabels[action]; ok {
+		return label
+	}
+	return strings.ReplaceAll(action, "_", " ")
+}
+
+func normalizeRuleName(ruleID *int, ruleName string) string {
+	name := strings.TrimSpace(ruleName)
+	if name != "" {
+		return name
+	}
+	if ruleID != nil && *ruleID > 0 {
+		return fmt.Sprintf("Rule #%d", *ruleID)
+	}
+	return ""
+}
+
+func intPtrForRule(ruleID int) *int {
+	if ruleID <= 0 {
+		return nil
+	}
+	id := ruleID
+	return &id
+}
 
 // ruleKey identifies a rule within an instance for per-rule cadence tracking.
 type ruleKey struct {
@@ -104,6 +493,7 @@ type Service struct {
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
+	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	activityRuns              *activityRunStore
 
@@ -114,7 +504,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, externalProgramService *externalprograms.Service) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -140,6 +530,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
+		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		lastApplied:               make(map[int]map[string]time.Time),
@@ -1048,6 +1439,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
+		s.notifyAutomationFailure(ctx, instanceID, err)
 		return err
 	}
 	if len(rules) == 0 {
@@ -1147,6 +1539,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: unable to fetch torrents")
+		s.notifyAutomationFailure(ctx, instanceID, err)
 		return err
 	}
 
@@ -1158,6 +1551,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance")
+		s.notifyAutomationFailure(ctx, instanceID, err)
 		return err
 	}
 
@@ -1227,7 +1621,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource)
 			if err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
-				return fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
+				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
+				s.notifyAutomationFailure(ctx, instanceID, wrapped)
+				return wrapped
 			}
 			freeSpaceBySourceKey[sourceKey] = freeSpace
 		}
@@ -1359,6 +1755,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
 	resumeHashes := make([]string, 0)
+	uploadRuleByHash := make(map[string]ruleRef)
+	downloadRuleByHash := make(map[string]ruleRef)
+	shareRatioRuleByHash := make(map[string]ruleRef)
+	shareSeedingRuleByHash := make(map[string]ruleRef)
+	pauseRuleByHash := make(map[string]ruleRef)
+	resumeRuleByHash := make(map[string]ruleRef)
+	categoryRuleByHash := make(map[string]ruleRef)
+	moveRuleByHash := make(map[string]ruleRef)
 
 	tagChanges := make(map[string]*tagChange)
 	categoryBatches := make(map[string][]string) // category name -> hashes
@@ -1571,12 +1975,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			desired := *state.uploadLimitKiB * 1024
 			if torrent.UpLimit != desired {
 				uploadBatches[*state.uploadLimitKiB] = append(uploadBatches[*state.uploadLimitKiB], hash)
+				uploadRuleByHash[hash] = state.uploadRule
 			}
 		}
 		if state.downloadLimitKiB != nil {
 			desired := *state.downloadLimitKiB * 1024
 			if torrent.DlLimit != desired {
 				downloadBatches[*state.downloadLimitKiB] = append(downloadBatches[*state.downloadLimitKiB], hash)
+				downloadRuleByHash[hash] = state.downloadRule
 			}
 		}
 
@@ -1607,22 +2013,31 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			currentRatio := normalizeRatio(torrent.RatioLimit)
 
 			// Check if update is needed (comparing normalized values)
-			needsUpdate := (state.ratioLimit != nil && currentRatio != ratio) ||
-				(state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes)
+			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
+			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
+			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate
 			if needsUpdate {
 				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes}
 				shareBatches[key] = append(shareBatches[key], hash)
+				if ratioNeedsUpdate {
+					shareRatioRuleByHash[hash] = state.ratioRule
+				}
+				if seedingNeedsUpdate {
+					shareSeedingRuleByHash[hash] = state.seedingRule
+				}
 			}
 		}
 
 		// Pause
 		if state.shouldPause {
 			pauseHashes = append(pauseHashes, hash)
+			pauseRuleByHash[hash] = state.pauseRule
 		}
 
 		// Resume
 		if state.shouldResume {
 			resumeHashes = append(resumeHashes, hash)
+			resumeRuleByHash[hash] = state.resumeRule
 		}
 
 		// Tags
@@ -1655,11 +2070,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		if state.category != nil {
 			if torrent.Category != *state.category {
 				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
+				categoryRuleByHash[hash] = state.categoryRule
 			}
 		}
 
 		if state.shouldMove {
 			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
+			moveRuleByHash[hash] = state.moveRule
 		}
 
 		// External program execution
@@ -1702,36 +2119,55 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil
 	}
 
+	summary := newAutomationSummary()
+
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
 	defer cancel()
 
 	// Apply speed limits and track success
-	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
-	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary, uploadRuleByHash)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary, downloadRuleByHash)
 
 	// Record aggregated speed limit activity
-	if s.activityStore != nil && (len(uploadSuccess) > 0 || len(downloadSuccess) > 0) {
+	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
 		speedLimits := make(map[string]int) // "upload:1024" -> count, "download:2048" -> count
+		totalUpdated := 0
 		for limit, hashes := range uploadSuccess {
 			speedLimits[fmt.Sprintf("upload:%d", limit)] = len(hashes)
+			totalUpdated += len(hashes)
 		}
 		for limit, hashes := range downloadSuccess {
 			speedLimits[fmt.Sprintf("download:%d", limit)] = len(hashes)
+			totalUpdated += len(hashes)
 		}
 		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionSpeedLimitsChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		})
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
-		} else if s.activityRuns != nil {
-			items := buildSpeedLimitRunItems(uploadSuccess, downloadSuccess, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
+		}
+		summary.recordActivity(activity, totalUpdated)
+		summary.recordRuleCounts(
+			models.ActivityActionSpeedLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess), uploadRuleByHash),
+		)
+		summary.recordRuleCounts(
+			models.ActivityActionSpeedLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroups(downloadSuccess), downloadRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
+			} else if s.activityRuns != nil {
+				items := buildSpeedLimitRunItems(uploadSuccess, downloadSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
 			}
 		}
 	}
@@ -1747,48 +2183,65 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				continue
 			}
 			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Int("count", len(batch)).Msg("automations: share limit failed")
-			if s.activityStore == nil {
-				continue
-			}
 			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "count": len(batch), "type": "share"})
 			if marshalErr != nil {
 				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
 				continue
 			}
-			if actErr := s.activityStore.Create(ctx, &models.AutomationActivity{
+			activity := &models.AutomationActivity{
 				InstanceID: instanceID,
 				Hash:       strings.Join(batch, ","),
 				Action:     models.ActivityActionLimitFailed,
 				Outcome:    models.ActivityOutcomeFailed,
 				Reason:     "share limit failed: " + err.Error(),
 				Details:    detailsJSON,
-			}); actErr != nil {
-				log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+			}
+			summary.recordActivity(activity, len(batch))
+			summary.recordRuleCounts(
+				models.ActivityActionLimitFailed,
+				models.ActivityOutcomeFailed,
+				buildRuleCountsFromHashMaps(batch, shareRatioRuleByHash, shareSeedingRuleByHash),
+			)
+			if s.activityStore != nil {
+				if actErr := s.activityStore.Create(ctx, activity); actErr != nil {
+					log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+				}
 			}
 		}
 	}
 
 	// Record aggregated share limit activity
-	if s.activityStore != nil && len(shareLimitSuccess) > 0 {
+	if len(shareLimitSuccess) > 0 {
 		limitCounts := make(map[string]int)
+		totalUpdated := 0
 		for key, hashes := range shareLimitSuccess {
 			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
 			limitCounts[limitKey] = len(hashes)
+			totalUpdated += len(hashes)
 		}
 		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionShareLimitsChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		})
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
-		} else if s.activityRuns != nil {
-			items := buildShareLimitRunItems(shareLimitSuccess, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
+		}
+		summary.recordActivity(activity, totalUpdated)
+		summary.recordRuleCounts(
+			models.ActivityActionShareLimitsChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash, shareSeedingRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
+			} else if s.activityRuns != nil {
+				items := buildShareLimitRunItems(shareLimitSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
 			}
 		}
 	}
@@ -1810,21 +2263,30 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Record aggregated pause activity
-	if s.activityStore != nil && pausedCount > 0 {
+	if pausedCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionPaused,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		})
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
-		} else if s.activityRuns != nil {
-			items := buildRunItemsFromHashes(pausedHashesSuccess, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
+		}
+		summary.recordActivity(activity, pausedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionPaused,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(pausedHashesSuccess, pauseRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(pausedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
 			}
 		}
 	}
@@ -1846,27 +2308,38 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Record aggregated resume activity
-	if s.activityStore != nil && resumedCount > 0 {
+	if resumedCount > 0 {
 		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "",
 			Action:     models.ActivityActionResumed,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		})
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
-		} else if s.activityRuns != nil {
-			items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
+		}
+		summary.recordActivity(activity, resumedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionResumed,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(resumedHashesSuccess, resumeRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
 			}
 		}
 	}
 
 	// Execute tag actions for expression-based rules
 	if len(tagChanges) > 0 {
+		tagRuleCounts := make(map[ruleRef]int)
+
 		// Try SetTags first (more efficient for qBit 5.1+)
 		// Group by desired tag set for batching
 		setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
@@ -1949,33 +2422,52 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 
 		// Record tag activity summary
-		if s.activityStore != nil {
-			// Aggregate counts per tag
-			addCounts := make(map[string]int)    // tag -> count of torrents
-			removeCounts := make(map[string]int) // tag -> count of torrents
+		// Aggregate counts per tag
+		addCounts := make(map[string]int)    // tag -> count of torrents
+		removeCounts := make(map[string]int) // tag -> count of torrents
 
-			for _, change := range tagChanges {
-				for _, tag := range change.toAdd {
-					addCounts[tag]++
-				}
-				for _, tag := range change.toRemove {
-					removeCounts[tag]++
+		tagSampleHashes := make([]string, 0, len(tagChanges))
+		for hash, change := range tagChanges {
+			tagSampleHashes = append(tagSampleHashes, hash)
+			state := states[hash]
+			for _, tag := range change.toAdd {
+				addCounts[tag]++
+				if state != nil {
+					if ref, ok := state.tagRuleByTag[tag]; ok {
+						tagRuleCounts[ref]++
+					}
 				}
 			}
+			for _, tag := range change.toRemove {
+				removeCounts[tag]++
+				if state != nil {
+					if ref, ok := state.tagRuleByTag[tag]; ok {
+						tagRuleCounts[ref]++
+					}
+				}
+			}
+		}
 
-			// Only record if there were actual changes
-			if len(addCounts) > 0 || len(removeCounts) > 0 {
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"added":   addCounts,
-					"removed": removeCounts,
-				})
-				activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-					InstanceID: instanceID,
-					Hash:       "", // No single hash for batch operations
-					Action:     models.ActivityActionTagsChanged,
-					Outcome:    models.ActivityOutcomeSuccess,
-					Details:    detailsJSON,
-				})
+		// Only record if there were actual changes
+		if len(addCounts) > 0 || len(removeCounts) > 0 {
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"added":   addCounts,
+				"removed": removeCounts,
+			})
+			activity := &models.AutomationActivity{
+				InstanceID: instanceID,
+				Hash:       "", // No single hash for batch operations
+				Action:     models.ActivityActionTagsChanged,
+				Outcome:    models.ActivityOutcomeSuccess,
+				Details:    detailsJSON,
+			}
+			changedCount := len(tagChanges)
+			summary.recordActivity(activity, changedCount)
+			summary.recordRuleCounts(models.ActivityActionTagsChanged, models.ActivityOutcomeSuccess, tagRuleCounts)
+			summary.addTagCounts(addCounts, removeCounts)
+			summary.addTagSamples(collectTorrentNamesForHashes(tagSampleHashes, torrentByHash), 3)
+			if s.activityStore != nil {
+				activityID, err := s.activityStore.CreateWithID(ctx, activity)
 				if err != nil {
 					log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record tag activity")
 				} else if s.activityRuns != nil {
@@ -2005,15 +2497,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// Find torrents whose winning category rule had IncludeCrossSeeds=true
 		// and expand with their cross-seeds (require BOTH ContentPath AND SavePath match)
 		keysToExpand := make(map[crossSeedKey]struct{})
-		for _, hash := range hashes {
-			if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
-				if t, exists := torrentByHash[hash]; exists {
-					if key, ok := makeCrossSeedKey(t); ok {
-						keysToExpand[key] = struct{}{}
-					}
+		expandableHashes := categoryExpandableHashes(hashes, states)
+		for _, hash := range expandableHashes {
+			if t, exists := torrentByHash[hash]; exists {
+				if key, ok := makeCrossSeedKey(t); ok {
+					keysToExpand[key] = struct{}{}
 				}
 			}
 		}
+		ruleByCrossSeedKey := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, categoryRuleByHash)
 
 		if len(keysToExpand) > 0 {
 			expandedSet := make(map[string]struct{})
@@ -2039,6 +2531,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					if _, shouldExpand := keysToExpand[key]; shouldExpand {
 						expandedHashes = append(expandedHashes, t.Hash)
 						expandedSet[t.Hash] = struct{}{}
+						inheritRuleRefForCrossSeed(t.Hash, key, categoryRuleByHash, ruleByCrossSeedKey)
 					}
 				}
 			}
@@ -2069,7 +2562,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Record aggregated category activity (like tags)
-	if s.activityStore != nil && len(successfulMoves) > 0 {
+	if len(successfulMoves) > 0 {
 		categoryCounts := make(map[string]int) // category -> count of torrents moved
 		for _, move := range successfulMoves {
 			categoryCounts[move.category]++
@@ -2078,19 +2571,28 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		detailsJSON, _ := json.Marshal(map[string]any{
 			"categories": categoryCounts,
 		})
-		activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
+		activity := &models.AutomationActivity{
 			InstanceID: instanceID,
 			Hash:       "", // No single hash for batch operations
 			Action:     models.ActivityActionCategoryChanged,
 			Outcome:    models.ActivityOutcomeSuccess,
 			Details:    detailsJSON,
-		})
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
-		} else if s.activityRuns != nil {
-			items := buildCategoryRunItems(successfulMoves, torrentByHash, s.syncManager)
-			if len(items) > 0 {
-				s.activityRuns.Put(activityID, instanceID, items)
+		}
+		summary.recordActivity(activity, len(successfulMoves))
+		summary.recordRuleCounts(
+			models.ActivityActionCategoryChanged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(categoryMoveHashes(successfulMoves), categoryRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
+			} else if s.activityRuns != nil {
+				items := buildCategoryRunItems(successfulMoves, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
 			}
 		}
 	}
@@ -2110,6 +2612,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		hashes := moveBatches[path]
 		successfulMovesForPath := 0
 		failedMovesForPath := 0
+		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, moveRuleByHash)
 
 		// Before moving, we need to get all of the cross-seeds for each torrent to avoid breaking cross-seeds
 		var expandedHashes []string
@@ -2142,6 +2645,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					if _, matched := keysToExpand[key]; matched {
 						expandedHashes = append(expandedHashes, t.Hash)
 						movedHashes[t.Hash] = struct{}{}
+						inheritRuleRefForCrossSeed(t.Hash, key, moveRuleByHash, ruleByCrossSeedKey)
 					}
 				}
 			}
@@ -2168,30 +2672,32 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Record aggregated move activity
-	if s.activityStore != nil {
-		var hasSuccesses, hasFailures bool
-		for _, count := range successfulMovesByPath {
-			if count > 0 {
-				hasSuccesses = true
-				break
-			}
-		}
-		for _, count := range failedMovesByPath {
-			if count > 0 {
-				hasFailures = true
-				break
-			}
-		}
+	successCount := 0
+	for _, count := range successfulMovesByPath {
+		successCount += count
+	}
+	failureCount := 0
+	for _, count := range failedMovesByPath {
+		failureCount += count
+	}
 
-		if hasSuccesses {
-			detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
-			activityID, err := s.activityStore.CreateWithID(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionMoved,
-				Outcome:    models.ActivityOutcomeSuccess,
-				Details:    detailsJSON,
-			})
+	if successCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionMoved,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, successCount)
+		summary.recordRuleCounts(
+			models.ActivityActionMoved,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), moveRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
 			if err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
 			} else if s.activityRuns != nil {
@@ -2201,15 +2707,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			}
 		}
-		if hasFailures {
-			detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
-			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "",
-				Action:     models.ActivityActionMoved,
-				Outcome:    models.ActivityOutcomeFailed,
-				Details:    detailsJSON,
-			}); err != nil {
+	}
+	if failureCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionMoved,
+			Outcome:    models.ActivityOutcomeFailed,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, failureCount)
+		if s.activityStore != nil {
+			if err := s.activityStore.Create(ctx, activity); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
 			}
 		}
@@ -2241,22 +2751,24 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
 
 				// Record failed deletion activity
-				if s.activityStore != nil {
-					for _, hash := range batch {
-						if pending, ok := pendingByHash[hash]; ok {
-							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-								InstanceID:    instanceID,
-								Hash:          hash,
-								TorrentName:   pending.torrentName,
-								TrackerDomain: pending.trackerDomain,
-								Action:        models.ActivityActionDeleteFailed,
-								RuleID:        &pending.ruleID,
-								RuleName:      pending.ruleName,
-								Outcome:       models.ActivityOutcomeFailed,
-								Reason:        err.Error(),
-								Details:       detailsJSON,
-							}); err != nil {
+				for _, hash := range batch {
+					if pending, ok := pendingByHash[hash]; ok {
+						detailsJSON, _ := json.Marshal(pending.details)
+						activity := &models.AutomationActivity{
+							InstanceID:    instanceID,
+							Hash:          hash,
+							TorrentName:   pending.torrentName,
+							TrackerDomain: pending.trackerDomain,
+							Action:        models.ActivityActionDeleteFailed,
+							RuleID:        &pending.ruleID,
+							RuleName:      pending.ruleName,
+							Outcome:       models.ActivityOutcomeFailed,
+							Reason:        err.Error(),
+							Details:       detailsJSON,
+						}
+						summary.recordActivity(activity, 1)
+						if s.activityStore != nil {
+							if err := s.activityStore.Create(ctx, activity); err != nil {
 								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 							}
 						}
@@ -2290,22 +2802,24 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 
 				// Record successful deletion activity
-				if s.activityStore != nil {
-					for _, hash := range batch {
-						if pending, ok := pendingByHash[hash]; ok {
-							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-								InstanceID:    instanceID,
-								Hash:          hash,
-								TorrentName:   pending.torrentName,
-								TrackerDomain: pending.trackerDomain,
-								Action:        pending.action,
-								RuleID:        &pending.ruleID,
-								RuleName:      pending.ruleName,
-								Outcome:       models.ActivityOutcomeSuccess,
-								Reason:        pending.reason,
-								Details:       detailsJSON,
-							}); err != nil {
+				for _, hash := range batch {
+					if pending, ok := pendingByHash[hash]; ok {
+						detailsJSON, _ := json.Marshal(pending.details)
+						activity := &models.AutomationActivity{
+							InstanceID:    instanceID,
+							Hash:          hash,
+							TorrentName:   pending.torrentName,
+							TrackerDomain: pending.trackerDomain,
+							Action:        pending.action,
+							RuleID:        &pending.ruleID,
+							RuleName:      pending.ruleName,
+							Outcome:       models.ActivityOutcomeSuccess,
+							Reason:        pending.reason,
+							Details:       detailsJSON,
+						}
+						summary.recordActivity(activity, 1)
+						if s.activityStore != nil {
+							if err := s.activityStore.Create(ctx, activity); err != nil {
 								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 							}
 						}
@@ -2315,7 +2829,124 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
+	s.notifyAutomationSummary(ctx, instanceID, summary)
 	return nil
+}
+
+func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary) {
+	if s == nil || s.notifier == nil || summary == nil || !summary.hasActivity() {
+		return
+	}
+
+	var errorMessage string
+	var errorMessages []string
+	if summary.failed > 0 && len(summary.sampleErrors) > 0 {
+		errorMessages = append([]string(nil), summary.sampleErrors...)
+		errorMessage = summary.sampleErrors[0]
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:       notifications.EventAutomationsActionsApplied,
+		InstanceID: instanceID,
+		Message:    summary.message(),
+		Automations: &notifications.AutomationsEventData{
+			Applied: summary.applied,
+			Failed:  summary.failed,
+			Rules:   buildAutomationRuleSummaries(summary),
+			Samples: append([]string(nil), summary.sampleTorrents...),
+		},
+		ErrorMessage:  errorMessage,
+		ErrorMessages: errorMessages,
+	})
+}
+
+func buildAutomationRuleSummaries(summary *automationSummary) []notifications.AutomationRuleSummary {
+	if summary == nil || len(summary.rules) == 0 {
+		return nil
+	}
+
+	type ruleItem struct {
+		key   string
+		rule  *automationRuleSummary
+		total int
+	}
+	items := make([]ruleItem, 0, len(summary.rules))
+	for key, rule := range summary.rules {
+		if rule == nil {
+			continue
+		}
+		items = append(items, ruleItem{
+			key:   key,
+			rule:  rule,
+			total: rule.applied + rule.failed,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].total == items[j].total {
+			return items[i].key < items[j].key
+		}
+		return items[i].total > items[j].total
+	})
+
+	out := make([]notifications.AutomationRuleSummary, 0, len(items))
+	for _, item := range items {
+		rule := item.rule
+
+		actions := make([]notifications.AutomationActionSummary, 0, len(rule.actions))
+		for action, counts := range rule.actions {
+			if counts == nil {
+				continue
+			}
+			if counts.applied == 0 && counts.failed == 0 {
+				continue
+			}
+			actions = append(actions, notifications.AutomationActionSummary{
+				Action:  action,
+				Label:   automationActionLabel(action),
+				Applied: counts.applied,
+				Failed:  counts.failed,
+			})
+		}
+		sort.Slice(actions, func(i, j int) bool {
+			ai := actions[i].Applied + actions[i].Failed
+			aj := actions[j].Applied + actions[j].Failed
+			if ai == aj {
+				return actions[i].Action < actions[j].Action
+			}
+			return ai > aj
+		})
+
+		out = append(out, notifications.AutomationRuleSummary{
+			RuleID:   rule.ruleID,
+			RuleName: normalizeRuleName(intPtrForRule(rule.ruleID), rule.ruleName),
+			Applied:  rule.applied,
+			Failed:   rule.failed,
+			Actions:  actions,
+		})
+	}
+
+	return out
+}
+
+func (s *Service) notifyAutomationFailure(ctx context.Context, instanceID int, err error) {
+	if s == nil || s.notifier == nil || err == nil {
+		return
+	}
+
+	errorMessage := strings.TrimSpace(err.Error())
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventAutomationsRunFailed,
+		InstanceID:   instanceID,
+		Message:      err.Error(),
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if errorMessage == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
+	})
 }
 
 func limitHashBatch(hashes []string, max int) [][]string {
@@ -2334,6 +2965,151 @@ func limitHashBatch(hashes []string, max int) [][]string {
 	return batches
 }
 
+func buildRuleCountsFromHashes(hashes []string, ruleByHash map[string]ruleRef) map[ruleRef]int {
+	if len(hashes) == 0 || len(ruleByHash) == 0 {
+		return nil
+	}
+	counts := make(map[ruleRef]int)
+	for _, hash := range hashes {
+		ref, ok := ruleByHash[hash]
+		if !ok {
+			continue
+		}
+		ref.name = strings.TrimSpace(ref.name)
+		if ref.id <= 0 && ref.name == "" {
+			continue
+		}
+		counts[ref]++
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
+func buildRuleCountsFromHashMaps(hashes []string, ruleByHashMaps ...map[string]ruleRef) map[ruleRef]int {
+	if len(hashes) == 0 || len(ruleByHashMaps) == 0 {
+		return nil
+	}
+
+	counts := make(map[ruleRef]int)
+	for _, hash := range hashes {
+		refsForHash := make(map[ruleRef]struct{})
+		for _, ruleByHash := range ruleByHashMaps {
+			if len(ruleByHash) == 0 {
+				continue
+			}
+			ref, ok := ruleByHash[hash]
+			if !ok {
+				continue
+			}
+			ref.name = strings.TrimSpace(ref.name)
+			if ref.id <= 0 && ref.name == "" {
+				continue
+			}
+			refsForHash[ref] = struct{}{}
+		}
+		for ref := range refsForHash {
+			counts[ref]++
+		}
+	}
+
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
+func flattenHashGroups(groups ...map[int64][]string) []string {
+	if len(groups) == 0 {
+		return nil
+	}
+	out := make([]string, 0)
+	for _, group := range groups {
+		for _, hashes := range group {
+			out = append(out, hashes...)
+		}
+	}
+	return out
+}
+
+func flattenHashGroupsByShareKey(group map[shareKey][]string) []string {
+	if len(group) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, hashes := range group {
+		for _, hash := range hashes {
+			if _, exists := seen[hash]; exists {
+				continue
+			}
+			seen[hash] = struct{}{}
+			out = append(out, hash)
+		}
+	}
+	return out
+}
+
+func flattenHashGroupsByPath(group map[string][]string) []string {
+	if len(group) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, hashes := range group {
+		for _, hash := range hashes {
+			if _, exists := seen[hash]; exists {
+				continue
+			}
+			seen[hash] = struct{}{}
+			out = append(out, hash)
+		}
+	}
+	return out
+}
+
+func categoryMoveHashes(moves []categoryMove) []string {
+	if len(moves) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(moves))
+	for _, move := range moves {
+		if _, exists := seen[move.hash]; exists {
+			continue
+		}
+		seen[move.hash] = struct{}{}
+		out = append(out, move.hash)
+	}
+	return out
+}
+
+func collectTorrentNamesForHashes(hashes []string, torrentByHash map[string]qbt.Torrent) []string {
+	if len(hashes) == 0 || len(torrentByHash) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		torrent, ok := torrentByHash[hash]
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(torrent.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func matchesTracker(pattern string, domains []string) bool {
 	if pattern == "*" {
 		return true // Match all trackers
@@ -2347,14 +3123,14 @@ func matchesTracker(pattern string, domains []string) bool {
 	})
 
 	for _, token := range tokens {
-		normalized := strings.ToLower(strings.TrimSpace(token))
+		normalized := normalizeLowerTrim(token)
 		if normalized == "" {
 			continue
 		}
 		isGlob := strings.ContainsAny(normalized, "*?")
 
 		for _, domain := range domains {
-			d := strings.ToLower(domain)
+			d := normalizeLower(domain)
 			if isGlob {
 				ok, err := path.Match(normalized, d)
 				if err != nil {
@@ -2418,8 +3194,7 @@ func sanitizeTrackerHost(urlOrHost string) string {
 	// Remove URL-like path pieces
 	clean = strings.Split(clean, "/")[0]
 	clean = strings.Split(clean, ":")[0]
-	re := regexp.MustCompile(`[^a-zA-Z0-9\.-]`)
-	clean = re.ReplaceAllString(clean, "")
+	clean = trackerHostSanitizeRegexp.ReplaceAllString(clean, "")
 	return clean
 }
 
@@ -2438,16 +3213,7 @@ func torrentHasTag(tags string, candidate string) bool {
 // normalizePath standardizes a file path for comparison by lowercasing,
 // converting backslashes to forward slashes, and removing trailing slashes.
 func normalizePath(p string) string {
-	if p == "" {
-		return ""
-	}
-	// Lowercase for case-insensitive comparison
-	p = strings.ToLower(p)
-	// Normalize path separators (Windows backslashes to forward slashes)
-	p = strings.ReplaceAll(p, "\\", "/")
-	// Remove trailing slash
-	p = strings.TrimSuffix(p, "/")
-	return p
+	return pathComparisonNormalizer.Normalize(p)
 }
 
 // crossSeedKey identifies torrents at the same on-disk location.
@@ -2465,6 +3231,65 @@ func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
 		return crossSeedKey{}, false
 	}
 	return crossSeedKey{contentPath, savePath}, true
+}
+
+func categoryExpandableHashes(hashes []string, states map[string]*torrentDesiredState) []string {
+	if len(hashes) == 0 || len(states) == 0 {
+		return nil
+	}
+	expandableHashes := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
+			expandableHashes = append(expandableHashes, hash)
+		}
+	}
+	return expandableHashes
+}
+
+func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef) map[crossSeedKey]ruleRef {
+	if len(triggerHashes) == 0 || len(torrentByHash) == 0 || len(ruleByHash) == 0 {
+		return nil
+	}
+	sortedHashes := slices.Clone(triggerHashes)
+	sort.Strings(sortedHashes)
+
+	byKey := make(map[crossSeedKey]ruleRef)
+	for _, hash := range sortedHashes {
+		ref, hasRef := ruleByHash[hash]
+		if !hasRef {
+			continue
+		}
+		torrent, hasTorrent := torrentByHash[hash]
+		if !hasTorrent {
+			continue
+		}
+		key, ok := makeCrossSeedKey(torrent)
+		if !ok {
+			continue
+		}
+		if _, exists := byKey[key]; exists {
+			continue
+		}
+		byKey[key] = ref
+	}
+	if len(byKey) == 0 {
+		return nil
+	}
+	return byKey
+}
+
+func inheritRuleRefForCrossSeed(expandedHash string, key crossSeedKey, ruleByHash map[string]ruleRef, ruleByCrossSeedKey map[crossSeedKey]ruleRef) {
+	if strings.TrimSpace(expandedHash) == "" || len(ruleByHash) == 0 || len(ruleByCrossSeedKey) == 0 {
+		return
+	}
+	if _, exists := ruleByHash[expandedHash]; exists {
+		return
+	}
+	ref, ok := ruleByCrossSeedKey[key]
+	if !ok {
+		return
+	}
+	ruleByHash[expandedHash] = ref
 }
 
 // detectCrossSeeds checks if any other torrent shares the same ContentPath,
@@ -2552,7 +3377,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	var totalBytes1 int64
 	for _, f := range files1 {
 		key := fileOverlapKey{
-			name: strings.ToLower(normalizePath(f.Name)),
+			name: normalizePath(f.Name),
 			size: f.Size,
 		}
 		fileSet1[key] = struct{}{}
@@ -2564,7 +3389,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	for _, f := range files2 {
 		totalBytes2 += f.Size
 		key := fileOverlapKey{
-			name: strings.ToLower(normalizePath(f.Name)),
+			name: normalizePath(f.Name),
 			size: f.Size,
 		}
 		if _, exists := fileSet1[key]; exists {
@@ -2719,7 +3544,7 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 	result := make(map[string]string)
 	for _, c := range customizations {
 		for _, domain := range c.Domains {
-			result[strings.ToLower(domain)] = c.DisplayName
+			result[normalizeLower(domain)] = c.DisplayName
 		}
 	}
 	return result
@@ -2747,6 +3572,8 @@ func (s *Service) applySpeedLimits(
 	batches map[int64][]string,
 	limitType string,
 	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
+	summary *automationSummary,
+	ruleByHash map[string]ruleRef,
 ) map[int64][]string {
 	successHashes := make(map[int64][]string)
 	for limit, hashes := range batches {
@@ -2754,19 +3581,28 @@ func (s *Service) applySpeedLimits(
 		for _, batch := range limited {
 			if err := setLimit(ctx, instanceID, batch, limit); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Str("limitType", limitType).Msg("automations: speed limit failed")
+				detailsJSON, marshalErr := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": limitType})
+				if marshalErr != nil {
+					log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
+				}
+				activity := &models.AutomationActivity{
+					InstanceID: instanceID,
+					Hash:       strings.Join(batch, ","),
+					Action:     models.ActivityActionLimitFailed,
+					Outcome:    models.ActivityOutcomeFailed,
+					Reason:     limitType + " limit failed: " + err.Error(),
+					Details:    detailsJSON,
+				}
+				if summary != nil {
+					summary.recordActivity(activity, len(batch))
+					summary.recordRuleCounts(
+						models.ActivityActionLimitFailed,
+						models.ActivityOutcomeFailed,
+						buildRuleCountsFromHashes(batch, ruleByHash),
+					)
+				}
 				if s.activityStore != nil {
-					detailsJSON, marshalErr := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": limitType})
-					if marshalErr != nil {
-						log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
-					}
-					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-						InstanceID: instanceID,
-						Hash:       strings.Join(batch, ","),
-						Action:     models.ActivityActionLimitFailed,
-						Outcome:    models.ActivityOutcomeFailed,
-						Reason:     limitType + " limit failed: " + err.Error(),
-						Details:    detailsJSON,
-					}); err != nil {
+					if err := s.activityStore.Create(ctx, activity); err != nil {
 						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
@@ -3225,8 +4061,8 @@ func buildMoveRunItems(
 
 func sortActivityRunItems(items []ActivityRunTorrent) {
 	sort.Slice(items, func(i, j int) bool {
-		nameA := strings.ToLower(items[i].Name)
-		nameB := strings.ToLower(items[j].Name)
+		nameA := normalizeLower(items[i].Name)
+		nameB := normalizeLower(items[j].Name)
 		if nameA == "" && nameB != "" {
 			return false
 		}

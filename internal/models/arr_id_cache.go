@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -51,7 +50,7 @@ func NewArrIDCacheStore(db dbinterface.Querier) *ArrIDCacheStore {
 
 // ComputeTitleHash computes a SHA256 hash of the normalized title for cache lookup
 func ComputeTitleHash(title string) string {
-	normalized := strings.ToLower(strings.TrimSpace(title))
+	normalized := normalizeLowerTrim(title)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])
 }

@@ -17,9 +17,16 @@ import (
 )
 
 // IsAuthenticated middleware checks if the user is authenticated
-func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager) func(http.Handler) http.Handler {
+func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager, cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// When authentication is disabled, set a synthetic user and pass through
+			if cfg != nil && cfg.IsAuthDisabled() {
+				ctx := context.WithValue(r.Context(), ctxkeys.Username, "admin")
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			// Check for API key first
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey != "" {
@@ -56,9 +63,13 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// When OIDC is enabled we don't require a local user to exist, so skip the
-			// setup precondition entirely. Authentication is still enforced by the
-			// downstream middleware.
+			// When authentication is disabled or OIDC is enabled we don't require
+			// a local user to exist, so skip the setup precondition entirely.
+			if cfg != nil && cfg.IsAuthDisabled() {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			if cfg != nil && cfg.OIDCEnabled {
 				next.ServeHTTP(w, r)
 				return

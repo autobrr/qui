@@ -12,7 +12,7 @@ import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronDown, ChevronRight, File, Folder, Loader2, Pencil, Search, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, File, Folder, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 interface TorrentFileTableProps {
@@ -26,6 +26,7 @@ interface TorrentFileTableProps {
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onRenameFile?: (filePath: string) => void
   onRenameFolder?: (folderPath: string) => void
+  onDownloadFile?: (file: TorrentFile) => void
 }
 
 interface FileTreeNode {
@@ -170,6 +171,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   onToggleFolder,
   onRenameFile,
   onRenameFolder,
+  onDownloadFile,
 }: TorrentFileTableProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
   const [searchQuery, setSearchQuery] = useState("")
@@ -447,14 +449,23 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                 </div>
               )
 
-              // Wrap with context menu if rename handlers are provided
-              if (onRenameFile || onRenameFolder) {
+              // Wrap with context menu if any file action handlers are provided
+              if (onRenameFile || onRenameFolder || onDownloadFile) {
                 return (
                   <ContextMenu key={node.id}>
                     <ContextMenuTrigger asChild>
                       {rowContent}
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                      {isFile && onDownloadFile && node.file && (
+                        <ContextMenuItem
+                          onClick={() => onDownloadFile(node.file!)}
+                          disabled={incognitoMode}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-2" />
+                          Download
+                        </ContextMenuItem>
+                      )}
                       {isFile && onRenameFile && (
                         <ContextMenuItem onClick={() => onRenameFile(node.id)}>
                           <Pencil className="h-3.5 w-3.5 mr-2" />

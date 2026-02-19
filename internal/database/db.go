@@ -1006,6 +1006,10 @@ func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
 		to   string
 	}{
 		{
+			from: "061_add_notifications.sql",
+			to:   "062_add_notifications.sql",
+		},
+		{
 			from: "052_add_dir_scan.sql",
 			to:   "053_add_dir_scan.sql",
 		},
@@ -1261,6 +1265,8 @@ const referencedStringsInsertQuery = `
 	UNION ALL
 	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
 	UNION ALL
+	SELECT basic_username_id AS string_id FROM torznab_indexers WHERE basic_username_id IS NOT NULL
+	UNION ALL
 	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
 	UNION ALL
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
@@ -1270,6 +1276,8 @@ const referencedStringsInsertQuery = `
 	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
 	UNION ALL
 	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT basic_username_id AS string_id FROM arr_instances WHERE basic_username_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {

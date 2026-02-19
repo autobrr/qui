@@ -89,6 +89,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
+  const { data: instances } = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), staleTime: 60000 })
+  const hasLocalFilesystemAccess = instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false
   const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
   const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
@@ -652,6 +654,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!torrent) return
     renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
   }, [renameFileMutation, torrent])
+
+  // Handle download content file
+  const handleDownloadFile = useCallback((file: TorrentFile) => {
+    if (!torrent || incognitoMode) return
+    api.downloadContentFile(instanceId, torrent.hash, file.index)
+  }, [instanceId, torrent, incognitoMode])
 
   // Handle rename folder
   const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
@@ -1503,6 +1511,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onToggleFolder={handleToggleFolderDownload}
                 onRenameFile={handleRenameFileClick}
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
               />
             ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
@@ -1555,6 +1564,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       onToggleFolder={handleToggleFolderDownload}
                       onRenameFile={handleRenameFileClick}
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                      onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
                     />
                   </div>
                 </ScrollArea>

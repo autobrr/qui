@@ -530,6 +530,9 @@ export const createColumns = (
       },
       size: 40,
       enableResizing: false,
+      meta: {
+        headerString: "Selection",
+      },
     },
     {
       accessorKey: "priority",

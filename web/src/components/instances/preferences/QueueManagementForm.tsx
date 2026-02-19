@@ -122,7 +122,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
         </form.Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field 
+          <form.Field
             name="max_active_downloads"
             validators={{
               onChange: ({ value }) => {
@@ -150,7 +150,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="max_active_uploads"
             validators={{
               onChange: ({ value }) => {
@@ -178,7 +178,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="max_active_torrents"
             validators={{
               onChange: ({ value }) => {

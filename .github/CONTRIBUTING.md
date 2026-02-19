@@ -29,14 +29,16 @@ Make sure you have the following dependencies installed before setting up your d
 
 ## How to contribute
 
-- **Fork and Clone:** [Fork the qui repository](https://github.com/autobrr/qui/fork) and clone it to start working on your changes.
+- **Pull request access:** This repo restricts pull request creation to **collaborators only**.
+  - If you are **not** a collaborator: start with an issue/discussion (or Discord) and include a patch (`git diff`) or link to your fork/branch so a maintainer can apply it.
+- **Clone:** Clone the repository to start working on your changes. If you are not a collaborator, you can still work from a [fork](https://github.com/autobrr/qui/fork) and share a patch/link (see above).
 - **Branching:** Create a new branch for your changes. Use a descriptive name for easy understanding.
   - Checkout a new branch for your fix or feature `git checkout -b fix/torrent-actions-issue`
 - **Coding:** Ensure your code is well-commented for clarity. With go use `go fmt`
 - **Commit Guidelines:** We appreciate the use of [Conventional Commit Guidelines](https://www.conventionalcommits.org/en/v1.0.0/#summary) when writing your commits.
   - Examples: `fix(qbittorrent): improve connection pooling`, `feat(torrent): add bulk actions`
   - There is no need for force pushing or rebasing. We squash commits on merge to keep the history clean and manageable.
-- **Pull Requests:** Submit a pull request from your Fork with a clear description of your changes. Reference any related issues.
+- **Pull Requests:** Open a pull request with a clear description of your changes. Reference any related issues.
   - Mark it as Draft if it's still in progress.
 - **Code Review:** Be open to feedback during the code review process.
 
