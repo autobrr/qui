@@ -337,7 +337,6 @@ func TestDownloadTorrentContentFile_PrefersSavePathOverStaleContentPath(t *testi
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "fresh content", rec.Body.String())
 }
-
 func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 	t.Parallel()
 
