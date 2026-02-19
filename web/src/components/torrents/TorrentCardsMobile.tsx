@@ -310,6 +310,7 @@ function MobileSpeedLimitsDialog({
 
 interface TorrentCardsMobileProps {
   instanceId: number
+  instanceIds?: number[]
   filters?: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
@@ -908,6 +909,7 @@ function SwipeableCard({
 
 export function TorrentCardsMobile({
   instanceId,
+  instanceIds,
   filters,
   onTorrentSelect,
   addTorrentModalOpen,
@@ -1098,6 +1100,7 @@ export function TorrentCardsMobile({
     proceedToLocationDialog,
   } = useTorrentActions({
     instanceId,
+    instanceIds,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         setSelectedHashes(new Set())
@@ -1236,6 +1239,7 @@ export function TorrentCardsMobile({
     loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
     enabled: isTabVisible,
+    instanceIds,
     search: effectiveSearch,
     filters: effectiveFilters,
     sort: backendSortField,

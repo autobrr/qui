@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -27,6 +28,12 @@ import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import {
+  encodeUnifiedInstanceIds,
+  normalizeUnifiedInstanceIds,
+  resolveUnifiedInstanceIds,
+  UNIFIED_INSTANCE_IDS_SEARCH_PARAM
+} from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -39,7 +46,7 @@ import {
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import {
   Archive,
   Check,
@@ -94,6 +101,8 @@ const useThemeChange = () => {
 
 export function MobileFooterNav() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { currentMode, currentTheme } = useThemeChange()
@@ -121,10 +130,53 @@ export function MobileFooterNav() {
     }
     return instances.filter(instance => instance.isActive)
   }, [instances])
+  const activeInstanceIds = useMemo(
+    () => activeInstances.map(instance => instance.id),
+    [activeInstances]
+  )
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
   const isOnAllInstancesPage = location.pathname === "/instances" || location.pathname === "/instances/"
   const isOnInstancePage = isOnAllInstancesPage || location.pathname.startsWith("/instances/")
+  const effectiveUnifiedInstanceIds = useMemo(
+    () => resolveUnifiedInstanceIds(routeSearch?.[UNIFIED_INSTANCE_IDS_SEARCH_PARAM], activeInstanceIds),
+    [routeSearch, activeInstanceIds]
+  )
+  const normalizedUnifiedInstanceIds = useMemo(
+    () => normalizeUnifiedInstanceIds(effectiveUnifiedInstanceIds, activeInstanceIds),
+    [effectiveUnifiedInstanceIds, activeInstanceIds]
+  )
+  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
+  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
+  const applyUnifiedScope = useCallback((nextIds: number[]) => {
+    const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
+    const encoded = encodeUnifiedInstanceIds(normalizedIds)
+
+    if (encoded) {
+      nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM] = encoded
+    } else {
+      delete nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM]
+    }
+
+    navigate({
+      to: "/instances",
+      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      replace: isOnAllInstancesPage,
+    })
+  }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch])
+  const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected
+      ? effectiveUnifiedInstanceIds.filter(id => id !== instanceId)
+      : [...effectiveUnifiedInstanceIds, instanceId]
+
+    if (nextIds.length === 0) {
+      return
+    }
+
+    applyUnifiedScope(nextIds)
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
   const hasActiveInstances = activeInstances.length > 0
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
@@ -243,6 +295,7 @@ export function MobileFooterNav() {
               <DropdownMenuItem asChild>
                 <Link
                   to="/instances"
+                  search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
                   className="flex items-center gap-2 min-w-0"
                 >
                   <HardDrive className="h-4 w-4" />
@@ -250,8 +303,55 @@ export function MobileFooterNav() {
                   <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
                     {activeInstancesSummary}
                   </span>
+                  {hasCustomUnifiedScope && (
+                    <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                      {unifiedScopeSummary}
+                    </span>
+                  )}
                 </Link>
               </DropdownMenuItem>
+              {activeInstances.length > 1 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Unified Scope
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      applyUnifiedScope(activeInstanceIds)
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    All active ({activeInstances.length})
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`mobile-scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                </>
+              )}
               <DropdownMenuSeparator />
               {activeInstances.length > 0 ? (
                 activeInstances.map((instance) => {

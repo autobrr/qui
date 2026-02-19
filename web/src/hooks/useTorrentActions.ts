@@ -46,12 +46,14 @@ export type TorrentActionComplete =
 
 interface UseTorrentActionsProps {
   instanceId: number
+  instanceIds?: number[]
   onActionComplete?: (action: TorrentActionComplete) => void
 }
 
 interface TorrentActionData {
   action: TorrentAction
   hashes: string[]
+  instanceIds?: number[]
   targets?: Array<{ instanceId: number; hash: string }>
   deleteFiles?: boolean
   tags?: string
@@ -80,7 +82,7 @@ interface ClientMeta {
   excludeTargets?: Array<{ instanceId: number; hash: string }>
 }
 
-export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentActionsProps) {
+export function useTorrentActions({ instanceId, instanceIds, onActionComplete }: UseTorrentActionsProps) {
   const queryClient = useQueryClient()
 
   // Dialog states
@@ -127,6 +129,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
       return api.bulkAction(instanceId, {
         hashes: payload.hashes,
+        instanceIds: payload.instanceIds,
         targets: payload.targets,
         action: payload.action,
         deleteFiles: payload.deleteFiles,
@@ -379,9 +382,10 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     mutation.mutate({
       action,
       hashes,
+      instanceIds,
       ...options,
     })
-  }, [mutation])
+  }, [instanceIds, mutation])
 
   const handleDelete = useCallback(async (
     hashes: string[],
@@ -396,6 +400,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "delete",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       deleteFiles,
       hashes: isAllSelected ? [] : hashes,
@@ -411,7 +416,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setDeleteCrossSeeds(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation, deleteFiles])
+  }, [mutation, deleteFiles, instanceIds])
 
   const handleAddTags = useCallback(async (
     tags: string[],
@@ -427,6 +432,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "addTags",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       tags: tags.join(","),
       hashes: isAllSelected ? [] : hashes,
@@ -441,7 +447,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowAddTagsDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleSetTags = useCallback(async (
     tags: string[],
@@ -458,6 +464,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     try {
       await mutation.mutateAsync({
         action: "setTags",
+        instanceIds,
         targets: isAllSelected ? undefined : clientMeta?.actionTargets,
         tags: tags.join(","),
         hashes: isAllSelected ? [] : hashes,
@@ -474,6 +481,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       if ((error as Error).message?.includes("requires qBittorrent")) {
         await mutation.mutateAsync({
           action: "addTags",
+          instanceIds,
           targets: isAllSelected ? undefined : clientMeta?.actionTargets,
           tags: tags.join(","),
           hashes: isAllSelected ? [] : hashes,
@@ -492,7 +500,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowSetTagsDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleRemoveTags = useCallback(async (
     tags: string[],
@@ -508,6 +516,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "removeTags",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       tags: tags.join(","),
       hashes: isAllSelected ? [] : hashes,
@@ -522,7 +531,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRemoveTagsDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleSetCategory = useCallback(async (
     category: string,
@@ -538,6 +547,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setCategory",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       category,
       hashes: isAllSelected ? [] : hashes,
@@ -552,7 +562,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowCategoryDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleSetShareLimit = useCallback(async (
     ratioLimit: number,
@@ -570,6 +580,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setShareLimit",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
@@ -586,7 +597,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowShareLimitDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleSetSpeedLimits = useCallback(async (
     uploadLimit: number,
@@ -602,6 +613,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     const clientCount = clientMeta?.totalSelected
       ?? (clientHashes?.length ?? hashes.length)
     const sharedOptions = {
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
@@ -634,7 +646,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowSpeedLimitDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleRecheck = useCallback(async (
     hashes: string[],
@@ -649,6 +661,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "recheck",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
@@ -661,7 +674,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     })
     setShowRecheckDialog(false)
     setContextHashes([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleReannounce = useCallback(async (
     hashes: string[],
@@ -676,6 +689,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "reannounce",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
@@ -688,7 +702,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     })
     setShowReannounceDialog(false)
     setContextHashes([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleSetLocation = useCallback(async (
     location: string,
@@ -704,6 +718,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setLocation",
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       location,
       hashes: isAllSelected ? [] : hashes,
@@ -718,7 +733,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowLocationDialog(false)
     setContextHashes([])
     setContextTorrents([])
-  }, [mutation])
+  }, [mutation, instanceIds])
 
   const handleRenameTorrent = useCallback(async (hash: string, name: string) => {
     const trimmed = name.trim()
@@ -840,6 +855,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     const clientCount = clientMeta?.totalSelected ?? (clientHashes?.length ?? hashes.length)
     mutation.mutate({
       action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM,
+      instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       enable: pendingTmmEnable,
@@ -853,7 +869,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     })
     setShowTmmDialog(false)
     setContextHashes([])
-  }, [mutation, pendingTmmEnable])
+  }, [mutation, pendingTmmEnable, instanceIds])
 
   const proceedToLocationDialog = useCallback(() => {
     setShowLocationWarningDialog(false)

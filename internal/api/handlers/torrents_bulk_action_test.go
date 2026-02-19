@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"slices"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -129,5 +130,79 @@ func TestAppendTargetsFromCrossInstanceTorrents_RespectsExclusions(t *testing.T)
 	}
 	if len(targetsByInstance[2]) != 0 {
 		t.Fatalf("expected no hashes for instance 2, got %+v", targetsByInstance[2])
+	}
+}
+
+func TestNormalizeInstanceIDs(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		input     []int
+		expected  []int
+		shouldErr bool
+	}{
+		{name: "empty input", input: nil, expected: nil},
+		{name: "sorts ids", input: []int{5, 2, 9}, expected: []int{2, 5, 9}},
+		{name: "rejects duplicate ids", input: []int{1, 2, 1}, shouldErr: true},
+		{name: "rejects non-positive ids", input: []int{1, 0}, shouldErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			actual, err := normalizeInstanceIDs(tc.input)
+			if tc.shouldErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !slices.Equal(actual, tc.expected) {
+				t.Fatalf("unexpected normalized ids: got %v want %v", actual, tc.expected)
+			}
+		})
+	}
+}
+
+func TestParseInstanceIDsParam(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		input     string
+		expected  []int
+		shouldErr bool
+	}{
+		{name: "empty param", input: "", expected: nil},
+		{name: "parses and sorts", input: "7,2,4", expected: []int{2, 4, 7}},
+		{name: "ignores empty parts", input: "1, ,3", expected: []int{1, 3}},
+		{name: "rejects invalid token", input: "1,abc", shouldErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			actual, err := parseInstanceIDsParam(tc.input)
+			if tc.shouldErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !slices.Equal(actual, tc.expected) {
+				t.Fatalf("unexpected parsed ids: got %v want %v", actual, tc.expected)
+			}
+		})
 	}
 }

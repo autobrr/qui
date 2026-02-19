@@ -8,6 +8,7 @@ import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenuCheckboxItem,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -35,7 +36,14 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
-import { ALL_INSTANCES_ID, isAllInstancesScope } from "@/lib/instances"
+import {
+  ALL_INSTANCES_ID,
+  encodeUnifiedInstanceIds,
+  isAllInstancesScope,
+  normalizeUnifiedInstanceIds,
+  resolveUnifiedInstanceIds,
+  UNIFIED_INSTANCE_IDS_SEARCH_PARAM
+} from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -85,6 +93,52 @@ export function Header({
     () => (instances ?? []).filter(instance => instance.isActive),
     [instances]
   )
+  const activeInstanceIds = useMemo(
+    () => activeInstances.map(instance => instance.id),
+    [activeInstances]
+  )
+  const effectiveUnifiedInstanceIds = useMemo(
+    () => resolveUnifiedInstanceIds(routeSearch?.[UNIFIED_INSTANCE_IDS_SEARCH_PARAM], activeInstanceIds),
+    [routeSearch, activeInstanceIds]
+  )
+  const normalizedUnifiedInstanceIds = useMemo(
+    () => normalizeUnifiedInstanceIds(effectiveUnifiedInstanceIds, activeInstanceIds),
+    [effectiveUnifiedInstanceIds, activeInstanceIds]
+  )
+  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
+  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
+  const applyUnifiedScope = useCallback((nextIds: number[]) => {
+    const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    const nextSearch: Record<string, unknown> = isAllInstancesRoute ? { ...(routeSearch || {}) } : {}
+    const encoded = encodeUnifiedInstanceIds(normalizedIds)
+
+    if (encoded) {
+      nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM] = encoded
+    } else {
+      delete nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM]
+    }
+
+    navigate({
+      to: "/instances",
+      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      replace: isAllInstancesRoute,
+    })
+  }, [activeInstanceIds, isAllInstancesRoute, navigate, routeSearch])
+  const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected
+      ? effectiveUnifiedInstanceIds.filter(id => id !== instanceId)
+      : [...effectiveUnifiedInstanceIds, instanceId]
+
+    if (nextIds.length === 0) {
+      return
+    }
+
+    applyUnifiedScope(nextIds)
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
+  const resetUnifiedScope = useCallback(() => {
+    applyUnifiedScope(activeInstanceIds)
+  }, [applyUnifiedScope, activeInstanceIds])
 
 
   const currentInstance = useMemo(() => {
@@ -227,6 +281,7 @@ export function Header({
               <DropdownMenuItem asChild>
                 <Link
                   to="/instances"
+                  search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
                   className={cn(
                     "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
                     isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
@@ -237,8 +292,55 @@ export function Header({
                   <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
                     {activeInstances.length} active
                   </span>
+                  {hasCustomUnifiedScope && (
+                    <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                      {unifiedScopeSummary}
+                    </span>
+                  )}
                 </Link>
               </DropdownMenuItem>
+              {activeInstances.length > 1 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Unified Scope
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      resetUnifiedScope()
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    All active ({activeInstances.length})
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                </>
+              )}
               <DropdownMenuSeparator />
               <div className="max-h-64 overflow-y-auto space-y-1">
                 {activeInstances.length > 0 ? (
@@ -404,6 +506,7 @@ export function Header({
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
+                instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
                 selectedHashes={selectedHashes}
                 selectedTorrents={selectedTorrents}
                 isAllSelected={isAllSelected}
@@ -623,6 +726,7 @@ export function Header({
               <DropdownMenuItem asChild>
                 <Link
                   to="/instances"
+                  search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
                   className={cn(
                     "flex cursor-pointer",
                     isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"
@@ -633,8 +737,55 @@ export function Header({
                   <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
                     {activeInstances.length} active
                   </span>
+                  {hasCustomUnifiedScope && (
+                    <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                      {unifiedScopeSummary}
+                    </span>
+                  )}
                 </Link>
               </DropdownMenuItem>
+              {activeInstances.length > 1 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Unified Scope
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      resetUnifiedScope()
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    All active ({activeInstances.length})
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`menu-scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                </>
+              )}
               <DropdownMenuSeparator />
               {activeInstances.length > 0 ? (
                 activeInstances.map((instance) => {

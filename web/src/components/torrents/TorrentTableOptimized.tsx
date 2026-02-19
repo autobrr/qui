@@ -544,6 +544,7 @@ const CompactRow = memo(({
 
 interface TorrentTableOptimizedProps {
   instanceId: number
+  instanceIds?: number[]
   readOnly?: boolean
   filters?: TorrentFilters
   selectedTorrent?: Torrent | null
@@ -579,6 +580,7 @@ interface TorrentTableOptimizedProps {
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   instanceId,
+  instanceIds,
   readOnly = false,
   filters,
   selectedTorrent,
@@ -826,6 +828,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareTmmAction,
   } = useTorrentActions({
     instanceId,
+    instanceIds,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         resetSelectionState()
@@ -1002,6 +1005,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   } = useTorrentsList(instanceId, {
     enabled: true,
     pollingEnabled: isVisibilitySettled,
+    instanceIds,
     search: effectiveSearch,
     filters: {
       status: filters?.status || [],
@@ -1729,9 +1733,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       },
       excludeHashes: selectAllExcludeHashes,
       excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+      instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
     })
     return response.values
-  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets])
+  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -2038,12 +2043,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
+    instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
     selectAll: isAllSelected,
     filters: selectAllFilters,
     search: isAllSelected ? effectiveSearch : undefined,
     excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
     excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-  }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets])
+  }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,

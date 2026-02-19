@@ -252,6 +252,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		Order          string                    `json:"order"`
 		Search         string                    `json:"search"`
 		Filters        qbittorrent.FilterOptions `json:"filters"`
+		InstanceIDs    []int                     `json:"instanceIds"`
 		ExcludeHashes  []string                  `json:"excludeHashes"`
 		ExcludeTargets []BulkActionTarget        `json:"excludeTargets"`
 	}
@@ -260,6 +261,13 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+
+	normalizedInstanceIDs, instanceIDsErr := normalizeInstanceIDs(req.InstanceIDs)
+	if instanceIDsErr != nil {
+		RespondError(w, http.StatusBadRequest, instanceIDsErr.Error())
+		return
+	}
+	req.InstanceIDs = normalizedInstanceIDs
 
 	if len(req.ExcludeHashes) > 512 {
 		RespondError(w, http.StatusBadRequest, "Too many exclude hashes provided (maximum 512)")
@@ -287,6 +295,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			req.Order,
 			req.Search,
 			req.Filters,
+			req.InstanceIDs,
 		)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Str("field", req.Field).Msg("Failed to get cross-instance torrent field")
@@ -801,6 +810,7 @@ type BulkActionRequest struct {
 	Category                 string                     `json:"category,omitempty"`                 // For category operations
 	Enable                   bool                       `json:"enable,omitempty"`                   // For toggleAutoTMM action
 	SelectAll                bool                       `json:"selectAll,omitempty"`                // When true, apply to all torrents matching filters
+	InstanceIDs              []int                      `json:"instanceIds,omitempty"`              // Optional unified instance scope
 	Filters                  *qbittorrent.FilterOptions `json:"filters,omitempty"`                  // Filters to apply when selectAll is true
 	Search                   string                     `json:"search,omitempty"`                   // Search query when selectAll is true
 	ExcludeHashes            []string                   `json:"excludeHashes,omitempty"`            // Hashes to exclude when selectAll is true
@@ -888,6 +898,53 @@ func buildExcludeTargetSet(excludeTargets []BulkActionTarget) map[string]struct{
 	}
 
 	return result
+}
+
+func normalizeInstanceIDs(instanceIDs []int) ([]int, error) {
+	if len(instanceIDs) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[int]struct{}, len(instanceIDs))
+	normalized := make([]int, 0, len(instanceIDs))
+
+	for _, instanceID := range instanceIDs {
+		if instanceID <= 0 {
+			return nil, errors.New("instanceIds must contain positive instance IDs")
+		}
+		if _, exists := seen[instanceID]; exists {
+			return nil, errors.New("instanceIds must not contain duplicates")
+		}
+		seen[instanceID] = struct{}{}
+		normalized = append(normalized, instanceID)
+	}
+
+	slices.Sort(normalized)
+	return normalized, nil
+}
+
+func parseInstanceIDsParam(raw string) ([]int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	instanceIDs := make([]int, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+
+		instanceID, err := strconv.Atoi(value)
+		if err != nil {
+			return nil, errors.New("invalid instanceIds query parameter")
+		}
+		instanceIDs = append(instanceIDs, instanceID)
+	}
+
+	return normalizeInstanceIDs(instanceIDs)
 }
 
 func shouldResolveCrossInstanceHashes(instanceID int, req BulkActionRequest) bool {
@@ -1026,6 +1083,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 				"desc",
 				req.Search,
 				*req.Filters,
+				req.InstanceIDs,
 			)
 			if crossErr != nil {
 				log.Error().Err(crossErr).Msg("Failed to get cross-instance torrents for selectAll operation")
@@ -1115,6 +1173,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 					"",
 					"",
 					qbittorrent.FilterOptions{},
+					req.InstanceIDs,
 				)
 				if crossErr != nil {
 					log.Error().Err(crossErr).Msg("Failed to resolve hash targets for cross-instance bulk action")
@@ -2405,6 +2464,12 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		search = q
 	}
 
+	instanceIDs, instanceIDsErr := parseInstanceIDsParam(r.URL.Query().Get("instanceIds"))
+	if instanceIDsErr != nil {
+		RespondError(w, http.StatusBadRequest, instanceIDsErr.Error())
+		return
+	}
+
 	// Parse filters
 	var filters qbittorrent.FilterOptions
 	if f := r.URL.Query().Get("filters"); f != "" {
@@ -2420,6 +2485,9 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		Int("page", page).
 		Int("limit", limit).
 		Str("search", search)
+	if len(instanceIDs) > 0 {
+		logEvent = logEvent.Ints("instanceIDs", instanceIDs)
+	}
 
 	// Log filters but truncate long expressions
 	if filters.Expr != "" {
@@ -2441,7 +2509,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	offset := page * limit
 
 	// Get torrents from all instances with the filter expression
-	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(r.Context(), limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(r.Context(), limit, offset, sort, order, search, filters, instanceIDs)
 	if err != nil {
 		// Note: Cross-instance queries don't have a single instanceID, so we pass 0 for logging purposes
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {

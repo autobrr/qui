@@ -14,6 +14,7 @@ const unifiedSearchSchema = z.object({
   modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
   torrent: z.string().optional(),
   tab: z.string().optional(),
+  instanceIds: z.string().optional(),
 })
 
 export const Route = createFileRoute("/_authenticated/instances/")({
@@ -40,7 +41,12 @@ function UnifiedInstanceTorrents() {
     }
   }, [resetLayoutRouteState, setLayoutRouteState])
 
-  const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => {
+  const handleSearchChange = (newSearch: {
+    modal?: "add-torrent" | "create-torrent" | "tasks" | undefined
+    torrent?: string
+    tab?: string
+    instanceIds?: string
+  }) => {
     navigate({
       search: newSearch,
       replace: true,

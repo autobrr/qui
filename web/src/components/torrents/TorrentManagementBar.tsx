@@ -64,6 +64,7 @@ import {
 
 interface TorrentManagementBarProps {
   instanceId?: number
+  instanceIds?: number[]
   selectedHashes?: string[]
   selectedTorrents?: Torrent[]
   isAllSelected?: boolean
@@ -78,6 +79,7 @@ interface TorrentManagementBarProps {
 
 export const TorrentManagementBar = memo(function TorrentManagementBar({
   instanceId,
+  instanceIds,
   selectedHashes = [],
   selectedTorrents = [],
   isAllSelected = false,
@@ -198,6 +200,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareTmmAction,
   } = useTorrentActions({
     instanceId: actionInstanceId,
+    instanceIds,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         onComplete?.()
@@ -231,6 +234,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     [selectedTorrents, actionInstanceId]
   )
   const actionOptions = useMemo(() => ({
+    instanceIds,
     targets: isAllSelected ? undefined : actionTargets,
     selectAll: isAllSelected,
     filters: isAllSelected ? filters : undefined,
@@ -239,7 +243,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     excludeTargets: isAllSelected ? excludeTargets : undefined,
     clientHashes: selectedHashes,
     clientCount: selectionCount,
-  }), [actionTargets, isAllSelected, filters, search, excludeHashes, excludeTargets, selectedHashes, selectionCount])
+  }), [instanceIds, actionTargets, isAllSelected, filters, search, excludeHashes, excludeTargets, selectedHashes, selectionCount])
 
   const clientMeta = useMemo(() => ({
     clientHashes: selectedHashes,

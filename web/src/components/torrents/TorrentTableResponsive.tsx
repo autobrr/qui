@@ -15,6 +15,7 @@ import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
 interface TorrentTableResponsiveProps {
   instanceId: number
+  instanceIds?: number[]
   readOnly?: boolean
   filters?: TorrentFilters
   selectedTorrent?: Torrent | null

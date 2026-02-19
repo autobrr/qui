@@ -18,6 +18,7 @@ interface UseTorrentsListOptions {
   filters?: TorrentFilters
   sort?: string
   order?: "asc" | "desc"
+  instanceIds?: number[]
 }
 
 // Hook that manages paginated torrent loading with stale-while-revalidate pattern
@@ -34,6 +35,7 @@ export function useTorrentsList(
     filters,
     sort = "added_on",
     order = "desc",
+    instanceIds,
   } = options
   const shouldEnableQuery = enabled
   const isAllInstancesView = isAllInstancesScope(instanceId)
@@ -51,6 +53,10 @@ export function useTorrentsList(
   // Use JSON.stringify to avoid resetting on every object reference change during polling
   const filterKey = JSON.stringify(filters)
   const searchKey = search || ""
+  const instanceIdsKey = useMemo(
+    () => (instanceIds && instanceIds.length > 0 ? [...instanceIds].sort((left, right) => left - right).join(",") : ""),
+    [instanceIds]
+  )
 
   useEffect(() => {
     setCurrentPage(0)
@@ -58,7 +64,7 @@ export function useTorrentsList(
     setHasLoadedAll(false)
     setLastKnownTotal(0)
     setLastProcessedPage(-1)
-  }, [instanceId, filterKey, searchKey, sort, order])
+  }, [instanceId, filterKey, searchKey, sort, order, instanceIdsKey])
 
   // Detect if this is cross-seed filtering based on expression content
   const isCrossSeedFiltering = useMemo(() => {
@@ -68,7 +74,7 @@ export function useTorrentsList(
 
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering],
+    queryKey: ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering],
     queryFn: () => {
       if (useCrossInstanceEndpoint) {
         return api.getCrossInstanceTorrents({
@@ -78,6 +84,7 @@ export function useTorrentsList(
           order,
           search,
           filters,
+          instanceIds,
         })
       }
 

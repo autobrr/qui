@@ -22,7 +22,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
-import { isAllInstancesScope } from "@/lib/instances"
+import { isAllInstancesScope, normalizeUnifiedInstanceIds, parseUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, ServerState, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
@@ -33,8 +33,8 @@ interface TorrentsProps {
   instanceId: number
   instanceName: string
   isAllInstancesView?: boolean
-  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }
-  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }) => void
+  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string; instanceIds?: string }
+  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string; instanceIds?: string }) => void
 }
 
 export function Torrents({ instanceId, instanceName, isAllInstancesView = false, search, onSearchChange }: TorrentsProps) {
@@ -44,6 +44,18 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const { viewMode } = usePersistedCompactViewState("normal")
   const { clearSelection } = useTorrentSelection()
   const { instances } = useInstances()
+  const activeInstanceIds = useMemo(
+    () => (instances ?? []).filter(current => current.isActive).map(current => current.id),
+    [instances]
+  )
+  const unifiedScopeInstanceIds = useMemo(() => {
+    if (!isAllInstances) {
+      return undefined
+    }
+
+    const normalized = normalizeUnifiedInstanceIds(parseUnifiedInstanceIds(search.instanceIds), activeInstanceIds)
+    return normalized.length > 0 ? normalized : undefined
+  }, [isAllInstances, search.instanceIds, activeInstanceIds])
   const instance = useMemo(() => {
     if (isAllInstances) {
       return undefined
@@ -123,6 +135,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
           excludeTrackers: [],
         },
         limit: 1,
+        instanceIds: unifiedScopeInstanceIds,
       }).then((response) => response.crossInstanceTorrents?.[0] ?? response.cross_instance_torrents?.[0] ?? null)
       : api.getTorrents(instanceId, {
         filters: {
@@ -147,12 +160,20 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         }
       }
       // Clear the search params after consuming
-      onSearchChange({ modal: search.modal })
+      onSearchChange({
+        ...search,
+        torrent: undefined,
+        tab: undefined,
+      })
     }).catch(() => {
       // Silently fail - torrent might not exist
-      onSearchChange({ modal: search.modal })
+      onSearchChange({
+        ...search,
+        torrent: undefined,
+        tab: undefined,
+      })
     })
-  }, [instanceId, isAllInstances, search, onSearchChange])
+  }, [instanceId, isAllInstances, search, onSearchChange, unifiedScopeInstanceIds])
 
   // Navigate to a cross-seed match torrent
   const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
@@ -484,6 +505,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                 <div className="h-full">
                   <TorrentTableResponsive
                     instanceId={instanceId}
+                    instanceIds={unifiedScopeInstanceIds}
                     filters={filters}
                     selectedTorrent={selectedTorrent}
                     onTorrentSelect={handleTorrentSelect}
@@ -553,6 +575,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
           <div className="flex flex-col h-full px-4">
             <TorrentTableResponsive
               instanceId={instanceId}
+              instanceIds={unifiedScopeInstanceIds}
               filters={filters}
               selectedTorrent={selectedTorrent}
               onTorrentSelect={handleTorrentSelect}
