@@ -401,7 +401,8 @@ export const createColumns = (
       isAllSelected: boolean
       isIndeterminate: boolean
     }
-    onRowSelection?: (hash: string, checked: boolean, rowId?: string) => void
+    onRowSelection?: (selectionIdentity: string, checked: boolean, rowId?: string) => void
+    getSelectionIdentity?: (torrent: Torrent) => string
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
@@ -458,12 +459,13 @@ export const createColumns = (
       cell: ({ row, table }: CellContext<Torrent, unknown>) => {
         const torrent = row.original
         const hash = torrent.hash
+        const selectionIdentity = selectionEnhancers?.getSelectionIdentity?.(torrent) ?? hash
 
         // Determine if row is selected based on custom logic
         const isRowSelected = (() => {
           if (selectionEnhancers?.isAllSelected) {
           // In "select all" mode, row is selected unless excluded
-            return !selectionEnhancers.excludedFromSelectAll?.has(hash)
+            return !selectionEnhancers.excludedFromSelectAll?.has(selectionIdentity)
           } else {
           // Regular mode, use table's selection state
             return row.getIsSelected()
@@ -494,7 +496,8 @@ export const createColumns = (
                       const r = allRows[i]
                       if (r) {
                         const rTorrent = r.original as Torrent
-                        selectionEnhancers.onRowSelection(rTorrent.hash, !!checked, r.id)
+                        const rSelectionIdentity = selectionEnhancers.getSelectionIdentity?.(rTorrent) ?? rTorrent.hash
+                        selectionEnhancers.onRowSelection(rSelectionIdentity, !!checked, r.id)
                       }
                     }
                   } else {
@@ -512,7 +515,7 @@ export const createColumns = (
                 } else {
                 // Single row selection
                   if (selectionEnhancers?.onRowSelection) {
-                    selectionEnhancers.onRowSelection(hash, !!checked, row.id)
+                    selectionEnhancers.onRowSelection(selectionIdentity, !!checked, row.id)
                   } else {
                     row.toggleSelected(!!checked)
                   }
