@@ -143,7 +143,7 @@ func TestSearchScheduler_WorkerPoolLimit(t *testing.T) {
 	}
 
 	// Submit 5 tasks with different indexers
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		indexer := &models.TorznabIndexer{ID: i, Name: "indexer"}
 		_, err := s.Submit(context.Background(), SubmitRequest{
 			Indexers: []*models.TorznabIndexer{indexer},
@@ -375,11 +375,11 @@ func TestSearchScheduler_ConcurrentSubmissions(t *testing.T) {
 	const tasksPerGoroutine = 5
 
 	var wg sync.WaitGroup
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < tasksPerGoroutine; j++ {
+			for j := range tasksPerGoroutine {
 				indexer := &models.TorznabIndexer{ID: id*10 + j, Name: "indexer"}
 				_, err := s.Submit(context.Background(), SubmitRequest{
 					Indexers: []*models.TorznabIndexer{indexer},

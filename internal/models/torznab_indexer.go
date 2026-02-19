@@ -883,12 +883,9 @@ func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int
 		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
 
 		// Batch insert capabilities
-		args := make([]interface{}, 0, capabilityBatchSize*2)
+		args := make([]any, 0, capabilityBatchSize*2)
 		for i := 0; i < len(capIDs); i += capabilityBatchSize {
-			end := i + capabilityBatchSize
-			if end > len(capIDs) {
-				end = len(capIDs)
-			}
+			end := min(i+capabilityBatchSize, len(capIDs))
 			batch := capIDs[i:end]
 
 			// Reset args for this batch
@@ -994,12 +991,9 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
 
 		// Batch insert categories
-		args := make([]interface{}, 0, categoryBatchSize*4)
+		args := make([]any, 0, categoryBatchSize*4)
 		for i := 0; i < len(ordered); i += categoryBatchSize {
-			end := i + categoryBatchSize
-			if end > len(ordered) {
-				end = len(ordered)
-			}
+			end := min(i+categoryBatchSize, len(ordered))
 			batch := ordered[i:end]
 
 			// Reset args for this batch
@@ -1314,10 +1308,7 @@ func (s *TorznabIndexerStore) ListRateLimitCooldowns(ctx context.Context) ([]Tor
 
 // UpsertRateLimitCooldown stores or updates the cooldown window for an indexer.
 func (s *TorznabIndexerStore) UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error {
-	seconds := int64(cooldown.Seconds())
-	if seconds < 0 {
-		seconds = 0
-	}
+	seconds := max(int64(cooldown.Seconds()), 0)
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO torznab_indexer_cooldowns (indexer_id, resume_at, cooldown_seconds, reason)
 		VALUES (?, ?, ?, ?)

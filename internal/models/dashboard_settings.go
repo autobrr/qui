@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -224,9 +225,7 @@ func (s *DashboardSettingsStore) createDefault(ctx context.Context, userID int) 
 
 func copyVisibilityMap(src map[string]bool) map[string]bool {
 	dst := make(map[string]bool, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 

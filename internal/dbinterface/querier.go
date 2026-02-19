@@ -51,12 +51,12 @@ func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, nu
 	// Estimate size: each row has 2*placeholdersPerRow chars for ?, plus 2 for (), plus comma space
 	totalLen := numRows*(2*placeholdersPerRow+2) + (numRows-1)*2
 	sb.Grow(totalLen)
-	for i := 0; i < numRows; i++ {
+	for i := range numRows {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
 		sb.WriteByte('(')
-		for j := 0; j < placeholdersPerRow; j++ {
+		for j := range placeholdersPerRow {
 			if j > 0 {
 				sb.WriteString(", ")
 			}

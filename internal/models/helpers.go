@@ -49,7 +49,7 @@ func SanitizeCommaSeparatedStringSlice(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	var result []string
 	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
+		for part := range strings.SplitSeq(value, ",") {
 			trimmed := strings.TrimSpace(part)
 			if trimmed == "" {
 				continue

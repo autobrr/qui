@@ -524,7 +524,7 @@ func TestExecuteRequest_Validate(t *testing.T) {
 				ProgramID:  1,
 				Torrent:    torrent,
 				InstanceID: 1,
-				RuleID:     intPtr(42),
+				RuleID:     new(42),
 				RuleName:   "Test Rule",
 			},
 			wantErr: false,
@@ -570,8 +570,10 @@ func TestExecuteResult_Constructors(t *testing.T) {
 }
 
 // Helper function
+//
+//go:fix inline
 func intPtr(i int) *int {
-	return &i
+	return new(i)
 }
 
 // =============================================================================

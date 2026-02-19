@@ -172,10 +172,3 @@ func ShortTorrentHash(hash string) string {
 
 	return builder.String()
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

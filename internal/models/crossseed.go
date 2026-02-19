@@ -893,7 +893,7 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 		return nil, fmt.Errorf("encode search indexers: %w", err)
 	}
 
-	var instanceID interface{}
+	var instanceID any
 	if settings.InstanceID != nil {
 		instanceID = *settings.InstanceID
 	}

@@ -18,7 +18,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -116,6 +116,63 @@ fmt:
 	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
 		if [ -n "$$webfiles" ]; then cd $(WEB_DIR) && echo "$$webfiles" | xargs pnpm eslint --fix; fi
 
+# Apply go fix to changed Go files only
+gofix-changed:
+	@echo "Running go fix on changed Go files..."
+	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -z "$$gofiles" ]; then \
+			echo "No changed Go files for go fix."; \
+			exit 0; \
+		fi; \
+		gopkgs=$$(printf '%s\n' "$$gofiles" | xargs -n 1 dirname | sort -u); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix "./$$pkg" || true; \
+		done; \
+		tmp=$$(mktemp); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix -diff "./$$pkg" >> "$$tmp" || true; \
+		done; \
+		if [ -s "$$tmp" ]; then \
+			echo "go fix left pending changes for changed Go files:"; \
+			cat "$$tmp"; \
+			rm -f "$$tmp"; \
+			echo "Re-run 'make gofix-changed'."; \
+			exit 1; \
+		fi; \
+		rm -f "$$tmp"; \
+		echo "go fix applied."
+
+# Check go fix drift on changed Go files only (for CI/pre-commit)
+gofix-check-changed:
+	@echo "Checking go fix drift on changed Go files..."
+	@tmp=$$(mktemp); \
+		gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -z "$$gofiles" ]; then \
+			rm -f "$$tmp"; \
+			echo "No changed Go files for go fix check."; \
+			exit 0; \
+		fi; \
+		gopkgs=$$(printf '%s\n' "$$gofiles" | xargs -n 1 dirname | sort -u); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix -diff "./$$pkg" >> "$$tmp" || true; \
+		done; \
+		if [ -s "$$tmp" ]; then \
+			echo "go fix changes required for changed Go files:"; \
+			cat "$$tmp"; \
+			rm -f "$$tmp"; \
+			echo "Run 'make gofix-changed'."; \
+			exit 1; \
+		fi; \
+		rm -f "$$tmp"; \
+		echo "go fix check clean."
+
+# Local pre-commit gate (changed files only)
+precommit: fmt gofix-changed lint
+	@echo "Pre-commit checks passed."
+
 # Lint code (changed files only - fast feedback for AI iteration)
 lint:
 	@echo "Linting changed Go code..."
@@ -141,11 +198,6 @@ lint-fix:
 	@echo "Running linters with auto-fix..."
 	golangci-lint run --fix --timeout=10m
 	cd $(WEB_DIR) && pnpm lint --fix
-
-# Modernize Go code (interface{} -> any, etc)
-modern:
-	@echo "Modernizing Go code..."
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test ./...
 
 # Install development dependencies
 deps:
@@ -191,7 +243,9 @@ help:
 	@echo ""
 	@echo "Formatting:"
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
-	@echo "  make modern         - Modernize Go code (interface{} -> any)"
+	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
+	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
+	@echo "  make precommit      - Run local pre-commit gate (fmt + gofix + lint)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

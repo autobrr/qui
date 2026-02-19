@@ -629,13 +629,7 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 		if cond.Compiled == nil {
 			return false
 		}
-		anyMatch := false
-		for _, c := range candidates {
-			if cond.Compiled.MatchString(c) {
-				anyMatch = true
-				break
-			}
-		}
+		anyMatch := slices.ContainsFunc(candidates, cond.Compiled.MatchString)
 		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
 			// Negative operators apply to the combined candidate set: fail if any candidate matches.
 			return !anyMatch
