@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
@@ -371,6 +372,36 @@ func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 	require.Contains(t, rec.Header().Get("Content-Disposition"), "file.txt")
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/plain")
 	require.Equal(t, "hello world", rec.Body.String())
+}
+
+func TestDownloadTorrentContentFile_ConditionalGetReturnsNotModified(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	baseDir := t.TempDir()
+	relativePath := "folder/file.txt"
+	fullPath := filepath.Join(baseDir, relativePath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
+	require.NoError(t, os.WriteFile(fullPath, []byte("hello world"), 0o600))
+
+	files := qbt.TorrentFiles{{Index: 3, Name: relativePath}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: baseDir},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "3")
+	req.Header.Set("If-Modified-Since", time.Now().Add(1*time.Hour).UTC().Format(http.TimeFormat))
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusNotModified, rec.Code)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestFilePathCandidates(t *testing.T) {

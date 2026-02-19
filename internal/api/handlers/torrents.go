@@ -2375,7 +2375,14 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 
 	// Fast path for full-file downloads: avoid ServeContent's small-copy behavior
 	// when middleware wrappers prevent optimized ReaderFrom/sendfile paths.
-	if r.Method == http.MethodGet && r.Header.Get("Range") == "" && r.Header.Get("If-Range") == "" {
+	// Keep conditional GET handling on ServeContent to preserve 304/412 semantics.
+	if r.Method == http.MethodGet &&
+		r.Header.Get("Range") == "" &&
+		r.Header.Get("If-Range") == "" &&
+		r.Header.Get("If-Modified-Since") == "" &&
+		r.Header.Get("If-Unmodified-Since") == "" &&
+		r.Header.Get("If-Match") == "" &&
+		r.Header.Get("If-None-Match") == "" {
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 		w.WriteHeader(http.StatusOK)
