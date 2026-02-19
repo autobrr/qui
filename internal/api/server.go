@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -269,7 +270,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		r.Use(compressor)
+		r.Use(func(next http.Handler) http.Handler {
+			compressed := compressor(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if skipCompressionForPath(r.URL.Path) {
+					next.ServeHTTP(w, r)
+					return
+				}
+				compressed.ServeHTTP(w, r)
+			})
+		})
 	}
 
 	// CORS - mirror autobrr's permissive credentials setup
@@ -293,7 +303,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
@@ -478,6 +488,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
+							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 						})
 					})
 
@@ -662,4 +673,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	return r, nil
+}
+
+func skipCompressionForPath(requestPath string) bool {
+	cleanPath := path.Clean("/" + requestPath)
+	segments := strings.Split(strings.Trim(cleanPath, "/"), "/")
+	if len(segments) < 8 {
+		return false
+	}
+
+	tail := segments[len(segments)-8:]
+	return tail[0] == "api" &&
+		tail[1] == "instances" &&
+		tail[3] == "torrents" &&
+		tail[5] == "files" &&
+		tail[7] == "download"
 }

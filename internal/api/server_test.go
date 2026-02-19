@@ -282,3 +282,46 @@ func formatRoutes(routes []routeKey) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func TestSkipCompressionForPath(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{
+			name: "content_download_route",
+			path: "/api/instances/1/torrents/abcd/files/2/download",
+			want: true,
+		},
+		{
+			name: "content_download_route_with_baseurl_prefix",
+			path: "/qui/api/instances/1/torrents/abcd/files/2/download",
+			want: true,
+		},
+		{
+			name: "backups_download_route_not_skipped",
+			path: "/api/instances/1/backups/runs/2/download",
+			want: false,
+		},
+		{
+			name: "content_files_endpoint_not_skipped",
+			path: "/api/instances/1/torrents/abcd/files",
+			want: false,
+		},
+		{
+			name: "download_with_trailing_segment_not_skipped",
+			path: "/api/instances/1/torrents/abcd/files/2/download/extra",
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, skipCompressionForPath(tc.path))
+		})
+	}
+}
