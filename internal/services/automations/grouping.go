@@ -166,7 +166,7 @@ func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, 
 }
 
 func lookupGroupIndexForRule(evalCtx *EvalContext, ruleID int, groupID string) *groupIndex {
-	if evalCtx == nil || ruleID <= 0 || groupID == "" || evalCtx.groupIndexCache == nil {
+	if evalCtx == nil || groupID == "" || evalCtx.groupIndexCache == nil {
 		return nil
 	}
 	byRule := evalCtx.groupIndexCache[ruleID]

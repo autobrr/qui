@@ -628,6 +628,26 @@ func TestEvaluateCondition_GroupFields_UseConditionGroupID(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_GroupFields_WorkWithZeroRuleID(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "a"}
+	ctx := &EvalContext{
+		ActiveRuleID:     0,
+		groupIndexCache:  map[int]map[string]*groupIndex{0: {"release_item": {sizeByHash: map[string]int{"a": 2}}}},
+		activeGroupIndex: nil,
+	}
+
+	cond := &RuleCondition{
+		Field:    FieldGroupSize,
+		GroupID:  "release_item",
+		Operator: OperatorEqual,
+		Value:    "2",
+	}
+
+	if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); !got {
+		t.Fatalf("expected grouped condition lookup to work for temporary rule ID 0")
+	}
+}
+
 func TestEvaluateCondition_BooleanFields(t *testing.T) {
 	tests := []struct {
 		name     string

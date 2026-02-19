@@ -123,8 +123,20 @@ export function QueryBuilder({
       const overPath = findPathByClientId(effectiveCondition, overIdStr);
       if (!activePath || !overPath) return;
 
-      // Only handle reordering within the same parent
-      if (!pathsHaveSameParent(activePath, overPath)) return;
+      // Prevent moving a group into one of its own descendants.
+      if (isAncestorPath(activePath, overPath)) return;
+
+      if (!pathsHaveSameParent(activePath, overPath)) {
+        const movedCondition = moveAcrossGroups(
+          effectiveCondition,
+          activePath,
+          overIdStr
+        );
+        if (movedCondition) {
+          handleChange(movedCondition);
+        }
+        return;
+      }
 
       const parentPath = activePath.slice(0, -1);
       const activeIndex = activePath[activePath.length - 1];
@@ -295,4 +307,79 @@ function reorderAtPath(
   if (!current.conditions) return null;
   current.conditions = arrayMove(current.conditions, fromIndex, toIndex);
   return newRoot;
+}
+
+function isAncestorPath(path: number[], candidateDescendant: number[]): boolean {
+  if (path.length >= candidateDescendant.length) return false;
+  return path.every((segment, index) => segment === candidateDescendant[index]);
+}
+
+function cloneConditionTree(condition: RuleCondition): RuleCondition {
+  return {
+    ...condition,
+    conditions: condition.conditions?.map(cloneConditionTree),
+  };
+}
+
+function getNodeAtPath(root: RuleCondition, path: number[]): RuleCondition | null {
+  let current: RuleCondition = root;
+  for (const index of path) {
+    const next = current.conditions?.[index];
+    if (!next) {
+      return null;
+    }
+    current = next;
+  }
+  return current;
+}
+
+function moveAcrossGroups(
+  root: RuleCondition,
+  sourcePath: number[],
+  overClientID: string
+): RuleCondition | null {
+  if (sourcePath.length === 0) return null;
+
+  const nextRoot = cloneConditionTree(root);
+  const sourceParentPath = sourcePath.slice(0, -1);
+  const sourceIndex = sourcePath[sourcePath.length - 1];
+  const sourceParent = getNodeAtPath(nextRoot, sourceParentPath);
+  if (!sourceParent?.conditions?.[sourceIndex]) return null;
+
+  const [moved] = sourceParent.conditions.splice(sourceIndex, 1);
+  if (!moved) return null;
+
+  const nextOverPath = findPathByClientId(nextRoot, overClientID);
+  if (!nextOverPath) return null;
+
+  const targetParentPath = nextOverPath.slice(0, -1);
+  const targetIndex = nextOverPath[nextOverPath.length - 1];
+  const targetParent = getNodeAtPath(nextRoot, targetParentPath);
+  if (!targetParent?.conditions) return null;
+
+  targetParent.conditions.splice(targetIndex, 0, moved);
+  return pruneEmptyGroups(nextRoot, true);
+}
+
+function pruneEmptyGroups(condition: RuleCondition, isRoot: boolean): RuleCondition | null {
+  if (condition.operator !== "AND" && condition.operator !== "OR") {
+    return condition;
+  }
+
+  const cleanedChildren = (condition.conditions ?? [])
+    .map((child) => pruneEmptyGroups(child, false))
+    .filter((child): child is RuleCondition => child !== null);
+
+  if (!isRoot && cleanedChildren.length === 0) {
+    return null;
+  }
+
+  if (!isRoot && cleanedChildren.length === 1) {
+    return cleanedChildren[0];
+  }
+
+  return {
+    ...condition,
+    conditions: cleanedChildren,
+  };
 }

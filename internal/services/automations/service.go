@@ -662,8 +662,33 @@ func (s *Service) ApplyRuleDryRun(ctx context.Context, instanceID int, rule *mod
 	return s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{dryRunRule}, true)
 }
 
+const dryRunEphemeralRuleIDBase = 1_000_000_000
+
+func runtimeRuleID(ruleID int, instanceID int) int {
+	if ruleID > 0 {
+		return ruleID
+	}
+	if instanceID < 0 {
+		instanceID = -instanceID
+	}
+	return dryRunEphemeralRuleIDBase + instanceID
+}
+
+func prepareRuleForPreview(rule *models.Automation, instanceID int) *models.Automation {
+	if rule == nil {
+		return nil
+	}
+	if rule.ID > 0 {
+		return rule
+	}
+	cloned := *rule
+	cloned.ID = runtimeRuleID(cloned.ID, instanceID)
+	return &cloned
+}
+
 func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Automation {
 	cloned := *rule
+	cloned.ID = runtimeRuleID(cloned.ID, instanceID)
 	cloned.InstanceID = instanceID
 	cloned.Enabled = true
 	cloned.DryRun = true
@@ -863,6 +888,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
+	rule = prepareRuleForPreview(rule, instanceID)
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
@@ -1410,6 +1436,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
+	rule = prepareRuleForPreview(rule, instanceID)
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {

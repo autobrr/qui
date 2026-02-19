@@ -352,6 +352,50 @@ func TestPrepareRuleForDryRun(t *testing.T) {
 	assert.False(t, rule.DryRun)
 }
 
+func TestPrepareRuleForDryRun_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T) {
+	rule := &models.Automation{
+		ID:         0,
+		InstanceID: 10,
+		Name:       "Unsaved Rule",
+		Enabled:    false,
+		DryRun:     false,
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{Enabled: true, Path: "/data"},
+		},
+	}
+
+	got := prepareRuleForDryRun(rule, 7)
+	require.NotNil(t, got)
+	require.Positive(t, got.ID)
+	assert.Equal(t, dryRunEphemeralRuleIDBase+7, got.ID)
+	assert.Equal(t, 7, got.InstanceID)
+	assert.True(t, got.Enabled)
+	assert.True(t, got.DryRun)
+
+	// Original rule must remain untouched.
+	assert.Equal(t, 0, rule.ID)
+	assert.Equal(t, 10, rule.InstanceID)
+	assert.False(t, rule.Enabled)
+	assert.False(t, rule.DryRun)
+}
+
+func TestPrepareRuleForPreview_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T) {
+	rule := &models.Automation{
+		ID:         0,
+		InstanceID: 10,
+		Name:       "Unsaved Rule",
+		Conditions: &models.ActionConditions{},
+	}
+
+	got := prepareRuleForPreview(rule, 11)
+	require.NotNil(t, got)
+	require.Positive(t, got.ID)
+	assert.Equal(t, dryRunEphemeralRuleIDBase+11, got.ID)
+
+	// Ensure no mutation on caller-owned rule.
+	assert.Equal(t, 0, rule.ID)
+}
+
 func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, (*Service)(nil).ApplyRuleDryRun(ctx, 1, nil))

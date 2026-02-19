@@ -497,9 +497,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Also includes trackers from the current workflow being edited, so they remain
   // visible even if no torrents currently use them
   const trackerOptions: Option[] = useMemo(() => {
+    type TrackerOption = Option & { isCustom: boolean }
     const { domainToCustomization } = trackerCustomizationMaps
     const trackers = trackersQuery.data ? Object.keys(trackersQuery.data) : []
-    const processed: Option[] = []
+    const processed: TrackerOption[] = []
     const seenDisplayNames = new Set<string>()
     const seenValues = new Set<string>()
 
@@ -518,9 +519,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
-          label: customization.displayName,
+          label: `${customization.displayName} (Custom)`,
           value: mergedValue,
           icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
+          isCustom: true,
         })
       } else {
         if (seenDisplayNames.has(lowerTracker) || seenValues.has(tracker)) return
@@ -531,6 +533,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           label: tracker,
           value: tracker,
           icon: <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />,
+          isCustom: false,
         })
       }
     }
@@ -548,9 +551,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    processed.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+    processed.sort((a, b) => {
+      if (a.isCustom !== b.isCustom) {
+        return a.isCustom ? -1 : 1
+      }
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+    })
 
-    return processed
+    return processed.map((option) => ({
+      label: option.label,
+      value: option.value,
+      icon: option.icon,
+    }))
   }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons, rule])
 
   // Map individual domains to merged option values

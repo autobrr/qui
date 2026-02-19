@@ -145,13 +145,16 @@ export function ConditionGroup({
 
   // Generate unique IDs for children
   const childIds = children.map((child, index) => child.clientId ?? `${id}-${index}`);
+  const nestedColorClasses = depth % 2 === 1
+    ? "border-cyan-500/40 bg-cyan-500/10"
+    : "border-amber-500/45 bg-amber-500/10";
 
   return (
     <div
       className={cn(
-        "rounded-lg border p-2 sm:p-3",
+        "rounded-lg border p-2 sm:p-3 transition-colors",
         depth === 0 && "border-border bg-card",
-        depth > 0 && "border-border/50 bg-muted/30",
+        depth > 0 && nestedColorClasses,
         depth > 1 && "border-dashed"
       )}
     >
