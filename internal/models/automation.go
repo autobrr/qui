@@ -441,10 +441,16 @@ const (
 	// String fields
 	FieldName          ConditionField = "NAME"
 	FieldHash          ConditionField = "HASH"
+	FieldInfohashV1    ConditionField = "INFOHASH_V1"
+	FieldInfohashV2    ConditionField = "INFOHASH_V2"
+	FieldMagnetURI     ConditionField = "MAGNET_URI"
 	FieldCategory      ConditionField = "CATEGORY"
 	FieldTags          ConditionField = "TAGS"
 	FieldSavePath      ConditionField = "SAVE_PATH"
 	FieldContentPath   ConditionField = "CONTENT_PATH"
+	FieldDownloadPath  ConditionField = "DOWNLOAD_PATH"
+	FieldCreatedBy     ConditionField = "CREATED_BY"
+	FieldTrackers      ConditionField = "TRACKERS"
 	FieldContentType   ConditionField = "CONTENT_TYPE"
 	FieldEffectiveName ConditionField = "EFFECTIVE_NAME"
 
@@ -461,19 +467,29 @@ const (
 	FieldComment       ConditionField = "COMMENT"
 
 	// Numeric fields (bytes)
-	FieldSize       ConditionField = "SIZE"
-	FieldTotalSize  ConditionField = "TOTAL_SIZE"
-	FieldDownloaded ConditionField = "DOWNLOADED"
-	FieldUploaded   ConditionField = "UPLOADED"
-	FieldAmountLeft ConditionField = "AMOUNT_LEFT"
-	FieldFreeSpace  ConditionField = "FREE_SPACE"
+	FieldSize              ConditionField = "SIZE"
+	FieldTotalSize         ConditionField = "TOTAL_SIZE"
+	FieldCompleted         ConditionField = "COMPLETED"
+	FieldDownloaded        ConditionField = "DOWNLOADED"
+	FieldDownloadedSession ConditionField = "DOWNLOADED_SESSION"
+	FieldUploaded          ConditionField = "UPLOADED"
+	FieldUploadedSession   ConditionField = "UPLOADED_SESSION"
+	FieldAmountLeft        ConditionField = "AMOUNT_LEFT"
+	FieldFreeSpace         ConditionField = "FREE_SPACE"
 
 	// Numeric fields (timestamps/seconds)
-	FieldAddedOn      ConditionField = "ADDED_ON"
-	FieldCompletionOn ConditionField = "COMPLETION_ON"
-	FieldLastActivity ConditionField = "LAST_ACTIVITY"
-	FieldSeedingTime  ConditionField = "SEEDING_TIME"
-	FieldTimeActive   ConditionField = "TIME_ACTIVE"
+	FieldAddedOn                  ConditionField = "ADDED_ON"
+	FieldCompletionOn             ConditionField = "COMPLETION_ON"
+	FieldLastActivity             ConditionField = "LAST_ACTIVITY"
+	FieldSeenComplete             ConditionField = "SEEN_COMPLETE"
+	FieldETA                      ConditionField = "ETA"
+	FieldReannounce               ConditionField = "REANNOUNCE"
+	FieldSeedingTime              ConditionField = "SEEDING_TIME"
+	FieldTimeActive               ConditionField = "TIME_ACTIVE"
+	FieldMaxSeedingTime           ConditionField = "MAX_SEEDING_TIME"
+	FieldMaxInactiveSeedingTime   ConditionField = "MAX_INACTIVE_SEEDING_TIME"
+	FieldSeedingTimeLimit         ConditionField = "SEEDING_TIME_LIMIT"
+	FieldInactiveSeedingTimeLimit ConditionField = "INACTIVE_SEEDING_TIME_LIMIT"
 
 	// Age fields (time since timestamp - computed as nowUnix - timestamp)
 	FieldAddedOnAge      ConditionField = "ADDED_ON_AGE"
@@ -482,26 +498,37 @@ const (
 
 	// Numeric fields (float64)
 	FieldRatio        ConditionField = "RATIO"
+	FieldRatioLimit   ConditionField = "RATIO_LIMIT"
+	FieldMaxRatio     ConditionField = "MAX_RATIO"
 	FieldProgress     ConditionField = "PROGRESS"
 	FieldAvailability ConditionField = "AVAILABILITY"
+	FieldPopularity   ConditionField = "POPULARITY"
 
 	// Numeric fields (speeds)
 	FieldDlSpeed ConditionField = "DL_SPEED"
 	FieldUpSpeed ConditionField = "UP_SPEED"
+	FieldDlLimit ConditionField = "DL_LIMIT"
+	FieldUpLimit ConditionField = "UP_LIMIT"
 
-	// Numeric fields (counts)
+	// Numeric fields (counts/misc)
 	FieldNumSeeds      ConditionField = "NUM_SEEDS"
 	FieldNumLeechs     ConditionField = "NUM_LEECHS"
 	FieldNumComplete   ConditionField = "NUM_COMPLETE"
 	FieldNumIncomplete ConditionField = "NUM_INCOMPLETE"
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
+	FieldPriority      ConditionField = "PRIORITY"
 	FieldGroupSize     ConditionField = "GROUP_SIZE"
 
 	// Boolean fields
-	FieldPrivate         ConditionField = "PRIVATE"
-	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
-	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
-	FieldIsGrouped       ConditionField = "IS_GROUPED"
+	FieldPrivate            ConditionField = "PRIVATE"
+	FieldAutoManaged        ConditionField = "AUTO_MANAGED"
+	FieldFirstLastPiecePrio ConditionField = "FIRST_LAST_PIECE_PRIO"
+	FieldForceStart         ConditionField = "FORCE_START"
+	FieldSequentialDownload ConditionField = "SEQUENTIAL_DOWNLOAD"
+	FieldSuperSeeding       ConditionField = "SUPER_SEEDING"
+	FieldIsUnregistered     ConditionField = "IS_UNREGISTERED"
+	FieldHasMissingFiles    ConditionField = "HAS_MISSING_FILES"
+	FieldIsGrouped          ConditionField = "IS_GROUPED"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"

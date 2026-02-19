@@ -332,6 +332,12 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(torrent.Name, cond)
 	case FieldHash:
 		return compareString(torrent.Hash, cond)
+	case FieldInfohashV1:
+		return compareString(torrent.InfohashV1, cond)
+	case FieldInfohashV2:
+		return compareString(torrent.InfohashV2, cond)
+	case FieldMagnetURI:
+		return compareString(torrent.MagnetURI, cond)
 	case FieldCategory:
 		return compareString(torrent.Category, cond)
 	case FieldTags:
@@ -340,6 +346,10 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(torrent.SavePath, cond)
 	case FieldContentPath:
 		return compareString(torrent.ContentPath, cond)
+	case FieldDownloadPath:
+		return compareString(torrent.DownloadPath, cond)
+	case FieldCreatedBy:
+		return compareString(torrent.CreatedBy, cond)
 	case FieldContentType:
 		return compareString(torrentContentType(torrent, ctx), cond)
 	case FieldEffectiveName:
@@ -362,6 +372,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
 		return compareTracker(torrent.Tracker, cond, ctx)
+	case FieldTrackers:
+		return compareTrackers(torrent, cond, ctx)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -370,10 +382,16 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.Size, cond)
 	case FieldTotalSize:
 		return compareInt64(torrent.TotalSize, cond)
+	case FieldCompleted:
+		return compareInt64(torrent.Completed, cond)
 	case FieldDownloaded:
 		return compareInt64(torrent.Downloaded, cond)
+	case FieldDownloadedSession:
+		return compareInt64(torrent.DownloadedSession, cond)
 	case FieldUploaded:
 		return compareInt64(torrent.Uploaded, cond)
+	case FieldUploadedSession:
+		return compareInt64(torrent.UploadedSession, cond)
 	case FieldAmountLeft:
 		return compareInt64(torrent.AmountLeft, cond)
 	case FieldFreeSpace:
@@ -389,10 +407,24 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.CompletionOn, cond)
 	case FieldLastActivity:
 		return compareInt64(torrent.LastActivity, cond)
+	case FieldSeenComplete:
+		return compareInt64(torrent.SeenComplete, cond)
+	case FieldETA:
+		return compareInt64(torrent.ETA, cond)
+	case FieldReannounce:
+		return compareInt64(torrent.Reannounce, cond)
 	case FieldSeedingTime:
 		return compareInt64(torrent.SeedingTime, cond)
 	case FieldTimeActive:
 		return compareInt64(torrent.TimeActive, cond)
+	case FieldMaxSeedingTime:
+		return compareInt64(torrent.MaxSeedingTime, cond)
+	case FieldMaxInactiveSeedingTime:
+		return compareInt64(torrent.MaxInactiveSeedingTime, cond)
+	case FieldSeedingTimeLimit:
+		return compareInt64(torrent.SeedingTimeLimit, cond)
+	case FieldInactiveSeedingTimeLimit:
+		return compareInt64(torrent.InactiveSeedingTimeLimit, cond)
 
 	// Age fields (time since timestamp)
 	case FieldAddedOnAge:
@@ -414,16 +446,26 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	// Float64 fields
 	case FieldRatio:
 		return compareFloat64(torrent.Ratio, cond)
+	case FieldRatioLimit:
+		return compareFloat64(torrent.RatioLimit, cond)
+	case FieldMaxRatio:
+		return compareFloat64(torrent.MaxRatio, cond)
 	case FieldProgress:
 		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
 		return compareFloat64(torrent.Availability, cond)
+	case FieldPopularity:
+		return compareFloat64(torrent.Popularity, cond)
 
 	// Speed fields (int64)
 	case FieldDlSpeed:
 		return compareInt64(torrent.DlSpeed, cond)
 	case FieldUpSpeed:
 		return compareInt64(torrent.UpSpeed, cond)
+	case FieldDlLimit:
+		return compareInt64(torrent.DlLimit, cond)
+	case FieldUpLimit:
+		return compareInt64(torrent.UpLimit, cond)
 
 	// Count fields (int64)
 	case FieldNumSeeds:
@@ -436,6 +478,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.NumIncomplete, cond)
 	case FieldTrackersCount:
 		return compareInt64(torrent.TrackersCount, cond)
+	case FieldPriority:
+		return compareInt64(torrent.Priority, cond)
 	case FieldGroupSize:
 		size := int64(0)
 		if idx := resolveConditionGroupIndex(cond, ctx); idx != nil {
@@ -446,6 +490,16 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	// Boolean fields
 	case FieldPrivate:
 		return compareBool(torrent.Private, cond)
+	case FieldAutoManaged:
+		return compareBool(torrent.AutoManaged, cond)
+	case FieldFirstLastPiecePrio:
+		return compareBool(torrent.FirstLastPiecePrio, cond)
+	case FieldForceStart:
+		return compareBool(torrent.ForceStart, cond)
+	case FieldSequentialDownload:
+		return compareBool(torrent.SequentialDownload, cond)
+	case FieldSuperSeeding:
+		return compareBool(torrent.SuperSeeding, cond)
 	case FieldIsUnregistered:
 		isUnregistered := false
 		if ctx != nil && ctx.UnregisteredSet != nil {
@@ -647,6 +701,19 @@ func compareString(value string, cond *RuleCondition) bool {
 }
 
 func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bool {
+	return compareStringCandidates(trackerCandidates(trackerURL, ctx), cond)
+}
+
+func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
+	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
+	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
+	for _, tracker := range torrent.Trackers {
+		candidates = append(candidates, trackerCandidates(tracker.Url, ctx)...)
+	}
+	return compareStringCandidates(candidates, cond)
+}
+
+func trackerCandidates(trackerURL string, ctx *EvalContext) []string {
 	// Candidates: raw URL, extracted domain, optional customization display name.
 	raw := strings.TrimSpace(trackerURL)
 	domain := extractTrackerDomain(raw)
@@ -668,22 +735,34 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 		candidates = append(candidates, displayName)
 	}
 
+	return candidates
+}
+
+func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 	// Preserve existing empty-string behavior (e.g., equals "").
 	if len(candidates) == 0 {
 		return compareString("", cond)
+	}
+
+	// De-duplicate case-insensitively while preserving order.
+	seen := make(map[string]struct{}, len(candidates))
+	uniq := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		key := strings.ToLower(candidate)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		uniq = append(uniq, candidate)
 	}
 
 	if cond.Regex || cond.Operator == OperatorMatches {
 		if cond.Compiled == nil {
 			return false
 		}
-		anyMatch := false
-		for _, c := range candidates {
-			if cond.Compiled.MatchString(c) {
-				anyMatch = true
-				break
-			}
-		}
+		anyMatch := slices.ContainsFunc(uniq, func(c string) bool {
+			return cond.Compiled.MatchString(c)
+		})
 		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
 			// Negative operators apply to the combined candidate set: fail if any candidate matches.
 			return !anyMatch
@@ -695,29 +774,23 @@ func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bo
 	// Important: negative operators must apply to the combined candidate set.
 	// Example: NOT_EQUAL "BHD" must be false if any candidate equals "BHD".
 	if cond.Operator == OperatorNotEqual {
-		for _, c := range candidates {
-			if strings.EqualFold(c, cond.Value) {
-				return false
-			}
-		}
-		return true
+		return !slices.ContainsFunc(uniq, func(c string) bool {
+			return strings.EqualFold(c, cond.Value)
+		})
 	}
 	if cond.Operator == OperatorNotContains {
 		condLower := strings.ToLower(cond.Value)
-		for _, c := range candidates {
-			if strings.Contains(strings.ToLower(c), condLower) {
-				return false
-			}
-		}
-		return true
+		return !slices.ContainsFunc(uniq, func(c string) bool {
+			return strings.Contains(strings.ToLower(c), condLower)
+		})
 	}
 
-	for _, c := range candidates {
+	return slices.ContainsFunc(uniq, func(c string) bool {
 		if compareString(c, cond) {
 			return true
 		}
-	}
-	return false
+		return false
+	})
 }
 
 func extractTrackerDomain(raw string) string {
