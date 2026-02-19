@@ -66,6 +66,7 @@ import type {
   AutomationInput,
   AutomationPreviewResult,
   AutomationPreviewTorrent,
+  GroupDefinition,
   GroupingConfig,
   PreviewView,
   RegexValidationError,
@@ -134,6 +135,56 @@ function conditionUsesField(condition: RuleCondition | null | undefined, field: 
   }
   return false
 }
+
+/**
+ * Available keys for custom group definitions
+ */
+const AVAILABLE_GROUP_KEYS = [
+  "contentPath",
+  "savePath",
+  "effectiveName",
+  "contentType",
+  "tracker",
+  "rlsSource",
+  "rlsResolution",
+  "rlsCodec",
+  "rlsHDR",
+  "rlsAudio",
+  "rlsChannels",
+  "rlsGroup",
+  "hardlinkSignature",
+] as const
+
+/**
+ * Built-in group IDs with descriptions
+ */
+const BUILTIN_GROUPS = [
+  {
+    id: "cross_seed_content_path",
+    label: "Cross-seed (content path)",
+    description: "Group torrents with the same content path",
+  },
+  {
+    id: "cross_seed_content_save_path",
+    label: "Cross-seed (content + save path)",
+    description: "Group torrents with the same content path and save path",
+  },
+  {
+    id: "release_item",
+    label: "Release item",
+    description: "Group torrents with the same content type and effective name",
+  },
+  {
+    id: "tracker_release_item",
+    label: "Tracker release item",
+    description: "Group torrents from the same tracker with the same content type and effective name",
+  },
+  {
+    id: "hardlink_signature",
+    label: "Hardlink signature",
+    description: "Group torrents that share the same physical files via hardlinks (requires local filesystem access)",
+  },
+] as const
 
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
@@ -318,6 +369,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const [freeSpaceSourcePathError, setFreeSpaceSourcePathError] = useState<string | null>(null)
+  const [showAddCustomGroup, setShowAddCustomGroup] = useState(false)
+  const [newGroupId, setNewGroupId] = useState("")
+  const [newGroupKeys, setNewGroupKeys] = useState<string[]>([])
+  const [newGroupAmbiguousPolicy, setNewGroupAmbiguousPolicy] = useState<"verify_overlap" | "skip" | "">("")
+  const [newGroupMinOverlap, setNewGroupMinOverlap] = useState("90")
   const previewPageSize = 25
   const tagsInputRef = useRef<HTMLInputElement>(null)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
@@ -1421,6 +1477,152 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </div>
                   )}
                 </div>
+
+                {/* Grouping Configuration - shown when GROUP_SIZE or IS_GROUPED is used */}
+                {(conditionUsesField(formState.actionCondition, "GROUP_SIZE") || conditionUsesField(formState.actionCondition, "IS_GROUPED")) && (
+                  <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium">Group-aware condition configuration</Label>
+                      <TooltipProvider delayDuration={150}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                              aria-label="About grouping configuration"
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[340px]">
+                            <p>
+                              Configure how torrents are grouped for GROUP_SIZE and IS_GROUPED conditions.
+                              GROUP_SIZE returns the number of torrents in the group; IS_GROUPED is true when group size &gt; 1.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+
+                    {/* Default Group ID selector */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Default group</Label>
+                      <Select
+                        value={formState.exprGrouping?.defaultGroupId ?? ""}
+                        onValueChange={(value) => {
+                          setFormState(prev => ({
+                            ...prev,
+                            exprGrouping: {
+                              ...prev.exprGrouping,
+                              defaultGroupId: value || undefined,
+                            },
+                          }))
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select a group..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">(None - GROUP_SIZE/IS_GROUPED disabled)</SelectItem>
+                          {BUILTIN_GROUPS.map(group => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.label}
+                            </SelectItem>
+                          ))}
+                          {(formState.exprGrouping?.groups || []).map(group => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.id} (custom)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Which grouping strategy to use for GROUP_SIZE and IS_GROUPED conditions
+                      </p>
+                    </div>
+
+                    {/* Show description of selected group */}
+                    {formState.exprGrouping?.defaultGroupId && (
+                      <div className="rounded-sm border border-border/50 bg-background p-2 text-xs text-muted-foreground">
+                        {(() => {
+                          const builtin = BUILTIN_GROUPS.find(g => g.id === formState.exprGrouping?.defaultGroupId)
+                          if (builtin) {
+                            return (
+                              <>
+                                <p className="font-medium text-foreground">{builtin.label}</p>
+                                <p>{builtin.description}</p>
+                              </>
+                            )
+                          }
+                          const custom = (formState.exprGrouping?.groups || []).find(g => g.id === formState.exprGrouping?.defaultGroupId)
+                          if (custom) {
+                            return (
+                              <>
+                                <p className="font-medium text-foreground">{custom.id}</p>
+                                <p>Custom group with keys: <span className="font-mono">{custom.keys.join(", ")}</span></p>
+                                {custom.ambiguousPolicy && (
+                                  <p>Ambiguous policy: {custom.ambiguousPolicy} (min overlap: {custom.minFileOverlapPercent ?? 90}%)</p>
+                                )}
+                              </>
+                            )
+                          }
+                          return null
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Custom groups editor */}
+                    {(formState.exprGrouping?.groups || []).length > 0 && (
+                      <div className="space-y-2 border-t pt-3">
+                        <p className="text-xs font-medium text-muted-foreground">Custom groups</p>
+                        {(formState.exprGrouping?.groups || []).map((group, idx) => (
+                          <div key={group.id} className="border rounded-sm p-2 space-y-1.5 text-xs bg-background">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-mono font-medium truncate">{group.id}</p>
+                                <p className="text-muted-foreground">Keys: {group.keys.join(", ")}</p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => {
+                                  setFormState(prev => ({
+                                    ...prev,
+                                    exprGrouping: {
+                                      ...prev.exprGrouping,
+                                      groups: (prev.exprGrouping?.groups || []).filter((_, i) => i !== idx),
+                                      defaultGroupId: prev.exprGrouping?.defaultGroupId === group.id
+                                        ? undefined
+                                        : prev.exprGrouping?.defaultGroupId,
+                                    },
+                                  }))
+                                }}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add custom group button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs h-7"
+                      onClick={() => {
+                        setShowAddCustomGroup(true)
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add custom group
+                    </Button>
+                  </div>
+                )}
 
                 {/* Actions section */}
                 <div className="space-y-3">
@@ -2528,6 +2730,145 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             >
               Enable with dry run
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showAddCustomGroup} onOpenChange={setShowAddCustomGroup}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add custom group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Combine multiple fields to create a custom grouping strategy
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="group-id" className="text-sm">Group ID</Label>
+              <Input
+                id="group-id"
+                value={newGroupId}
+                onChange={(e) => setNewGroupId(e.target.value)}
+                placeholder="e.g., my_custom_group"
+                className="h-8 text-xs"
+              />
+              <p className="text-xs text-muted-foreground">Unique identifier for this group (alphanumeric, underscores)</p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-sm">Keys (select at least one)</Label>
+              <div className="grid grid-cols-2 gap-1">
+                {AVAILABLE_GROUP_KEYS.map(key => (
+                  <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newGroupKeys.includes(key)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewGroupKeys([...newGroupKeys, key])
+                        } else {
+                          setNewGroupKeys(newGroupKeys.filter(k => k !== key))
+                        }
+                      }}
+                      className="h-3 w-3 rounded border-border"
+                    />
+                    <span className="font-mono">{key}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Torrents with the same combination of these fields will be grouped together
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-sm">Ambiguous policy (advanced)</Label>
+              <Select
+                value={newGroupAmbiguousPolicy}
+                onValueChange={(value) => setNewGroupAmbiguousPolicy(value as "verify_overlap" | "skip" | "")}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">(None)</SelectItem>
+                  <SelectItem value="verify_overlap">Verify overlap</SelectItem>
+                  <SelectItem value="skip">Skip</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                When content path equals save path, how to handle ambiguous cases
+              </p>
+            </div>
+
+            {newGroupAmbiguousPolicy === "verify_overlap" && (
+              <div className="space-y-1">
+                <Label htmlFor="min-overlap" className="text-sm">Min file overlap %</Label>
+                <Input
+                  id="min-overlap"
+                  type="number"
+                  value={newGroupMinOverlap}
+                  onChange={(e) => setNewGroupMinOverlap(e.target.value)}
+                  min="0"
+                  max="100"
+                  className="h-8 text-xs"
+                />
+                <p className="text-xs text-muted-foreground">Default 90%</p>
+              </div>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              onClick={() => {
+                // Validate
+                if (!newGroupId.trim()) {
+                  toast.error("Group ID cannot be empty")
+                  return
+                }
+                if (!/^[a-zA-Z0-9_]+$/.test(newGroupId)) {
+                  toast.error("Group ID must contain only alphanumeric characters and underscores")
+                  return
+                }
+                if (newGroupKeys.length === 0) {
+                  toast.error("Select at least one key")
+                  return
+                }
+                // Check for duplicates
+                if ((formState.exprGrouping?.groups || []).some(g => g.id === newGroupId)) {
+                  toast.error("A group with this ID already exists")
+                  return
+                }
+
+                // Add the group
+                const groupDef: GroupDefinition = {
+                  id: newGroupId,
+                  keys: newGroupKeys as string[],
+                  ambiguousPolicy: newGroupAmbiguousPolicy || undefined,
+                  minFileOverlapPercent: newGroupAmbiguousPolicy === "verify_overlap" ? parseInt(newGroupMinOverlap, 10) : undefined,
+                }
+
+                setFormState(prev => ({
+                  ...prev,
+                  exprGrouping: {
+                    ...prev.exprGrouping,
+                    groups: [...(prev.exprGrouping?.groups || []), groupDef],
+                  },
+                }))
+
+                // Reset form
+                setShowAddCustomGroup(false)
+                setNewGroupId("")
+                setNewGroupKeys([])
+                setNewGroupAmbiguousPolicy("")
+                setNewGroupMinOverlap("90")
+                toast.success("Custom group added")
+              }}
+            >
+              Add group
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
