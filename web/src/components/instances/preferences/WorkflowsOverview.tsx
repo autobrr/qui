@@ -427,6 +427,30 @@ export function WorkflowsOverview({
     },
   })
 
+  const dryRunRule = useMutation({
+    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) => {
+      const payload = {
+        name: rule.name,
+        trackerPattern: rule.trackerPattern,
+        trackerDomains: rule.trackerDomains ?? parseTrackerDomains(rule),
+        conditions: rule.conditions,
+        freeSpaceSource: rule.freeSpaceSource,
+        enabled: true,
+        dryRun: true,
+        sortOrder: rule.sortOrder,
+        intervalSeconds: rule.intervalSeconds ?? null,
+      }
+      return api.dryRunAutomation(instanceId, payload)
+    },
+    onSuccess: (_, { instanceId, rule }) => {
+      toast.success(`Dry-run completed for "${rule.name}"`)
+      void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
+    },
+  })
+
   const previewRule = useMutation({
     mutationFn: async ({ instanceId, rule, view }: { instanceId: number; rule: Automation; view: PreviewView }) => {
       const minDelay = new Promise(resolve => setTimeout(resolve, 1000))
@@ -936,6 +960,7 @@ export function WorkflowsOverview({
                                     isToggling={toggleEnabled.isPending || previewRule.isPending}
                                     onEdit={() => openEditDialog(instance.id, rule)}
                                     onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
+                                    onRunDryRun={() => dryRunRule.mutate({ instanceId: instance.id, rule })}
                                     onDuplicate={() => handleDuplicate(instance.id, rule)}
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
                                     onExport={() => handleExport(rule)}
@@ -1599,6 +1624,7 @@ interface RulePreviewProps {
   dragHandle?: ReactNode
   onEdit: () => void
   onDelete: () => void
+  onRunDryRun: () => void
   onDuplicate: () => void
   onCopyToInstance: (targetInstanceId: number) => void
   onExport: () => void
@@ -1615,6 +1641,7 @@ function SortableRulePreview({
   isToggling,
   onEdit,
   onDelete,
+  onRunDryRun,
   onDuplicate,
   onCopyToInstance,
   onExport,
@@ -1647,6 +1674,7 @@ function SortableRulePreview({
         isToggling={isToggling}
         onEdit={onEdit}
         onDelete={onDelete}
+        onRunDryRun={onRunDryRun}
         onDuplicate={onDuplicate}
         onCopyToInstance={onCopyToInstance}
         onExport={onExport}
@@ -1681,6 +1709,7 @@ function RulePreview({
   dragHandle,
   onEdit,
   onDelete,
+  onRunDryRun,
   onDuplicate,
   onCopyToInstance,
   onExport,
@@ -1822,6 +1851,11 @@ function RulePreview({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onRunDryRun}>
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              Run dry-run now
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDuplicate}>
               <CopyPlus className="h-4 w-4 mr-2" />
               Duplicate

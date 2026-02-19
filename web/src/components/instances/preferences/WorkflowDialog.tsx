@@ -356,6 +356,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
+  const [livePreviewResult, setLivePreviewResult] = useState<AutomationPreviewResult | null>(null)
+  const [isLivePreviewLoading, setIsLivePreviewLoading] = useState(false)
+  const [livePreviewError, setLivePreviewError] = useState<string | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
   const [showDryRunPrompt, setShowDryRunPrompt] = useState(false)
@@ -375,7 +378,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [newGroupAmbiguousPolicy, setNewGroupAmbiguousPolicy] = useState<"verify_overlap" | "skip" | "">("")
   const [newGroupMinOverlap, setNewGroupMinOverlap] = useState("90")
   const previewPageSize = 25
+  const livePreviewPageSize = 5
   const tagsInputRef = useRef<HTMLInputElement>(null)
+  const livePreviewRequestRef = useRef(0)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
   const isHydrating = useRef(true)
   const dryRunPromptKey = rule?.id ? `workflow-dry-run-prompted:${rule.id}` : null
@@ -861,7 +866,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType])
 
-  const validateFreeSpaceSource = (state: FormState): boolean => {
+  const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
       setFreeSpaceSourcePathError(null)
@@ -889,10 +894,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }
+  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
+
+  const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
+    const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
+    if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
+      return true
+    }
+    if (!supportsFreeSpacePathSource || !hasLocalFilesystemAccess) {
+      return false
+    }
+    return state.exprFreeSpaceSourcePath.trim() !== ""
+  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
 
   // Build payload from form state (shared by preview and save)
-  const buildPayload = (input: FormState): AutomationInput => {
+  const buildPayload = useCallback((input: FormState): AutomationInput => {
     const conditions: ActionConditions = { schemaVersion: "1" }
     if (input.exprGrouping) {
       conditions.grouping = input.exprGrouping
@@ -1044,7 +1060,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       conditions,
       freeSpaceSource,
     }
-  }
+  }, [])
 
   // Check if current form state represents a delete or category rule (both need previews)
   const isDeleteRule = formState.deleteEnabled
@@ -1128,6 +1144,127 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     loadMorePreview.mutate()
+  }
+
+  const dryRunNowMutation = useMutation({
+    mutationFn: async (input: FormState) => {
+      const payload = buildPayload(input)
+      return api.dryRunAutomation(instanceId, {
+        ...payload,
+        enabled: true,
+        dryRun: true,
+      })
+    },
+    onSuccess: () => {
+      toast.success("Dry-run completed")
+      void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
+    },
+  })
+
+  const livePreviewPayload = useMemo(() => {
+    if (!open) return null
+    if (!(isDeleteRule || isCategoryRule)) return null
+    if (isDeleteRule && !formState.actionCondition) return null
+    if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
+    if (!hasValidFreeSpaceSourceForLivePreview(formState)) return null
+
+    return {
+      ...buildPayload(formState),
+      previewLimit: livePreviewPageSize,
+      previewOffset: 0,
+      previewView: "needed" as PreviewView,
+    }
+  }, [
+    buildPayload,
+    formState,
+    hasValidFreeSpaceSourceForLivePreview,
+    isCategoryRule,
+    isDeleteRule,
+    livePreviewPageSize,
+    open,
+  ])
+
+  const livePreviewPayloadKey = useMemo(
+    () => livePreviewPayload ? JSON.stringify(livePreviewPayload) : "",
+    [livePreviewPayload]
+  )
+
+  useEffect(() => {
+    if (!livePreviewPayload) {
+      livePreviewRequestRef.current += 1
+      setLivePreviewResult(null)
+      setLivePreviewError(null)
+      setIsLivePreviewLoading(false)
+      return
+    }
+
+    const requestID = livePreviewRequestRef.current + 1
+    livePreviewRequestRef.current = requestID
+    setIsLivePreviewLoading(true)
+    setLivePreviewError(null)
+
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await api.previewAutomation(instanceId, livePreviewPayload)
+        if (livePreviewRequestRef.current !== requestID) return
+        setLivePreviewResult(result)
+      } catch (error) {
+        if (livePreviewRequestRef.current !== requestID) return
+        setLivePreviewResult(null)
+        setLivePreviewError(error instanceof Error ? error.message : "Failed to load live preview")
+      } finally {
+        if (livePreviewRequestRef.current === requestID) {
+          setIsLivePreviewLoading(false)
+        }
+      }
+    }, 400)
+
+    return () => clearTimeout(timeout)
+  }, [instanceId, livePreviewPayload, livePreviewPayloadKey])
+
+  const handleRunDryRunNow = () => {
+    // Parse tags from the uncontrolled input first so the dry-run uses current values.
+    let parsedTags = formState.exprTags
+    if (!formState.exprUseTrackerAsTag && tagsInputRef.current) {
+      parsedTags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
+      tagsInputRef.current.value = parsedTags.join(", ")
+    }
+
+    const dryRunInput: FormState = {
+      ...formState,
+      exprTags: formState.exprUseTrackerAsTag ? [] : parsedTags,
+    }
+
+    if (!validateFreeSpaceSource(dryRunInput)) return
+    if (!dryRunInput.name.trim()) {
+      toast.error("Name is required")
+      return
+    }
+    if (!dryRunInput.applyToAllTrackers && normalizeTrackerDomains(dryRunInput.trackerDomains).length === 0) {
+      toast.error("Select at least one tracker")
+      return
+    }
+    if (enabledActionsCount === 0) {
+      toast.error("Enable at least one action")
+      return
+    }
+    if (dryRunInput.deleteEnabled && !dryRunInput.actionCondition) {
+      toast.error("Delete requires at least one condition")
+      return
+    }
+    if (dryRunInput.moveEnabled && !dryRunInput.exprMovePath.trim()) {
+      toast.error("Move requires a path")
+      return
+    }
+    if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
+      toast.error("Select an external program")
+      return
+    }
+
+    dryRunNowMutation.mutate(dryRunInput)
   }
 
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
@@ -1498,6 +1635,46 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <p className="text-muted-foreground text-xs mt-2">
                         Go/RE2 does not support Perl features like lookahead (?=), lookbehind (?&lt;=), or negative variants (?!), (?&lt;!).
                       </p>
+                    </div>
+                  )}
+
+                  {(isDeleteRule || isCategoryRule) && (
+                    <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium">Live impact preview</p>
+                        {isLivePreviewLoading && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Updating...
+                          </span>
+                        )}
+                      </div>
+                      {livePreviewError ? (
+                        <p className="text-xs text-destructive">{livePreviewError}</p>
+                      ) : !livePreviewResult ? (
+                        <p className="text-xs text-muted-foreground">
+                          Add conditions to preview impacted torrents.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            {isCategoryRule
+                              ? `${livePreviewResult.totalMatches} torrents impacted (${(livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0)} direct + ${livePreviewResult.crossSeedCount ?? 0} cross-seeds).`
+                              : `${livePreviewResult.totalMatches} torrents impacted.`}
+                          </p>
+                          {livePreviewResult.examples.length > 0 ? (
+                            <div className="space-y-1">
+                              {livePreviewResult.examples.map((example) => (
+                                <div key={example.hash} className="text-xs text-foreground/90 truncate">
+                                  {example.name}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No current matches.</p>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2591,6 +2768,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" onClick={() => onOpenChange(false)}>
                   Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 sm:flex-initial h-10 sm:h-8"
+                  onClick={handleRunDryRunNow}
+                  disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending}
+                >
+                  {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Dry-run now
                 </Button>
                 <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

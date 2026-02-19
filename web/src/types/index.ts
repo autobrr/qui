@@ -405,6 +405,10 @@ export interface AutomationPreviewInput extends AutomationInput {
   previewView?: PreviewView
 }
 
+export interface AutomationDryRunResult {
+  status: string
+}
+
 export interface AutomationActivity {
   id: number
   instanceId: number

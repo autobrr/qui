@@ -321,6 +321,45 @@ func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
 	})
 }
 
+func TestPrepareRuleForDryRun(t *testing.T) {
+	interval := 900
+	rule := &models.Automation{
+		ID:         42,
+		InstanceID: 99,
+		Name:       "Test Rule",
+		Enabled:    false,
+		DryRun:     false,
+		Conditions: &models.ActionConditions{
+			Pause: &models.PauseAction{Enabled: true},
+		},
+		IntervalSeconds: &interval,
+	}
+
+	got := prepareRuleForDryRun(rule, 7)
+	require.NotNil(t, got)
+
+	assert.Equal(t, 42, got.ID)
+	assert.Equal(t, 7, got.InstanceID)
+	assert.Equal(t, "Test Rule", got.Name)
+	assert.True(t, got.Enabled)
+	assert.True(t, got.DryRun)
+	assert.Equal(t, rule.Conditions, got.Conditions)
+	assert.Equal(t, rule.IntervalSeconds, got.IntervalSeconds)
+
+	// Original rule should remain unchanged.
+	assert.Equal(t, 99, rule.InstanceID)
+	assert.False(t, rule.Enabled)
+	assert.False(t, rule.DryRun)
+}
+
+func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
+	ctx := context.Background()
+	require.NoError(t, (*Service)(nil).ApplyRuleDryRun(ctx, 1, nil))
+
+	svc := &Service{}
+	require.NoError(t, svc.ApplyRuleDryRun(ctx, 1, nil))
+}
+
 // -----------------------------------------------------------------------------
 // normalizePath tests
 // -----------------------------------------------------------------------------
@@ -1543,7 +1582,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
-func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanic(t *testing.T) {
+func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *testing.T) {
 	mockDB := &mockQuerier{
 		activities: make([]*models.AutomationActivity, 0),
 	}
@@ -1602,9 +1641,102 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanic(t *testing.T
 		)
 	})
 
-	require.Len(t, mockDB.activities, 1)
-	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
-	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+	require.Empty(t, mockDB.activities)
+}
+
+func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "Group Member A",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    4,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "b",
+			Name:        "Group Member B",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    2,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "c",
+			Name:        "Group Member C",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    1,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	torrentByHash := map[string]qbt.Torrent{
+		"a": torrents[0],
+		"b": torrents[1],
+		"c": torrents[2],
+	}
+
+	states := map[string]*torrentDesiredState{
+		"a": {
+			shouldMove:  true,
+			movePath:    "/data/moved",
+			moveGroupID: GroupCrossSeedContentPath,
+			moveRuleID:  77,
+		},
+	}
+
+	ruleByID := map[int]*models.Automation{
+		77: {
+			ID:   77,
+			Name: "Strict grouped move",
+			Conditions: &models.ActionConditions{
+				Move: &models.MoveAction{
+					Enabled: true,
+					Condition: &models.RuleCondition{
+						Field:    models.FieldNumSeeds,
+						Operator: models.OperatorGreaterThan,
+						Value:    "3",
+					},
+				},
+			},
+		},
+	}
+
+	s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		map[string][]string{"/data/moved": {"a"}},
+		nil,
+		nil,
+		torrentByHash,
+		torrents,
+		states,
+		ruleByID,
+		nil,
+	)
+
+	require.Empty(t, mockDB.activities)
 }
 
 // mockQuerier implements dbinterface.Querier for testing activity logging

@@ -648,6 +648,28 @@ func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) erro
 	return s.applyForInstance(ctx, instanceID, true)
 }
 
+// ApplyRuleDryRun executes a single rule immediately in dry-run mode.
+// The rule is forced enabled for this execution only.
+func (s *Service) ApplyRuleDryRun(ctx context.Context, instanceID int, rule *models.Automation) error {
+	if s == nil || rule == nil {
+		return nil
+	}
+	if s.syncManager == nil || s.instanceStore == nil {
+		return nil
+	}
+
+	dryRunRule := prepareRuleForDryRun(rule, instanceID)
+	return s.applyRulesForInstance(ctx, instanceID, true, []*models.Automation{dryRunRule}, true)
+}
+
+func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Automation {
+	cloned := *rule
+	cloned.InstanceID = instanceID
+	cloned.Enabled = true
+	cloned.DryRun = true
+	return &cloned
+}
+
 // PreviewResult contains torrents that would match a rule.
 type PreviewResult struct {
 	TotalMatches   int              `json:"totalMatches"`
@@ -955,7 +977,6 @@ func (s *Service) previewDeleteStandard(
 		deleteMode == DeleteModeKeepFiles && strings.TrimSpace(rule.Conditions.Delete.GroupID) != "" {
 		deleteCond := rule.Conditions.Delete
 		groupID := strings.TrimSpace(deleteCond.GroupID)
-		atomicAll := strings.EqualFold(deleteCond.Atomic, "all")
 
 		torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 		for _, t := range torrents {
@@ -986,8 +1007,6 @@ func (s *Service) previewDeleteStandard(
 				continue
 			}
 
-			directMatchSet[torrent.Hash] = struct{}{}
-
 			members := []string{torrent.Hash}
 			groupKey := ""
 			if idx != nil {
@@ -1010,10 +1029,7 @@ func (s *Service) previewDeleteStandard(
 					policy = groupAmbiguousVerifyOverlap
 				}
 				if policy == groupAmbiguousSkip {
-					if atomicAll {
-						continue
-					}
-					expandGroup = false
+					continue
 				}
 				minPercent := def.MinFileOverlapPercent
 				if minPercent <= 0 {
@@ -1040,39 +1056,24 @@ func (s *Service) previewDeleteStandard(
 					}
 				}
 				if skipGroup {
-					if atomicAll {
-						continue
-					}
-					expandGroup = false
-				}
-			}
-
-			if expandGroup && atomicAll {
-				cond := deleteCond.Condition
-				allMatch := true
-				for _, memberHash := range members {
-					memberTorrent, ok := torrentByHash[memberHash]
-					if !ok {
-						allMatch = false
-						break
-					}
-					// Group expansion intentionally ignores tracker constraints.
-					if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
-						allMatch = false
-						break
-					}
-				}
-				if !allMatch {
 					continue
 				}
 			}
 
+			// GroupId semantics are strict: every member must satisfy the same condition tree.
+			if evalCtx != nil && deleteCond.Condition != nil && ConditionUsesField(deleteCond.Condition, FieldFreeSpace) {
+				evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+			}
+			activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+			if !allGroupMembersMatchCondition(members, torrentByHash, deleteCond.Condition, evalCtx) {
+				continue
+			}
+
 			if expandGroup {
+				directMatchSet[torrent.Hash] = struct{}{}
 				for _, memberHash := range members {
 					expandedSet[memberHash] = struct{}{}
 				}
-			} else {
-				expandedSet[torrent.Hash] = struct{}{}
 			}
 		}
 
@@ -1589,15 +1590,39 @@ func (s *Service) findCategoryGroupMembers(
 	for _, t := range torrents {
 		torrentByHash[t.Hash] = t
 	}
+	crossSeedIndex := buildCrossSeedIndex(torrents)
 
 	keySet := make(map[string]struct{})
+	keyEligibility := make(map[string]bool)
 	for h := range state.directMatchSet {
-		if gk := idx.KeyForHash(h); gk != "" {
-			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, h, torrentByHash) {
-				continue
-			}
-			keySet[gk] = struct{}{}
+		gk := idx.KeyForHash(h)
+		if gk == "" {
+			delete(state.directMatchSet, h)
+			continue
 		}
+		eligible, computed := keyEligibility[gk]
+		if !computed {
+			eligible = true
+			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, h, torrentByHash) {
+				eligible = false
+			}
+			if eligible {
+				if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
+					evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+				}
+				activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+				members := idx.MembersForHash(h)
+				if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, crossSeedIndex) {
+					eligible = false
+				}
+			}
+			keyEligibility[gk] = eligible
+		}
+		if !eligible {
+			delete(state.directMatchSet, h)
+			continue
+		}
+		keySet[gk] = struct{}{}
 	}
 	if len(keySet) == 0 {
 		return
@@ -2128,7 +2153,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			case DeleteModeKeepFiles:
 				// Optional group-aware keep-files deletion:
 				// if groupId is set, optionally expand deletion to the whole group.
-				// atomic=all enforces all-or-none: delete the whole group only if ALL members match this rule.
+				// Group matching is strict: all members must satisfy the delete condition.
 				if state.deleteGroupID != "" && state.deleteRuleID > 0 {
 					rule := ruleByID[state.deleteRuleID]
 					if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
@@ -2138,9 +2163,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						if idx != nil {
 							members := idx.MembersForHash(hash)
 							if len(members) > 0 {
-								atomicAll := strings.EqualFold(state.deleteAtomic, "all")
-								expandGroup := true
-
 								// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
 								def := (*models.GroupDefinition)(nil)
 								if rule.Conditions.Grouping != nil {
@@ -2156,10 +2178,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 										policy = groupAmbiguousVerifyOverlap
 									}
 									if policy == groupAmbiguousSkip {
-										if atomicAll {
-											continue
-										}
-										expandGroup = false
+										continue
 									}
 									minPercent := def.MinFileOverlapPercent
 									if minPercent <= 0 {
@@ -2183,51 +2202,31 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 										}
 									}
 									if skipGroup {
-										if atomicAll {
-											continue
-										}
-										expandGroup = false
-									}
-								}
-
-								if expandGroup && atomicAll {
-									// All-or-nothing eligibility check for the whole group.
-									allMatch := true
-									// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
-									if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-										evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-									}
-									activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-
-									for _, memberHash := range members {
-										memberTorrent, ok := torrentByHash[memberHash]
-										if !ok {
-											allMatch = false
-											break
-										}
-										// Group expansion intentionally ignores TrackerPattern to allow cross-tracker grouping.
-										// If you want to constrain by tracker, use a TRACKER condition in the rule.
-										if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
-											allMatch = false
-											break
-										}
-									}
-
-									if !allMatch {
 										continue
 									}
 								}
 
-								if expandGroup {
-									hashesToDelete = members
-									actualMode = DeleteModeKeepFiles
-									logMsg = "automations: removing torrent group (keeping files)"
-									keepingFiles = true
-									break
+								// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
+								if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
+									evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
 								}
+								activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+								if !allGroupMembersMatchCondition(members, torrentByHash, cond, evalCtx) {
+									continue
+								}
+
+								hashesToDelete = members
+								actualMode = DeleteModeKeepFiles
+								logMsg = "automations: removing torrent group (keeping files)"
+								keepingFiles = true
+								break
 							}
 						}
 					}
+				}
+				if state.deleteGroupID != "" {
+					// GroupId is strict all-or-none; if we didn't emit a group deletion above, skip this trigger.
+					continue
 				}
 
 				hashesToDelete = []string{hash}
@@ -2824,7 +2823,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	for _, category := range sortedCategories {
 		hashes := categoryBatches[category]
-		expandedHashes := hashes
+		expandedHashes := make([]string, 0, len(hashes))
 
 		type groupExpandKey struct {
 			ruleID  int
@@ -2835,14 +2834,21 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// or legacy includeCrossSeeds), then expand other torrents that share the same group key.
 		keysToExpand := make(map[groupExpandKey]map[string]struct{})
 		groupIndexByKey := make(map[groupExpandKey]*groupIndex)
+		groupEligibilityByKey := make(map[groupExpandKey]map[string]bool)
 		ruleByGroupKey := make(map[groupExpandKey]ruleRef)
+		categoryCrossSeedIndex := buildCrossSeedIndex(torrents)
 		for _, hash := range hashes {
 			state, exists := states[hash]
-			if !exists || state == nil || state.categoryGroupID == "" || state.categoryRuleID <= 0 {
+			if !exists || state == nil {
+				continue
+			}
+			if state.categoryGroupID == "" || state.categoryRuleID <= 0 {
+				expandedHashes = append(expandedHashes, hash)
 				continue
 			}
 			rule := ruleByID[state.categoryRuleID]
 			if rule == nil {
+				// GroupId semantics are strict all-or-none: unresolved grouping rules are skipped.
 				continue
 			}
 
@@ -2860,9 +2866,32 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			if groupKey == "" {
 				continue
 			}
-			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, state.categoryGroupID, idx, hash, torrentByHash) {
+			if groupEligibilityByKey[k] == nil {
+				groupEligibilityByKey[k] = make(map[string]bool)
+			}
+			eligible, computed := groupEligibilityByKey[k][groupKey]
+			if !computed {
+				eligible = true
+				if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, state.categoryGroupID, idx, hash, torrentByHash) {
+					eligible = false
+				}
+				if eligible {
+					catAction := getCategoryAction(rule)
+					if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
+						evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+					}
+					activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+					members := idx.MembersForHash(hash)
+					if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, categoryCrossSeedIndex) {
+						eligible = false
+					}
+				}
+				groupEligibilityByKey[k][groupKey] = eligible
+			}
+			if !eligible {
 				continue
 			}
+			expandedHashes = append(expandedHashes, hash)
 			if keysToExpand[k] == nil {
 				keysToExpand[k] = make(map[string]struct{})
 			}
@@ -2982,7 +3011,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Execute moves - sort paths for deterministic processing order
-	crossSeedIndex := buildCrossSeedIndex(torrents)
 	sortedPaths := make([]string, 0, len(moveBatches))
 	for path := range moveBatches {
 		sortedPaths = append(sortedPaths, path)
@@ -3018,23 +3046,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 			state := states[hash]
 			if state != nil && state.moveGroupID != "" {
-				atomicAll := strings.EqualFold(state.moveAtomic, "all")
-
 				rule := (*models.Automation)(nil)
 				if ruleByID != nil && state.moveRuleID > 0 {
 					rule = ruleByID[state.moveRuleID]
 				}
 
-				// GroupId set but rule can't be resolved: treat as "move only the trigger" (or skip if atomic).
+				// GroupId set but rule can't be resolved: skip (strict all-or-none semantics).
 				if rule == nil {
-					if atomicAll {
-						continue
-					}
-					if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, evalCtx) {
-						continue
-					}
-					expandedHashes = append(expandedHashes, hash)
-					movedHashes[hash] = struct{}{}
 					continue
 				}
 
@@ -3053,8 +3071,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						}
 					}
 
-					expandGroup := true
-
 					// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
 					def := (*models.GroupDefinition)(nil)
 					if rule.Conditions != nil && rule.Conditions.Grouping != nil {
@@ -3070,10 +3086,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 							policy = groupAmbiguousVerifyOverlap
 						}
 						if policy == groupAmbiguousSkip {
-							if atomicAll {
-								continue
-							}
-							expandGroup = false
+							continue
 						}
 						minPercent := def.MinFileOverlapPercent
 						if minPercent <= 0 {
@@ -3100,67 +3113,39 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 							}
 						}
 						if skipGroup {
-							if atomicAll {
-								continue
-							}
-							expandGroup = false
-						}
-					}
-
-					if expandGroup && atomicAll {
-						// All-or-nothing eligibility check for the whole group.
-						cond := (*models.RuleCondition)(nil)
-						if rule.Conditions != nil && rule.Conditions.Move != nil {
-							cond = rule.Conditions.Move.Condition
-						}
-						if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-							evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-						}
-						activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-
-						allMatch := true
-						for _, memberHash := range members {
-							memberTorrent, ok := torrentByHash[memberHash]
-							if !ok {
-								allMatch = false
-								break
-							}
-							if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
-								allMatch = false
-								break
-							}
-						}
-						if !allMatch {
 							continue
 						}
 					}
 
-					if expandGroup {
-						for _, memberHash := range members {
-							if _, exists := movedHashes[memberHash]; exists {
-								continue
-							}
-							memberTorrent, ok := torrentByHash[memberHash]
-							if !ok {
-								continue
-							}
-							if normalizePath(memberTorrent.SavePath) == normalizedDest {
-								continue // Already in target path
-							}
-							expandedHashes = append(expandedHashes, memberHash)
-							movedHashes[memberHash] = struct{}{}
-						}
+					// GroupId semantics are strict: every member must satisfy the move condition.
+					cond := (*models.RuleCondition)(nil)
+					if rule.Conditions != nil && rule.Conditions.Move != nil {
+						cond = rule.Conditions.Move.Condition
+					}
+					if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
+						evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+					}
+					activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+					if !allGroupMembersMatchCondition(members, torrentByHash, cond, evalCtx) {
 						continue
 					}
-				}
 
-				// GroupId set but expansion was disabled (e.g. ambiguous skip/overlap failure): move only trigger.
-				if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, evalCtx) {
+					for _, memberHash := range members {
+						if _, exists := movedHashes[memberHash]; exists {
+							continue
+						}
+						memberTorrent, ok := torrentByHash[memberHash]
+						if !ok {
+							continue
+						}
+						if normalizePath(memberTorrent.SavePath) == normalizedDest {
+							continue // Already in target path
+						}
+						expandedHashes = append(expandedHashes, memberHash)
+						movedHashes[memberHash] = struct{}{}
+					}
 					continue
 				}
-				expandedHashes = append(expandedHashes, hash)
-				movedHashes[hash] = struct{}{}
-				continue
 			}
 
 			// Legacy cross-seed expansion behavior
@@ -4042,6 +4027,44 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 	return true
 }
 
+func allGroupMembersMatchCondition(members []string, torrentByHash map[string]qbt.Torrent, cond *models.RuleCondition, evalCtx *EvalContext) bool {
+	if len(members) == 0 {
+		return false
+	}
+	for _, memberHash := range members {
+		memberTorrent, ok := torrentByHash[memberHash]
+		if !ok {
+			return false
+		}
+		if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, evalCtx, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func allGroupMembersMatchCategoryAction(
+	members []string,
+	torrentByHash map[string]qbt.Torrent,
+	catAction categoryActionConfig,
+	evalCtx *EvalContext,
+	crossSeedIndex map[crossSeedKey][]qbt.Torrent,
+) bool {
+	if len(members) == 0 {
+		return false
+	}
+	for _, memberHash := range members {
+		memberTorrent, ok := torrentByHash[memberHash]
+		if !ok {
+			return false
+		}
+		if !shouldApplyCategoryAction(&memberTorrent, catAction, evalCtx, crossSeedIndex) {
+			return false
+		}
+	}
+	return true
+}
+
 // deleteFreesSpace returns true if deleting this torrent with the given mode
 // will actually free disk space. This is used to determine whether to count
 // the torrent's size toward cumulative free space projection.
@@ -4437,7 +4460,7 @@ func (s *Service) recordDryRunActivities(
 
 		for _, category := range sortedCategories {
 			hashes := categoryBatches[category]
-			expandedHashes := hashes
+			expandedHashes := make([]string, 0, len(hashes))
 
 			type ruleGroupKey struct {
 				ruleID  int
@@ -4447,9 +4470,15 @@ func (s *Service) recordDryRunActivities(
 			previewEvalCtx := dryRunEvalCtx
 			keysToExpandByGroupID := make(map[ruleGroupKey]map[string]struct{})
 			groupIndexByGroupID := make(map[ruleGroupKey]*groupIndex)
+			groupEligibilityByGroupID := make(map[ruleGroupKey]map[string]bool)
+			crossSeedIndex := buildCrossSeedIndex(torrents)
 			for _, hash := range hashes {
 				state, exists := states[hash]
-				if !exists || state == nil || state.categoryGroupID == "" {
+				if !exists || state == nil {
+					continue
+				}
+				if state.categoryGroupID == "" {
+					expandedHashes = append(expandedHashes, hash)
 					continue
 				}
 
@@ -4457,20 +4486,15 @@ func (s *Service) recordDryRunActivities(
 				if ruleByID != nil && state.categoryRuleID > 0 {
 					rule = ruleByID[state.categoryRuleID]
 				}
+				if rule == nil {
+					continue
+				}
 
 				rgk := ruleGroupKey{ruleID: state.categoryRuleID, groupID: state.categoryGroupID}
 				gid := state.categoryGroupID
 				idx := groupIndexByGroupID[rgk]
 				if idx == nil {
-					if rule != nil {
-						idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, gid, torrents, s.syncManager)
-					} else {
-						def := builtinGroupDefinition(gid)
-						if def == nil {
-							continue
-						}
-						idx = buildGroupIndex(gid, def, torrents, s.syncManager, previewEvalCtx)
-					}
+					idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, gid, torrents, s.syncManager)
 					groupIndexByGroupID[rgk] = idx
 				}
 				if idx == nil {
@@ -4480,9 +4504,32 @@ func (s *Service) recordDryRunActivities(
 				if groupKey == "" {
 					continue
 				}
-				if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, gid, idx, hash, torrentByHash) {
+				if groupEligibilityByGroupID[rgk] == nil {
+					groupEligibilityByGroupID[rgk] = make(map[string]bool)
+				}
+				eligible, computed := groupEligibilityByGroupID[rgk][groupKey]
+				if !computed {
+					eligible = true
+					if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, gid, idx, hash, torrentByHash) {
+						eligible = false
+					}
+					if eligible {
+						catAction := getCategoryAction(rule)
+						if previewEvalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
+							previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+						}
+						activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
+						members := idx.MembersForHash(hash)
+						if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, previewEvalCtx, crossSeedIndex) {
+							eligible = false
+						}
+					}
+					groupEligibilityByGroupID[rgk][groupKey] = eligible
+				}
+				if !eligible {
 					continue
 				}
+				expandedHashes = append(expandedHashes, hash)
 				if keysToExpandByGroupID[rgk] == nil {
 					keysToExpandByGroupID[rgk] = make(map[string]struct{})
 				}
@@ -4555,7 +4602,6 @@ func (s *Service) recordDryRunActivities(
 
 	// Moves (include cross-seed expansion)
 	if len(moveBatches) > 0 {
-		crossSeedIndex := buildCrossSeedIndex(torrents)
 		sortedPaths := make([]string, 0, len(moveBatches))
 		for path := range moveBatches {
 			sortedPaths = append(sortedPaths, path)
@@ -4586,21 +4632,12 @@ func (s *Service) recordDryRunActivities(
 
 				state := states[hash]
 				if state != nil && state.moveGroupID != "" {
-					atomicAll := strings.EqualFold(state.moveAtomic, "all")
-
 					rule := (*models.Automation)(nil)
 					if ruleByID != nil && state.moveRuleID > 0 {
 						rule = ruleByID[state.moveRuleID]
 					}
 					if rule == nil {
-						if atomicAll {
-							continue
-						}
-						if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, previewEvalCtx) {
-							continue
-						}
-						expandedHashes = append(expandedHashes, hash)
-						movedHashes[hash] = struct{}{}
+						// GroupId semantics are strict all-or-none.
 						continue
 					}
 
@@ -4619,8 +4656,6 @@ func (s *Service) recordDryRunActivities(
 							}
 						}
 
-						expandGroup := true
-
 						// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
 						def := (*models.GroupDefinition)(nil)
 						if rule.Conditions != nil && rule.Conditions.Grouping != nil {
@@ -4636,10 +4671,7 @@ func (s *Service) recordDryRunActivities(
 								policy = groupAmbiguousVerifyOverlap
 							}
 							if policy == groupAmbiguousSkip {
-								if atomicAll {
-									continue
-								}
-								expandGroup = false
+								continue
 							}
 							minPercent := def.MinFileOverlapPercent
 							if minPercent <= 0 {
@@ -4666,65 +4698,38 @@ func (s *Service) recordDryRunActivities(
 								}
 							}
 							if skipGroup {
-								if atomicAll {
-									continue
-								}
-								expandGroup = false
-							}
-						}
-
-						if expandGroup && atomicAll {
-							cond := (*models.RuleCondition)(nil)
-							if rule.Conditions != nil && rule.Conditions.Move != nil {
-								cond = rule.Conditions.Move.Condition
-							}
-							if previewEvalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-								previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-							}
-							activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
-
-							allMatch := true
-							for _, memberHash := range members {
-								memberTorrent, ok := torrentByHash[memberHash]
-								if !ok {
-									allMatch = false
-									break
-								}
-								if cond != nil && !EvaluateConditionWithContext(cond, memberTorrent, previewEvalCtx, 0) {
-									allMatch = false
-									break
-								}
-							}
-							if !allMatch {
 								continue
 							}
 						}
 
-						if expandGroup {
-							for _, memberHash := range members {
-								if _, exists := movedHashes[memberHash]; exists {
-									continue
-								}
-								memberTorrent, ok := torrentByHash[memberHash]
-								if !ok {
-									continue
-								}
-								if normalizePath(memberTorrent.SavePath) == normalizedDest {
-									continue
-								}
-								expandedHashes = append(expandedHashes, memberHash)
-								movedHashes[memberHash] = struct{}{}
-							}
+						cond := (*models.RuleCondition)(nil)
+						if rule.Conditions != nil && rule.Conditions.Move != nil {
+							cond = rule.Conditions.Move.Condition
+						}
+						if previewEvalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
+							previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+						}
+						activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
+						if !allGroupMembersMatchCondition(members, torrentByHash, cond, previewEvalCtx) {
 							continue
 						}
-					}
 
-					if shouldBlockGroupedMoveTriggerFallback(hash, state, torrentByHash, crossSeedIndex, previewEvalCtx) {
+						for _, memberHash := range members {
+							if _, exists := movedHashes[memberHash]; exists {
+								continue
+							}
+							memberTorrent, ok := torrentByHash[memberHash]
+							if !ok {
+								continue
+							}
+							if normalizePath(memberTorrent.SavePath) == normalizedDest {
+								continue
+							}
+							expandedHashes = append(expandedHashes, memberHash)
+							movedHashes[memberHash] = struct{}{}
+						}
 						continue
 					}
-					expandedHashes = append(expandedHashes, hash)
-					movedHashes[hash] = struct{}{}
-					continue
 				}
 
 				expandedHashes = append(expandedHashes, hash)

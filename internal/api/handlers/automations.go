@@ -54,6 +54,10 @@ type AutomationPayload struct {
 	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
 }
 
+type AutomationDryRunResult struct {
+	Status string `json:"status"`
+}
+
 // toModel converts the payload to an Automation model.
 // If TrackerDomains is non-empty after normalization, it takes precedence over
 // TrackerPattern and the raw TrackerPattern input is ignored.
@@ -239,6 +243,42 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
+}
+
+func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	var payload AutomationPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode dry-run payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+		RespondError(w, status, msg)
+		return
+	}
+
+	automation := payload.toModel(instanceID, 0)
+	automation.Enabled = true
+	automation.DryRun = true
+
+	if err := h.service.ApplyRuleDryRun(r.Context(), instanceID, automation); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual dry-run failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to run dry-run")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{Status: "dry-run-completed"})
 }
 
 func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
