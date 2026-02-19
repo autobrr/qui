@@ -75,7 +75,7 @@ interface TorrentContextMenuProps {
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
   availableCategories?: Record<string, Category>
-  onSetCategory?: (category: string, hashes: string[]) => void
+  onSetCategory?: (category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => void
   isPending?: boolean
   onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
   isExporting?: boolean
@@ -309,9 +309,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   const handleSetCategory = useCallback((category: string) => {
     if (onSetCategory) {
-      onSetCategory(category, hashes)
+      onSetCategory(category, hashes, actionTargets)
     }
-  }, [onSetCategory, hashes])
+  }, [onSetCategory, hashes, actionTargets])
 
   const handleTmmToggle = useCallback((enable: boolean) => {
     if (onPrepareTmm) {

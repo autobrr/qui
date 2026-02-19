@@ -66,6 +66,7 @@ export function Header({
     totalSelectionCount,
     selectedTotalSize,
     excludeHashes,
+    excludeTargets,
     filters,
     clearSelection,
   } = useTorrentSelection()
@@ -411,6 +412,7 @@ export function Header({
                 filters={filters}
                 search={routeSearch?.q}
                 excludeHashes={excludeHashes}
+                excludeTargets={excludeTargets}
                 onComplete={clearSelection}
               />
             </div>

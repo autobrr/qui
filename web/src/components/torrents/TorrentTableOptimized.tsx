@@ -564,6 +564,7 @@ interface TorrentTableOptimizedProps {
     isAllSelected: boolean,
     totalSelectionCount: number,
     excludeHashes: string[],
+    excludeTargets: Array<{ instanceId: number; hash: string }>,
     selectedTotalSize: number,
     selectionFilters?: TorrentFilters
   ) => void
@@ -1680,11 +1681,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         isAllSelected,
         effectiveSelectionCount,
         Array.from(excludedFromSelectAll),
+        isAllSelected ? selectAllExcludedTargets : [],
         selectedTotalSize,
         selectAllFilters ?? filters
       )
     }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize, selectAllFilters, filters])
+  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectAllExcludedTargets, selectedTotalSize, selectAllFilters, filters])
 
   // Callback for context menu to fetch field for matching torrents
   const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path"): Promise<string[]> => {
@@ -2143,7 +2145,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   // Direct category handler for context menu submenu
-  const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
+  const handleSetCategoryDirect = useCallback((category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => {
     const usingSelectAll = isAllSelected
     const resolvedFilters = usingSelectAll ? (selectAllFilters ?? filters) : undefined
     const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
@@ -2161,6 +2163,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       {
         clientHashes,
         totalSelected,
+        actionTargets: usingSelectAll ? undefined : targets,
+        excludeTargets: usingSelectAll ? selectAllExcludedTargets : undefined,
       }
     )
   }, [
@@ -2170,6 +2174,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     filters,
     effectiveSearch,
     excludedFromSelectAll,
+    selectAllExcludedTargets,
     selectedHashes,
     effectiveSelectionCount,
   ])

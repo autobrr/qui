@@ -72,6 +72,7 @@ interface TorrentManagementBarProps {
   filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
+  excludeTargets?: Array<{ instanceId: number; hash: string }>
   onComplete?: () => void
 }
 
@@ -85,6 +86,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   filters,
   search,
   excludeHashes = [],
+  excludeTargets = [],
   onComplete,
 }: TorrentManagementBarProps) {
   const selectionCount = totalSelectionCount || selectedHashes.length
@@ -227,14 +229,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const actionTargets = useMemo(
     () => buildTorrentActionTargets(selectedTorrents, actionInstanceId),
     [selectedTorrents, actionInstanceId]
-  )
-  const excludedSelectedTorrents = useMemo(
-    () => selectedTorrents.filter(torrent => excludeHashes.includes(torrent.hash)),
-    [selectedTorrents, excludeHashes]
-  )
-  const excludeTargets = useMemo(
-    () => buildTorrentActionTargets(excludedSelectedTorrents, actionInstanceId),
-    [excludedSelectedTorrents, actionInstanceId]
   )
   const actionOptions = useMemo(() => ({
     targets: isAllSelected ? undefined : actionTargets,
