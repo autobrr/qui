@@ -2202,10 +2202,20 @@ func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candid
 }
 
 // filePathCandidates returns resolved absolute paths to try, preferring
-// contentPath, then savePath, then downloadPath.
+// real-time save/download paths before potentially stale cached contentPath.
 func filePathCandidates(savePath, downloadPath, contentPath, relativePath string, singleFile bool) []string {
 	var candidates []string
 	seen := make(map[string]struct{})
+	if savePath != "" {
+		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+	if downloadPath != "" {
+		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
 	if contentPath != "" {
 		cleanContentPath := filepath.Clean(filepath.FromSlash(contentPath))
 		if singleFile {
@@ -2215,16 +2225,6 @@ func filePathCandidates(savePath, downloadPath, contentPath, relativePath string
 				candidates = appendUniqueCandidate(candidates, seen, p)
 			}
 		} else if p, err := resolveTorrentFilePath(cleanContentPath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-	}
-	if savePath != "" {
-		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-	}
-	if downloadPath != "" {
-		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
 			candidates = appendUniqueCandidate(candidates, seen, p)
 		}
 	}
