@@ -685,6 +685,8 @@ func skipCompressionForPath(requestPath string) bool {
 		return false
 	}
 
+	// Match against the tail of segments so arbitrary baseURL prefixes still work,
+	// while detecting the fixed pattern api/instances/:instanceID/torrents/:torrentID/files/:fileID/download.
 	tail := segments[len(segments)-8:]
 	return tail[0] == "api" &&
 		tail[1] == "instances" &&

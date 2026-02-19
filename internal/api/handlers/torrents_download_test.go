@@ -135,6 +135,8 @@ func TestDownloadTorrentContentFile_RejectsInvalidFileIndex(t *testing.T) {
 	}
 }
 
+// Keep these as separate tests: each failure path uses different mock setup and assertions,
+// so a table-driven helper would hide intent and make regressions harder to diagnose.
 func TestDownloadTorrentContentFile_ReturnsNotFoundForMissingInstance(t *testing.T) {
 	t.Parallel()
 
