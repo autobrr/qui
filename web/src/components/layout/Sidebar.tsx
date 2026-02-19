@@ -112,6 +112,7 @@ export function Sidebar() {
   })
   const activeInstances = instances?.filter(instance => instance.isActive) ?? []
   const hasConfiguredInstances = (instances?.length ?? 0) > 0
+  const isAllInstancesActive = location.pathname === "/instances" || location.pathname === "/instances/"
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
@@ -166,6 +167,25 @@ export function Sidebar() {
               Instances
             </p>
             <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
+              <Link
+                to="/instances"
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                  isAllInstancesActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <HardDrive className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate max-w-36">Unified</span>
+                <span
+                  className={cn(
+                    "ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none flex-shrink-0",
+                    isAllInstancesActive ? "border-sidebar-primary-foreground/35 text-sidebar-primary-foreground/90" : "border-sidebar-border text-sidebar-foreground/70"
+                  )}
+                >
+                  {activeInstances.length} active
+                </span>
+              </Link>
+              <Separator className="my-2" />
               {activeInstances.map((instance) => {
                 const instancePath = `/instances/${instance.id}`
                 const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)

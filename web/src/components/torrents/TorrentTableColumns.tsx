@@ -30,7 +30,7 @@ import {
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, CrossInstanceTorrent, Torrent } from "@/types"
-import type { ColumnDef } from "@tanstack/react-table"
+import type { CellContext, ColumnDef, HeaderContext } from "@tanstack/react-table"
 import {
   AlertCircle,
   ArrowDownAZ,
@@ -412,7 +412,8 @@ export const createColumns = (
   supportsTrackerHealth: boolean = true,
   showInstanceColumn: boolean = false,
   viewMode: TableViewMode = "normal",
-  trackerCustomizationLookup?: TrackerCustomizationLookup
+  trackerCustomizationLookup?: TrackerCustomizationLookup,
+  includeSelectionColumn: boolean = true
 ): ColumnDef<Torrent>[] => {
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
@@ -435,9 +436,9 @@ export const createColumns = (
   }
 
   return [
-    {
+    ...(includeSelectionColumn ? [{
       id: "select",
-      header: ({ table }) => (
+      header: ({ table }: HeaderContext<Torrent, unknown>) => (
         <div className="flex items-center justify-center p-1 -m-1">
           <Checkbox
             checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
@@ -454,7 +455,7 @@ export const createColumns = (
           />
         </div>
       ),
-      cell: ({ row, table }) => {
+      cell: ({ row, table }: CellContext<Torrent, unknown>) => {
         const torrent = row.original
         const hash = torrent.hash
 
@@ -481,7 +482,7 @@ export const createColumns = (
               onCheckedChange={(checked: boolean | "indeterminate") => {
                 const isShift = selectionEnhancers?.shiftPressedRef.current === true
                 const allRows = table.getRowModel().rows
-                const currentIndex = allRows.findIndex(r => r.id === row.id)
+                const currentIndex = allRows.findIndex((r: { id: string }) => r.id === row.id)
 
                 if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
                   const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
@@ -533,7 +534,7 @@ export const createColumns = (
       meta: {
         headerString: "Selection",
       },
-    },
+    }] : []),
     {
       accessorKey: "priority",
       header: () => (

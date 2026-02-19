@@ -25,9 +25,10 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
-import type { Torrent, TorrentFilters } from "@/types"
+import type { Category, Torrent, TorrentFilters } from "@/types"
 import {
   ArrowDown,
   ArrowUp,
@@ -87,27 +88,56 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   onComplete,
 }: TorrentManagementBarProps) {
   const selectionCount = totalSelectionCount || selectedHashes.length
-  // Safe instanceId for hooks - guard at end handles invalid values
-  const safeInstanceId = typeof instanceId === "number" && instanceId > 0 ? instanceId : 0
+  const hasActionScope = typeof instanceId === "number" && instanceId >= 0
+  const actionInstanceId = hasActionScope ? instanceId : -1
+  const metadataInstanceId = actionInstanceId > 0 ? actionInstanceId : 0
+  const supportsCrossSeedDeleteTools = actionInstanceId > 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(safeInstanceId)
-  const availableTags = metadata?.tags || []
-  const availableCategories = metadata?.categories || {}
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(metadataInstanceId)
+  const fallbackTags = useMemo(() => {
+    const tags = new Set<string>()
+    for (const torrent of selectedTorrents) {
+      for (const tag of parseTorrentTags(torrent.tags)) {
+        tags.add(tag)
+      }
+    }
+    return Array.from(tags).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+  }, [selectedTorrents])
+  const fallbackCategories = useMemo(() => {
+    const categories: Record<string, Category> = {}
+    for (const torrent of selectedTorrents) {
+      const name = torrent.category?.trim()
+      if (!name) {
+        continue
+      }
+      const existing = categories[name]
+      if (!existing) {
+        categories[name] = { name, savePath: torrent.save_path ?? "" }
+        continue
+      }
+      if (!existing.savePath && torrent.save_path) {
+        categories[name] = { ...existing, savePath: torrent.save_path }
+      }
+    }
+    return categories
+  }, [selectedTorrents])
+  const availableTags = metadata?.tags?.length ? metadata.tags : fallbackTags
+  const availableCategories = Object.keys(metadata?.categories ?? {}).length > 0 ? (metadata?.categories ?? {}) : fallbackCategories
   const preferences = metadata?.preferences
 
-  const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
-  const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
+  const isLoadingTagsData = metadataInstanceId > 0 && isMetadataLoading && availableTags.length === 0
+  const isLoadingCategoriesData = metadataInstanceId > 0 && isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Get capabilities to check subcategory support
-  const { data: capabilities } = useInstanceCapabilities(safeInstanceId)
+  const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? false)
 
   // Get instance name for cross-seed warning
   const { instances } = useInstances()
-  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const instance = useMemo(() => instances?.find(i => i.id === actionInstanceId), [instances, actionInstanceId])
 
   // Use the shared torrent actions hook
   const {
@@ -165,7 +195,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareReannounceAction,
     prepareTmmAction,
   } = useTorrentActions({
-    instanceId: safeInstanceId,
+    instanceId: actionInstanceId,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         onComplete?.()
@@ -175,33 +205,54 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   // Cross-seed warning for delete dialog
   const crossSeedWarning = useCrossSeedWarning({
-    instanceId: safeInstanceId,
+    instanceId: actionInstanceId,
     instanceName: instance?.name ?? "",
     torrents: selectedTorrents,
   })
+  const crossSeedAffectedTorrents = useMemo(
+    () => (supportsCrossSeedDeleteTools ? crossSeedWarning.affectedTorrents : []),
+    [supportsCrossSeedDeleteTools, crossSeedWarning.affectedTorrents]
+  )
 
   const hasCrossSeedTag = useMemo(
-    () => anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
-    [selectedTorrents, crossSeedWarning.affectedTorrents]
+    () => supportsCrossSeedDeleteTools
+      && (anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedAffectedTorrents, "cross-seed")),
+    [supportsCrossSeedDeleteTools, selectedTorrents, crossSeedAffectedTorrents]
   )
   const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(safeInstanceId)
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(actionInstanceId)
 
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
+  const actionTargets = useMemo(
+    () => buildTorrentActionTargets(selectedTorrents, actionInstanceId),
+    [selectedTorrents, actionInstanceId]
+  )
+  const excludedSelectedTorrents = useMemo(
+    () => selectedTorrents.filter(torrent => excludeHashes.includes(torrent.hash)),
+    [selectedTorrents, excludeHashes]
+  )
+  const excludeTargets = useMemo(
+    () => buildTorrentActionTargets(excludedSelectedTorrents, actionInstanceId),
+    [excludedSelectedTorrents, actionInstanceId]
+  )
   const actionOptions = useMemo(() => ({
+    targets: isAllSelected ? undefined : actionTargets,
     selectAll: isAllSelected,
     filters: isAllSelected ? filters : undefined,
     search: isAllSelected ? search : undefined,
     excludeHashes: isAllSelected ? excludeHashes : undefined,
+    excludeTargets: isAllSelected ? excludeTargets : undefined,
     clientHashes: selectedHashes,
     clientCount: selectionCount,
-  }), [isAllSelected, filters, search, excludeHashes, selectedHashes, selectionCount])
+  }), [actionTargets, isAllSelected, filters, search, excludeHashes, excludeTargets, selectedHashes, selectionCount])
 
   const clientMeta = useMemo(() => ({
     clientHashes: selectedHashes,
     totalSelected: selectionCount,
-  }), [selectedHashes, selectionCount])
+    actionTargets: isAllSelected ? undefined : actionTargets,
+    excludeTargets,
+  }), [selectedHashes, selectionCount, isAllSelected, actionTargets, excludeTargets])
 
   const deleteDialogTotalSize = useMemo(() => {
     if (totalSelectionSize > 0) {
@@ -226,15 +277,15 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const handleDeleteWrapper = useCallback(async () => {
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
-      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+      const crossSeedHashes = supportsCrossSeedDeleteTools && deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedAffectedTorrents, "cross-seed") : []
       await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
     }
 
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)] : selectedHashes
+    const hashesToDelete = supportsCrossSeedDeleteTools && deleteCrossSeeds ? [...selectedHashes, ...crossSeedAffectedTorrents.map(t => t.hash)] : selectedHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : clientMeta
+    const deleteClientMeta = supportsCrossSeedDeleteTools && deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : clientMeta
 
     await handleDelete(
       hashesToDelete,
@@ -247,7 +298,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [
     blockCrossSeedHashes,
     clientMeta,
-    crossSeedWarning.affectedTorrents,
+    crossSeedAffectedTorrents,
     deleteCrossSeeds,
     excludeHashes,
     filters,
@@ -257,6 +308,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     selectedHashes,
     selectedTorrents,
     shouldBlockCrossSeeds,
+    supportsCrossSeedDeleteTools,
   ])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
@@ -401,10 +453,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [handleTmmConfirm, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const hasSelection = selectionCount > 0 || isAllSelected
-  const isDisabled = !safeInstanceId || !hasSelection
+  const isDisabled = !hasActionScope || !hasSelection
 
   // Keep this guard after hooks so their invocation order stays stable.
-  if (!safeInstanceId || !hasSelection) {
+  if (!hasActionScope || !hasSelection) {
     return null
   }
 
@@ -707,7 +759,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         showBlockCrossSeeds={hasCrossSeedTag}
         blockCrossSeeds={blockCrossSeeds}
         onBlockCrossSeedsChange={setBlockCrossSeeds}
-        crossSeedWarning={crossSeedWarning}
+        crossSeedWarning={supportsCrossSeedDeleteTools ? crossSeedWarning : null}
         onConfirm={handleDeleteWrapper}
       />
 

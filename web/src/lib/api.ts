@@ -681,6 +681,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
     }
   ): Promise<{ values: string[]; total: number }> {
     return this.request(
@@ -694,6 +695,7 @@ class ApiClient {
           search: params.search,
           filters: params.filters,
           excludeHashes: params.excludeHashes,
+          excludeTargets: params.excludeTargets,
         }),
       }
     )
@@ -866,6 +868,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
       action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
@@ -875,6 +878,7 @@ class ApiClient {
       filters?: TorrentFilters
       search?: string  // Search query when selectAll is true
       excludeHashes?: string[]  // Hashes to exclude when selectAll is true
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)

@@ -123,12 +123,16 @@ export function MobileFooterNav() {
   }, [instances])
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
-  const isOnInstancePage = location.pathname.startsWith("/instances/")
-  const hasMultipleActiveInstances = activeInstances.length > 1
-  const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
-  const currentInstanceId = isOnInstancePage ? location.pathname.split("/")[2] : null
+  const isOnAllInstancesPage = location.pathname === "/instances" || location.pathname === "/instances/"
+  const isOnInstancePage = isOnAllInstancesPage || location.pathname.startsWith("/instances/")
+  const hasActiveInstances = activeInstances.length > 0
+  const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
+  const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
+  const currentInstanceLabel = isOnAllInstancesPage
+    ? "Unified"
+    : (currentInstance && currentInstance.isActive ? currentInstance.name : null)
+  const activeInstancesSummary = `${activeInstances.length} active instance${activeInstances.length === 1 ? "" : "s"}`
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
@@ -203,7 +207,7 @@ export function MobileFooterNav() {
         </Link>
 
         {/* Clients access */}
-        {hasMultipleActiveInstances ? (
+        {hasClientScopeEntry ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -236,89 +240,86 @@ export function MobileFooterNav() {
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
               <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {activeInstances.map((instance) => {
-                const csState = crossSeedInstanceState[instance.id]
-                const hasRss = csState?.rssEnabled || csState?.rssRunning
-                const hasSearch = csState?.searchRunning
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/instances"
+                  className="flex items-center gap-2 min-w-0"
+                >
+                  <HardDrive className="h-4 w-4" />
+                  <span className="flex-1 min-w-0 truncate font-medium">Unified</span>
+                  <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                    {activeInstancesSummary}
+                  </span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {activeInstances.length > 0 ? (
+                activeInstances.map((instance) => {
+                  const csState = crossSeedInstanceState[instance.id]
+                  const hasRss = csState?.rssEnabled || csState?.rssRunning
+                  const hasSearch = csState?.searchRunning
 
-                return (
-                  <DropdownMenuItem key={instance.id} asChild>
-                    <Link
-                      to="/instances/$instanceId"
-                      params={{ instanceId: instance.id.toString() }}
-                      className="flex items-center gap-2 min-w-0"
-                    >
-                      <HardDrive className="h-4 w-4" />
-                      <span
-                        className="flex-1 min-w-0 truncate"
-                        title={instance.name}
+                  return (
+                    <DropdownMenuItem key={instance.id} asChild>
+                      <Link
+                        to="/instances/$instanceId"
+                        params={{ instanceId: instance.id.toString() }}
+                        className="flex items-center gap-2 min-w-0"
                       >
-                        {instance.name}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        {hasRss && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="flex items-center">
-                                {csState?.rssRunning ? (
-                                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                                ) : (
-                                  <Rss className="h-3 w-3 text-muted-foreground" />
-                                )}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="text-xs">
-                              RSS {csState?.rssRunning ? "running" : "enabled"}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {hasSearch && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="flex items-center">
-                                <SearchCode className="h-3 w-3 text-muted-foreground" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="text-xs">
-                              Scan running
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
+                        <HardDrive className="h-4 w-4" />
                         <span
-                          className={cn(
-                            "h-2 w-2 rounded-full",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
+                          className="flex-1 min-w-0 truncate"
+                          title={instance.name}
+                        >
+                          {instance.name}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          {hasRss && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center">
+                                  {csState?.rssRunning ? (
+                                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                  ) : (
+                                    <Rss className="h-3 w-3 text-muted-foreground" />
+                                  )}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="text-xs">
+                                RSS {csState?.rssRunning ? "running" : "enabled"}
+                              </TooltipContent>
+                            </Tooltip>
                           )}
-                        />
-                      </span>
-                    </Link>
-                  </DropdownMenuItem>
-                )
-              })}
+                          {hasSearch && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center">
+                                  <SearchCode className="h-3 w-3 text-muted-foreground" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="text-xs">
+                                Scan running
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                          />
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )
+                })
+              ) : (
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  No active instances
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : singleActiveInstance ? (
-          <Link
-            to="/instances/$instanceId"
-            params={{ instanceId: singleActiveInstance.id.toString() }}
-            className={cn(
-              "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
-              isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <div className="relative">
-              <HardDrive className={cn(
-                "h-5 w-5",
-                isOnInstancePage && "text-primary"
-              )} />
-            </div>
-            <span
-              className="block max-w-[7.5rem] truncate text-center"
-              title={singleActiveInstance.name}
-            >
-              {singleActiveInstance.name}
-            </span>
-          </Link>
         ) : isLoadingInstances ? (
           <button
             className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"

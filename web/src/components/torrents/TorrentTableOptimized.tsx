@@ -85,11 +85,13 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
+  CrossInstanceTorrent,
   ServerState,
   Torrent,
   TorrentCounts,
@@ -542,6 +544,7 @@ const CompactRow = memo(({
 
 interface TorrentTableOptimizedProps {
   instanceId: number
+  readOnly?: boolean
   filters?: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
@@ -575,6 +578,7 @@ interface TorrentTableOptimizedProps {
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   instanceId,
+  readOnly = false,
   filters,
   selectedTorrent,
   onTorrentSelect,
@@ -590,6 +594,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onServerStateUpdate,
   onSelectionInfoUpdate,
 }: TorrentTableOptimizedProps) {
+  const isReadOnly = readOnly
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -614,7 +619,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
-  const { preferences } = useInstancePreferences(instanceId)
+  const { preferences } = useInstancePreferences(instanceId, { enabled: instanceId > 0 })
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
@@ -843,10 +848,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
-  const availableTags = metadata?.tags || []
-  const availableCategories = metadata?.categories || {}
-  const isLoadingTags = isMetadataLoading && availableTags.length === 0
-  const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
+  const metadataTags = metadata?.tags || []
+  const metadataCategories = metadata?.categories || {}
 
   const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
 
@@ -994,6 +997,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     hasLoadedAll,
     loadMore: backendLoadMore,
     isCrossSeedFiltering,
+    isCrossInstanceEndpoint,
   } = useTorrentsList(instanceId, {
     enabled: true,
     pollingEnabled: isVisibilitySettled,
@@ -1019,13 +1023,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
+  const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
+  const isLoadingTags = isMetadataLoading && availableTags.length === 0
+  const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
-  // When cross-seed filtering is active, ensure instance column is visible
+  // When cross-instance data is active, ensure instance column is visible.
   useEffect(() => {
-    if (isDoingCrossSeedFiltering && columnVisibility.instance === false) {
+    if (isCrossInstanceEndpoint && columnVisibility.instance === false) {
       setColumnVisibility(prev => ({ ...prev, instance: true }))
     }
-  }, [isDoingCrossSeedFiltering, columnVisibility.instance, setColumnVisibility])
+  }, [isCrossInstanceEndpoint, columnVisibility.instance, setColumnVisibility])
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -1245,6 +1253,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Custom selection handlers for "select all" functionality
   const handleSelectAll = useCallback(() => {
+    if (isReadOnly) {
+      return
+    }
+
     // Gmail-style behavior: if any rows are selected, always deselect all
     const hasAnySelection = isAllSelected || selectedRowIds.length > 0
 
@@ -1260,9 +1272,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
     }
-  }, [setRowSelection, isAllSelected, selectedRowIds.length])
+  }, [setRowSelection, isAllSelected, selectedRowIds.length, isReadOnly])
 
   const handleRowSelection = useCallback((hash: string, checked: boolean, rowId?: string) => {
+    if (isReadOnly) {
+      return
+    }
+
     if (isAllSelected) {
       if (!checked) {
         // When deselecting a row in "select all" mode, add to exclusions
@@ -1283,7 +1299,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         [keyToUse]: checked,
       }))
     }
-  }, [isAllSelected, setRowSelection])
+  }, [isAllSelected, setRowSelection, isReadOnly])
 
   // Calculate these after we have selectedHashes
   const isSelectAllChecked = useMemo(() => {
@@ -1322,8 +1338,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode as TableViewMode, trackerCustomizationLookup),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode, trackerCustomizationLookup]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1351,9 +1367,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
       const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
+      const crossInstanceId = (row as Partial<CrossInstanceTorrent>).instanceId
 
       if (!baseIdentity) {
         return `row-${index}`
+      }
+
+      if (typeof crossInstanceId === "number" && crossInstanceId > 0) {
+        return `${crossInstanceId}:${baseIdentity}`
       }
 
       if ((torrentIdentityCounts.get(baseIdentity) ?? 0) > 1) {
@@ -1385,7 +1406,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
     // Enable row selection
-    enableRowSelection: true,
+    enableRowSelection: !isReadOnly,
     // Enable column resizing
     enableColumnResizing: true,
     columnResizeMode: "onChange" as const,
@@ -1493,6 +1514,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
 
   const handleCompactCheckboxChange = useCallback((torrent: Torrent, rowId: string, checked: boolean) => {
+    if (isReadOnly) {
+      return
+    }
+
     const nextChecked = !!checked
     const allRows = table.getRowModel().rows
     const currentIndex = allRows.findIndex(r => r.id === rowId)
@@ -1515,7 +1540,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       lastSelectedIndexRef.current = currentIndex
     }
     shiftPressedRef.current = false
-  }, [handleRowSelection, table])
+  }, [handleRowSelection, table, isReadOnly])
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
   const selectedHashes = useMemo((): string[] => {
@@ -1552,11 +1577,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return sortedTorrents.filter(t => !excludedFromSelectAll.has(t.hash))
     } else {
       // Regular selection mode
-      return selectedHashes
-        .map((hash: string) => sortedTorrents.find((t: Torrent) => t.hash === hash))
-        .filter(Boolean) as Torrent[]
+      return table.getRowModel().rows
+        .filter(row => selectedRowIdSet.has(row.id))
+        .map(row => row.original)
     }
-  }, [selectedHashes, sortedTorrents, isAllSelected, excludedFromSelectAll])
+  }, [table, selectedRowIdSet, sortedTorrents, isAllSelected, excludedFromSelectAll])
 
   // Calculate total size of selected torrents
   const selectedTotalSize = useMemo(() => {
@@ -1638,6 +1663,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [isAllSelected, filters, columnFiltersExpr])
 
+  const selectAllExcludedTargets = useMemo(() => {
+    if (!isAllSelected || excludedFromSelectAll.size === 0) {
+      return []
+    }
+    const excludedTorrents = sortedTorrents.filter(torrent => excludedFromSelectAll.has(torrent.hash))
+    return buildTorrentActionTargets(excludedTorrents, instanceId)
+  }, [isAllSelected, excludedFromSelectAll, sortedTorrents, instanceId])
+
   // Call the callback when selection state changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -1673,9 +1706,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         expr: combinedFiltersExpr || undefined,
       },
       excludeHashes: excludedFromSelectAll.size > 0 ? Array.from(excludedFromSelectAll) : undefined,
+      excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
     })
     return response.values
-  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, excludedFromSelectAll])
+  }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, excludedFromSelectAll, isCrossInstanceEndpoint, selectAllExcludedTargets])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -1982,23 +2016,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     filters: selectAllFilters,
     search: isAllSelected ? effectiveSearch : undefined,
     excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-  }), [isAllSelected, selectAllFilters, effectiveSearch, excludedFromSelectAll])
+    excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+  }), [isAllSelected, selectAllFilters, effectiveSearch, excludedFromSelectAll, isCrossInstanceEndpoint, selectAllExcludedTargets])
 
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
     totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
-  }), [contextHashes, isAllSelected, effectiveSelectionCount])
+    actionTargets: buildTorrentActionTargets(contextTorrents, instanceId),
+    excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+  }), [contextHashes, isAllSelected, effectiveSelectionCount, contextTorrents, instanceId, isCrossInstanceEndpoint, selectAllExcludedTargets])
 
   const runAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], hashes: string[], extra?: Parameters<typeof handleAction>[2]) => {
     const clientHashes = hashes.length > 0 ? hashes : selectedHashes
     const clientCount = isAllSelected ? effectiveSelectionCount : (clientHashes.length || hashes.length || 1)
+    const defaultTargets = buildTorrentActionTargets(selectedTorrents, instanceId)
+    const actionTargets = isAllSelected ? undefined : (extra?.targets ?? defaultTargets)
+    const { targets: _ignoredTargets, ...extraOptions } = extra ?? {}
     handleAction(action, isAllSelected ? [] : hashes, {
       ...selectAllOptions,
       clientHashes,
       clientCount,
-      ...extra,
+      targets: actionTargets,
+      ...extraOptions,
     })
-  }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount])
+  }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount, selectedTorrents, instanceId])
 
   const handleExportWrapper = useCallback((hashes: string[], torrentsForSelection: Torrent[]) => {
     exportTorrents({
@@ -2271,7 +2312,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       <SelectAllHotkey
         onSelectAll={selectAllWithShortcut}
         isMac={isMac}
-        enabled={sortedTorrents.length > 0}
+        enabled={!isReadOnly && sortedTorrents.length > 0}
       />
       <div className="relative h-full flex flex-col">
         {/* Search and Actions */}
@@ -2436,14 +2477,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 return container ? createPortal(actions, container) : actions
               })()}
 
-              <AddTorrentDialog
-                instanceId={instanceId}
-                open={addTorrentModalOpen}
-                onOpenChange={onAddTorrentModalChange}
-                dropPayload={dropPayload}
-                onDropPayloadConsumed={handleDropPayloadConsumed}
-                torrents={torrents}
-              />
+              {instanceId > 0 && (
+                <AddTorrentDialog
+                  instanceId={instanceId}
+                  open={addTorrentModalOpen}
+                  onOpenChange={onAddTorrentModalChange}
+                  dropPayload={dropPayload}
+                  onDropPayloadConsumed={handleDropPayloadConsumed}
+                  torrents={torrents}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -2593,7 +2636,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   const row = rows[virtualRow.index]
                   if (!row || !row.original) return null
                   const torrent = row.original
-                  const isSelected = selectedTorrent?.hash === torrent.hash
+                  const selectedInstanceID = (selectedTorrent as Partial<CrossInstanceTorrent> | null)?.instanceId ?? instanceId
+                  const rowInstanceID = (torrent as Partial<CrossInstanceTorrent>).instanceId ?? instanceId
+                  const isSelected = selectedTorrent?.hash === torrent.hash && selectedInstanceID === rowInstanceID
                   const isRowSelected = isAllSelected ? !excludedFromSelectAll.has(torrent.hash) : row.getIsSelected()
 
                   // Render compact view for compact mode
@@ -2602,6 +2647,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       <TorrentContextMenu
                         key={row.id}
                         instanceId={instanceId}
+                        readOnly={isReadOnly}
                         torrent={torrent}
                         isSelected={isRowSelected}
                         isAllSelected={isAllSelected}
@@ -2649,6 +2695,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             if (isCheckboxElement) {
                               return
                             }
+
+                            if (isReadOnly) {
+                              if (isSelected) {
+                                onTorrentSelect?.(null)
+                              } else {
+                                onTorrentSelect?.(torrent)
+                              }
+                              return
+                            }
+
                             // Handle shift-click for range selection
                             if (e.shiftKey) {
                               e.preventDefault()
@@ -2711,6 +2767,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             }
                           }}
                           onContextMenu={() => {
+                            if (isReadOnly) {
+                              return
+                            }
                             if (!isRowSelected && selectedHashes.length <= 1) {
                               setRowSelection({ [row.id]: true })
                             }
@@ -2740,6 +2799,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     <TorrentContextMenu
                       key={row.id}
                       instanceId={instanceId}
+                      readOnly={isReadOnly}
                       torrent={torrent}
                       isSelected={isRowSelected}
                       isAllSelected={isAllSelected}
@@ -2789,6 +2849,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           const target = e.target as HTMLElement
                           const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
                           if (!isCheckbox) {
+                            if (isReadOnly) {
+                              if (isSelected) {
+                                onTorrentSelect?.(null)
+                              } else {
+                                onTorrentSelect?.(torrent)
+                              }
+                              return
+                            }
+
                             // Handle shift-click for range selection - EXACTLY like checkbox
                             if (e.shiftKey) {
                               e.preventDefault() // Prevent text selection
@@ -2861,6 +2930,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           }
                         }}
                         onContextMenu={() => {
+                          if (isReadOnly) {
+                            return
+                          }
                           // Only select this row if not already selected and not part of a multi-selection
                           if (!isRowSelected && selectedHashes.length <= 1) {
                             setRowSelection({ [row.id]: true })
@@ -3094,7 +3166,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         />
 
         {/* Instance Preferences Dialog */}
-        {instance && (
+        {instance && instanceId > 0 && (
           <InstancePreferencesDialog
             open={preferencesOpen}
             onOpenChange={setPreferencesOpen}

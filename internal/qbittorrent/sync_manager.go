@@ -1404,9 +1404,19 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var allTorrents []CrossInstanceTorrentView
 	var totalCount int
 	var partialResults bool
+	var aggregatedStats *TorrentStats
+	var aggregatedCounts *TorrentCounts
+	var useSubcategories bool
+	aggregatedCategories := make(map[string]qbt.Category)
+	aggregatedTagSet := make(map[string]struct{})
 
 	// Iterate through all instances and collect matching torrents
 	for _, instance := range instances {
+		// Disabled instances are intentionally excluded from unified views.
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+
 		// Check for context cancellation before each network call
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -1437,6 +1447,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 			allTorrents = append(allTorrents, crossInstanceTorrent)
 		}
+
+		aggregatedStats = mergeTorrentStats(aggregatedStats, instanceResponse.Stats)
+		aggregatedCounts = mergeTorrentCounts(aggregatedCounts, instanceResponse.Counts)
+		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
+		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
+		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
+
 		totalCount += len(instanceResponse.Torrents)
 	}
 
@@ -1546,9 +1563,23 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	paginatedTorrents := allTorrents[start:end]
 	hasMore := end < len(allTorrents)
 
+	if aggregatedCounts != nil {
+		aggregatedCounts.Total = totalCount
+	}
+
+	var categories map[string]qbt.Category
+	if len(aggregatedCategories) > 0 {
+		categories = aggregatedCategories
+	}
+
 	response := &TorrentResponse{
 		CrossInstanceTorrents:  paginatedTorrents,
 		Total:                  totalCount,
+		Stats:                  aggregatedStats,
+		Counts:                 aggregatedCounts,
+		Categories:             categories,
+		Tags:                   sortedTagKeys(aggregatedTagSet),
+		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
 		IsCrossInstance:        true,
@@ -1556,6 +1587,138 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	}
 
 	return response, nil
+}
+
+func mergeTorrentStats(base *TorrentStats, next *TorrentStats) *TorrentStats {
+	if next == nil {
+		return base
+	}
+
+	if base == nil {
+		copyStats := *next
+		return &copyStats
+	}
+
+	base.Total += next.Total
+	base.Downloading += next.Downloading
+	base.Seeding += next.Seeding
+	base.Paused += next.Paused
+	base.Error += next.Error
+	base.Checking += next.Checking
+	base.TotalDownloadSpeed += next.TotalDownloadSpeed
+	base.TotalUploadSpeed += next.TotalUploadSpeed
+	base.TotalSize += next.TotalSize
+	base.TotalRemainingSize += next.TotalRemainingSize
+	base.TotalSeedingSize += next.TotalSeedingSize
+
+	return base
+}
+
+func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts {
+	if next == nil {
+		return base
+	}
+
+	if base == nil {
+		base = &TorrentCounts{
+			Status:           make(map[string]int, len(next.Status)),
+			Categories:       make(map[string]int, len(next.Categories)),
+			CategorySizes:    make(map[string]int64, len(next.CategorySizes)),
+			Tags:             make(map[string]int, len(next.Tags)),
+			TagSizes:         make(map[string]int64, len(next.TagSizes)),
+			Trackers:         make(map[string]int, len(next.Trackers)),
+			TrackerTransfers: make(map[string]TrackerTransferStats, len(next.TrackerTransfers)),
+		}
+	}
+
+	if base.Status == nil {
+		base.Status = make(map[string]int, len(next.Status))
+	}
+	if base.Categories == nil {
+		base.Categories = make(map[string]int, len(next.Categories))
+	}
+	if base.CategorySizes == nil {
+		base.CategorySizes = make(map[string]int64, len(next.CategorySizes))
+	}
+	if base.Tags == nil {
+		base.Tags = make(map[string]int, len(next.Tags))
+	}
+	if base.TagSizes == nil {
+		base.TagSizes = make(map[string]int64, len(next.TagSizes))
+	}
+	if base.Trackers == nil {
+		base.Trackers = make(map[string]int, len(next.Trackers))
+	}
+	if base.TrackerTransfers == nil {
+		base.TrackerTransfers = make(map[string]TrackerTransferStats, len(next.TrackerTransfers))
+	}
+
+	for key, value := range next.Status {
+		base.Status[key] += value
+	}
+	for key, value := range next.Categories {
+		base.Categories[key] += value
+	}
+	for key, value := range next.CategorySizes {
+		base.CategorySizes[key] += value
+	}
+	for key, value := range next.Tags {
+		base.Tags[key] += value
+	}
+	for key, value := range next.TagSizes {
+		base.TagSizes[key] += value
+	}
+	for key, value := range next.Trackers {
+		base.Trackers[key] += value
+	}
+	for key, value := range next.TrackerTransfers {
+		current := base.TrackerTransfers[key]
+		base.TrackerTransfers[key] = TrackerTransferStats{
+			Uploaded:   current.Uploaded + value.Uploaded,
+			Downloaded: current.Downloaded + value.Downloaded,
+			TotalSize:  current.TotalSize + value.TotalSize,
+			Count:      current.Count + value.Count,
+		}
+	}
+
+	base.Total += next.Total
+
+	return base
+}
+
+func mergeTorrentCategories(base map[string]qbt.Category, next map[string]qbt.Category) {
+	if len(next) == 0 {
+		return
+	}
+
+	for name, category := range next {
+		existing, ok := base[name]
+		if !ok || (existing.SavePath == "" && category.SavePath != "") {
+			base[name] = category
+		}
+	}
+}
+
+func mergeTorrentTags(base map[string]struct{}, next []string) {
+	for _, tag := range next {
+		base[tag] = struct{}{}
+	}
+}
+
+func sortedTagKeys(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	slices.SortFunc(result, func(a, b string) int {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	})
+
+	return result
 }
 
 // GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance

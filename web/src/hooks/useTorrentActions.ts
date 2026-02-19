@@ -52,6 +52,7 @@ interface UseTorrentActionsProps {
 interface TorrentActionData {
   action: TorrentAction
   hashes: string[]
+  targets?: Array<{ instanceId: number; hash: string }>
   deleteFiles?: boolean
   tags?: string
   category?: string
@@ -66,6 +67,7 @@ interface TorrentActionData {
   filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
+  excludeTargets?: Array<{ instanceId: number; hash: string }>
   // Client-side metadata used for optimistic updates and toast messages
   clientHashes?: string[]
   clientCount?: number
@@ -74,6 +76,8 @@ interface TorrentActionData {
 interface ClientMeta {
   clientHashes?: string[]
   totalSelected?: number
+  actionTargets?: Array<{ instanceId: number; hash: string }>
+  excludeTargets?: Array<{ instanceId: number; hash: string }>
 }
 
 export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentActionsProps) {
@@ -123,6 +127,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
       return api.bulkAction(instanceId, {
         hashes: payload.hashes,
+        targets: payload.targets,
         action: payload.action,
         deleteFiles: payload.deleteFiles,
         tags: payload.tags,
@@ -138,6 +143,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         filters: effectiveFilters,
         search: payload.search,
         excludeHashes: payload.excludeHashes,
+        excludeTargets: payload.excludeTargets,
       })
     },
     onSuccess: async (_, variables) => {
@@ -390,12 +396,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "delete",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       deleteFiles,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -419,12 +427,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "addTags",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       tags: tags.join(","),
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -448,12 +458,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     try {
       await mutation.mutateAsync({
         action: "setTags",
+        targets: isAllSelected ? undefined : clientMeta?.actionTargets,
         tags: tags.join(","),
         hashes: isAllSelected ? [] : hashes,
         selectAll: isAllSelected,
         filters: isAllSelected ? filters : undefined,
         search: isAllSelected ? search : undefined,
         excludeHashes: isAllSelected ? excludeHashes : undefined,
+        excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
         clientHashes,
         clientCount,
       })
@@ -462,12 +474,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       if ((error as Error).message?.includes("requires qBittorrent")) {
         await mutation.mutateAsync({
           action: "addTags",
+          targets: isAllSelected ? undefined : clientMeta?.actionTargets,
           tags: tags.join(","),
           hashes: isAllSelected ? [] : hashes,
           selectAll: isAllSelected,
           filters: isAllSelected ? filters : undefined,
           search: isAllSelected ? search : undefined,
           excludeHashes: isAllSelected ? excludeHashes : undefined,
+          excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
           clientHashes,
           clientCount,
         })
@@ -494,12 +508,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "removeTags",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       tags: tags.join(","),
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -522,12 +538,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setCategory",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       category,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -552,11 +570,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setShareLimit",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       ratioLimit,
       seedingTimeLimit,
       inactiveSeedingTimeLimit,
@@ -582,10 +602,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     const clientCount = clientMeta?.totalSelected
       ?? (clientHashes?.length ?? hashes.length)
     const sharedOptions = {
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     }
@@ -627,11 +649,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "recheck",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -652,11 +676,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "reannounce",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -678,12 +704,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setLocation",
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       location,
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })
@@ -812,12 +840,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     const clientCount = clientMeta?.totalSelected ?? (clientHashes?.length ?? hashes.length)
     mutation.mutate({
       action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM,
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
       hashes: isAllSelected ? [] : hashes,
       enable: pendingTmmEnable,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
       clientHashes,
       clientCount,
     })

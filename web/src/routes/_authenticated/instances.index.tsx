@@ -3,24 +3,57 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute, Navigate } from "@tanstack/react-router"
+import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
+import { ALL_INSTANCES_ID } from "@/lib/instances"
+import { Torrents } from "@/pages/Torrents"
+import { createFileRoute } from "@tanstack/react-router"
+import { useLayoutEffect } from "react"
+import { z } from "zod"
 
-export const Route = createFileRoute("/_authenticated/instances/")({
-  component: InstancesRedirect,
+const unifiedSearchSchema = z.object({
+  modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
+  torrent: z.string().optional(),
+  tab: z.string().optional(),
 })
 
-function InstancesRedirect() {
-  const search = Route.useSearch() as Record<string, unknown>
-  const nextSearch = {
-    ...search,
-    tab: "instances" as const,
+export const Route = createFileRoute("/_authenticated/instances/")({
+  validateSearch: unifiedSearchSchema,
+  component: UnifiedInstanceTorrents,
+  staticData: {
+    title: "Unified",
+  },
+})
+
+function UnifiedInstanceTorrents() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const { setLayoutRouteState, resetLayoutRouteState } = useLayoutRoute()
+
+  useLayoutEffect(() => {
+    setLayoutRouteState({
+      showInstanceControls: true,
+      instanceId: ALL_INSTANCES_ID,
+    })
+
+    return () => {
+      resetLayoutRouteState()
+    }
+  }, [resetLayoutRouteState, setLayoutRouteState])
+
+  const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => {
+    navigate({
+      search: newSearch,
+      replace: true,
+    })
   }
 
   return (
-    <Navigate
-      to="/settings"
-      search={nextSearch}
-      replace
+    <Torrents
+      instanceId={ALL_INSTANCES_ID}
+      instanceName="Unified"
+      isAllInstancesView
+      search={search}
+      onSearchChange={handleSearchChange}
     />
   )
 }
