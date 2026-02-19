@@ -63,6 +63,7 @@ import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@
 import type {
   ActionConditions,
   Automation,
+  AutomationActivity,
   AutomationInput,
   AutomationPreviewResult,
   AutomationPreviewTorrent,
@@ -77,6 +78,7 @@ import { Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
+import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 interface WorkflowDialogProps {
@@ -109,6 +111,86 @@ const ACTION_LABELS: Record<ActionType, string> = {
   category: "Category",
   move: "Move",
   externalProgram: "Run external program",
+}
+
+const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
+  deleted_ratio: "Delete (ratio)",
+  deleted_seeding: "Delete (seeding)",
+  deleted_unregistered: "Delete (unregistered)",
+  deleted_condition: "Delete (condition)",
+  delete_failed: "Delete failed",
+  limit_failed: "Limit failed",
+  tags_changed: "Tag",
+  category_changed: "Category",
+  speed_limits_changed: "Speed limits",
+  share_limits_changed: "Share limits",
+  paused: "Pause",
+  resumed: "Resume",
+  moved: "Move",
+  external_program: "External program",
+}
+
+function sumDetailsRecord(values: Record<string, number> | undefined): number {
+  return Object.values(values ?? {}).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+}
+
+function getDryRunImpactCount(event: AutomationActivity): number {
+  const details = event.details
+  switch (event.action) {
+    case "tags_changed":
+      return sumDetailsRecord(details?.added) + sumDetailsRecord(details?.removed)
+    case "category_changed":
+      return sumDetailsRecord(details?.categories)
+    case "speed_limits_changed":
+    case "share_limits_changed":
+      return sumDetailsRecord(details?.limits)
+    case "moved":
+      return sumDetailsRecord(details?.paths)
+    default:
+      return typeof details?.count === "number" ? details.count : 0
+  }
+}
+
+function formatDryRunEventSummary(event: AutomationActivity): string {
+  const details = event.details
+  switch (event.action) {
+    case "tags_changed": {
+      const added = sumDetailsRecord(details?.added)
+      const removed = sumDetailsRecord(details?.removed)
+      if (added > 0 && removed > 0) return `${added} would be tagged, ${removed} would be untagged`
+      if (added > 0) return `${added} would be tagged`
+      if (removed > 0) return `${removed} would be untagged`
+      return "No tag changes"
+    }
+    case "category_changed": {
+      const moved = sumDetailsRecord(details?.categories)
+      return `${moved} torrent${moved === 1 ? "" : "s"} would change category`
+    }
+    case "speed_limits_changed":
+    case "share_limits_changed": {
+      const limited = sumDetailsRecord(details?.limits)
+      return `${limited} torrent${limited === 1 ? "" : "s"} would be updated`
+    }
+    case "moved": {
+      const moved = sumDetailsRecord(details?.paths)
+      return `${moved} torrent${moved === 1 ? "" : "s"} would be moved`
+    }
+    case "paused":
+    case "resumed":
+    case "external_program":
+    case "deleted_ratio":
+    case "deleted_seeding":
+    case "deleted_unregistered":
+    case "deleted_condition": {
+      const count = typeof details?.count === "number" ? details.count : 0
+      return `${count} torrent${count === 1 ? "" : "s"} impacted`
+    }
+    default:
+      return "Dry-run completed"
+  }
 }
 
 function getDisabledFields(capabilities: Capabilities): DisabledField[] {
@@ -365,6 +447,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
   const [showDryRunPrompt, setShowDryRunPrompt] = useState(false)
   const [dryRunPromptedForNew, setDryRunPromptedForNew] = useState(false)
+  const [latestDryRunEvents, setLatestDryRunEvents] = useState<AutomationActivity[]>([])
+  const [latestDryRunError, setLatestDryRunError] = useState<string | null>(null)
+  const [latestDryRunStartedAt, setLatestDryRunStartedAt] = useState<string | null>(null)
+  const [activityRunDialog, setActivityRunDialog] = useState<AutomationActivity | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -828,6 +914,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   useEffect(() => {
     if (!open) {
       setShowDryRunPrompt(false)
+      setLatestDryRunEvents([])
+      setLatestDryRunError(null)
+      setLatestDryRunStartedAt(null)
+      setActivityRunDialog(null)
       return
     }
     if (!rule) {
@@ -1105,6 +1195,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.externalProgramEnabled,
   ].filter(Boolean).length
 
+  const latestDryRunOperationCount = useMemo(
+    () => latestDryRunEvents.reduce((sum, event) => sum + getDryRunImpactCount(event), 0),
+    [latestDryRunEvents]
+  )
+
   const previewMutation = useMutation({
     mutationFn: async ({ input, view }: { input: FormState; view: PreviewView }) => {
       const payload = {
@@ -1164,8 +1259,27 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     loadMorePreview.mutate()
   }
 
+  const loadDryRunActivities = useCallback(async (startedAtISO: string) => {
+    const startedAtMs = Math.max(0, Date.parse(startedAtISO) - 1000)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const activities = await api.getAutomationActivity(instanceId, 200)
+      const matching = activities
+        .filter((activity) => {
+          if (activity.outcome !== "dry-run") return false
+          const createdAtMs = Date.parse(activity.createdAt)
+          return Number.isFinite(createdAtMs) && createdAtMs >= startedAtMs
+        })
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      if (matching.length > 0 || attempt === 2) {
+        return matching
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    return []
+  }, [instanceId])
+
   const dryRunNowMutation = useMutation({
-    mutationFn: async (input: FormState) => {
+    mutationFn: async ({ input }: { input: FormState; startedAtISO: string }) => {
       const payload = buildPayload(input)
       return api.dryRunAutomation(instanceId, {
         ...payload,
@@ -1173,14 +1287,30 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         dryRun: true,
       })
     },
-    onSuccess: () => {
+    onSuccess: async (_, { startedAtISO }) => {
       toast.success("Dry-run completed")
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
+      try {
+        const events = await loadDryRunActivities(startedAtISO)
+        setLatestDryRunEvents(events)
+        setLatestDryRunError(events.length === 0 ? "Dry-run completed, but no summary rows were found yet." : null)
+      } catch (error) {
+        setLatestDryRunEvents([])
+        setLatestDryRunError(error instanceof Error ? error.message : "Failed to load dry-run summary")
+      }
     },
     onError: (error) => {
+      setLatestDryRunEvents([])
+      setLatestDryRunError(null)
+      setLatestDryRunStartedAt(null)
       toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
     },
   })
+
+  const showLatestDryRunPanel = dryRunNowMutation.isPending ||
+    latestDryRunEvents.length > 0 ||
+    latestDryRunError !== null ||
+    latestDryRunStartedAt !== null
 
   const livePreviewPayload = useMemo(() => {
     if (!open) return null
@@ -1292,7 +1422,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    dryRunNowMutation.mutate(dryRunInput)
+    const startedAtISO = new Date().toISOString()
+    setLatestDryRunStartedAt(startedAtISO)
+    setLatestDryRunEvents([])
+    setLatestDryRunError(null)
+    setActivityRunDialog(null)
+    dryRunNowMutation.mutate({ input: dryRunInput, startedAtISO })
   }
 
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
@@ -2759,6 +2894,74 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               </div>
             </div>
 
+            {showLatestDryRunPanel && (
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-2 mt-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Dry-run results</p>
+                    <p className="text-xs text-muted-foreground">Latest run from this editor. No need to leave this dialog.</p>
+                  </div>
+                  {!dryRunNowMutation.isPending && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        setLatestDryRunEvents([])
+                        setLatestDryRunError(null)
+                        setLatestDryRunStartedAt(null)
+                        setActivityRunDialog(null)
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
+
+                {dryRunNowMutation.isPending ? (
+                  <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Running dry-run...
+                  </div>
+                ) : latestDryRunError ? (
+                  <p className="text-xs text-destructive">{latestDryRunError}</p>
+                ) : latestDryRunEvents.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No dry-run activity rows available yet.</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {latestDryRunEvents.length} action summar{latestDryRunEvents.length === 1 ? "y" : "ies"}.
+                      {" "}
+                      {latestDryRunOperationCount} planned operation{latestDryRunOperationCount === 1 ? "" : "s"}.
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                      {latestDryRunEvents.map((event) => (
+                        <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{DRY_RUN_ACTION_LABELS[event.action] ?? event.action}</p>
+                            <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event)}</p>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <span className="text-[11px] text-muted-foreground">{getDryRunImpactCount(event)}</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setActivityRunDialog(event)}
+                            >
+                              View items
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t mt-3">
               <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -2931,6 +3134,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isExporting={isExporting}
         isInitialLoading={isInitialLoading}
       />
+
+      {activityRunDialog && (
+        <AutomationActivityRunDialog
+          open={Boolean(activityRunDialog)}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setActivityRunDialog(null)
+            }
+          }}
+          instanceId={instanceId}
+          activity={activityRunDialog}
+        />
+      )}
 
       <AlertDialog open={showDryRunPrompt} onOpenChange={setShowDryRunPrompt}>
         <AlertDialogContent className="sm:max-w-md">
