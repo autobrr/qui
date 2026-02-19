@@ -74,6 +74,30 @@ QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
 
+## Authentication
+
+```bash
+QUI__AUTH_DISABLED=true                 # Optional: disable built-in auth (default: false)
+QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true  # Required confirmation to actually disable auth
+QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24  # Required when auth is disabled (IPs or CIDRs)
+```
+
+Built-in authentication is disabled only when:
+
+- `QUI__AUTH_DISABLED=true`
+- `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true`
+- `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is set to one or more allowed IPs/CIDR ranges
+
+If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start and rejects invalid live reloads.
+
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` accepts comma-separated entries. Each entry may be a canonical CIDR (`192.168.1.0/24`) or a single IP (`10.0.0.5`, treated as `/32` or `/128`).
+
+Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
+
+`QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
+
+Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
+
 ## External Programs
 
 Configure the allow list from `config.toml`; there is no environment override to keep it read-only from the UI.
