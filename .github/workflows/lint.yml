@@ -61,10 +61,26 @@ jobs:
 
           gopkgs=$(printf '%s\n' "$gofiles" | xargs -n 1 dirname | sort -u)
           tmp=$(mktemp)
+          failed=0
           while IFS= read -r pkg; do
             [ -n "$pkg" ] || continue
-            go fix -diff "./$pkg" >> "$tmp" || true
+            pkg_err=$(mktemp)
+            if ! go fix -diff "./$pkg" >> "$tmp" 2> "$pkg_err"; then
+              if grep -Eq 'fix: .* skipped \(e\.g\. due to conflicts\)' "$pkg_err"; then
+                echo "go fix reported skipped fixes for ./$pkg; continuing."
+              else
+                echo "go fix failed for ./$pkg:"
+                cat "$pkg_err"
+                failed=1
+              fi
+            fi
+            rm -f "$pkg_err"
           done <<< "$gopkgs"
+
+          if [ "$failed" -ne 0 ]; then
+            rm -f "$tmp"
+            exit 1
+          fi
 
           if [ -s "$tmp" ]; then
             echo "go fix changes required for changed Go files:"
