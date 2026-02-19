@@ -1134,6 +1134,12 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 				}
+				if excludeTargets != nil {
+					key := fmt.Sprintf("%d:%s", instanceID, normalized)
+					if _, skip := excludeTargets[key]; skip {
+						continue
+					}
+				}
 				addBulkTarget(targetsByInstance, seenTargets, instanceID, torrent.Hash)
 			}
 
