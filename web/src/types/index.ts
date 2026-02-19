@@ -1370,11 +1370,40 @@ export interface ExternalProgramExecuteResponse {
   results: ExternalProgramExecuteResult[]
 }
 
+export interface NotificationEventDefinition {
+  type: string
+  label: string
+  description: string
+}
+
+export interface NotificationTarget {
+  id: number
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationTargetRequest {
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+}
+
+export interface NotificationTestRequest {
+  title?: string
+  message?: string
+}
+
 export interface TorznabIndexer {
   id: number
   name: string
   base_url: string
   indexer_id: string
+  basic_username?: string
   backend: "jackett" | "prowlarr" | "native"
   enabled: boolean
   priority: number
@@ -1508,6 +1537,8 @@ export interface TorznabIndexerFormData {
   base_url: string
   indexer_id?: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1521,6 +1552,8 @@ export interface TorznabIndexerUpdate {
   base_url?: string
   api_key?: string
   indexer_id?: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1620,6 +1653,8 @@ export interface JackettIndexer {
 export interface DiscoverJackettRequest {
   base_url: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
 }
 
 export interface DiscoverJackettResponse {
@@ -1804,6 +1839,10 @@ export interface CrossSeedAutomationSettings {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   createdAt?: string
   updatedAt?: string
 }
@@ -1851,6 +1890,10 @@ export interface CrossSeedAutomationSettingsPatch {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled?: boolean
+  redactedApiKey?: string
+  orpheusApiKey?: string
 }
 
 export interface CrossSeedAutomationStatus {

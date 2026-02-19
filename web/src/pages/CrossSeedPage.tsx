@@ -91,6 +91,10 @@ interface GlobalCrossSeedSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -119,6 +123,7 @@ type CategoryMode = "reuse" | "affix" | "indexer" | "custom"
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
 const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
+const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
 
 // RSS Automation defaults
@@ -143,6 +148,9 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCustomCategory: false,
   customCategory: "",
   runExternalProgramId: null,
+  gazelleEnabled: false,
+  redactedApiKey: "",
+  orpheusApiKey: "",
   // Source-specific tagging defaults
   rssAutomationTags: ["cross-seed"],
   seededSearchTags: ["cross-seed"],
@@ -174,6 +182,11 @@ function normalizeNumberList(values: Array<string | number>): number[] {
       .map(value => Number(value))
       .filter(value => !Number.isNaN(value) && value > 0)
   ))
+}
+
+function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
+  const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
+  return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
@@ -622,6 +635,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const [searchCategories, setSearchCategories] = useState<string[]>([])
   const [searchTags, setSearchTags] = useState<string[]>([])
   const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>([])
+  const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(true)
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
   const [searchSettingsInitialized, setSearchSettingsInitialized] = useState(false)
@@ -824,6 +838,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCustomCategory,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
+        gazelleEnabled: settings.gazelleEnabled ?? false,
+        redactedApiKey: settings.redactedApiKey ?? "",
+        orpheusApiKey: settings.orpheusApiKey ?? "",
         // Source-specific tagging
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
@@ -901,35 +918,36 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
     const fallbackAffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategoryAffix ?? true)
 
-    const globalSource = globalSettingsInitialized
-      ? globalSettings
-      : {
-        findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-        useCategoryFromIndexer: fallbackIndexer,
-        useCrossCategoryAffix: fallbackAffix,
-        categoryAffixMode: settings.categoryAffixMode ?? "suffix",
-        categoryAffix: settings.categoryAffix ?? ".cross",
-        useCustomCategory: fallbackCustom,
-        customCategory: settings.customCategory ?? "",
-        runExternalProgramId: settings.runExternalProgramId ?? null,
-        rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
-        seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
-        completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
-        webhookTags: settings.webhookTags ?? ["cross-seed"],
-        inheritSourceTags: settings.inheritSourceTags ?? false,
-        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
-        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
-        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
-        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
-        skipRecheck: settings.skipRecheck ?? false,
-        skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
-        webhookSourceCategories: settings.webhookSourceCategories ?? [],
-        webhookSourceTags: settings.webhookSourceTags ?? [],
-        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
-        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
-        // Note: Hardlink mode is now per-instance
-      }
+    const globalSource = globalSettingsInitialized ? globalSettings : {
+      findIndividualEpisodes: settings.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: fallbackIndexer,
+      useCrossCategoryAffix: fallbackAffix,
+      categoryAffixMode: settings.categoryAffixMode ?? "suffix",
+      categoryAffix: settings.categoryAffix ?? ".cross",
+      useCustomCategory: fallbackCustom,
+      customCategory: settings.customCategory ?? "",
+      runExternalProgramId: settings.runExternalProgramId ?? null,
+      gazelleEnabled: settings.gazelleEnabled ?? false,
+      redactedApiKey: settings.redactedApiKey ?? "",
+      orpheusApiKey: settings.orpheusApiKey ?? "",
+      rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
+      seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
+      completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
+      webhookTags: settings.webhookTags ?? ["cross-seed"],
+      inheritSourceTags: settings.inheritSourceTags ?? false,
+      skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+      skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+      skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+      skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+      skipRecheck: settings.skipRecheck ?? false,
+      skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+      webhookSourceCategories: settings.webhookSourceCategories ?? [],
+      webhookSourceTags: settings.webhookSourceTags ?? [],
+      webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+      webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+      // Note: Hardlink mode is now per-instance
+    }
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
@@ -941,6 +959,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       useCustomCategory: globalSource.useCustomCategory,
       customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
+      gazelleEnabled: globalSource.gazelleEnabled,
+      redactedApiKey: globalSource.redactedApiKey,
+      orpheusApiKey: globalSource.orpheusApiKey,
       // Source-specific tagging
       rssAutomationTags: globalSource.rssAutomationTags,
       seededSearchTags: globalSource.seededSearchTags,
@@ -988,7 +1009,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       refetchSearchRuns()
     },
     onError: (error: Error) => {
-      if (handleIndexerError(error, "Seeded Torrent Search cannot run without Torznab indexers.")) {
+      if (handleIndexerError(error, "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle).")) {
         return
       }
       toast.error(error.message)
@@ -1145,13 +1166,59 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const searchRunning = searchStatus?.running ?? false
   const activeSearchRun = searchStatus?.run
 
-  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || !hasEnabledIndexers
+  const gazelleSavedEnabled = settings?.gazelleEnabled ?? false
+  const gazelleSavedHasOpsKey = Boolean((settings?.orpheusApiKey ?? "").trim())
+  const gazelleSavedHasRedKey = Boolean((settings?.redactedApiKey ?? "").trim())
+  const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
+  const gazelleSavedFullyConfigured = gazelleSavedEnabled && gazelleSavedHasOpsKey && gazelleSavedHasRedKey
+
+  const seededSearchForceGazelleOnly = useMemo(() => {
+    if (!seededSearchTorznabEnabled) {
+      return false
+    }
+    if (!gazelleSavedFullyConfigured) {
+      return false
+    }
+    if (searchIndexerIds.length === 0) {
+      return false
+    }
+
+    const selected = new Set(searchIndexerIds)
+    let hasSelection = false
+    for (const idx of enabledIndexers) {
+      if (!selected.has(idx.id)) {
+        continue
+      }
+      hasSelection = true
+      if (!isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
+        return false
+      }
+    }
+    return hasSelection
+  }, [enabledIndexers, gazelleSavedFullyConfigured, searchIndexerIds, seededSearchTorznabEnabled])
+
+  const seededSearchTorznabEffectiveEnabled = seededSearchTorznabEnabled && !seededSearchForceGazelleOnly
+
+  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEffectiveEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
-    if (!hasEnabledIndexers) {
-      return "Configure at least one Torznab indexer before running Seeded Torrent Search."
+    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
+      return "Enable Gazelle (OPS/RED) before running Seeded Torrent Search with Torznab disabled."
+    }
+    if (!hasEnabledIndexers && !gazelleSavedConfigured) {
+      return "Configure at least one Torznab indexer, or enable Gazelle (OPS/RED), before running Seeded Torrent Search."
     }
     return undefined
-  }, [hasEnabledIndexers])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled])
+  const seededSearchIntervalMinimum = useMemo(() => {
+    if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
+      return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
+    }
+    return MIN_SEEDED_SEARCH_INTERVAL_SECONDS
+  }, [gazelleSavedConfigured, seededSearchTorznabEffectiveEnabled])
+
+  useEffect(() => {
+    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
+  }, [seededSearchIntervalMinimum])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1175,6 +1242,139 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     () => enabledIndexers.map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
     [enabledIndexers]
   )
+
+  const seededSearchIndexerExclusions = useMemo(() => {
+    const disallowedIDs = new Set<number>()
+    if (!gazelleSavedFullyConfigured) {
+      return disallowedIDs
+    }
+    for (const idx of enabledIndexers) {
+      if (isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
+        disallowedIDs.add(idx.id)
+      }
+    }
+    return disallowedIDs
+  }, [enabledIndexers, gazelleSavedFullyConfigured])
+
+  const seededSearchIndexerOptions = useMemo(
+    () => (gazelleSavedFullyConfigured ? enabledIndexers.filter(idx => !isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) : enabledIndexers)
+      .map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
+    [enabledIndexers, gazelleSavedFullyConfigured]
+  )
+
+  const seededSearchHasOnlyGazelleIndexers = useMemo(() => (
+    enabledIndexers.length > 0 &&
+    seededSearchIndexerOptions.length === 0 &&
+    seededSearchIndexerExclusions.size > 0
+  ), [enabledIndexers.length, seededSearchIndexerOptions.length, seededSearchIndexerExclusions.size])
+
+  const seededSearchIndexerPlaceholder = useMemo(() => {
+    if (!seededSearchTorznabEffectiveEnabled) {
+      if (seededSearchForceGazelleOnly) {
+        return "Torznab skipped (Gazelle-only selection)"
+      }
+      return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
+    }
+    if (seededSearchIndexerOptions.length > 0) {
+      return gazelleSavedFullyConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
+    }
+    if (seededSearchHasOnlyGazelleIndexers) {
+      return "Only OPS/RED enabled (Gazelle)"
+    }
+    return "No Torznab indexers configured"
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+
+  const seededSearchEffectiveIndexerIds = useMemo(() => {
+    const allAllowed = enabledIndexers
+      .filter(idx => !seededSearchIndexerExclusions.has(idx.id))
+      .map(idx => idx.id)
+
+    if (searchIndexerIds.length === 0) {
+      if (seededSearchIndexerExclusions.size === 0) {
+        return []
+      }
+      // Backend treats [] as "all enabled"; when exclusions exist, send an explicit list.
+      return allAllowed
+    }
+    if (seededSearchIndexerExclusions.size === 0) {
+      return searchIndexerIds
+    }
+
+    const filtered = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
+    if (filtered.length === 0) {
+      // Keep empty selection so we can preserve user intent by running Gazelle-only.
+      return []
+    }
+    return filtered
+  }, [enabledIndexers, searchIndexerIds, seededSearchIndexerExclusions])
+
+  const seededSearchIndexerHelpText = useMemo(() => {
+    if (!seededSearchTorznabEffectiveEnabled) {
+      if (seededSearchForceGazelleOnly) {
+        return "Selected Torznab indexers are Gazelle-only (OPS/RED). This run will be Gazelle-only."
+      }
+      if (gazelleSavedConfigured) {
+        return "Torznab disabled. Gazelle will check RED/OPS for every source torrent."
+      }
+      return "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode."
+    }
+
+    if (seededSearchIndexerOptions.length === 0) {
+      if (seededSearchHasOnlyGazelleIndexers) {
+        return "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS."
+      }
+
+      if (gazelleSavedConfigured) {
+        return "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent."
+      }
+      return "No Torznab indexers configured."
+    }
+
+    if (seededSearchEffectiveIndexerIds.length === 0) {
+      if (gazelleSavedConfigured) {
+        return "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS."
+      }
+      return "All enabled Torznab indexers will be queried for matches."
+    }
+    if (gazelleSavedConfigured) {
+      return `Only ${seededSearchEffectiveIndexerIds.length} selected Torznab indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried. Gazelle still checks RED/OPS.`
+    }
+    return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+
+  const seededSearchGazelleStatus = useMemo(() => {
+    if (!settings) {
+      return "Gazelle: loading"
+    }
+    if (!settings.gazelleEnabled) {
+      return "Gazelle: disabled"
+    }
+    const ops = (settings.orpheusApiKey ?? "").trim() !== ""
+    const red = (settings.redactedApiKey ?? "").trim() !== ""
+    if (ops && red) return "Gazelle: enabled (OPS+RED keys set)"
+    if (ops) return "Gazelle: enabled (OPS key set, RED missing)"
+    if (red) return "Gazelle: enabled (RED key set, OPS missing)"
+    return "Gazelle: enabled (keys missing)"
+  }, [settings])
+
+  const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
+
+  const seededSearchIntervalPresets = useMemo(() => {
+    if (seededSearchGazelleOnlyMode) {
+      return [10, 30, 60]
+    }
+    return [60, 120, 300]
+  }, [seededSearchGazelleOnlyMode])
+
+  const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.") : "Without Gazelle, all matching relies on Torznab indexers."
+
+  const handleJumpToGazelleSettings = useCallback(() => {
+    onTabChange("rules")
+    if (typeof window === "undefined") return
+    window.setTimeout(() => {
+      document.getElementById("gazelle-settings")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 50)
+  }, [onTabChange])
 
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
@@ -1261,8 +1461,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     // Clear previous validation errors
     setValidationErrors({})
 
-    if (!hasEnabledIndexers) {
-      notifyMissingIndexers("Seeded Torrent Search requires at least one Torznab indexer.")
+    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
+      toast.error("Seeded Torrent Search needs Gazelle", {
+        description: "Enable Gazelle matching (OPS/RED) before running with Torznab disabled.",
+      })
+      return
+    }
+
+    if (!hasEnabledIndexers && !gazelleSavedConfigured) {
+      toast.error("Seeded Torrent Search needs Torznab or Gazelle", {
+        description: "Configure at least one Torznab indexer, or enable Gazelle matching for OPS/RED torrents.",
+      })
       return
     }
 
@@ -1273,8 +1482,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     // Validate search interval and cooldown
     const errors: Record<string, string> = {}
-    if (searchIntervalSeconds < MIN_SEEDED_SEARCH_INTERVAL_SECONDS) {
-      errors.searchIntervalSeconds = `Must be at least ${MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds`
+    if (searchIntervalSeconds < seededSearchIntervalMinimum) {
+      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} seconds`
     }
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
       errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
@@ -1290,7 +1499,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       categories: searchCategories,
       tags: searchTags,
       intervalSeconds: searchIntervalSeconds,
-      indexerIds: searchIndexerIds,
+      indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
+      disableTorznab: !seededSearchTorznabEffectiveEnabled,
       cooldownMinutes: searchCooldownMinutes,
     })
   }
@@ -1326,7 +1536,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       }
       return searchInstanceName
     },
-    [instances, searchInstanceId, searchRunning, activeSearchRun]
+    [instances, searchRunning, activeSearchRun, searchInstanceName]
   )
 
   const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
@@ -1403,9 +1613,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       {!hasEnabledIndexers && (
         <Alert className="border-border rounded-xl bg-card">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <AlertTitle>Torznab indexers required</AlertTitle>
+          <AlertTitle>Torznab indexers missing</AlertTitle>
           <AlertDescription className="space-y-1">
-            <p>Automation runs and Seeded Torrent Search need at least one enabled Torznab indexer.</p>
+            <p>RSS automation needs at least one enabled Torznab indexer. Seeded Torrent Search can still run OPS/RED matches via Gazelle if enabled.</p>
             <p>
               <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
                 Manage indexers in Settings
@@ -1902,7 +2112,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           <Card>
             <CardHeader>
               <CardTitle>Library Scan</CardTitle>
-              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
+              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab once per unique release. If Gazelle is enabled, RED/OPS API matching is also attempted.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <Alert className="border-destructive/20 bg-destructive/10 text-destructive mb-8">
@@ -1919,10 +2129,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <Input
                     id="search-interval"
                     type="number"
-                    min={MIN_SEEDED_SEARCH_INTERVAL_SECONDS}
+                    min={seededSearchIntervalMinimum}
                     value={searchIntervalSeconds}
                     onChange={event => {
-                      setSearchIntervalSeconds(Number(event.target.value) || MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+                      setSearchIntervalSeconds(Number(event.target.value) || seededSearchIntervalMinimum)
                       // Clear validation error when user changes the value
                       if (validationErrors.searchIntervalSeconds) {
                         setValidationErrors(prev => ({ ...prev, searchIntervalSeconds: "" }))
@@ -1933,7 +2143,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   {validationErrors.searchIntervalSeconds && (
                     <p className="text-sm text-destructive">{validationErrors.searchIntervalSeconds}</p>
                   )}
-                  <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {seededSearchIntervalPresets.map(seconds => (
+                      <Button
+                        key={seconds}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSearchIntervalSeconds(seconds)}
+                        disabled={seconds < seededSearchIntervalMinimum}
+                      >
+                        {seconds}s
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Wait time before scanning the next seeded torrent. Minimum {seededSearchIntervalMinimum} seconds.
+                    {seededSearchGazelleOnlyMode && " Recommended 10s+; this is per-torrent pacing, and each torrent can trigger multiple Gazelle API calls."}
+                  </p>
                 </div>
                 <div className="space-y-3">
                   <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
@@ -2021,17 +2248,35 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  <Label>Indexers</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>
+                      Torznab indexers{gazelleSavedConfigured ? " (non-OPS/RED)" : ""}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Torznab</span>
+                      <Switch checked={seededSearchTorznabEnabled} onCheckedChange={value => setSeededSearchTorznabEnabled(!!value)} />
+                    </div>
+                  </div>
                   <MultiSelect
-                    options={indexerOptions}
-                    selected={searchIndexerIds.map(String)}
+                    options={seededSearchIndexerOptions}
+                    selected={seededSearchEffectiveIndexerIds.map(String)}
                     onChange={values => setSearchIndexerIds(normalizeNumberList(values))}
-                    placeholder={indexerOptions.length ? "All enabled indexers (leave empty for all)" : "No Torznab indexers configured"}
-                    disabled={!indexerOptions.length}
+                    placeholder={seededSearchIndexerPlaceholder}
+                    disabled={!seededSearchIndexerOptions.length || !seededSearchTorznabEnabled}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {indexerOptions.length === 0? "No Torznab indexers configured.": searchIndexerIds.length === 0? "All enabled Torznab indexers will be queried for matches.": `Only ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
+                    {seededSearchIndexerHelpText}
                   </p>
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>{seededSearchFlowSummary}</span>
+                    <button
+                      type="button"
+                      onClick={handleJumpToGazelleSettings}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      {seededSearchGazelleStatus}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2224,6 +2469,60 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               <HardlinkModeSettings />
+
+              {/* Gazelle (OPS/RED) */}
+              <div id="gazelle-settings" className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3 scroll-mt-24">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">Gazelle (OPS/RED)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="gazelle-enabled" className="font-medium">Enable Gazelle matching</Label>
+                    <p className="text-xs text-muted-foreground">Applies to all source torrents. If possible, qui also checks RED/OPS via Gazelle.</p>
+                  </div>
+                  <Switch
+                    id="gazelle-enabled"
+                    checked={globalSettings.gazelleEnabled}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, gazelleEnabled: !!value }))}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-border/50">
+                  <div className="space-y-2">
+                    <Label htmlFor="gazelle-red-api-key">Redacted API key</Label>
+                    <Input
+                      id="gazelle-red-api-key"
+                      type="password"
+                      value={globalSettings.redactedApiKey}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, redactedApiKey: event.target.value }))}
+                      placeholder={globalSettings.gazelleEnabled ? "Paste RED API key" : "Enable to configure"}
+                      disabled={!globalSettings.gazelleEnabled}
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground">Used for redacted.sh lookups. Paste to replace; clear to remove.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="gazelle-ops-api-key">Orpheus API key</Label>
+                    <Input
+                      id="gazelle-ops-api-key"
+                      type="password"
+                      value={globalSettings.orpheusApiKey}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, orpheusApiKey: event.target.value }))}
+                      placeholder={globalSettings.gazelleEnabled ? "Paste OPS API key" : "Enable to configure"}
+                      disabled={!globalSettings.gazelleEnabled}
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground">Used for orpheus.network lookups. Paste to replace; clear to remove.</p>
+                  </div>
+                </div>
+              </div>
 
               {/* Matching behavior */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
@@ -2534,53 +2833,53 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Auto-resume (when disabled, torrents remain paused for manual review)</p>
+                  <p className="text-xs font-medium text-muted-foreground">Auto-resume after injection (when off, torrents stay paused for review)</p>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-rss" className="font-medium">Skip for RSS</Label>
-                        <p className="text-xs text-muted-foreground">Keep RSS automation torrents paused</p>
+                        <Label htmlFor="auto-resume-rss" className="font-medium">RSS</Label>
+                        <p className="text-xs text-muted-foreground">Resume RSS automation torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-rss"
-                        checked={globalSettings.skipAutoResumeRss}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !!value }))}
+                        id="auto-resume-rss"
+                        checked={!globalSettings.skipAutoResumeRss}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-seeded" className="font-medium">Skip for Seeded Search</Label>
-                        <p className="text-xs text-muted-foreground">Keep seeded search & interactive dialog torrents paused</p>
+                        <Label htmlFor="auto-resume-seeded-search" className="font-medium">Seeded Search</Label>
+                        <p className="text-xs text-muted-foreground">Resume seeded search and dialog-injected torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-seeded"
-                        checked={globalSettings.skipAutoResumeSeededSearch}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !!value }))}
+                        id="auto-resume-seeded-search"
+                        checked={!globalSettings.skipAutoResumeSeededSearch}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-completion" className="font-medium">Skip for Completion</Label>
-                        <p className="text-xs text-muted-foreground">Keep completion-triggered torrents paused</p>
+                        <Label htmlFor="auto-resume-completion" className="font-medium">Completion</Label>
+                        <p className="text-xs text-muted-foreground">Resume completion-triggered torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-completion"
-                        checked={globalSettings.skipAutoResumeCompletion}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !!value }))}
+                        id="auto-resume-completion"
+                        checked={!globalSettings.skipAutoResumeCompletion}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-webhook" className="font-medium">Skip for Webhook</Label>
-                        <p className="text-xs text-muted-foreground">Keep /apply webhook torrents paused</p>
+                        <Label htmlFor="auto-resume-webhook" className="font-medium">Webhook</Label>
+                        <p className="text-xs text-muted-foreground">Resume /apply webhook torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-webhook"
-                        checked={globalSettings.skipAutoResumeWebhook}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !!value }))}
+                        id="auto-resume-webhook"
+                        checked={!globalSettings.skipAutoResumeWebhook}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !value }))}
                       />
                     </div>
                   </div>

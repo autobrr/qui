@@ -72,6 +72,10 @@ import type {
   OrphanScanRunWithFiles,
   OrphanScanSettings,
   OrphanScanSettingsUpdate,
+  NotificationEventDefinition,
+  NotificationTarget,
+  NotificationTargetRequest,
+  NotificationTestRequest,
   QBittorrentAppInfo,
   RefreshRSSItemRequest,
   RegexValidationResult,
@@ -630,6 +634,18 @@ class ApiClient {
     return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/items/${encodedHash}/download`)
   }
 
+  downloadContentFile(instanceId: number, hash: string, fileIndex: number): void {
+    const url = new URL(
+      withBasePath(`/api/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/download`),
+      window.location.origin
+    )
+    const a = document.createElement("a")
+    a.href = url.toString()
+    a.download = ""
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
 
   // Torrent endpoints
   async getTorrents(
@@ -653,6 +669,33 @@ class ApiClient {
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`
+    )
+  }
+
+  async getTorrentField(
+    instanceId: number,
+    field: "name" | "hash" | "full_path",
+    params: {
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+      excludeHashes?: string[]
+    }
+  ): Promise<{ values: string[]; total: number }> {
+    return this.request(
+      `/instances/${instanceId}/torrents/field`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          field,
+          sort: params.sort,
+          order: params.order,
+          search: params.search,
+          filters: params.filters,
+          excludeHashes: params.excludeHashes,
+        }),
+      }
     )
   }
 
@@ -1308,6 +1351,7 @@ class ApiClient {
     tags: string[]
     intervalSeconds: number
     indexerIds: number[]
+    disableTorznab?: boolean
     cooldownMinutes: number
   }): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
@@ -1850,6 +1894,42 @@ class ApiClient {
     })
   }
 
+  // Notifications endpoints
+  async listNotificationEvents(): Promise<NotificationEventDefinition[]> {
+    return this.request<NotificationEventDefinition[]>("/notifications/events")
+  }
+
+  async listNotificationTargets(): Promise<NotificationTarget[]> {
+    return this.request<NotificationTarget[]>("/notifications/targets")
+  }
+
+  async createNotificationTarget(data: NotificationTargetRequest): Promise<NotificationTarget> {
+    return this.request<NotificationTarget>("/notifications/targets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateNotificationTarget(id: number, data: NotificationTargetRequest): Promise<NotificationTarget> {
+    return this.request<NotificationTarget>(`/notifications/targets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteNotificationTarget(id: number): Promise<void> {
+    return this.request(`/notifications/targets/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async testNotificationTarget(id: number, data?: NotificationTestRequest): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/notifications/targets/${id}/test`, {
+      method: "POST",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
   // Tracker Customization endpoints
   async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
     return this.request<TrackerCustomization[]>("/tracker-customizations")
@@ -1949,10 +2029,16 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<DiscoverJackettResponse> {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string): Promise<DiscoverJackettResponse> {
+    const user = basicUsername?.trim() ?? ""
+    const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
+    if (user) {
+      payload.basic_username = user
+      payload.basic_password = basicPassword ?? ""
+    }
     return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
-      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+      body: JSON.stringify(payload),
     })
   }
 

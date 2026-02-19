@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // Config holds configuration for the directory scanner service.
@@ -55,12 +56,14 @@ func DefaultConfig() Config {
 type Service struct {
 	cfg            Config
 	store          *models.DirScanStore
+	crossSeedStore *models.CrossSeedStore
 	instanceStore  *models.InstanceStore
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
 	trackerCustomizationStore *models.TrackerCustomizationStore
+	notifier                  notifications.Notifier
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -106,11 +109,13 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 func NewService(
 	cfg Config,
 	store *models.DirScanStore,
+	crossSeedStore *models.CrossSeedStore,
 	instanceStore *models.InstanceStore,
 	syncManager *qbittorrent.SyncManager,
 	jackettService *jackett.Service,
 	arrService *arr.Service, // optional, for external ID lookup
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
+	notifier notifications.Notifier,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -131,11 +136,13 @@ func NewService(
 	return &Service{
 		cfg:                       cfg,
 		store:                     store,
+		crossSeedStore:            crossSeedStore,
 		instanceStore:             instanceStore,
 		syncManager:               syncManager,
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
+		notifier:                  notifier,
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
@@ -335,6 +342,16 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 	if err := s.store.UpdateRunCanceled(context.Background(), run.ID); err != nil {
 		return fmt.Errorf("update run canceled: %w", err)
 	}
+
+	// If a run is canceled while still queued, the directory's last_scan_at has not
+	// been updated yet. Without bumping last_scan_at here, the scheduler will see
+	// the directory as immediately due again and recreate a queued run shortly
+	// after the user clicks "Pause"/cancel.
+	if run.Status == models.DirScanRunStatusQueued {
+		if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
+			log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after queued cancel")
+		}
+	}
 	return nil
 }
 
@@ -432,7 +449,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	trackedFiles, err := s.refreshTrackedFilesFromScan(ctx, directoryID, scanResult, fileIDIndex)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to persist scan progress")
-		s.markRunFailed(ctx, runID, fmt.Sprintf("persist scan progress: %v", err), &l)
+		s.markRunFailed(ctx, runID, fmt.Sprintf("persist scan progress: %v", err), dir.TargetInstanceID, &l)
 		return
 	}
 
@@ -440,13 +457,13 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	settings, matcher, ok := s.loadSettingsAndMatcher(ctx, runID, &l)
+	settings, matcher, ok := s.loadSettingsAndMatcher(ctx, runID, dir.TargetInstanceID, &l)
 	if !ok {
 		return
 	}
 
 	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, scanResult, fileIDIndex, trackedFiles, settings, matcher, runID, &l)
-	s.finalizeRun(ctx, runID, scanResult, matchesFound, torrentsAdded, &l)
+	s.finalizeRun(ctx, runID, scanResult, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
 }
 
 func (s *Service) updateDirectoryLastScan(ctx context.Context, directoryID int, l *zerolog.Logger) {
@@ -467,13 +484,13 @@ func (s *Service) markRunCanceled(ctx context.Context, runID int64, l *zerolog.L
 	}
 }
 
-func (s *Service) loadSettingsAndMatcher(ctx context.Context, runID int64, l *zerolog.Logger) (*models.DirScanSettings, *Matcher, bool) {
+func (s *Service) loadSettingsAndMatcher(ctx context.Context, runID int64, instanceID int, l *zerolog.Logger) (*models.DirScanSettings, *Matcher, bool) {
 	settings, err := s.store.GetSettings(ctx)
 	if err != nil {
 		if l != nil {
 			l.Error().Err(err).Msg("dirscan: failed to get settings")
 		}
-		s.markRunFailed(ctx, runID, fmt.Sprintf("get settings: %v", err), l)
+		s.markRunFailed(ctx, runID, fmt.Sprintf("get settings: %v", err), instanceID, l)
 		return nil, nil, false
 	}
 	if settings == nil {
@@ -494,7 +511,7 @@ func matchModeFromSettings(settings *models.DirScanSettings) MatchMode {
 	return MatchModeStrict
 }
 
-func (s *Service) finalizeRun(ctx context.Context, runID int64, scanResult *ScanResult, matchesFound, torrentsAdded int, l *zerolog.Logger) {
+func (s *Service) finalizeRun(ctx context.Context, runID int64, scanResult *ScanResult, matchesFound, torrentsAdded int, instanceID int, l *zerolog.Logger) {
 	if s == nil || s.store == nil || scanResult == nil || runID <= 0 {
 		return
 	}
@@ -518,6 +535,17 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, scanResult *Scan
 		}
 		return
 	}
+
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
+	s.notify(ctx, notifications.Event{
+		Type:                 notifications.EventDirScanCompleted,
+		InstanceID:           instanceID,
+		DirScanRunID:         runID,
+		DirScanMatchesFound:  matchesFound,
+		DirScanTorrentsAdded: torrentsAdded,
+		StartedAt:            startedAt,
+		CompletedAt:          completedAt,
+	})
 
 	if l != nil {
 		l.Info().
@@ -573,21 +601,21 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 	dir, err := s.store.GetDirectory(ctx, directoryID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to get directory")
-		s.markRunFailed(ctx, runID, err.Error(), l)
+		s.markRunFailed(ctx, runID, err.Error(), 0, l)
 		return nil, false
 	}
 
 	instance, err := s.instanceStore.Get(ctx, dir.TargetInstanceID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to get target instance")
-		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), l)
+		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), dir.TargetInstanceID, l)
 		return nil, false
 	}
 
 	if !instance.HasLocalFilesystemAccess {
 		errMsg := "target instance does not have local filesystem access"
 		l.Error().Msg("dirscan: " + errMsg)
-		s.markRunFailed(ctx, runID, errMsg, l)
+		s.markRunFailed(ctx, runID, errMsg, dir.TargetInstanceID, l)
 		return nil, false
 	}
 
@@ -614,7 +642,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	scanResult, err := scanner.ScanDirectory(ctx, dir.Path)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to scan directory")
-		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), l)
+		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
 
@@ -1305,6 +1333,30 @@ func (s *Service) processSearchee(
 	contentType := normalizeContentType(contentInfo.ContentType)
 
 	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
+	if len(filteredIndexers) == 0 && s.jackettService != nil {
+		enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+		if err != nil {
+			if l != nil {
+				l.Warn().Err(err).Msg("dirscan: failed to probe enabled indexers")
+			}
+			return nil, searcheeOutcome{searchError: true}
+		}
+		if len(enabledInfo) > 0 {
+			filteredIndexers = make([]int, 0, len(enabledInfo))
+			for id := range enabledInfo {
+				filteredIndexers = append(filteredIndexers, id)
+			}
+			sort.Ints(filteredIndexers)
+		}
+	}
+	if len(filteredIndexers) == 0 {
+		if l != nil {
+			l.Debug().Msg("dirscan: no eligible indexers")
+		}
+		// Don't mark this as searched: if the user later enables indexers,
+		// we want this searchee to be retried rather than finalized as no_match.
+		return nil, searcheeOutcome{}
+	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
 	s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
@@ -2149,10 +2201,47 @@ func (s *Service) downloadAndParseTorrent(ctx context.Context, result *jackett.S
 
 // markRunFailed marks a run as failed with the given error message.
 // Uses background context to ensure the status update completes even if the run context is canceled.
-func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, l *zerolog.Logger) {
+func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, instanceID int, l *zerolog.Logger) {
 	if err := s.store.UpdateRunFailed(context.Background(), runID, errMsg); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as failed")
+		return
 	}
+
+	startedAt, completedAt := s.getRunTimes(context.Background(), runID)
+	s.notify(context.Background(), notifications.Event{
+		Type:         notifications.EventDirScanFailed,
+		InstanceID:   instanceID,
+		DirScanRunID: runID,
+		ErrorMessage: errMsg,
+		StartedAt:    startedAt,
+		CompletedAt:  completedAt,
+	})
+}
+
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(ctx, event)
+}
+
+func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *time.Time) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	var startedAt *time.Time
+	if !run.StartedAt.IsZero() {
+		started := run.StartedAt
+		startedAt = &started
+	}
+	return startedAt, run.CompletedAt
 }
 
 // getDirectoryMutex returns the mutex for a directory, creating one if needed.

@@ -6,7 +6,7 @@ description: Run qui in Docker with compose or standalone.
 
 import CodeBlock from '@theme/CodeBlock';
 import DockerCompose from '!!raw-loader!@site/../distrib/docker/docker-compose.yml';
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
+import LocalFilesystemDocker from "../_partials/_local-filesystem-docker.mdx";
 
 # Docker
 

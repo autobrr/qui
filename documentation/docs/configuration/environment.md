@@ -1,11 +1,13 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 title: Environment Variables
 ---
 
 # Environment Variables
 
 Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
+
+For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference).
 
 ## Server
 
@@ -39,6 +41,12 @@ When `logPath` is set the server writes to disk using size-based rotation. Adjus
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
 ```
 
+## Cross-Seed
+
+```bash
+QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=false  # Optional: recover errored/missingFiles torrents; can add ~25+ minutes per torrent (default: false)
+```
+
 ## Tracker Icons
 
 ```bash
@@ -51,6 +59,12 @@ QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remo
 QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicators (default: true)
 ```
 
+## Profiling (pprof)
+
+```bash
+QUI__PPROF_ENABLED=true  # Optional: enable pprof server on :6060 (default: false)
+```
+
 ## Metrics
 
 ```bash
@@ -59,6 +73,30 @@ QUI__METRICS_HOST=127.0.0.1    # Optional: metrics server bind address (default:
 QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
+
+## Authentication
+
+```bash
+QUI__AUTH_DISABLED=true                 # Optional: disable built-in auth (default: false)
+QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true  # Required confirmation to actually disable auth
+QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24  # Required when auth is disabled (IPs or CIDRs)
+```
+
+Built-in authentication is disabled only when:
+
+- `QUI__AUTH_DISABLED=true`
+- `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true`
+- `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is set to one or more allowed IPs/CIDR ranges
+
+If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start and rejects invalid live reloads.
+
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` accepts comma-separated entries. Each entry may be a canonical CIDR (`192.168.1.0/24`) or a single IP (`10.0.0.5`, treated as `/32` or `/128`).
+
+Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
+
+`QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
+
+Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
 
 ## External Programs
 

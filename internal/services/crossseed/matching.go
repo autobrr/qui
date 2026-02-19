@@ -132,26 +132,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	isTV := source.Series > 0 || candidate.Series > 0
-
-	if isTV {
-		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
-		// while still requiring the titles to be closely related.
-		if sourceTitleNorm != candidateTitleNorm &&
-			!strings.Contains(sourceTitleNorm, candidateTitleNorm) &&
-			!strings.Contains(candidateTitleNorm, sourceTitleNorm) {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
-	} else {
-		// For non-TV content (movies, music, audiobooks, etc.), require exact title
-		// match after normalization. This avoids very loose substring matches across
-		// unrelated content types.
-		if sourceTitleNorm != candidateTitleNorm {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
+	// Require exact title match after normalization.
+	//
+	// This is intentionally strict to avoid false positives between related-but-distinct
+	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
+	// would incorrectly treat them as the same show.
+	if sourceTitleNorm != candidateTitleNorm {
+		// Title mismatches are expected for most candidates - don't log to avoid noise
+		return false
 	}
+
+	isTV := source.Series > 0 || candidate.Series > 0
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -275,7 +266,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
 		// treat an empty resolution as a match only when the other side is clearly SD.
 		isKnownSD := func(res string) bool {
-			switch strings.ToUpper(strings.TrimSpace(res)) {
+			switch normalizeVariant(res) {
 			case "480P", "576P", "SD":
 				return true
 			default:
@@ -409,7 +400,7 @@ func joinNormalizedSlice(slice []string) string {
 	}
 	normalized := make([]string, len(slice))
 	for i, s := range slice {
-		normalized[i] = strings.ToUpper(strings.TrimSpace(s))
+		normalized[i] = normalizeVariant(s)
 	}
 	sort.Strings(normalized)
 	return strings.Join(normalized, " ")
@@ -432,7 +423,7 @@ var videoCodecAliases = map[string]string{
 // normalizeVideoCodec converts a video codec string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
 func normalizeVideoCodec(codec string) string {
-	upper := strings.ToUpper(strings.TrimSpace(codec))
+	upper := normalizeVariant(codec)
 	if canonical, ok := videoCodecAliases[upper]; ok {
 		return canonical
 	}
@@ -452,7 +443,7 @@ var sourceAliases = map[string]string{
 // normalizeSource converts a source string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
 func normalizeSource(source string) string {
-	upper := strings.ToUpper(strings.TrimSpace(source))
+	upper := normalizeVariant(source)
 	if canonical, ok := sourceAliases[upper]; ok {
 		return canonical
 	}
