@@ -1508,13 +1508,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <div className="space-y-1">
                       <Label className="text-xs">Default group</Label>
                       <Select
-                        value={formState.exprGrouping?.defaultGroupId ?? ""}
+                        value={formState.exprGrouping?.defaultGroupId ?? "_none"}
                         onValueChange={(value) => {
                           setFormState(prev => ({
                             ...prev,
                             exprGrouping: {
                               ...prev.exprGrouping,
-                              defaultGroupId: value || undefined,
+                              defaultGroupId: value === "_none" ? undefined : value,
                             },
                           }))
                         }}
@@ -1523,7 +1523,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <SelectValue placeholder="Select a group..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">(None - GROUP_SIZE/IS_GROUPED disabled)</SelectItem>
+                          <SelectItem value="_none">(None - GROUP_SIZE/IS_GROUPED disabled)</SelectItem>
                           {BUILTIN_GROUPS.map(group => (
                             <SelectItem key={group.id} value={group.id}>
                               {group.label}
