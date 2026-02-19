@@ -138,6 +138,117 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 	require.True(t, ok, "expected category action to apply when protected torrent is not in the same cross-seed group")
 }
 
+func TestProcessTorrents_GroupConditionsUseConditionScopedGroupIDs(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "A.Release",
+			SavePath:    "/data/shared",
+			ContentPath: "/data/shared/release-a",
+		},
+		{
+			Hash:        "b",
+			Name:        "B.Release",
+			SavePath:    "/data/shared",
+			ContentPath: "/data/shared/release-a",
+		},
+		{
+			Hash:        "c",
+			Name:        "C.Release",
+			SavePath:    "/data/shared",
+			ContentPath: "/data/shared/release-c",
+		},
+	}
+
+	upload := int64(64)
+	evalCtx := &EvalContext{}
+	rule := &models.Automation{
+		ID:             10,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Grouping: &models.GroupingConfig{
+				Groups: []models.GroupDefinition{
+					{ID: "g_content", Keys: []string{"contentPath"}},
+					{ID: "g_save", Keys: []string{"savePath"}},
+				},
+			},
+			SpeedLimits: &models.SpeedLimitAction{
+				Enabled:   true,
+				UploadKiB: &upload,
+				Condition: &models.RuleCondition{
+					Operator: models.OperatorAnd,
+					Conditions: []*models.RuleCondition{
+						{
+							Field:    models.FieldGroupSize,
+							GroupID:  "g_content",
+							Operator: models.OperatorEqual,
+							Value:    "2",
+						},
+						{
+							Field:    models.FieldGroupSize,
+							GroupID:  "g_save",
+							Operator: models.OperatorEqual,
+							Value:    "3",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	require.Contains(t, states, "a")
+	require.Contains(t, states, "b")
+	require.NotContains(t, states, "c")
+}
+
+func TestProcessTorrents_GroupConditionWithoutGroupID_UsesDefaultFallback(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "A.Release",
+			SavePath:    "/data/shared",
+			ContentPath: "/data/shared/release",
+		},
+		{
+			Hash:        "b",
+			Name:        "B.Release",
+			SavePath:    "/data/shared",
+			ContentPath: "/data/shared/release",
+		},
+	}
+
+	upload := int64(64)
+	evalCtx := &EvalContext{}
+	rule := &models.Automation{
+		ID:             11,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			SpeedLimits: &models.SpeedLimitAction{
+				Enabled:   true,
+				UploadKiB: &upload,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldIsGrouped,
+					Operator: models.OperatorEqual,
+					Value:    "true",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil)
+	require.Contains(t, states, "a")
+	require.Contains(t, states, "b")
+}
+
 func TestMoveSkippedWhenAlreadyInTargetPath(t *testing.T) {
 	// Test that move is skipped when torrent is already in the target path
 	torrent := qbt.Torrent{

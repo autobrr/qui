@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryBuilder } from "@/components/query-builder"
+import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
   CAPABILITY_REASONS,
   FIELD_REQUIREMENTS,
@@ -577,6 +577,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return result
     }
   }, [trackerCustomizationMaps])
+
+  const groupedConditionOptions = useMemo<GroupOption[]>(() => {
+    const options: GroupOption[] = BUILTIN_GROUPS.map((group) => ({
+      id: group.id,
+      label: group.label,
+    }))
+    const seen = new Set(options.map((option) => option.id.toLowerCase()))
+    for (const group of (formState.exprGrouping?.groups || [])) {
+      const id = group.id?.trim()
+      if (!id) continue
+      if (seen.has(id.toLowerCase())) continue
+      seen.add(id.toLowerCase())
+      options.push({
+        id,
+        label: `${id} (custom)`,
+      })
+    }
+    return options
+  }, [formState.exprGrouping?.groups])
 
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
@@ -1457,6 +1476,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     categoryOptions={categoryOptions}
                     disabledFields={getDisabledFields(fieldCapabilities)}
                     disabledStateValues={getDisabledStateValues(fieldCapabilities)}
+                    groupOptions={groupedConditionOptions}
                   />
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
@@ -1496,80 +1516,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-[340px]">
                             <p>
-                              Configure how torrents are grouped for GROUP_SIZE and IS_GROUPED conditions.
-                              GROUP_SIZE returns the number of torrents in the group; IS_GROUPED is true when group size &gt; 1.
+                              GROUP_SIZE and IS_GROUPED now select a grouping per condition row.
+                              Define optional custom groups here for those selectors.
                             </p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </div>
 
-                    {/* Default Group ID selector */}
-                    <div className="space-y-1">
-                      <Label className="text-xs">Default group</Label>
-                      <Select
-                        value={formState.exprGrouping?.defaultGroupId ?? "_none"}
-                        onValueChange={(value) => {
-                          setFormState(prev => ({
-                            ...prev,
-                            exprGrouping: {
-                              ...prev.exprGrouping,
-                              defaultGroupId: value === "_none" ? undefined : value,
-                            },
-                          }))
-                        }}
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Select a group..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_none">(None - GROUP_SIZE/IS_GROUPED disabled)</SelectItem>
-                          {BUILTIN_GROUPS.map(group => (
-                            <SelectItem key={group.id} value={group.id}>
-                              {group.label}
-                            </SelectItem>
-                          ))}
-                          {(formState.exprGrouping?.groups || []).map(group => (
-                            <SelectItem key={group.id} value={group.id}>
-                              {group.id} (custom)
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Which grouping strategy to use for GROUP_SIZE and IS_GROUPED conditions
-                      </p>
-                    </div>
-
-                    {/* Show description of selected group */}
-                    {formState.exprGrouping?.defaultGroupId && (
-                      <div className="rounded-sm border border-border/50 bg-background p-2 text-xs text-muted-foreground">
-                        {(() => {
-                          const builtin = BUILTIN_GROUPS.find(g => g.id === formState.exprGrouping?.defaultGroupId)
-                          if (builtin) {
-                            return (
-                              <>
-                                <p className="font-medium text-foreground">{builtin.label}</p>
-                                <p>{builtin.description}</p>
-                              </>
-                            )
-                          }
-                          const custom = (formState.exprGrouping?.groups || []).find(g => g.id === formState.exprGrouping?.defaultGroupId)
-                          if (custom) {
-                            return (
-                              <>
-                                <p className="font-medium text-foreground">{custom.id}</p>
-                                <p>Custom group with keys: <span className="font-mono">{custom.keys.join(", ")}</span></p>
-                                {custom.ambiguousPolicy && (
-                                  <p>Ambiguous policy: {custom.ambiguousPolicy} (min overlap: {custom.minFileOverlapPercent ?? 90}%)</p>
-                                )}
-                              </>
-                            )
-                          }
-                          return null
-                        })()}
-                      </div>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Choose the group directly on each GROUP_SIZE / IS_GROUPED condition row.
+                      Built-ins are always available; custom groups below are optional.
+                    </p>
 
                     {/* Custom groups editor */}
                     {(formState.exprGrouping?.groups || []).length > 0 && (

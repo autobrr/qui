@@ -337,6 +337,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "delete.groupId is only supported when delete mode is 'Keep files'", errors.New("invalid delete mode for delete.groupId")
 	}
 
+	if msg, err := validateConditionGroupingConfig(payload.Conditions); err != nil {
+		return http.StatusBadRequest, msg, err
+	}
+
 	// Validate includeHardlinks option
 	if payload.Conditions != nil && payload.Conditions.Delete != nil && payload.Conditions.Delete.IncludeHardlinks {
 		// Only valid when mode is deleteWithFilesIncludeCrossSeeds
@@ -439,6 +443,99 @@ func deleteUsesGroupIDOutsideKeepFiles(conditions *models.ActionConditions) bool
 
 	mode := strings.TrimSpace(conditions.Delete.Mode)
 	return mode != "" && mode != models.DeleteModeKeepFiles
+}
+
+func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {
+	if conditions == nil {
+		return "", nil
+	}
+
+	knownGroupIDs := map[string]struct{}{
+		strings.ToLower(automations.GroupCrossSeedContentPath):     {},
+		strings.ToLower(automations.GroupCrossSeedContentSavePath): {},
+		strings.ToLower(automations.GroupReleaseItem):              {},
+		strings.ToLower(automations.GroupTrackerReleaseItem):       {},
+		strings.ToLower(automations.GroupHardlinkSignature):        {},
+	}
+
+	if conditions.Grouping != nil {
+		for _, group := range conditions.Grouping.Groups {
+			groupID := strings.ToLower(strings.TrimSpace(group.ID))
+			if groupID == "" {
+				continue
+			}
+			knownGroupIDs[groupID] = struct{}{}
+		}
+	}
+
+	for _, cond := range conditionTreesForValidation(conditions) {
+		if cond == nil {
+			continue
+		}
+		if msg, err := validateConditionTreeGroupIDs(cond, knownGroupIDs); err != nil {
+			return msg, err
+		}
+	}
+
+	return "", nil
+}
+
+func conditionTreesForValidation(conditions *models.ActionConditions) []*models.RuleCondition {
+	if conditions == nil {
+		return nil
+	}
+	var trees []*models.RuleCondition
+	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
+		trees = append(trees, conditions.SpeedLimits.Condition)
+	}
+	if conditions.ShareLimits != nil && conditions.ShareLimits.Enabled {
+		trees = append(trees, conditions.ShareLimits.Condition)
+	}
+	if conditions.Pause != nil && conditions.Pause.Enabled {
+		trees = append(trees, conditions.Pause.Condition)
+	}
+	if conditions.Resume != nil && conditions.Resume.Enabled {
+		trees = append(trees, conditions.Resume.Condition)
+	}
+	if conditions.Delete != nil && conditions.Delete.Enabled {
+		trees = append(trees, conditions.Delete.Condition)
+	}
+	if conditions.Tag != nil && conditions.Tag.Enabled {
+		trees = append(trees, conditions.Tag.Condition)
+	}
+	if conditions.Category != nil && conditions.Category.Enabled {
+		trees = append(trees, conditions.Category.Condition)
+	}
+	if conditions.Move != nil && conditions.Move.Enabled {
+		trees = append(trees, conditions.Move.Condition)
+	}
+	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled {
+		trees = append(trees, conditions.ExternalProgram.Condition)
+	}
+	return trees
+}
+
+func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map[string]struct{}) (string, error) {
+	if cond == nil {
+		return "", nil
+	}
+
+	if cond.Field == models.FieldGroupSize || cond.Field == models.FieldIsGrouped {
+		groupID := strings.TrimSpace(cond.GroupID)
+		if groupID != "" {
+			if _, ok := knownGroupIDs[strings.ToLower(groupID)]; !ok {
+				return fmt.Sprintf("Unknown grouping ID '%s' in grouped condition", groupID), errors.New("unknown grouped condition groupId")
+			}
+		}
+	}
+
+	for _, child := range cond.Conditions {
+		if msg, err := validateConditionTreeGroupIDs(child, knownGroupIDs); err != nil {
+			return msg, err
+		}
+	}
+
+	return "", nil
 }
 
 const (

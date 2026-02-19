@@ -562,6 +562,72 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_GroupFields_UseConditionGroupID(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "a"}
+
+	defaultIdx := &groupIndex{
+		sizeByHash: map[string]int{
+			"a": 1,
+		},
+	}
+	releaseIdx := &groupIndex{
+		sizeByHash: map[string]int{
+			"a": 3,
+		},
+	}
+
+	ctx := &EvalContext{
+		ActiveRuleID:        42,
+		activeGroupIndex:    defaultIdx,
+		groupIndexCache:     map[int]map[string]*groupIndex{42: {"release_item": releaseIdx}},
+		FreeSpaceStates:     nil,
+		CategoryIndex:       nil,
+		CategoryNames:       nil,
+		UnregisteredSet:     nil,
+		TrackerDownSet:      nil,
+		HardlinkScopeByHash: nil,
+	}
+
+	condWithGroupID := &RuleCondition{
+		Field:    FieldGroupSize,
+		GroupID:  "release_item",
+		Operator: OperatorEqual,
+		Value:    "3",
+	}
+	if got := EvaluateConditionWithContext(condWithGroupID, torrent, ctx, 0); !got {
+		t.Fatalf("expected grouped condition with explicit groupId to use cached release_item index")
+	}
+
+	condCaseInsensitive := &RuleCondition{
+		Field:    FieldGroupSize,
+		GroupID:  "ReLeAsE_Item",
+		Operator: OperatorEqual,
+		Value:    "3",
+	}
+	if got := EvaluateConditionWithContext(condCaseInsensitive, torrent, ctx, 0); !got {
+		t.Fatalf("expected groupId lookup to be case-insensitive")
+	}
+
+	condFallbackDefault := &RuleCondition{
+		Field:    FieldGroupSize,
+		Operator: OperatorEqual,
+		Value:    "1",
+	}
+	if got := EvaluateConditionWithContext(condFallbackDefault, torrent, ctx, 0); !got {
+		t.Fatalf("expected unscoped grouped condition to use active default group")
+	}
+
+	condMissingGroup := &RuleCondition{
+		Field:    FieldIsGrouped,
+		GroupID:  "does_not_exist",
+		Operator: OperatorEqual,
+		Value:    "true",
+	}
+	if got := EvaluateConditionWithContext(condMissingGroup, torrent, ctx, 0); got {
+		t.Fatalf("expected false when requested groupId is not available")
+	}
+}
+
 func TestEvaluateCondition_BooleanFields(t *testing.T) {
 	tests := []struct {
 		name     string

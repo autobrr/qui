@@ -239,3 +239,58 @@ func TestDeleteUsesGroupIDOutsideKeepFiles(t *testing.T) {
 		}))
 	})
 }
+
+func TestValidateConditionGroupingConfig(t *testing.T) {
+	t.Run("returns nil when grouped condition uses builtin group id", func(t *testing.T) {
+		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
+			SpeedLimits: &models.SpeedLimitAction{
+				Enabled: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldGroupSize,
+					Operator: models.OperatorGreaterThan,
+					GroupID:  "cross_seed_content_save_path",
+					Value:    "1",
+				},
+			},
+		})
+		require.NoError(t, err)
+		require.Empty(t, msg)
+	})
+
+	t.Run("returns nil when grouped condition uses custom group id", func(t *testing.T) {
+		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
+			Grouping: &models.GroupingConfig{
+				Groups: []models.GroupDefinition{
+					{ID: "my_group", Keys: []string{"savePath"}},
+				},
+			},
+			SpeedLimits: &models.SpeedLimitAction{
+				Enabled: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldIsGrouped,
+					Operator: models.OperatorEqual,
+					GroupID:  "my_group",
+					Value:    "true",
+				},
+			},
+		})
+		require.NoError(t, err)
+		require.Empty(t, msg)
+	})
+
+	t.Run("returns error when grouped condition uses unknown group id", func(t *testing.T) {
+		msg, err := validateConditionGroupingConfig(&models.ActionConditions{
+			SpeedLimits: &models.SpeedLimitAction{
+				Enabled: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldGroupSize,
+					Operator: models.OperatorGreaterThan,
+					GroupID:  "does_not_exist",
+					Value:    "1",
+				},
+			},
+		})
+		require.Error(t, err)
+		require.Contains(t, msg, "does_not_exist")
+	})
+}

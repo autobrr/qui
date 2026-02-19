@@ -55,13 +55,13 @@ export const CONDITION_FIELDS = {
   NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const, description: "Total seeders in swarm (tracker-reported)" },
   NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
-  GROUP_SIZE: { label: "Group Size", type: "integer" as const, description: "Size of the rule's Default Group (grouping.defaultGroupId)" },
+  GROUP_SIZE: { label: "Group Size", type: "integer" as const, description: "Number of torrents in the selected group for this condition" },
 
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
-  IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when Group Size > 1 for the rule's Default Group" },
+  IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },

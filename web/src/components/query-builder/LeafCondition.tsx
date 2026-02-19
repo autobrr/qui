@@ -34,6 +34,7 @@ import {
 } from "./constants";
 import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
+import type { GroupOption } from "./QueryBuilder";
 
 const DURATION_INPUT_UNITS = [
   { value: 60, label: "minutes" },
@@ -78,6 +79,12 @@ const DECIMALS_BY_SPEED_UNIT: Record<number, number> = {
   [MiB]: 1,  // MiB/s
 };
 
+const DEFAULT_GROUP_ID = "cross_seed_content_save_path";
+
+function isGroupingConditionField(field: ConditionField | undefined): boolean {
+  return field === "GROUP_SIZE" || field === "IS_GROUPED";
+}
+
 // Format numeric value for display, avoiding floating-point artifacts
 function formatNumericInput(value: number, decimals: number): string {
   return String(Number(value.toFixed(decimals)));
@@ -111,6 +118,8 @@ interface LeafConditionProps {
   disabledFields?: DisabledField[];
   /** Optional list of "state" option values to disable with reasons */
   disabledStateValues?: DisabledStateValue[];
+  /** Available grouping IDs for GROUP_SIZE / IS_GROUPED leaf conditions */
+  groupOptions?: GroupOption[];
 }
 
 export function LeafCondition({
@@ -122,6 +131,7 @@ export function LeafCondition({
   categoryOptions,
   disabledFields,
   disabledStateValues,
+  groupOptions,
 }: LeafConditionProps) {
   const {
     attributes,
@@ -137,6 +147,11 @@ export function LeafCondition({
 
   const fieldType = condition.field ? getFieldType(condition.field) : "string";
   const operators = condition.field ? getOperatorsForField(condition.field) : [];
+  const isGroupingField = isGroupingConditionField(condition.field);
+  const availableGroupOptions = (groupOptions && groupOptions.length > 0)
+    ? groupOptions
+    : [{ id: DEFAULT_GROUP_ID, label: "Cross-seed (content + save path)" }];
+  const groupIdValue = condition.groupId || DEFAULT_GROUP_ID;
 
   // Track duration unit separately so it persists when value is empty
   const [durationUnit, setDurationUnit] = useState<number>(() =>
@@ -187,6 +202,7 @@ export function LeafCondition({
       ...condition,
       field: field as ConditionField,
       operator: defaultOperator as ConditionOperator,
+      groupId: isGroupingConditionField(field as ConditionField) ? (condition.groupId || DEFAULT_GROUP_ID) : undefined,
       value: defaultValue,
       minValue: undefined,
       maxValue: undefined,
@@ -204,6 +220,10 @@ export function LeafCondition({
 
   const handleValueChange = (value: string) => {
     onChange({ ...condition, value });
+  };
+
+  const handleGroupIDChange = (groupId: string) => {
+    onChange({ ...condition, groupId });
   };
 
   const isCategoryEqualityOperator =
@@ -475,8 +495,25 @@ export function LeafCondition({
         </Select>
       </div>
 
+      {isGroupingField && (
+        <div className="order-3 sm:order-none w-full sm:w-auto">
+          <Select value={groupIdValue} onValueChange={handleGroupIDChange}>
+            <SelectTrigger className="h-8 w-full sm:w-[220px]">
+              <SelectValue placeholder="Select group" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableGroupOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Value input - varies by field type */}
-      <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
+      <div className="order-4 sm:order-none w-full sm:w-auto flex items-center gap-1">
         {condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
           <div className="flex items-center gap-1">
             <Input

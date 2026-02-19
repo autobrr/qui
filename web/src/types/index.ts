@@ -235,6 +235,7 @@ export interface RuleCondition {
   clientId?: string
   field?: ConditionField
   operator: ConditionOperator
+  groupId?: string
   value?: string
   minValue?: number
   maxValue?: number

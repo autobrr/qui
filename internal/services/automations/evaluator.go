@@ -105,6 +105,8 @@ type EvalContext struct {
 
 	// groupIndexCache caches group indices per rule ID + group ID to avoid rebuilding.
 	groupIndexCache map[int]map[string]*groupIndex
+	// groupConditionUsageByRule caches which grouping IDs are referenced by grouped condition fields.
+	groupConditionUsageByRule map[int]groupingConditionUsage
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -436,8 +438,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.TrackersCount, cond)
 	case FieldGroupSize:
 		size := int64(0)
-		if ctx != nil && ctx.activeGroupIndex != nil {
-			size = int64(ctx.activeGroupIndex.SizeForHash(torrent.Hash))
+		if idx := resolveConditionGroupIndex(cond, ctx); idx != nil {
+			size = int64(idx.SizeForHash(torrent.Hash))
 		}
 		return compareInt64(size, cond)
 
@@ -488,8 +490,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 
 	case FieldIsGrouped:
 		grouped := false
-		if ctx != nil && ctx.activeGroupIndex != nil {
-			grouped = ctx.activeGroupIndex.SizeForHash(torrent.Hash) > 1
+		if idx := resolveConditionGroupIndex(cond, ctx); idx != nil {
+			grouped = idx.SizeForHash(torrent.Hash) > 1
 		}
 		return compareBool(grouped, cond)
 

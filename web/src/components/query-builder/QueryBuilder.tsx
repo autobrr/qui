@@ -22,6 +22,11 @@ import { useCallback, useMemo } from "react";
 import { ConditionGroup } from "./ConditionGroup";
 import type { DisabledField, DisabledStateValue } from "./constants";
 
+export interface GroupOption {
+  id: string
+  label: string
+}
+
 interface QueryBuilderProps {
   condition: RuleCondition | null;
   onChange: (condition: RuleCondition | null) => void;
@@ -34,6 +39,8 @@ interface QueryBuilderProps {
   disabledFields?: DisabledField[];
   /** Optional list of "state" option values to disable with reasons */
   disabledStateValues?: DisabledStateValue[];
+  /** Available grouping IDs for GROUP_SIZE / IS_GROUPED leaf conditions */
+  groupOptions?: GroupOption[];
 }
 
 export function QueryBuilder({
@@ -44,6 +51,7 @@ export function QueryBuilder({
   categoryOptions,
   disabledFields,
   disabledStateValues,
+  groupOptions,
 }: QueryBuilderProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -185,6 +193,7 @@ export function QueryBuilder({
           categoryOptions={categoryOptions}
           disabledFields={disabledFields}
           disabledStateValues={disabledStateValues}
+          groupOptions={groupOptions}
         />
       </div>
     </DndContext>

@@ -90,6 +90,11 @@ func (g *groupIndex) IsAmbiguousForHash(hash string) bool {
 	return ok
 }
 
+type groupingConditionUsage struct {
+	groupIDs    []string
+	hasUnscoped bool
+}
+
 func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrents []qbt.Torrent, sm *qbittorrent.SyncManager) {
 	if evalCtx == nil {
 		return
@@ -97,16 +102,37 @@ func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrent
 	evalCtx.ActiveRuleID = 0
 	evalCtx.activeGroupIndex = nil
 
-	if rule == nil || rule.Conditions == nil || rule.Conditions.Grouping == nil {
-		return
-	}
-	groupID := strings.TrimSpace(rule.Conditions.Grouping.DefaultGroupID)
-	if groupID == "" {
+	if rule == nil || rule.Conditions == nil {
 		return
 	}
 
 	evalCtx.ActiveRuleID = rule.ID
-	evalCtx.activeGroupIndex = getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+
+	usage := getOrComputeGroupingConditionUsage(evalCtx, rule)
+
+	defaultGroupID := ""
+	if rule.Conditions.Grouping != nil {
+		defaultGroupID = strings.TrimSpace(rule.Conditions.Grouping.DefaultGroupID)
+	}
+
+	// Backward-compatible fallback: old grouped conditions without an explicit groupId
+	// and without a configured default should still evaluate against a useful grouping.
+	if defaultGroupID == "" && usage.hasUnscoped {
+		defaultGroupID = GroupCrossSeedContentSavePath
+	}
+
+	groupIDs := append([]string(nil), usage.groupIDs...)
+	if defaultGroupID != "" {
+		groupIDs = appendUniqueGroupID(groupIDs, defaultGroupID)
+	}
+
+	for _, groupID := range groupIDs {
+		getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, sm)
+	}
+
+	if defaultGroupID != "" {
+		evalCtx.activeGroupIndex = lookupGroupIndexForRule(evalCtx, rule.ID, defaultGroupID)
+	}
 }
 
 func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, groupID string, torrents []qbt.Torrent, sm *qbittorrent.SyncManager) *groupIndex {
@@ -137,6 +163,176 @@ func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, 
 	idx := buildGroupIndex(groupID, def, torrents, sm, evalCtx)
 	evalCtx.groupIndexCache[rule.ID][groupID] = idx
 	return idx
+}
+
+func lookupGroupIndexForRule(evalCtx *EvalContext, ruleID int, groupID string) *groupIndex {
+	if evalCtx == nil || ruleID <= 0 || groupID == "" || evalCtx.groupIndexCache == nil {
+		return nil
+	}
+	byRule := evalCtx.groupIndexCache[ruleID]
+	if byRule == nil {
+		return nil
+	}
+
+	groupID = strings.TrimSpace(groupID)
+	if idx := byRule[groupID]; idx != nil {
+		return idx
+	}
+
+	for id, idx := range byRule {
+		if strings.EqualFold(strings.TrimSpace(id), groupID) {
+			return idx
+		}
+	}
+
+	return nil
+}
+
+func resolveConditionGroupIndex(cond *RuleCondition, ctx *EvalContext) *groupIndex {
+	if ctx == nil {
+		return nil
+	}
+	if cond != nil {
+		groupID := strings.TrimSpace(cond.GroupID)
+		if groupID != "" {
+			return lookupGroupIndexForRule(ctx, ctx.ActiveRuleID, groupID)
+		}
+	}
+	return ctx.activeGroupIndex
+}
+
+func getOrComputeGroupingConditionUsage(evalCtx *EvalContext, rule *models.Automation) groupingConditionUsage {
+	if evalCtx == nil || rule == nil {
+		return groupingConditionUsage{}
+	}
+
+	if evalCtx.groupConditionUsageByRule == nil {
+		evalCtx.groupConditionUsageByRule = make(map[int]groupingConditionUsage)
+	}
+	if cached, ok := evalCtx.groupConditionUsageByRule[rule.ID]; ok {
+		return cached
+	}
+
+	usage := groupingConditionUsage{}
+	for _, cond := range conditionTreesForRule(rule) {
+		collectGroupingConditionUsage(cond, &usage)
+	}
+
+	evalCtx.groupConditionUsageByRule[rule.ID] = usage
+	return usage
+}
+
+func conditionTreesForRule(rule *models.Automation) []*models.RuleCondition {
+	if rule == nil || rule.Conditions == nil {
+		return nil
+	}
+	conditions := rule.Conditions
+	return []*models.RuleCondition{
+		conditionFromSpeedLimitAction(conditions.SpeedLimits),
+		conditionFromShareLimitsAction(conditions.ShareLimits),
+		conditionFromPauseAction(conditions.Pause),
+		conditionFromResumeAction(conditions.Resume),
+		conditionFromDeleteAction(conditions.Delete),
+		conditionFromTagAction(conditions.Tag),
+		conditionFromCategoryAction(conditions.Category),
+		conditionFromMoveAction(conditions.Move),
+		conditionFromExternalProgramAction(conditions.ExternalProgram),
+	}
+}
+
+func conditionFromSpeedLimitAction(action *models.SpeedLimitAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromShareLimitsAction(action *models.ShareLimitsAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromPauseAction(action *models.PauseAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromResumeAction(action *models.ResumeAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromDeleteAction(action *models.DeleteAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromTagAction(action *models.TagAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromCategoryAction(action *models.CategoryAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromMoveAction(action *models.MoveAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromExternalProgramAction(action *models.ExternalProgramAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func collectGroupingConditionUsage(cond *models.RuleCondition, usage *groupingConditionUsage) {
+	if cond == nil || usage == nil {
+		return
+	}
+
+	if cond.Field == models.FieldGroupSize || cond.Field == models.FieldIsGrouped {
+		groupID := strings.TrimSpace(cond.GroupID)
+		if groupID == "" {
+			usage.hasUnscoped = true
+		} else {
+			usage.groupIDs = appendUniqueGroupID(usage.groupIDs, groupID)
+		}
+	}
+
+	for _, child := range cond.Conditions {
+		collectGroupingConditionUsage(child, usage)
+	}
+}
+
+func appendUniqueGroupID(groupIDs []string, groupID string) []string {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return groupIDs
+	}
+	for _, existing := range groupIDs {
+		if strings.EqualFold(strings.TrimSpace(existing), groupID) {
+			return groupIDs
+		}
+	}
+	return append(groupIDs, groupID)
 }
 
 func findGroupDefinition(cfg *models.GroupingConfig, id string) *models.GroupDefinition {

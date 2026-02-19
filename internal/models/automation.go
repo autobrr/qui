@@ -545,6 +545,7 @@ const (
 type RuleCondition struct {
 	Field      ConditionField    `json:"field,omitempty"`
 	Operator   ConditionOperator `json:"operator"`
+	GroupID    string            `json:"groupId,omitempty"` // Optional grouping ID for GROUP_SIZE/IS_GROUPED conditions
 	Value      string            `json:"value,omitempty"`
 	MinValue   *float64          `json:"minValue,omitempty"`
 	MaxValue   *float64          `json:"maxValue,omitempty"`

@@ -14,6 +14,7 @@ import { Plus, X } from "lucide-react";
 import { useCallback } from "react";
 import type { DisabledField, DisabledStateValue } from "./constants";
 import { LeafCondition } from "./LeafCondition";
+import type { GroupOption } from "./QueryBuilder";
 
 interface ConditionGroupProps {
   id: string;
@@ -28,6 +29,8 @@ interface ConditionGroupProps {
   disabledFields?: DisabledField[];
   /** Optional list of "state" option values to disable with reasons */
   disabledStateValues?: DisabledStateValue[];
+  /** Available grouping IDs for GROUP_SIZE / IS_GROUPED leaf conditions */
+  groupOptions?: GroupOption[];
 }
 
 const MAX_DEPTH = 5;
@@ -42,6 +45,7 @@ export function ConditionGroup({
   categoryOptions,
   disabledFields,
   disabledStateValues,
+  groupOptions,
 }: ConditionGroupProps) {
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
   const children = condition.conditions ?? [];
@@ -134,6 +138,7 @@ export function ConditionGroup({
         categoryOptions={categoryOptions}
         disabledFields={disabledFields}
         disabledStateValues={disabledStateValues}
+        groupOptions={groupOptions}
       />
     );
   }
@@ -203,6 +208,7 @@ export function ConditionGroup({
                   categoryOptions={categoryOptions}
                   disabledFields={disabledFields}
                   disabledStateValues={disabledStateValues}
+                  groupOptions={groupOptions}
                 />
               );
             }
@@ -218,6 +224,7 @@ export function ConditionGroup({
                 categoryOptions={categoryOptions}
                 disabledFields={disabledFields}
                 disabledStateValues={disabledStateValues}
+                groupOptions={groupOptions}
               />
             );
           })}
