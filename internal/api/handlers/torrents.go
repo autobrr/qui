@@ -1032,6 +1032,13 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	normalizedInstanceIDs, instanceIDsErr := normalizeInstanceIDs(req.InstanceIDs)
+	if instanceIDsErr != nil {
+		RespondError(w, http.StatusBadRequest, instanceIDsErr.Error())
+		return
+	}
+	req.InstanceIDs = normalizedInstanceIDs
+
 	// Validate input - either specific hashes/targets or selectAll mode
 	if !req.SelectAll && len(req.Hashes) == 0 && len(req.Targets) == 0 {
 		RespondError(w, http.StatusBadRequest, "No torrents selected")

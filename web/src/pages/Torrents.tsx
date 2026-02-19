@@ -115,6 +115,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   // Handle deep link to a specific torrent (from cross-seed navigation)
   useEffect(() => {
     if (!search.torrent) return
+    let cancelled = false
 
     const hash = search.torrent
     const tab = search.tab
@@ -153,6 +154,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       }).then((response) => response.torrents[0] ?? null)
 
     fetchTorrentByHash.then((torrent) => {
+      if (cancelled) {
+        return
+      }
       if (torrent) {
         setSelectedTorrent(torrent)
         if (tab) {
@@ -166,6 +170,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         tab: undefined,
       })
     }).catch(() => {
+      if (cancelled) {
+        return
+      }
       // Silently fail - torrent might not exist
       onSearchChange({
         ...search,
@@ -173,6 +180,10 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         tab: undefined,
       })
     })
+
+    return () => {
+      cancelled = true
+    }
   }, [instanceId, isAllInstances, search, onSearchChange, unifiedScopeInstanceIds])
 
   // Navigate to a cross-seed match torrent

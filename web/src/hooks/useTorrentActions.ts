@@ -121,11 +121,11 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       const { clientHashes, clientCount, ...payload } = data
       void clientHashes
       void clientCount
-      const effectiveFilters = payload.filters? {
+      const effectiveFilters = payload.filters ? {
         ...payload.filters,
         categories: payload.filters.expandedCategories ?? payload.filters.categories ?? [],
         excludeCategories: payload.filters.expandedExcludeCategories ?? payload.filters.excludeCategories ?? [],
-      }: undefined
+      } : undefined
 
       return api.bulkAction(instanceId, {
         hashes: payload.hashes,

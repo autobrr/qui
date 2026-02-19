@@ -128,7 +128,10 @@ export function Sidebar() {
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
-  const activeInstances = instances?.filter(instance => instance.isActive) ?? []
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter(instance => instance.isActive),
+    [instances]
+  )
   const activeInstanceIds = useMemo(
     () => activeInstances.map(instance => instance.id),
     [activeInstances]
