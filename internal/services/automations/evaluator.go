@@ -400,15 +400,17 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareInt64(ctx.FreeSpace+ctx.SpaceToClear, cond)
 
-	// Timestamp/duration fields (int64)
+	// Time fields from qBittorrent:
+	// - Unix timestamps are evaluated as age durations (seconds since event).
+	// - Native seconds fields are evaluated directly.
 	case FieldAddedOn:
-		return compareInt64(torrent.AddedOn, cond)
+		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOn:
-		return compareInt64(torrent.CompletionOn, cond)
+		return compareAgeIfSet(torrent.CompletionOn, cond, ctx)
 	case FieldLastActivity:
-		return compareInt64(torrent.LastActivity, cond)
+		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 	case FieldSeenComplete:
-		return compareInt64(torrent.SeenComplete, cond)
+		return compareAgeIfSet(torrent.SeenComplete, cond, ctx)
 	case FieldETA:
 		return compareInt64(torrent.ETA, cond)
 	case FieldReannounce:
@@ -426,22 +428,13 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldInactiveSeedingTimeLimit:
 		return compareInt64(torrent.InactiveSeedingTimeLimit, cond)
 
-	// Age fields (time since timestamp)
+	// Age fields (time since timestamp). Kept as compatibility aliases.
 	case FieldAddedOnAge:
-		return compareAge(torrent.AddedOn, cond, ctx)
+		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOnAge:
-		// If completion_on is 0 or -1 (never completed), don't match
-		// qBittorrent uses -1 for incomplete torrents
-		if torrent.CompletionOn <= 0 {
-			return false
-		}
-		return compareAge(torrent.CompletionOn, cond, ctx)
+		return compareAgeIfSet(torrent.CompletionOn, cond, ctx)
 	case FieldLastActivityAge:
-		// If last_activity is 0 (never had activity), don't match
-		if torrent.LastActivity == 0 {
-			return false
-		}
-		return compareAge(torrent.LastActivity, cond, ctx)
+		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 
 	// Float64 fields
 	case FieldRatio:
@@ -1049,6 +1042,14 @@ func compareAge(timestamp int64, cond *RuleCondition, ctx *EvalContext) bool {
 	ageSeconds := max(nowUnix-timestamp, 0)
 
 	return compareInt64(ageSeconds, cond)
+}
+
+// compareAgeIfSet compares age for Unix timestamp fields and treats unset values (<= 0) as unknown/no-match.
+func compareAgeIfSet(timestamp int64, cond *RuleCondition, ctx *EvalContext) bool {
+	if timestamp <= 0 {
+		return false
+	}
+	return compareAge(timestamp, cond, ctx)
 }
 
 // splitTags splits a comma-separated tag string into individual tags.

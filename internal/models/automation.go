@@ -477,7 +477,7 @@ const (
 	FieldAmountLeft        ConditionField = "AMOUNT_LEFT"
 	FieldFreeSpace         ConditionField = "FREE_SPACE"
 
-	// Numeric fields (timestamps/seconds)
+	// Time fields (timestamp-backed ages + duration seconds)
 	FieldAddedOn                  ConditionField = "ADDED_ON"
 	FieldCompletionOn             ConditionField = "COMPLETION_ON"
 	FieldLastActivity             ConditionField = "LAST_ACTIVITY"
@@ -491,7 +491,7 @@ const (
 	FieldSeedingTimeLimit         ConditionField = "SEEDING_TIME_LIMIT"
 	FieldInactiveSeedingTimeLimit ConditionField = "INACTIVE_SEEDING_TIME_LIMIT"
 
-	// Age fields (time since timestamp - computed as nowUnix - timestamp)
+	// Legacy age aliases (computed as nowUnix - timestamp)
 	FieldAddedOnAge      ConditionField = "ADDED_ON_AGE"
 	FieldCompletionOnAge ConditionField = "COMPLETION_ON_AGE"
 	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"

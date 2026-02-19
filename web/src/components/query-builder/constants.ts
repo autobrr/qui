@@ -42,11 +42,11 @@ export const CONDITION_FIELDS = {
   AMOUNT_LEFT: { label: "Amount Left", type: "bytes" as const, description: "Remaining to download" },
   FREE_SPACE: { label: "Free Space", type: "bytes" as const, description: "Free space on the instance's filesystem" },
 
-  // Raw timestamp fields (Unix seconds)
-  ADDED_ON: { label: "Added On (Unix)", type: "integer" as const, description: "Unix timestamp when added" },
-  COMPLETION_ON: { label: "Completed On (Unix)", type: "integer" as const, description: "Unix timestamp when completed" },
-  LAST_ACTIVITY: { label: "Last Activity (Unix)", type: "integer" as const, description: "Unix timestamp of last activity" },
-  SEEN_COMPLETE: { label: "Seen Complete (Unix)", type: "integer" as const, description: "Unix timestamp when last seen complete" },
+  // Timestamp-backed fields represented as ages (seconds since event)
+  ADDED_ON: { label: "Added Age", type: "duration" as const, description: "Time since torrent was added" },
+  COMPLETION_ON: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
+  LAST_ACTIVITY: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
+  SEEN_COMPLETE: { label: "Seen Complete Age", type: "duration" as const, description: "Time since torrent was last seen complete" },
 
   // Duration fields (seconds)
   ETA: { label: "ETA", type: "duration" as const, description: "Estimated seconds to completion" },
@@ -57,9 +57,9 @@ export const CONDITION_FIELDS = {
   MAX_INACTIVE_SEEDING_TIME: { label: "Max Inactive Seeding Time", type: "duration" as const, description: "Configured max inactive seeding time" },
   SEEDING_TIME_LIMIT: { label: "Seeding Time Limit", type: "duration" as const, description: "Torrent seeding time limit" },
   INACTIVE_SEEDING_TIME_LIMIT: { label: "Inactive Seeding Time Limit", type: "duration" as const, description: "Torrent inactive seeding time limit" },
-  ADDED_ON_AGE: { label: "Added Age", type: "duration" as const, description: "Time since torrent was added" },
-  COMPLETION_ON_AGE: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
-  LAST_ACTIVITY_AGE: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
+  ADDED_ON_AGE: { label: "Added Age (legacy)", type: "duration" as const, description: "Legacy alias for Added Age" },
+  COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const, description: "Legacy alias for Completed Age" },
+  LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const, description: "Legacy alias for Inactive Time" },
 
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
@@ -241,11 +241,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Time",
-    fields: ["ETA", "REANNOUNCE", "SEEDING_TIME", "TIME_ACTIVE", "MAX_SEEDING_TIME", "MAX_INACTIVE_SEEDING_TIME", "SEEDING_TIME_LIMIT", "INACTIVE_SEEDING_TIME_LIMIT", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE"],
-  },
-  {
-    label: "Timestamps",
-    fields: ["ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEN_COMPLETE"],
+    fields: ["ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEN_COMPLETE", "ETA", "REANNOUNCE", "SEEDING_TIME", "TIME_ACTIVE", "MAX_SEEDING_TIME", "MAX_INACTIVE_SEEDING_TIME", "SEEDING_TIME_LIMIT", "INACTIVE_SEEDING_TIME_LIMIT"],
   },
   {
     label: "Progress",

@@ -64,6 +64,10 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 
 | Field                    | Description                           |
 | ------------------------ | ------------------------------------- |
+| Added Age                | Time since added                      |
+| Completion Age           | Time since completed                  |
+| Inactive Time            | Time since last activity              |
+| Seen Complete Age        | Time since torrent was last complete  |
 | ETA                      | Estimated time to completion          |
 | Reannounce In            | Seconds until next announce           |
 | Seeding Time             | Time spent seeding                    |
@@ -72,18 +76,6 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Max Inactive Seeding Time | Configured max inactive seeding time |
 | Seeding Time Limit       | Torrent seeding time limit            |
 | Inactive Seeding Time Limit | Torrent inactive seeding time limit |
-| Added On Age             | Time since added                      |
-| Completion On Age        | Time since completed                  |
-| Last Activity Age        | Time since last activity              |
-
-#### Timestamp Fields (Unix seconds)
-
-| Field                | Description                        |
-| -------------------- | ---------------------------------- |
-| Added On (Unix)      | Unix timestamp when added          |
-| Completed On (Unix)  | Unix timestamp when completed      |
-| Last Activity (Unix) | Unix timestamp of last activity    |
-| Seen Complete (Unix) | Unix timestamp when last completed |
 
 #### Progress Fields
 

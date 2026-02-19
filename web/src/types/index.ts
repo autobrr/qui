@@ -186,7 +186,7 @@ export type ConditionField =
   | "UPLOADED_SESSION"
   | "AMOUNT_LEFT"
   | "FREE_SPACE"
-  // Numeric fields (timestamps/seconds)
+  // Time fields (duration seconds and timestamp-backed ages)
   | "ADDED_ON"
   | "COMPLETION_ON"
   | "LAST_ACTIVITY"
@@ -199,7 +199,7 @@ export type ConditionField =
   | "MAX_INACTIVE_SEEDING_TIME"
   | "SEEDING_TIME_LIMIT"
   | "INACTIVE_SEEDING_TIME_LIMIT"
-  // Age fields (time since timestamp - duration type)
+  // Legacy age aliases (duration type)
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"

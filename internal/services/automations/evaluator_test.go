@@ -1582,6 +1582,17 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
+		{
+			name: "added_on_age unset (0) - does not match",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{AddedOn: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
 
 		// COMPLETION_ON_AGE tests
 		{
@@ -2347,6 +2358,8 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 }
 
 func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
+	nowUnix := int64(1705320000)
+
 	tests := []struct {
 		name     string
 		cond     *RuleCondition
@@ -2429,10 +2442,53 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "seen complete timestamp",
-			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorEqual, Value: "1700000000"},
-			torrent:  qbt.Torrent{SeenComplete: 1700000000},
+			name:     "added on timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldAddedOn, Operator: OperatorGreaterThan, Value: "3600"},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 7200},
+			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
+		},
+		{
+			name:     "completion on timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldCompletionOn, Operator: OperatorLessThan, Value: "3600"},
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 1800},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "completion on unset does not match",
+			cond:     &RuleCondition{Field: FieldCompletionOn, Operator: OperatorGreaterThan, Value: "0"},
+			torrent:  qbt.Torrent{CompletionOn: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name:     "last activity timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldLastActivity, Operator: OperatorGreaterThanOrEqual, Value: "3600"},
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 3600},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "last activity unset does not match",
+			cond:     &RuleCondition{Field: FieldLastActivity, Operator: OperatorGreaterThan, Value: "0"},
+			torrent:  qbt.Torrent{LastActivity: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name:     "seen complete timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorBetween, MinValue: float64Ptr(3600), MaxValue: float64Ptr(7200)},
+			torrent:  qbt.Torrent{SeenComplete: nowUnix - 5400},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "seen complete unset does not match",
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorGreaterThan, Value: "0"},
+			torrent:  qbt.Torrent{SeenComplete: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
 		},
 		{
 			name:     "eta duration",

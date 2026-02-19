@@ -60,7 +60,7 @@ const (
 	FieldAmountLeft        = models.FieldAmountLeft
 	FieldFreeSpace         = models.FieldFreeSpace
 
-	// Numeric fields (timestamps/seconds)
+	// Time fields (timestamp-backed ages + duration seconds)
 	FieldAddedOn                  = models.FieldAddedOn
 	FieldCompletionOn             = models.FieldCompletionOn
 	FieldLastActivity             = models.FieldLastActivity
@@ -74,7 +74,7 @@ const (
 	FieldSeedingTimeLimit         = models.FieldSeedingTimeLimit
 	FieldInactiveSeedingTimeLimit = models.FieldInactiveSeedingTimeLimit
 
-	// Age fields (time since timestamp)
+	// Legacy age aliases (time since timestamp)
 	FieldAddedOnAge      = models.FieldAddedOnAge
 	FieldCompletionOnAge = models.FieldCompletionOnAge
 	FieldLastActivityAge = models.FieldLastActivityAge
