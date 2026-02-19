@@ -2371,5 +2371,19 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	w.Header().Set("Content-Disposition", disposition)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	// Fast path for full-file downloads: avoid ServeContent's small-copy behavior
+	// when middleware wrappers prevent optimized ReaderFrom/sendfile paths.
+	if r.Method == http.MethodGet && r.Header.Get("Range") == "" && r.Header.Get("If-Range") == "" {
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = file.Seek(0, io.SeekStart)
+		_, _ = io.CopyBuffer(w, struct{ io.Reader }{file}, make([]byte, 1<<20))
+		return
+	}
+
 	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
