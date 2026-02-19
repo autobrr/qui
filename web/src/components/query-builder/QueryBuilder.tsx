@@ -25,6 +25,7 @@ import type { DisabledField, DisabledStateValue } from "./constants";
 export interface GroupOption {
   id: string
   label: string
+  description?: string
 }
 
 interface QueryBuilderProps {

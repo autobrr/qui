@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import type { ConditionField, ConditionOperator, RuleCondition } from "@/types";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
@@ -496,19 +496,42 @@ export function LeafCondition({
       </div>
 
       {isGroupingField && (
-        <div className="order-3 sm:order-none w-full sm:w-auto">
+        <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
           <Select value={groupIdValue} onValueChange={handleGroupIDChange}>
-            <SelectTrigger className="h-8 w-full sm:w-[220px]">
-              <SelectValue placeholder="Select group" />
+            <SelectTrigger className="h-8 w-full sm:w-[240px]" aria-label="Group for this grouped condition">
+              <SelectValue placeholder="Group for this condition" />
             </SelectTrigger>
             <SelectContent>
               {availableGroupOptions.map((option) => (
                 <SelectItem key={option.id} value={option.id}>
-                  {option.label}
+                  <div className="flex flex-col">
+                    <span>{option.label}</span>
+                    {option.description && (
+                      <span className="text-xs text-muted-foreground">
+                        {option.description}
+                      </span>
+                    )}
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                aria-label="About grouped condition group selection"
+              >
+                <Info className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[320px]">
+              <p>
+                This group applies only to this condition row. Use different groups on other GROUP_SIZE/IS_GROUPED rows if needed.
+              </p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       )}
 

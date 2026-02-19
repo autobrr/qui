@@ -582,6 +582,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const options: GroupOption[] = BUILTIN_GROUPS.map((group) => ({
       id: group.id,
       label: group.label,
+      description: group.description,
     }))
     const seen = new Set(options.map((option) => option.id.toLowerCase()))
     for (const group of (formState.exprGrouping?.groups || [])) {
@@ -592,6 +593,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       options.push({
         id,
         label: `${id} (custom)`,
+        description: group.keys.length > 0
+          ? `Custom keys: ${group.keys.join(", ")}`
+          : "Custom group",
       })
     }
     return options
@@ -1502,7 +1506,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {(conditionUsesField(formState.actionCondition, "GROUP_SIZE") || conditionUsesField(formState.actionCondition, "IS_GROUPED")) && (
                   <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
                     <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium">Group-aware condition configuration</Label>
+                      <Label className="text-sm font-medium">Grouped condition groups</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1529,10 +1533,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       Built-ins are always available; custom groups below are optional.
                     </p>
 
+                    <div className="rounded-sm border border-border/50 bg-background p-2 text-xs space-y-1.5">
+                      <p className="font-medium text-foreground">Built-in groups</p>
+                      <div className="space-y-1">
+                        {BUILTIN_GROUPS.map((group) => (
+                          <div key={group.id}>
+                            <p className="font-medium">{group.label}</p>
+                            <p className="text-muted-foreground">{group.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Custom groups editor */}
                     {(formState.exprGrouping?.groups || []).length > 0 && (
                       <div className="space-y-2 border-t pt-3">
-                        <p className="text-xs font-medium text-muted-foreground">Custom groups</p>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Custom groups (available in grouped condition selectors and action group IDs)
+                        </p>
                         {(formState.exprGrouping?.groups || []).map((group, idx) => (
                           <div key={group.id} className="border rounded-sm p-2 space-y-1.5 text-xs bg-background">
                             <div className="flex items-center justify-between gap-1">
