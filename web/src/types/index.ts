@@ -1370,6 +1370,34 @@ export interface ExternalProgramExecuteResponse {
   results: ExternalProgramExecuteResult[]
 }
 
+export interface NotificationEventDefinition {
+  type: string
+  label: string
+  description: string
+}
+
+export interface NotificationTarget {
+  id: number
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationTargetRequest {
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+}
+
+export interface NotificationTestRequest {
+  title?: string
+  message?: string
+}
+
 export interface TorznabIndexer {
   id: number
   name: string
@@ -1811,6 +1839,10 @@ export interface CrossSeedAutomationSettings {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   createdAt?: string
   updatedAt?: string
 }
@@ -1858,6 +1890,10 @@ export interface CrossSeedAutomationSettingsPatch {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled?: boolean
+  redactedApiKey?: string
+  orpheusApiKey?: string
 }
 
 export interface CrossSeedAutomationStatus {

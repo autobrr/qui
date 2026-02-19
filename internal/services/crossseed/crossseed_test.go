@@ -2556,11 +2556,10 @@ type fakeSyncManager struct {
 
 func buildCrossInstanceViews(instance *models.Instance, torrents []qbt.Torrent) []internalqb.CrossInstanceTorrentView {
 	views := make([]internalqb.CrossInstanceTorrentView, len(torrents))
-	for i, tor := range torrents {
+	for i := range torrents {
+		tor := &torrents[i]
 		views[i] = internalqb.CrossInstanceTorrentView{
-			TorrentView: internalqb.TorrentView{
-				Torrent: tor,
-			},
+			TorrentView:  &internalqb.TorrentView{Torrent: tor},
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -2620,6 +2619,10 @@ func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 		result[normalized] = copyFiles
 	}
 	return result, nil
+}
+
+func (f *fakeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
@@ -3184,6 +3187,10 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 	return nil
 }
 
+func (m *mockRecoverSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 // Simulate state progression after recheck
 func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgress float64, finalState qbt.TorrentState) {
 	if torrent, ok := m.torrents[hash]; ok {
@@ -3568,6 +3575,10 @@ func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instan
 	return result, nil
 }
 
+func (f *infohashTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
 	if result, ok := f.hashResults[instanceID]; ok {
 		return result.torrent, result.exists, result.err
@@ -3605,12 +3616,11 @@ func (f *infohashTestSyncManager) GetCachedInstanceTorrents(_ context.Context, i
 	// Build views from torrents
 	if list, ok := f.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
-		for i, t := range list {
+		for i := range list {
+			t := &list[i]
 			views[i] = internalqb.CrossInstanceTorrentView{
-				TorrentView: internalqb.TorrentView{
-					Torrent: t,
-				},
-				InstanceID: instanceID,
+				TorrentView: &internalqb.TorrentView{Torrent: t},
+				InstanceID:  instanceID,
 			}
 		}
 		return views, nil
@@ -5105,6 +5115,10 @@ func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, insta
 	return result, nil
 }
 
+func (m *rssFilterTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (m *rssFilterTestSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
@@ -5138,12 +5152,11 @@ func (m *rssFilterTestSyncManager) SetTags(context.Context, int, []string, strin
 func (m *rssFilterTestSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
 	if list, ok := m.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
-		for i, t := range list {
+		for i := range list {
+			t := &list[i]
 			views[i] = internalqb.CrossInstanceTorrentView{
-				TorrentView: internalqb.TorrentView{
-					Torrent: t,
-				},
-				InstanceID: instanceID,
+				TorrentView: &internalqb.TorrentView{Torrent: t},
+				InstanceID:  instanceID,
 			}
 		}
 		return views, nil

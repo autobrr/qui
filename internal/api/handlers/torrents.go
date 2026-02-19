@@ -12,6 +12,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -22,6 +24,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/redact"
@@ -40,12 +43,20 @@ type torrentDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
 
+type torrentContentResolver interface {
+	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
+	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
+	GetTorrents(ctx context.Context, instanceID int, options qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+}
+
 type TorrentsHandler struct {
 	syncManager    *qbittorrent.SyncManager
 	jackettService *jackett.Service
+	instanceStore  *models.InstanceStore
 	// Testing interfaces - when set, these are used instead of the concrete types
 	torrentAdder      torrentAdder
 	torrentDownloader torrentDownloader
+	contentResolver   torrentContentResolver
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -70,10 +81,11 @@ type SortedPeersResponse struct {
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
-func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service) *TorrentsHandler {
+func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service, instanceStore *models.InstanceStore) *TorrentsHandler {
 	return &TorrentsHandler{
 		syncManager:    syncManager,
 		jackettService: jackettService,
+		instanceStore:  instanceStore,
 	}
 }
 
@@ -221,6 +233,59 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Data is always fresh from sync manager
 	w.Header().Set("X-Data-Source", "fresh")
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// GetTorrentField returns field values for torrents matching the given filters.
+// Used for select all copy operations (Copy Name, Copy Hash, Copy Full Path).
+func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Field         string                    `json:"field"`
+		Sort          string                    `json:"sort"`
+		Order         string                    `json:"order"`
+		Search        string                    `json:"search"`
+		Filters       qbittorrent.FilterOptions `json:"filters"`
+		ExcludeHashes []string                  `json:"excludeHashes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.ExcludeHashes) > 512 {
+		RespondError(w, http.StatusBadRequest, "Too many exclude hashes provided (maximum 512)")
+		return
+	}
+
+	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" {
+		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, or full_path")
+		return
+	}
+
+	if req.Sort == "" {
+		req.Sort = "added_on"
+	}
+	if req.Order == "" {
+		req.Order = "desc"
+	}
+
+	response, err := h.syncManager.GetTorrentField(r.Context(), instanceID, req.Field, req.Sort, req.Order, req.Search, req.Filters, req.ExcludeHashes)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("field", req.Field).Msg("Failed to get torrent field")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
+		return
+	}
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -2076,4 +2141,235 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 	}
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+// requireLocalAccess checks that the instance has local filesystem access enabled.
+func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
+	if h.instanceStore == nil {
+		log.Error().Msg("Instance store not configured")
+		RespondError(w, http.StatusInternalServerError, "Instance store not configured")
+		return false
+	}
+
+	instance, err := h.instanceStore.Get(r.Context(), instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return false
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to look up instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to look up instance")
+		return false
+	}
+	if instance == nil {
+		RespondError(w, http.StatusNotFound, "Instance not found")
+		return false
+	}
+	if !instance.HasLocalFilesystemAccess {
+		RespondError(w, http.StatusForbidden, "Instance does not have local filesystem access enabled")
+		return false
+	}
+	return true
+}
+
+// resolveTorrentFilePath joins basePath with relativePath and validates against
+// directory traversal. Returns the cleaned absolute path or an error.
+func resolveTorrentFilePath(basePath, relativePath string) (string, error) {
+	full := filepath.Join(basePath, filepath.FromSlash(relativePath))
+	cleanBase := filepath.Clean(basePath)
+	cleanFull := filepath.Clean(full)
+
+	rel, err := filepath.Rel(cleanBase, cleanFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+	return cleanFull, nil
+}
+
+func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candidate string) []string {
+	if candidate == "" {
+		return candidates
+	}
+	cleanCandidate := filepath.Clean(candidate)
+	if !filepath.IsAbs(cleanCandidate) {
+		return candidates
+	}
+	if _, ok := seen[cleanCandidate]; ok {
+		return candidates
+	}
+	seen[cleanCandidate] = struct{}{}
+	return append(candidates, cleanCandidate)
+}
+
+// filePathCandidates returns resolved absolute paths to try, preferring
+// contentPath, then savePath, then downloadPath.
+func filePathCandidates(savePath, downloadPath, contentPath, relativePath string, singleFile bool) []string {
+	var candidates []string
+	seen := make(map[string]struct{})
+	if contentPath != "" {
+		cleanContentPath := filepath.Clean(filepath.FromSlash(contentPath))
+		if singleFile {
+			candidates = appendUniqueCandidate(candidates, seen, cleanContentPath)
+			parent := filepath.Dir(cleanContentPath)
+			if p, err := resolveTorrentFilePath(parent, relativePath); err == nil {
+				candidates = appendUniqueCandidate(candidates, seen, p)
+			}
+		} else if p, err := resolveTorrentFilePath(cleanContentPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+	if savePath != "" {
+		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+	if downloadPath != "" {
+		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+	return candidates
+}
+
+// DownloadTorrentContentFile serves a single file from a torrent's content on disk.
+// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download
+func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Missing torrent hash")
+		return
+	}
+
+	fileIndex, err := strconv.Atoi(chi.URLParam(r, "fileIndex"))
+	if err != nil || fileIndex < 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid file index")
+		return
+	}
+
+	if !h.requireLocalAccess(w, r, instanceID) {
+		return
+	}
+
+	// Get file list and find target file by index
+	var resolver torrentContentResolver
+	switch {
+	case h.contentResolver != nil:
+		resolver = h.contentResolver
+	case h.syncManager != nil:
+		resolver = h.syncManager
+	default:
+		RespondError(w, http.StatusInternalServerError, "Download service unavailable")
+		return
+	}
+
+	files, err := resolver.GetTorrentFiles(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:downloadContentFile") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
+		return
+	}
+	if files == nil {
+		RespondError(w, http.StatusNotFound, "Torrent files not found")
+		return
+	}
+
+	var targetFileName string
+	found := false
+	for _, f := range *files {
+		if f.Index == fileIndex {
+			targetFileName = f.Name
+			found = true
+			break
+		}
+	}
+	if !found {
+		RespondError(w, http.StatusNotFound, "File index not found in torrent")
+		return
+	}
+
+	// Get torrent properties for save/download paths
+	props, err := resolver.GetTorrentProperties(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:downloadContentFile") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent properties")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
+		return
+	}
+	if props == nil {
+		log.Error().Int("instanceID", instanceID).Str("hash", hash).Msg("Torrent properties are nil")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
+		return
+	}
+
+	contentPath := ""
+	if torrents, err := resolver.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
+	} else if len(torrents) > 0 {
+		contentPath = torrents[0].ContentPath
+	}
+
+	candidates := filePathCandidates(props.SavePath, props.DownloadPath, contentPath, targetFileName, len(*files) == 1)
+	if len(candidates) == 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid file path")
+		return
+	}
+
+	// Try each candidate path until we find the file
+	var file *os.File
+	var info os.FileInfo
+	for _, candidate := range candidates {
+		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
+		f, err := os.Open(candidate)
+		if err != nil {
+			continue
+		}
+
+		stat, err := f.Stat()
+		if err != nil {
+			_ = f.Close()
+			continue
+		}
+		if stat.IsDir() {
+			_ = f.Close()
+			continue
+		}
+
+		file = f
+		info = stat
+		break
+	}
+	if file == nil {
+		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+	defer file.Close()
+
+	filename := filepath.Base(targetFileName)
+
+	contentType := mime.TypeByExtension(filepath.Ext(filename))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+	if disposition == "" {
+		disposition = fmt.Sprintf("attachment; filename=%q", filename)
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", disposition)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, filename, info.ModTime(), file)
 }

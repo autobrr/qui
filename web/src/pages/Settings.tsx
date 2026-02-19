@@ -13,6 +13,7 @@ import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
+import { NotificationsManager } from "@/components/settings/NotificationsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -58,7 +59,7 @@ import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -258,7 +259,15 @@ function ApiKeysManager() {
         <p className="text-sm text-muted-foreground">
           API keys allow external applications to access your qBittorrent instances.
         </p>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <Dialog
+          open={showCreateDialog}
+          onOpenChange={(open) => {
+            setShowCreateDialog(open)
+            if (!open) {
+              setNewKey(null)
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
@@ -816,6 +825,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 External Programs
               </div>
             </SelectItem>
+            <SelectItem value="notifications">
+              <div className="flex items-center">
+                <Bell className="w-4 h-4 mr-2" />
+                Notifications
+              </div>
+            </SelectItem>
             <SelectItem value="datetime">
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
@@ -910,6 +925,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             >
               <Terminal className="w-4 h-4 mr-2" />
               External Programs
+            </button>
+            <button
+              onClick={() => handleTabChange("notifications")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "notifications" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Bell className="w-4 h-4 mr-2" />
+              Notifications
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -1054,6 +1078,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 </CardHeader>
                 <CardContent>
                   <ExternalProgramsManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "notifications" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notifications</CardTitle>
+                  <CardDescription>
+                    Send alerts and status updates via any Shoutrrr-supported service
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <NotificationsManager />
                 </CardContent>
               </Card>
             </div>
