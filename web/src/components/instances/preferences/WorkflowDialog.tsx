@@ -233,6 +233,7 @@ type FormState = {
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
+  exprTagDeleteFromClient: boolean
   exprUseTrackerAsTag: boolean
   exprUseDisplayName: boolean
   // Category action settings
@@ -284,6 +285,7 @@ const emptyFormState: FormState = {
   exprFreeSpaceSourcePath: "",
   exprTags: [],
   exprTagMode: "full",
+  exprTagDeleteFromClient: false,
   exprUseTrackerAsTag: false,
   exprUseDisplayName: false,
   exprCategory: "",
@@ -654,6 +656,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprFreeSpaceSourcePath = ""
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
+        let exprTagDeleteFromClient = false
         let exprUseTrackerAsTag = false
         let exprUseDisplayName = false
         let exprCategory = ""
@@ -730,6 +733,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             tagEnabled = true
             exprTags = conditions.tag.tags ?? []
             exprTagMode = conditions.tag.mode ?? "full"
+            exprTagDeleteFromClient = conditions.tag.deleteFromClient ?? false
             exprUseTrackerAsTag = conditions.tag.useTrackerAsTag ?? false
             exprUseDisplayName = conditions.tag.useDisplayName ?? false
           }
@@ -789,6 +793,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprFreeSpaceSourcePath,
           exprTags,
           exprTagMode,
+          exprTagDeleteFromClient,
           exprUseTrackerAsTag,
           exprUseDisplayName,
           exprCategory,
@@ -1014,6 +1019,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         enabled: true,
         tags: input.exprTags,
         mode: input.exprTagMode,
+        deleteFromClient: input.exprTagDeleteFromClient,
         useTrackerAsTag: input.exprUseTrackerAsTag,
         useDisplayName: input.exprUseDisplayName,
         condition: input.actionCondition ?? undefined,
@@ -1275,6 +1281,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Select an external program")
       return
     }
+    if (dryRunInput.tagEnabled) {
+      if (dryRunInput.exprTagDeleteFromClient && dryRunInput.exprUseTrackerAsTag) {
+        toast.error("Replace mode requires explicit tags (disable 'Use tracker name as tag')")
+        return
+      }
+      if (!dryRunInput.exprUseTrackerAsTag && dryRunInput.exprTags.length === 0) {
+        toast.error("Specify at least one tag or enable 'Use tracker name'")
+        return
+      }
+    }
 
     dryRunNowMutation.mutate(dryRunInput)
   }
@@ -1489,6 +1505,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
     if (submitState.tagEnabled) {
+      if (submitState.exprTagDeleteFromClient && submitState.exprUseTrackerAsTag) {
+        toast.error("Replace mode requires explicit tags (disable 'Use tracker name as tag')")
+        return
+      }
       if (!submitState.exprUseTrackerAsTag && submitState.exprTags.length === 0) {
         toast.error("Specify at least one tag or enable 'Use tracker name'")
         return
@@ -2184,7 +2204,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-start">
                           {formState.exprUseTrackerAsTag ? (
                             <div className="space-y-1">
                               <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
@@ -2205,7 +2225,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </div>
                           )}
                           <div className="space-y-1">
-                            <Label className="text-xs">Mode</Label>
+                            <Label className="text-xs">Action mode</Label>
                             <Select
                               value={formState.exprTagMode}
                               onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
@@ -2220,12 +2240,45 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </SelectContent>
                             </Select>
                           </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Tag strategy</Label>
+                            <Select
+                              value={formState.exprTagDeleteFromClient ? "replace" : "managed"}
+                              onValueChange={(value: "managed" | "replace") => {
+                                const replace = value === "replace"
+                                setFormState(prev => ({
+                                  ...prev,
+                                  exprTagDeleteFromClient: replace,
+                                  exprUseTrackerAsTag: replace ? false : prev.exprUseTrackerAsTag,
+                                  exprUseDisplayName: replace ? false : prev.exprUseDisplayName,
+                                }))
+                              }}
+                            >
+                              <SelectTrigger className="w-[170px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="managed">Managed (default)</SelectItem>
+                                <SelectItem value="replace">Replace in client</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
+                        {formState.exprTagDeleteFromClient ? (
+                          <div className="text-xs text-muted-foreground">
+                            Replace mode deletes these tags from qBittorrent first, then reapplies to matching torrents.
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            Managed mode updates matching torrents only.
+                          </div>
+                        )}
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                           <div className="flex items-center gap-2">
                             <Switch
                               id="use-tracker-tag"
                               checked={formState.exprUseTrackerAsTag}
+                              disabled={formState.exprTagDeleteFromClient}
                               onCheckedChange={(checked) => setFormState(prev => ({
                                 ...prev,
                                 exprUseTrackerAsTag: checked,
@@ -2233,7 +2286,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 exprTags: checked ? [] : prev.exprTags,
                               }))}
                             />
-                            <Label htmlFor="use-tracker-tag" className="text-sm cursor-pointer whitespace-nowrap">
+                            <Label
+                              htmlFor="use-tracker-tag"
+                              className={`text-sm cursor-pointer whitespace-nowrap ${formState.exprTagDeleteFromClient ? "text-muted-foreground" : ""}`}
+                            >
                               Use tracker name as tag
                             </Label>
                           </div>

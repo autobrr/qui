@@ -404,6 +404,51 @@ func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
 	require.NoError(t, svc.ApplyRuleDryRun(ctx, 1, nil))
 }
 
+func TestCollectManagedTagsForClientReset(t *testing.T) {
+	rules := []*models.Automation{
+		{
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"managed", " stale "},
+				},
+			},
+		},
+		{
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					UseTrackerAsTag:  true, // not supported for reset collection
+					Tags:             []string{"ignored"},
+				},
+			},
+		},
+		{
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          false,
+					DeleteFromClient: true,
+					Tags:             []string{"disabled"},
+				},
+			},
+		},
+		{
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"managed"},
+				},
+			},
+		},
+	}
+
+	got := collectManagedTagsForClientReset(rules)
+	require.Equal(t, []string{"managed", "stale"}, got)
+}
+
 // -----------------------------------------------------------------------------
 // normalizePath tests
 // -----------------------------------------------------------------------------

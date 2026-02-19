@@ -656,12 +656,13 @@ type DeleteAction struct {
 
 // TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
-	Enabled         bool           `json:"enabled"`
-	Tags            []string       `json:"tags"`                      // Tags to manage (fallback if UseTrackerAsTag has no domains)
-	Mode            string         `json:"mode"`                      // "full", "add", "remove"
-	UseTrackerAsTag bool           `json:"useTrackerAsTag,omitempty"` // Derive tag from torrent's tracker domain
-	UseDisplayName  bool           `json:"useDisplayName,omitempty"`  // Use tracker customization display name instead of raw domain
-	Condition       *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled"`
+	Tags             []string       `json:"tags"`                       // Tags to manage (fallback if UseTrackerAsTag has no domains)
+	Mode             string         `json:"mode"`                       // "full", "add", "remove"
+	DeleteFromClient bool           `json:"deleteFromClient,omitempty"` // Delete managed tags from qBittorrent before applying matches
+	UseTrackerAsTag  bool           `json:"useTrackerAsTag,omitempty"`  // Derive tag from torrent's tracker domain
+	UseDisplayName   bool           `json:"useDisplayName,omitempty"`   // Use tracker customization display name instead of raw domain
+	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
 // CategoryAction configures category assignment with optional conditions.

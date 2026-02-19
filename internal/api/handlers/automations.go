@@ -377,6 +377,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "delete.groupId is only supported when delete mode is 'Keep files'", errors.New("invalid delete mode for delete.groupId")
 	}
 
+	if msg, err := validateTagDeleteFromClientConfig(payload.Conditions); err != nil {
+		return http.StatusBadRequest, msg, err
+	}
+
 	if msg, err := validateConditionGroupingConfig(payload.Conditions); err != nil {
 		return http.StatusBadRequest, msg, err
 	}
@@ -483,6 +487,27 @@ func deleteUsesGroupIDOutsideKeepFiles(conditions *models.ActionConditions) bool
 
 	mode := strings.TrimSpace(conditions.Delete.Mode)
 	return mode != "" && mode != models.DeleteModeKeepFiles
+}
+
+func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (string, error) {
+	if conditions == nil || conditions.Tag == nil || !conditions.Tag.Enabled {
+		return "", nil
+	}
+
+	tagAction := conditions.Tag
+	if !tagAction.DeleteFromClient {
+		return "", nil
+	}
+
+	if tagAction.UseTrackerAsTag {
+		return "tag.deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient", errors.New("invalid tag deleteFromClient configuration")
+	}
+
+	if len(models.SanitizeCommaSeparatedStringSlice(tagAction.Tags)) == 0 {
+		return "tag.deleteFromClient requires at least one explicit tag", errors.New("invalid tag deleteFromClient configuration")
+	}
+
+	return "", nil
 }
 
 func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {

@@ -292,6 +292,62 @@ func TestDeleteUsesGroupIDOutsideKeepFiles(t *testing.T) {
 	})
 }
 
+func TestValidateTagDeleteFromClientConfig(t *testing.T) {
+	t.Run("returns nil when tag action is nil", func(t *testing.T) {
+		msg, err := validateTagDeleteFromClientConfig(nil)
+		require.NoError(t, err)
+		require.Empty(t, msg)
+	})
+
+	t.Run("returns nil when deleteFromClient disabled", func(t *testing.T) {
+		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
+			Tag: &models.TagAction{
+				Enabled:          true,
+				Tags:             []string{"managed"},
+				DeleteFromClient: false,
+			},
+		})
+		require.NoError(t, err)
+		require.Empty(t, msg)
+	})
+
+	t.Run("returns error when deleteFromClient with useTrackerAsTag", func(t *testing.T) {
+		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
+			Tag: &models.TagAction{
+				Enabled:          true,
+				DeleteFromClient: true,
+				UseTrackerAsTag:  true,
+			},
+		})
+		require.Error(t, err)
+		require.Contains(t, msg, "Use tracker name as tag")
+	})
+
+	t.Run("returns error when deleteFromClient has no explicit tags", func(t *testing.T) {
+		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
+			Tag: &models.TagAction{
+				Enabled:          true,
+				DeleteFromClient: true,
+				Tags:             []string{" ", ""},
+			},
+		})
+		require.Error(t, err)
+		require.Contains(t, msg, "at least one explicit tag")
+	})
+
+	t.Run("returns nil for explicit tags", func(t *testing.T) {
+		msg, err := validateTagDeleteFromClientConfig(&models.ActionConditions{
+			Tag: &models.TagAction{
+				Enabled:          true,
+				DeleteFromClient: true,
+				Tags:             []string{"managed"},
+			},
+		})
+		require.NoError(t, err)
+		require.Empty(t, msg)
+	})
+}
+
 func TestValidateConditionGroupingConfig(t *testing.T) {
 	t.Run("returns nil when grouped condition uses builtin group id", func(t *testing.T) {
 		msg, err := validateConditionGroupingConfig(&models.ActionConditions{

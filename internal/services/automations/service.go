@@ -2695,6 +2695,22 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 
 	// Execute tag actions for expression-based rules
+	tagsToResetInClient := collectManagedTagsForClientReset(eligibleRules)
+	if len(tagsToResetInClient) > 0 && !dryRun {
+		if err := s.syncManager.DeleteTags(ctx, instanceID, tagsToResetInClient); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Strs("tags", tagsToResetInClient).
+				Msg("automations: failed to delete managed tags from client before retagging")
+		} else {
+			log.Info().
+				Int("instanceID", instanceID).
+				Strs("tags", tagsToResetInClient).
+				Msg("automations: deleted managed tags from client before retagging")
+		}
+	}
+
 	if len(tagChanges) > 0 {
 		tagRuleCounts := make(map[ruleRef]int)
 
@@ -5019,6 +5035,40 @@ func sortActivityRunItems(items []ActivityRunTorrent) {
 		}
 		return items[i].Hash < items[j].Hash
 	})
+}
+
+func collectManagedTagsForClientReset(rules []*models.Automation) []string {
+	if len(rules) == 0 {
+		return nil
+	}
+
+	unique := make(map[string]struct{})
+	for _, rule := range rules {
+		if rule == nil || rule.Conditions == nil || rule.Conditions.Tag == nil {
+			continue
+		}
+		action := rule.Conditions.Tag
+		if !action.Enabled || !action.DeleteFromClient || action.UseTrackerAsTag {
+			continue
+		}
+		for _, tag := range models.SanitizeCommaSeparatedStringSlice(action.Tags) {
+			if tag == "" {
+				continue
+			}
+			unique[tag] = struct{}{}
+		}
+	}
+
+	if len(unique) == 0 {
+		return nil
+	}
+
+	tags := make([]string, 0, len(unique))
+	for tag := range unique {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
 }
 
 func dedupeHashes(hashes []string) []string {

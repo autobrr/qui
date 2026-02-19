@@ -320,6 +320,7 @@ export interface TagAction {
   enabled: boolean
   tags: string[]
   mode: "full" | "add" | "remove"
+  deleteFromClient?: boolean
   useTrackerAsTag?: boolean
   useDisplayName?: boolean
   condition?: RuleCondition
