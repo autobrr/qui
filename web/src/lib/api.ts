@@ -153,26 +153,60 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
-// Session storage key used to guard against reload loops when backend is truly down.
-const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
+// Session storage keys for SSO recovery loop prevention.
+const SSO_RECOVERY_GUARD_KEY = "qui_sso_recovery_attempted"
+const SSO_RECOVERY_TS_KEY = "qui_sso_recovery_ts"
+const SSO_RECOVERY_COOLDOWN_MS = 10_000 // 10 seconds between recovery attempts
+
+// On module init, clear the guard if enough time has passed since the last
+// recovery attempt. This lets a fresh page load (after SSO re-authentication)
+// try recovery again, while preventing rapid navigation loops.
+if (typeof sessionStorage !== "undefined") {
+  const lastAttempt = parseInt(sessionStorage.getItem(SSO_RECOVERY_TS_KEY) || "0", 10)
+  if (Date.now() - lastAttempt > SSO_RECOVERY_COOLDOWN_MS) {
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
+  }
+}
 
 /**
  * Detect network errors that indicate an SSO redirect was blocked by CORS.
  * When an upstream SSO proxy session expires, it often returns a cross-origin
- * redirect that fetch() cannot follow, resulting in a TypeError.
+ * redirect that fetch() cannot follow, resulting in a TypeError or DOMException.
  *
  * This check is intentionally broad because browsers hide redirect details for
  * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
- * network failures at this level. The sessionStorage reload guard in
- * attemptSSORecoveryReload() prevents infinite loops if this misclassifies a
+ * network failures at this level. The sessionStorage recovery guard in
+ * attemptSSORecoveryNavigation() prevents infinite loops if this misclassifies a
  * genuine network outage.
  */
 function isSSOBlockedNetworkError(error: unknown): boolean {
-  if (!(error instanceof TypeError)) {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    if (error.name === "NetworkError") {
+      return true
+    }
+  }
+
+  const maybeName = typeof error === "object" && error !== null && "name" in error? String((error as { name?: unknown }).name): ""
+  if (maybeName === "NetworkError") {
+    return true
+  }
+
+  const msg = error instanceof Error? error.message: typeof error === "string"? error: ""
+
+  if (!msg) {
     return false
   }
-  const msg = error.message.toLowerCase()
-  return msg.includes("networkerror") || msg.includes("failed to fetch")
+
+  const normalized = msg.toLowerCase()
+  return normalized.includes("networkerror") ||
+    normalized.includes("network error") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("cors request did not succeed") ||
+    normalized.includes("cors") ||
+    normalized.includes("load failed") ||
+    normalized.includes("network request failed") ||
+    normalized.includes("request failed")
 }
 
 /**
@@ -195,43 +229,131 @@ function isSSOHTMLResponse(response: Response): boolean {
   return status < 500
 }
 
-/**
- * Attempt a single hard page reload to let the browser follow the SSO redirect
- * at the top level. Uses sessionStorage to prevent infinite reload loops.
- * Skips reload when offline or in background tabs to avoid pointless refreshes.
- */
-function attemptSSORecoveryReload(): void {
-  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
-    return
+async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
+  if (isSSOHTMLResponse(response)) {
+    return true
   }
-  // Don't reload if we're offline - it's not an SSO issue
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return
+
+  if (response.status >= 500) {
+    return false
   }
-  // Don't reload from background tabs - wait for user to return
-  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-    return
+
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType && !contentType.includes("text/html")) {
+    return false
   }
-  if (sessionStorage.getItem(SSO_RELOAD_GUARD_KEY)) {
-    // Already tried once this session; don't loop.
-    return
+
+  if (response.headers.get("content-disposition")) {
+    return false
   }
-  sessionStorage.setItem(SSO_RELOAD_GUARD_KEY, "1")
-  window.location.reload()
+
+  const contentLength = Number(response.headers.get("content-length") || "0")
+  if (contentLength > 1_000_000) {
+    return false
+  }
+
+  try {
+    const body = response.clone().body
+    if (!body) {
+      return false
+    }
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    const maxBytes = 1024
+    let totalBytes = 0
+    let snippet = ""
+    try {
+      while (totalBytes < maxBytes) {
+        const { value, done } = await reader.read()
+        if (done) {
+          break
+        }
+        if (value) {
+          const remaining = maxBytes - totalBytes
+          const chunk = value.length > remaining? value.subarray(0, remaining): value
+          totalBytes += chunk.length
+          snippet += decoder.decode(chunk, { stream: true })
+          if (snippet.length >= maxBytes) {
+            break
+          }
+        }
+      }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {
+        // ignore cancel errors
+      }
+      reader.releaseLock()
+    }
+    snippet += decoder.decode()
+    const trimmed = snippet.trimStart().toLowerCase()
+    return trimmed.startsWith("<!doctype html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<head") ||
+      trimmed.startsWith("<body")
+  } catch {
+    return false
+  }
 }
 
-/** Clear the SSO reload guard after a successful request. */
-function clearSSOReloadGuard(): void {
+/**
+ * Attempt a single hard navigation to let the browser follow the SSO redirect
+ * at the top level. Uses sessionStorage to prevent infinite navigation loops.
+ * Skips navigation when offline or in background tabs to avoid pointless refreshes.
+ * Returns true if navigation was triggered, false if blocked.
+ */
+async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
+  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+    return false
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return false
+  }
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return false
+  }
+  if (!options?.bypassGuard && sessionStorage.getItem(SSO_RECOVERY_GUARD_KEY)) {
+    return false
+  }
+  sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
+  sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
+
+  // Clear all caches (including the service worker's precache) so the next
+  // navigation goes to the network. The SW stays registered but will fall back
+  // to the network on cache miss, letting the SSO proxy intercept the request.
+  // Unregistering the SW entirely can break the SSO proxy's auth flow.
+  if ("caches" in window) {
+    try {
+      const names = await caches.keys()
+      await Promise.all(names.map(name => caches.delete(name)))
+    } catch {
+      // ignore cache clear errors
+    }
+  }
+
+  sessionStorage.setItem("qui_sso_recovered", "1")
+
+  const target = options?.target ?? withBasePath("/")
+  window.location.assign(new URL(target, window.location.origin).href)
+  return true
+}
+
+/** Clear the SSO recovery guard after a successful request. */
+function clearSSORecoveryGuard(): void {
   if (typeof sessionStorage !== "undefined") {
-    sessionStorage.removeItem(SSO_RELOAD_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
   }
 }
 
 /**
  * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
- * an expired SSO session by triggering a page reload.
+ * an expired SSO session by triggering a top-level navigation.
  */
 async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
+  const isLoginRequest = url.includes("/api/auth/login")
+
   let response: Response
   try {
     response = await fetch(url, {
@@ -245,19 +367,27 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   } catch (error) {
     // Only attempt SSO recovery for API endpoints (not other fetches)
     if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
-      attemptSSORecoveryReload()
+      if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+        return new Promise<Response>(() => {})
+      }
     }
     throw error
   }
 
   // If we got an HTML response on an API endpoint, it's likely an SSO login page.
   // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
-  if (isSSOHTMLResponse(response)) {
-    attemptSSORecoveryReload()
-    throw new Error("Received HTML instead of JSON - SSO session may have expired")
+  if (await isLikelySSOHTMLResponse(response)) {
+    if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+      return new Promise<Response>(() => {})
+    }
+    throw new Error(
+      "Received an HTML response instead of JSON from the API. " +
+      "If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), " +
+      "try refreshing the page or re-opening the URL in a new tab."
+    )
   }
 
-  clearSSOReloadGuard()
+  clearSSORecoveryGuard()
   return response
 }
 
