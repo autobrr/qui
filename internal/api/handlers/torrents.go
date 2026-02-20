@@ -1233,7 +1233,14 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for targetInstanceID, hashes := range targetsByInstance {
+	targetInstanceIDs := make([]int, 0, len(targetsByInstance))
+	for targetInstanceID := range targetsByInstance {
+		targetInstanceIDs = append(targetInstanceIDs, targetInstanceID)
+	}
+	slices.Sort(targetInstanceIDs)
+
+	for _, targetInstanceID := range targetInstanceIDs {
+		hashes := targetsByInstance[targetInstanceID]
 		if len(hashes) == 0 {
 			continue
 		}
