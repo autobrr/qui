@@ -32,6 +32,8 @@ When reverse proxying, include your base URL:
 https://host/qui/api/auth/oidc/callback
 ```
 
+If you run OIDC behind an SSO proxy (Cloudflare Access, Pangolin, etc.), review [SSO proxies and CORS](../advanced/sso-proxy-cors) for browser fetch behavior and proxy-side configuration.
+
 ## Example Configuration
 
 ```bash
