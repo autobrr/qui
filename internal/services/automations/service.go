@@ -2505,6 +2505,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			states,
 			ruleByID,
 			evalCtx,
+			force,
 		)
 		return activities, nil
 	}
@@ -4531,6 +4532,7 @@ func (s *Service) recordDryRunActivities(
 	states map[string]*torrentDesiredState,
 	ruleByID map[int]*models.Automation,
 	evalCtx *EvalContext,
+	recordNoMatch bool,
 ) []*models.AutomationActivity {
 	if s.activityStore == nil {
 		return nil
@@ -5010,7 +5012,7 @@ func (s *Service) recordDryRunActivities(
 		}
 	}
 
-	if len(createdActivities) == 0 {
+	if recordNoMatch && len(createdActivities) == 0 {
 		return s.recordDryRunNoMatch(ctx, instanceID)
 	}
 

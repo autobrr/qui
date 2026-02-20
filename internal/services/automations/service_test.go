@@ -1633,6 +1633,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		map[string]*torrentDesiredState{},
 		nil,
 		nil,
+		true,
 	)
 
 	require.Len(t, mockDB.activities, 1)
@@ -1680,6 +1681,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		map[string]*torrentDesiredState{},
 		nil,
 		nil,
+		true,
 	)
 
 	require.Len(t, mockDB.activities, 1)
@@ -1721,6 +1723,7 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		true,
 	)
 
 	require.Len(t, activities, 1)
@@ -1784,11 +1787,12 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 			nil,
 			map[string]qbt.Torrent{"abc123": torrent},
 			[]qbt.Torrent{torrent},
-			states,
-			ruleByID,
-			nil,
-		)
-	})
+				states,
+				ruleByID,
+				nil,
+				true,
+			)
+		})
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -1883,13 +1887,54 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		nil,
 		torrentByHash,
 		torrents,
-		states,
-		ruleByID,
-		nil,
-	)
+			states,
+			ruleByID,
+			nil,
+			true,
+		)
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+}
+
+func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	activities := s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		false,
+	)
+
+	require.Len(t, activities, 0)
+	require.Len(t, mockDB.activities, 0)
 }
 
 // mockQuerier implements dbinterface.Querier for testing activity logging
