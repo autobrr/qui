@@ -2996,6 +2996,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onConfirm={handleSetLocationWrapper}
           isPending={isPending}
           initialLocation={getCommonSavePath(contextTorrents)}
+          instanceId={instanceId}
+          capabilities={capabilities}
         />
 
         {/* Rename dialogs */}
