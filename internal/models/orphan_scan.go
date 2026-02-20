@@ -565,21 +565,21 @@ func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold tim
 	cutoff := time.Now().Add(-threshold).UTC().Format(time.DateTime)
 
 	// Build placeholders for status list
-	placeholders := ""
-	args := make([]interface{}, 0, len(statuses)+1)
+	var placeholders strings.Builder
+	args := make([]any, 0, len(statuses)+1)
 	args = append(args, cutoff)
 	for i, status := range statuses {
 		if i > 0 {
-			placeholders += ", "
+			placeholders.WriteString(", ")
 		}
-		placeholders += "?"
+		placeholders.WriteString("?")
 		args = append(args, status)
 	}
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
 		SET status = 'failed', error_message = 'Marked failed after restart', completed_at = CURRENT_TIMESTAMP
-		WHERE started_at < ? AND status IN (`+placeholders+`)
+		WHERE started_at < ? AND status IN (`+placeholders.String()+`)
 	`, args...)
 	return err
 }
@@ -599,27 +599,25 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 	// Insert in batches of 100
 	const batchSize = 100
 	for i := 0; i < len(files); i += batchSize {
-		end := i + batchSize
-		if end > len(files) {
-			end = len(files)
-		}
+		end := min(i+batchSize, len(files))
 		batch := files[i:end]
 
-		query := `INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status) VALUES `
-		args := make([]interface{}, 0, len(batch)*5)
+		var query strings.Builder
+		query.WriteString(`INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status) VALUES `)
+		args := make([]any, 0, len(batch)*5)
 		for j, f := range batch {
 			if j > 0 {
-				query += ", "
+				query.WriteString(", ")
 			}
-			query += "(?, ?, ?, ?, ?)"
-			var modifiedAt interface{}
+			query.WriteString("(?, ?, ?, ?, ?)")
+			var modifiedAt any
 			if f.ModifiedAt != nil {
 				modifiedAt = *f.ModifiedAt
 			}
 			args = append(args, runID, f.FilePath, f.FileSize, modifiedAt, f.Status)
 		}
 
-		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+		if _, err := s.db.ExecContext(ctx, query.String(), args...); err != nil {
 			return err
 		}
 	}
@@ -784,7 +782,7 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 
 // UpdateFileStatus updates the status of a single file.
 func (s *OrphanScanStore) UpdateFileStatus(ctx context.Context, fileID int64, status string, errorMessage string) error {
-	var errMsg interface{}
+	var errMsg any
 	if errorMessage != "" {
 		errMsg = errorMessage
 	}

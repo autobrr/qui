@@ -81,10 +81,7 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 	fullQuery := BuildQueryWithPlaceholders(queryTemplate, 1, maxParams)
 
 	for i := 0; i < len(valuesList); i += maxParams {
-		end := i + maxParams
-		if end > len(valuesList) {
-			end = len(valuesList)
-		}
+		end := min(i+maxParams, len(valuesList))
 		chunk := valuesList[i:end]
 
 		// Build args for this chunk
@@ -209,10 +206,7 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 	}
 
 	for i := 0; i < len(ids); i += maxParams {
-		end := i + maxParams
-		if end > len(ids) {
-			end = len(ids)
-		}
+		end := min(i+maxParams, len(ids))
 		chunk := ids[i:end]
 
 		// Build args for this chunk
@@ -351,10 +345,7 @@ func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.Nul
 	valueToID := make(map[string]int64, len(valuesList))
 
 	for i := 0; i < len(valuesList); i += maxParams {
-		end := i + maxParams
-		if end > len(valuesList) {
-			end = len(valuesList)
-		}
+		end := min(i+maxParams, len(valuesList))
 		chunk := valuesList[i:end]
 
 		// Build args for this chunk

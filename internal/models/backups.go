@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -453,10 +454,7 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 	const chunkSize = 900
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 
 		if err := s.updateMultipleRunsStatusChunk(ctx, chunk, status, completedAt, errorMessage); err != nil {
@@ -757,10 +755,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	// Pre-deduplicate all strings before interning to minimize database operations
 	// This is crucial for performance when dealing with thousands of items
 	// Estimate capacity: torrents often share categories/tags, so less unique values than items
-	estimatedUniqueStrings := len(items) / 10
-	if estimatedUniqueStrings < 100 {
-		estimatedUniqueStrings = 100
-	}
+	estimatedUniqueStrings := max(len(items)/10, 100)
 
 	uniqueRequired := make(map[string]struct{}, estimatedUniqueStrings)
 	uniqueOptional := make(map[string]struct{}, estimatedUniqueStrings)
@@ -848,16 +843,13 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	// Pre-build the query template for full chunks to avoid repeated string building in hot path
 	queryTemplate := `INSERT INTO instance_backup_items (
-		run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+		run_id, torrent_hash_id, name_id, category_id, size_bytes,
 		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
 	) VALUES %s`
 	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, chunkSize)
 
 	for i := 0; i < len(items); i += chunkSize {
-		end := i + chunkSize
-		if end > len(items) {
-			end = len(items)
-		}
+		end := min(i+chunkSize, len(items))
 		chunk := items[i:end]
 
 		// Use pre-built query for full chunks, build new one only for smaller final chunk
@@ -972,10 +964,7 @@ func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*
 	var allItems []*BackupItem
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 
 		items, err := s.listItemsForRunsChunk(ctx, chunk)
@@ -989,7 +978,7 @@ func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*
 }
 
 func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64) ([]*BackupItem, error) {
-	args := make([]interface{}, len(runIDs))
+	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
 	}
@@ -1176,10 +1165,7 @@ func (s *BackupStore) countBlobReferencesBatchChunk(ctx context.Context, relPath
 	const chunkSize = 900
 
 	for i := 0; i < len(relPaths); i += chunkSize {
-		end := i + chunkSize
-		if end > len(relPaths) {
-			end = len(relPaths)
-		}
+		end := min(i+chunkSize, len(relPaths))
 		chunk := relPaths[i:end]
 
 		chunkResult, err := s.countBlobReferencesChunk(ctx, chunk)
@@ -1188,16 +1174,14 @@ func (s *BackupStore) countBlobReferencesBatchChunk(ctx context.Context, relPath
 		}
 
 		// Merge results
-		for path, count := range chunkResult {
-			result[path] = count
-		}
+		maps.Copy(result, chunkResult)
 	}
 
 	return result, nil
 }
 
 func (s *BackupStore) countBlobReferencesChunk(ctx context.Context, relPaths []string) (map[string]int, error) {
-	args := make([]interface{}, len(relPaths))
+	args := make([]any, len(relPaths))
 	for i, path := range relPaths {
 		args[i] = path
 	}
@@ -1233,9 +1217,9 @@ func (s *BackupStore) countBlobReferencesChunk(ctx context.Context, relPaths []s
 func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
 	var name string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT sp.value 
-		FROM instances i 
-		JOIN string_pool sp ON i.name_id = sp.id 
+		SELECT sp.value
+		FROM instances i
+		JOIN string_pool sp ON i.name_id = sp.id
 		WHERE i.id = ?
 	`, instanceID).Scan(&name)
 	if err != nil {
@@ -1441,10 +1425,7 @@ func (s *BackupStore) GetRuns(ctx context.Context, runIDs []int64) ([]*BackupRun
 	var allRuns []*BackupRun
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 
 		runs, err := s.getRunsChunk(ctx, chunk)
@@ -1468,7 +1449,7 @@ func (s *BackupStore) GetRuns(ctx context.Context, runIDs []int64) ([]*BackupRun
 }
 
 func (s *BackupStore) getRunsChunk(ctx context.Context, runIDs []int64) ([]*BackupRun, error) {
-	args := make([]interface{}, len(runIDs))
+	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
 	}
@@ -1696,10 +1677,7 @@ func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) e
 	const chunkSize = 900
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 
 		if err := s.deleteItemsByRunIDsChunk(ctx, chunk); err != nil {
@@ -1752,10 +1730,7 @@ func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error
 	const chunkSize = 900
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 
 		if err := s.deleteRunsByIDsChunk(ctx, chunk); err != nil {
@@ -1830,10 +1805,7 @@ func (s *BackupStore) CleanupRuns(ctx context.Context, runIDs []int64) error {
 	const chunkSize = 900 // Well under typical SQLite limits
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 
 		if err := s.cleanupRunsChunk(ctx, chunk); err != nil {
@@ -1851,7 +1823,7 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 	}
 	defer tx.Rollback()
 
-	args := make([]interface{}, len(runIDs))
+	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
 	}

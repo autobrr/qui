@@ -54,6 +54,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -315,19 +316,14 @@ func registerConnectionHook() {
 }
 
 func isReadOnlyDSN(dsn string) bool {
-	queryStart := strings.IndexByte(dsn, '?')
-	if queryStart == -1 {
+	_, after, ok := strings.Cut(dsn, "?")
+	if !ok {
 		return false
 	}
-	query := dsn[queryStart+1:]
-	for _, segment := range strings.FieldsFunc(query, func(r rune) bool {
+	query := after
+	return slices.Contains(strings.FieldsFunc(query, func(r rune) bool {
 		return r == '&' || r == ';'
-	}) {
-		if segment == "mode=ro" {
-			return true
-		}
-	}
-	return false
+	}), "mode=ro")
 }
 
 type pragmaDirective struct {

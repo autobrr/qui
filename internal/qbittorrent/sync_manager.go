@@ -1112,10 +1112,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Apply pagination to filtered results; limit <= 0 means "unbounded"
 	totalTorrents := len(filteredTorrents)
-	start := max(offset, 0)
-	if start > totalTorrents {
-		start = totalTorrents
-	}
+	start := min(max(offset, 0), totalTorrents)
 
 	end := totalTorrents
 	if limit > 0 {
@@ -1519,23 +1516,14 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 	// Apply pagination
 	// Clamp offset to valid range [0, len(allTorrents)]
-	start := offset
-	if start < 0 {
-		start = 0
-	}
-	if start > len(allTorrents) {
-		start = len(allTorrents)
-	}
+	start := min(max(offset, 0), len(allTorrents))
 
 	// Handle limit: non-positive means "no limit"
 	var end int
 	if limit <= 0 {
 		end = len(allTorrents)
 	} else {
-		end = start + limit
-		if end > len(allTorrents) {
-			end = len(allTorrents)
-		}
+		end = min(start+limit, len(allTorrents))
 	}
 
 	// Ensure start <= end before slicing
@@ -2114,10 +2102,7 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 
 	elapsed := time.Since(start)
 	if elapsed > 200*time.Millisecond {
-		fetchedCount := len(filesByHash) - cacheHits
-		if fetchedCount < 0 {
-			fetchedCount = 0
-		}
+		fetchedCount := max(len(filesByHash)-cacheHits, 0)
 		log.Debug().
 			Int("instanceID", instanceID).
 			Int("requested", len(normalized.canonical)).
@@ -2178,13 +2163,7 @@ func fileFetchConcurrency(requestCount int) int {
 		return 0
 	}
 
-	limit := runtime.NumCPU()
-	if limit < 4 {
-		limit = 4
-	}
-	if limit > 16 {
-		limit = 16
-	}
+	limit := min(max(runtime.NumCPU(), 4), 16)
 	if requestCount < limit {
 		return requestCount
 	}

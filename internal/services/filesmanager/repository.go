@@ -36,7 +36,7 @@ type fileRow struct {
 	size            int64
 	progress        float64
 	priority        int
-	isSeed          interface{}
+	isSeed          any
 	pieceRangeStart int64
 	pieceRangeEnd   int64
 	availability    float64
@@ -130,7 +130,7 @@ func (r *Repository) GetFilesTx(ctx context.Context, tx dbinterface.TxQuerier, i
 // getFiles is the internal implementation that works with any querier (db or tx)
 func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, hash string) ([]CachedFile, error) {
 	query := `
-		SELECT id, instance_id, torrent_hash, file_index, name, size, progress, 
+		SELECT id, instance_id, torrent_hash, file_index, name, size, progress,
 		       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
 		FROM torrent_files_cache_view
 		WHERE instance_id = ? AND torrent_hash = ?
@@ -265,7 +265,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				return fmt.Errorf("missing interned ID for file %s", f.Name)
 			}
 
-			var isSeed interface{}
+			var isSeed any
 			if f.IsSeed != nil {
 				isSeed = *f.IsSeed
 			}
@@ -288,8 +288,8 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	// Pre-build the full query for full batches
 	queryTemplate := `
-			INSERT INTO torrent_files_cache 
-			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
+			INSERT INTO torrent_files_cache
+			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority,
 			 is_seed, piece_range_start, piece_range_end, availability, cached_at)
 			VALUES %s
 			ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
@@ -307,14 +307,11 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	t := time.Now()
 
 	// Pre-allocate args slice to reuse across batches
-	args := make([]interface{}, 0, fileBatchSize*12)
+	args := make([]any, 0, fileBatchSize*12)
 
 	// Batch insert files
 	for i := 0; i < len(allRows); i += fileBatchSize {
-		end := i + fileBatchSize
-		if end > len(allRows) {
-			end = len(allRows)
-		}
+		end := min(i+fileBatchSize, len(allRows))
 		batch := allRows[i:end]
 
 		// Reset args for this batch
@@ -503,7 +500,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	hashID := ids[0]
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO torrent_files_sync 
+		INSERT INTO torrent_files_sync
 		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
@@ -568,14 +565,11 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, syncBatchSize)
 
 	// Pre-allocate args slice to reuse across batches
-	args := make([]interface{}, 0, syncBatchSize*5)
+	args := make([]any, 0, syncBatchSize*5)
 
 	// Batch insert sync infos
 	for i := 0; i < len(infos); i += syncBatchSize {
-		end := i + syncBatchSize
-		if end > len(infos) {
-			end = len(infos)
-		}
+		end := min(i+syncBatchSize, len(infos))
 		batch := infos[i:end]
 
 		// Reset args for this batch
@@ -720,10 +714,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	args := make([]any, 0, hashBatchSize)
 
 	for i := 0; i < len(currentHashes); i += hashBatchSize {
-		end := i + hashBatchSize
-		if end > len(currentHashes) {
-			end = len(currentHashes)
-		}
+		end := min(i+hashBatchSize, len(currentHashes))
 		batch := currentHashes[i:end]
 
 		// Reset args for this batch
@@ -785,7 +776,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 // GetCacheStats returns statistics about the cache for an instance
 func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
 	query := `
-		SELECT 
+		SELECT
 			COUNT(DISTINCT torrent_hash) as cached_torrents,
 			COUNT(*) as total_files,
 			MIN(julianday('now') - julianday(last_synced_at)) * 86400 as oldest_seconds,
@@ -851,10 +842,7 @@ func chunkHashes(hashes []string, size int) [][]string {
 	}
 	var chunks [][]string
 	for start := 0; start < len(hashes); start += size {
-		end := start + size
-		if end > len(hashes) {
-			end = len(hashes)
-		}
+		end := min(start+size, len(hashes))
 		chunks = append(chunks, hashes[start:end])
 	}
 	return chunks
@@ -866,10 +854,7 @@ func chunkInts(ints []int64, size int) [][]int64 {
 	}
 	var chunks [][]int64
 	for start := 0; start < len(ints); start += size {
-		end := start + size
-		if end > len(ints) {
-			end = len(ints)
-		}
+		end := min(start+size, len(ints))
 		chunks = append(chunks, ints[start:end])
 	}
 	return chunks
@@ -880,7 +865,7 @@ func buildPlaceholders(count int) string {
 		return ""
 	}
 	var sb strings.Builder
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i > 0 {
 			sb.WriteString(",")
 		}
