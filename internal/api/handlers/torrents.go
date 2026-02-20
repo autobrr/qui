@@ -1097,6 +1097,14 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 				RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
 				return
 			}
+			if response.PartialResults {
+				log.Warn().
+					Str("action", req.Action).
+					Ints("instanceIDs", req.InstanceIDs).
+					Msg("Cross-instance selectAll bulk action aborted due to partial results")
+				RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for bulk action")
+				return
+			}
 			appendTargetsFromCrossInstanceTorrents(
 				targetsByInstance,
 				seenTargets,
@@ -1191,6 +1199,14 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 				if crossErr != nil {
 					log.Error().Err(crossErr).Msg("Failed to resolve hash targets for cross-instance bulk action")
 					RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
+					return
+				}
+				if response.PartialResults {
+					log.Warn().
+						Str("action", req.Action).
+						Ints("instanceIDs", req.InstanceIDs).
+						Msg("Cross-instance hash resolution aborted due to partial results")
+					RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for bulk action")
 					return
 				}
 
