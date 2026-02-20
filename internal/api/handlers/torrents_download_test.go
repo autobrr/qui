@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
@@ -135,6 +136,8 @@ func TestDownloadTorrentContentFile_RejectsInvalidFileIndex(t *testing.T) {
 	}
 }
 
+// Keep these as separate tests: each failure path uses different mock setup and assertions,
+// so a table-driven helper would hide intent and make regressions harder to diagnose.
 func TestDownloadTorrentContentFile_ReturnsNotFoundForMissingInstance(t *testing.T) {
 	t.Parallel()
 
@@ -305,6 +308,38 @@ func TestDownloadTorrentContentFile_SkipsDirectoryCandidateAndStreamsFile(t *tes
 	require.Equal(t, "from save path", rec.Body.String())
 }
 
+func TestDownloadTorrentContentFile_PrefersSavePathOverStaleContentPath(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	savePath := t.TempDir()
+	stalePathDir := t.TempDir()
+	relativePath := "Movie.iso"
+	saveFilePath := filepath.Join(savePath, relativePath)
+	staleContentPath := filepath.Join(stalePathDir, relativePath)
+
+	require.NoError(t, os.WriteFile(saveFilePath, []byte("fresh content"), 0o600))
+	require.NoError(t, os.WriteFile(staleContentPath, []byte("stale content"), 0o600))
+
+	files := qbt.TorrentFiles{{Index: 7, Name: relativePath}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: savePath},
+		torrents:   []qbt.Torrent{{ContentPath: staleContentPath}},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "7")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "fresh content", rec.Body.String())
+}
 func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 	t.Parallel()
 
@@ -337,6 +372,36 @@ func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 	require.Contains(t, rec.Header().Get("Content-Disposition"), "file.txt")
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/plain")
 	require.Equal(t, "hello world", rec.Body.String())
+}
+
+func TestDownloadTorrentContentFile_ConditionalGetReturnsNotModified(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	baseDir := t.TempDir()
+	relativePath := "folder/file.txt"
+	fullPath := filepath.Join(baseDir, relativePath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
+	require.NoError(t, os.WriteFile(fullPath, []byte("hello world"), 0o600))
+
+	files := qbt.TorrentFiles{{Index: 3, Name: relativePath}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: baseDir},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "3")
+	req.Header.Set("If-Modified-Since", time.Now().Add(1*time.Hour).UTC().Format(http.TimeFormat))
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusNotModified, rec.Code)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestFilePathCandidates(t *testing.T) {
@@ -396,7 +461,7 @@ func TestFilePathCandidates(t *testing.T) {
 			},
 		},
 		{
-			name:         "uses_download_path_after_content_and_save",
+			name:         "uses_content_path_after_save_and_download",
 			savePath:     "/downloads",
 			downloadPath: "/tmp/incomplete",
 			contentPath:  "/downloads/Show.S01",
@@ -417,8 +482,8 @@ func TestFilePathCandidates(t *testing.T) {
 				require.NotEqual(t, -1, contentIdx)
 				require.NotEqual(t, -1, saveIdx)
 				require.NotEqual(t, -1, downloadIdx)
-				require.Less(t, contentIdx, saveIdx)
 				require.Less(t, saveIdx, downloadIdx)
+				require.Less(t, downloadIdx, contentIdx)
 			},
 		},
 	}

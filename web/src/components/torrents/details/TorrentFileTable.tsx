@@ -467,13 +467,19 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                         </ContextMenuItem>
                       )}
                       {isFile && onRenameFile && (
-                        <ContextMenuItem onClick={() => onRenameFile(node.id)}>
+                        <ContextMenuItem
+                          onClick={() => onRenameFile(node.id)}
+                          disabled={incognitoMode}
+                        >
                           <Pencil className="h-3.5 w-3.5 mr-2" />
                           Rename File
                         </ContextMenuItem>
                       )}
                       {!isFile && onRenameFolder && (
-                        <ContextMenuItem onClick={() => onRenameFolder(node.id)}>
+                        <ContextMenuItem
+                          onClick={() => onRenameFolder(node.id)}
+                          disabled={incognitoMode}
+                        >
                           <Pencil className="h-3.5 w-3.5 mr-2" />
                           Rename Folder
                         </ContextMenuItem>

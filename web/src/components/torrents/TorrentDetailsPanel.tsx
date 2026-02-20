@@ -1511,7 +1511,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onToggleFolder={handleToggleFolderDownload}
                 onRenameFile={handleRenameFileClick}
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
-                onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
+                onDownloadFile={hasLocalFilesystemAccess && !incognitoMode ? handleDownloadFile : undefined}
               />
             ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
@@ -1564,7 +1564,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       onToggleFolder={handleToggleFolderDownload}
                       onRenameFile={handleRenameFileClick}
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
-                      onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
+                      onDownloadFile={hasLocalFilesystemAccess && !incognitoMode ? handleDownloadFile : undefined}
                     />
                   </div>
                 </ScrollArea>
