@@ -45,6 +45,7 @@ var defaultUnregisteredStatuses = []string{
 	"não registrado",
 	"upgraded",
 	"uploaded",
+	"nem tal�lhat�",
 }
 
 // trackerDownStatuses lists tracker messages indicating an outage.
