@@ -33,7 +33,7 @@ interface DeleteTorrentDialogProps {
   showBlockCrossSeeds: boolean
   blockCrossSeeds: boolean
   onBlockCrossSeedsChange: (checked: boolean) => void
-  crossSeedWarning: CrossSeedWarningResult
+  crossSeedWarning?: CrossSeedWarningResult | null
   onConfirm: () => void
 }
 
@@ -56,7 +56,8 @@ export function DeleteTorrentDialog({
   onConfirm,
 }: DeleteTorrentDialogProps) {
   // Include cross-seeds in the displayed count when selected
-  const displayCount = deleteCrossSeeds ? count + crossSeedWarning.affectedTorrents.length : count
+  const crossSeedCount = deleteCrossSeeds ? (crossSeedWarning?.affectedTorrents.length ?? 0) : 0
+  const displayCount = count + crossSeedCount
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -79,17 +80,19 @@ export function DeleteTorrentDialog({
           isLocked={isDeleteFilesLocked}
           onToggleLock={onToggleDeleteFilesLock}
         />
-        <CrossSeedWarning
-          affectedTorrents={crossSeedWarning.affectedTorrents}
-          searchState={crossSeedWarning.searchState}
-          hasWarning={crossSeedWarning.hasWarning}
-          deleteFiles={deleteFiles}
-          deleteCrossSeeds={deleteCrossSeeds}
-          onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
-          onSearch={crossSeedWarning.search}
-          totalToCheck={crossSeedWarning.totalToCheck}
-          checkedCount={crossSeedWarning.checkedCount}
-        />
+        {crossSeedWarning && (
+          <CrossSeedWarning
+            affectedTorrents={crossSeedWarning.affectedTorrents}
+            searchState={crossSeedWarning.searchState}
+            hasWarning={crossSeedWarning.hasWarning}
+            deleteFiles={deleteFiles}
+            deleteCrossSeeds={deleteCrossSeeds}
+            onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
+            onSearch={crossSeedWarning.search}
+            totalToCheck={crossSeedWarning.totalToCheck}
+            checkedCount={crossSeedWarning.checkedCount}
+          />
+        )}
         {showBlockCrossSeeds && (
           <div className="mt-3 flex items-center gap-2">
             <Checkbox

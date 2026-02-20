@@ -18,6 +18,7 @@ import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
@@ -51,6 +52,7 @@ import { RenameSubmenu } from "./RenameSubmenu"
 interface TorrentContextMenuProps {
   children: React.ReactNode
   instanceId: number
+  readOnly?: boolean
   torrent: Torrent
   isSelected: boolean
   isAllSelected?: boolean
@@ -58,7 +60,7 @@ interface TorrentContextMenuProps {
   selectedTorrents: Torrent[]
   effectiveSelectionCount: number
   onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
-  onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean }) => void
+  onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean; targets?: Array<{ instanceId: number; hash: string }> }) => void
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
@@ -73,7 +75,7 @@ interface TorrentContextMenuProps {
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
   availableCategories?: Record<string, Category>
-  onSetCategory?: (category: string, hashes: string[]) => void
+  onSetCategory?: (category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => void
   isPending?: boolean
   onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
   isExporting?: boolean
@@ -89,6 +91,7 @@ interface TorrentContextMenuProps {
 export const TorrentContextMenu = memo(function TorrentContextMenu({
   children,
   instanceId: _instanceId,
+  readOnly = false,
   torrent,
   isSelected,
   isAllSelected = false,
@@ -136,6 +139,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     useSelection ? selectedTorrents : [torrent],
   [useSelection, selectedTorrents, torrent]
   )
+  const actionTargets = useMemo(() => buildTorrentActionTargets(torrents, _instanceId), [torrents, _instanceId])
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
@@ -292,36 +296,37 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const seqDlMixed = seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-    onAction(action as TorrentAction, hashes)
-  }, [onAction, hashes])
+    onAction(action as TorrentAction, hashes, { targets: actionTargets })
+  }, [onAction, hashes, actionTargets])
 
   const handleForceStartToggle = useCallback((enable: boolean) => {
-    onAction(TORRENT_ACTIONS.FORCE_START, hashes, { enable })
-  }, [onAction, hashes])
+    onAction(TORRENT_ACTIONS.FORCE_START, hashes, { enable, targets: actionTargets })
+  }, [onAction, hashes, actionTargets])
 
   const handleSeqDlToggle = useCallback((enable: boolean) => {
-    onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, hashes, { enable })
-  }, [onAction, hashes])
+    onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, hashes, { enable, targets: actionTargets })
+  }, [onAction, hashes, actionTargets])
 
   const handleSetCategory = useCallback((category: string) => {
     if (onSetCategory) {
-      onSetCategory(category, hashes)
+      onSetCategory(category, hashes, actionTargets)
     }
-  }, [onSetCategory, hashes])
+  }, [onSetCategory, hashes, actionTargets])
 
   const handleTmmToggle = useCallback((enable: boolean) => {
     if (onPrepareTmm) {
       onPrepareTmm(hashes, count, enable)
     } else {
-      onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable })
+      onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable, targets: actionTargets })
     }
-  }, [onPrepareTmm, onAction, hashes, count])
+  }, [onPrepareTmm, onAction, hashes, count, actionTargets])
 
   const handleLocationClick = useCallback(() => {
     onPrepareLocation(hashes, torrents, count)
   }, [onPrepareLocation, hashes, torrents, count])
 
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
+  const supportsInstanceScopedActions = _instanceId > 0
 
   return (
     <ContextMenu>
@@ -333,230 +338,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         collisionPadding={10}
         className="ml-2"
       >
-        <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
-          View Details
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes)}
-          disabled={isPending}
-        >
-          <Play className="mr-2 h-4 w-4" />
-          Resume {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        {forceStartMixed ? (
+        {readOnly ? (
           <>
-            <ContextMenuItem
-              onClick={() => handleForceStartToggle(true)}
-              disabled={isPending}
-            >
-              <FastForward className="mr-2 h-4 w-4" />
-              Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
+              View Details
             </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => handleForceStartToggle(false)}
-              disabled={isPending}
-            >
-              <FastForward className="mr-2 h-4 w-4" />
-              Disable Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-            </ContextMenuItem>
-          </>
-        ) : (
-          <ContextMenuItem
-            onClick={() => handleForceStartToggle(!allForceStarted)}
-            disabled={isPending}
-          >
-            <FastForward className="mr-2 h-4 w-4" />
-            {allForceStarted? `Disable Force Start ${count > 1 ? `(${count})` : ""}`: `Force Start ${count > 1 ? `(${count})` : ""}`}
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem
-          onClick={() => onAction(TORRENT_ACTIONS.PAUSE, hashes)}
-          disabled={isPending}
-        >
-          <Pause className="mr-2 h-4 w-4" />
-          Pause {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareRecheck(hashes, count)}
-          disabled={isPending}
-        >
-          <CheckCircle className="mr-2 h-4 w-4" />
-          Force Recheck {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareReannounce(hashes, count)}
-          disabled={isPending}
-        >
-          <Radio className="mr-2 h-4 w-4" />
-          Reannounce {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        {seqDlMixed ? (
-          <>
-            <ContextMenuItem
-              onClick={() => handleSeqDlToggle(true)}
-              disabled={isPending}
-            >
-              <Blocks className="mr-2 h-4 w-4" />
-              Enable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => handleSeqDlToggle(false)}
-              disabled={isPending}
-            >
-              <Blocks className="mr-2 h-4 w-4" />
-              Disable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-            </ContextMenuItem>
-          </>
-        ) : (
-          <ContextMenuItem
-            onClick={() => handleSeqDlToggle(!allSeqDlEnabled)}
-            disabled={isPending}
-          >
-            <Blocks className="mr-2 h-4 w-4" />
-            {allSeqDlEnabled? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`: `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
-          </ContextMenuItem>
-        )}
-        <ContextMenuSeparator />
-        <QueueSubmenu
-          type="context"
-          hashCount={count}
-          onQueueAction={handleQueueAction}
-          isPending={isPending}
-        />
-        <ContextMenuSeparator />
-        {canCrossSeedSearch && (
-          <ContextMenuItem
-            onClick={() => onCrossSeedSearch?.(torrent)}
-            disabled={isPending || isCrossSeedSearching}
-          >
-            <Search className="mr-2 h-4 w-4" />
-            Search Cross-Seeds
-          </ContextMenuItem>
-        )}
-        {onFilterChange && (
-          <ContextMenuItem
-            onClick={handleFilterCrossSeeds}
-            disabled={isPending || isFilteringCrossSeeds || count > 1}
-            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
-          >
-            <GitBranch className="mr-2 h-4 w-4" />
-            {count > 1 ? (
-              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
-            ) : (
-              <>Filter Cross-Seeds</>
-            )}
-            {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
-          </ContextMenuItem>
-        )}
-        {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
-        <ContextMenuItem
-          onClick={() => onPrepareTags("add", hashes, torrents)}
-          disabled={isPending}
-        >
-          <Tag className="mr-2 h-4 w-4" />
-          Add Tags {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareTags("set", hashes, torrents)}
-          disabled={isPending}
-        >
-          <Tag className="mr-2 h-4 w-4" />
-          Replace Tags {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <CategorySubmenu
-          type="context"
-          hashCount={count}
-          availableCategories={availableCategories}
-          onSetCategory={handleSetCategory}
-          isPending={isPending}
-          currentCategory={torrent.category}
-          useSubcategories={useSubcategories}
-        />
-        <ContextMenuItem
-          onClick={handleLocationClick}
-          disabled={isPending}
-        >
-          <FolderOpen className="mr-2 h-4 w-4" />
-          Set Location {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <RenameSubmenu
-          type="context"
-          hashCount={count}
-          onRenameTorrent={() => onPrepareRenameTorrent(hashes, torrents)}
-          onRenameFile={() => onTorrentSelect?.(torrent, "content")}
-          onRenameFolder={() => onTorrentSelect?.(torrent, "content")}
-          isPending={isPending}
-          capabilities={capabilities}
-        />
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          onClick={() => onPrepareShareLimit(hashes, torrents)}
-          disabled={isPending}
-        >
-          <Sprout className="mr-2 h-4 w-4" />
-          Set Share Limits {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareSpeedLimits(hashes, torrents)}
-          disabled={isPending}
-        >
-          <Gauge className="mr-2 h-4 w-4" />
-          Set Speed Limits {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        {mixed ? (
-          <>
-            <ContextMenuItem
-              onClick={() => handleTmmToggle(true)}
-              disabled={isPending}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Enable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => handleTmmToggle(false)}
-              disabled={isPending}
-            >
-              <Settings2 className="mr-2 h-4 w-4" />
-              Disable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-            </ContextMenuItem>
-          </>
-        ) : (
-          <ContextMenuItem
-            onClick={() => handleTmmToggle(!allEnabled)}
-            disabled={isPending}
-          >
-            {allEnabled ? (
-              <>
-                <Settings2 className="mr-2 h-4 w-4" />
-                Disable TMM {count > 1 ? `(${count})` : ""}
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Enable TMM {count > 1 ? `(${count})` : ""}
-              </>
-            )}
-          </ContextMenuItem>
-        )}
-        <ContextMenuSeparator />
-        <ExternalProgramsSubmenu instanceId={_instanceId} hashes={hashes} />
-        {supportsTorrentExport && (
-          <ContextMenuItem
-            onClick={handleExport}
-            disabled={isExporting}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
-          </ContextMenuItem>
-        )}
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <Copy className="mr-4 h-4 w-4" />
-            Copy...
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent>
+            <ContextMenuSeparator />
             <ContextMenuItem onClick={handleCopyNames}>
               Copy Name
             </ContextMenuItem>
@@ -566,17 +353,257 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             <ContextMenuItem onClick={handleCopyFullPaths}>
               Copy Full Path
             </ContextMenuItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          onClick={() => onPrepareDelete(hashes, torrents)}
-          disabled={isPending}
-          className="text-destructive"
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
+          </>
+        ) : (
+          <>
+            <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
+              View Details
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes, { targets: actionTargets })}
+              disabled={isPending}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Resume {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            {forceStartMixed ? (
+              <>
+                <ContextMenuItem
+                  onClick={() => handleForceStartToggle(true)}
+                  disabled={isPending}
+                >
+                  <FastForward className="mr-2 h-4 w-4" />
+                  Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => handleForceStartToggle(false)}
+                  disabled={isPending}
+                >
+                  <FastForward className="mr-2 h-4 w-4" />
+                  Disable Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+                </ContextMenuItem>
+              </>
+            ) : (
+              <ContextMenuItem
+                onClick={() => handleForceStartToggle(!allForceStarted)}
+                disabled={isPending}
+              >
+                <FastForward className="mr-2 h-4 w-4" />
+                {allForceStarted ? `Disable Force Start ${count > 1 ? `(${count})` : ""}` : `Force Start ${count > 1 ? `(${count})` : ""}`}
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem
+              onClick={() => onAction(TORRENT_ACTIONS.PAUSE, hashes, { targets: actionTargets })}
+              disabled={isPending}
+            >
+              <Pause className="mr-2 h-4 w-4" />
+              Pause {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => onPrepareRecheck(hashes, count)}
+              disabled={isPending}
+            >
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Force Recheck {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => onPrepareReannounce(hashes, count)}
+              disabled={isPending}
+            >
+              <Radio className="mr-2 h-4 w-4" />
+              Reannounce {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            {seqDlMixed ? (
+              <>
+                <ContextMenuItem
+                  onClick={() => handleSeqDlToggle(true)}
+                  disabled={isPending}
+                >
+                  <Blocks className="mr-2 h-4 w-4" />
+                  Enable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => handleSeqDlToggle(false)}
+                  disabled={isPending}
+                >
+                  <Blocks className="mr-2 h-4 w-4" />
+                  Disable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+                </ContextMenuItem>
+              </>
+            ) : (
+              <ContextMenuItem
+                onClick={() => handleSeqDlToggle(!allSeqDlEnabled)}
+                disabled={isPending}
+              >
+                <Blocks className="mr-2 h-4 w-4" />
+                {allSeqDlEnabled ? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}` : `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
+              </ContextMenuItem>
+            )}
+            <ContextMenuSeparator />
+            <QueueSubmenu
+              type="context"
+              hashCount={count}
+              onQueueAction={handleQueueAction}
+              isPending={isPending}
+            />
+            <ContextMenuSeparator />
+            {canCrossSeedSearch && (
+              <ContextMenuItem
+                onClick={() => onCrossSeedSearch?.(torrent)}
+                disabled={isPending || isCrossSeedSearching}
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Search Cross-Seeds
+              </ContextMenuItem>
+            )}
+            {onFilterChange && (
+              <ContextMenuItem
+                onClick={handleFilterCrossSeeds}
+                disabled={isPending || isFilteringCrossSeeds || count > 1}
+                title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
+              >
+                <GitBranch className="mr-2 h-4 w-4" />
+                {count > 1 ? (
+                  <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
+                ) : (
+                  <>Filter Cross-Seeds</>
+                )}
+                {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
+              </ContextMenuItem>
+            )}
+            {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
+            <ContextMenuItem
+              onClick={() => onPrepareTags("add", hashes, torrents)}
+              disabled={isPending}
+            >
+              <Tag className="mr-2 h-4 w-4" />
+              Add Tags {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => onPrepareTags("set", hashes, torrents)}
+              disabled={isPending}
+            >
+              <Tag className="mr-2 h-4 w-4" />
+              Replace Tags {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            <CategorySubmenu
+              type="context"
+              hashCount={count}
+              availableCategories={availableCategories}
+              onSetCategory={handleSetCategory}
+              isPending={isPending}
+              currentCategory={torrent.category}
+              useSubcategories={useSubcategories}
+            />
+            <ContextMenuItem
+              onClick={handleLocationClick}
+              disabled={isPending}
+            >
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Set Location {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            {supportsInstanceScopedActions && (
+              <RenameSubmenu
+                type="context"
+                hashCount={count}
+                onRenameTorrent={() => onPrepareRenameTorrent(hashes, torrents)}
+                onRenameFile={() => onTorrentSelect?.(torrent, "content")}
+                onRenameFolder={() => onTorrentSelect?.(torrent, "content")}
+                isPending={isPending}
+                capabilities={capabilities}
+              />
+            )}
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => onPrepareShareLimit(hashes, torrents)}
+              disabled={isPending}
+            >
+              <Sprout className="mr-2 h-4 w-4" />
+              Set Share Limits {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => onPrepareSpeedLimits(hashes, torrents)}
+              disabled={isPending}
+            >
+              <Gauge className="mr-2 h-4 w-4" />
+              Set Speed Limits {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            {mixed ? (
+              <>
+                <ContextMenuItem
+                  onClick={() => handleTmmToggle(true)}
+                  disabled={isPending}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Enable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => handleTmmToggle(false)}
+                  disabled={isPending}
+                >
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Disable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+                </ContextMenuItem>
+              </>
+            ) : (
+              <ContextMenuItem
+                onClick={() => handleTmmToggle(!allEnabled)}
+                disabled={isPending}
+              >
+                {allEnabled ? (
+                  <>
+                    <Settings2 className="mr-2 h-4 w-4" />
+                    Disable TMM {count > 1 ? `(${count})` : ""}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Enable TMM {count > 1 ? `(${count})` : ""}
+                  </>
+                )}
+              </ContextMenuItem>
+            )}
+            <ContextMenuSeparator />
+            {supportsInstanceScopedActions && <ExternalProgramsSubmenu instanceId={_instanceId} hashes={hashes} />}
+            {supportsTorrentExport && (
+              <ContextMenuItem
+                onClick={handleExport}
+                disabled={isExporting}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
+              </ContextMenuItem>
+            )}
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <Copy className="mr-4 h-4 w-4" />
+                Copy...
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                <ContextMenuItem onClick={handleCopyNames}>
+                  Copy Name
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleCopyHashes}>
+                  Copy Hash
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleCopyFullPaths}>
+                  Copy Full Path
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => onPrepareDelete(hashes, torrents)}
+              disabled={isPending}
+              className="text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete {count > 1 ? `(${count})` : ""}
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
