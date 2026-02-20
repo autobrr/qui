@@ -203,6 +203,7 @@ export const TORRENT_STATES = [
   { value: "errored", label: "Error" },
   { value: "tracker_down", label: "Tracker Down" },
   { value: "checking", label: "Checking" },
+  { value: "checkingResumeData", label: "Checking Resume Data" },
   { value: "moving", label: "Moving" },
 
   // Specific qBittorrent state (kept for targeting missing-file issues)

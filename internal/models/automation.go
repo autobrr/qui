@@ -153,6 +153,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal conditions for automation %d: %w", automation.ID, err)
 		}
+		conditions.Normalize()
 		automation.Conditions = &conditions
 
 		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
@@ -213,6 +214,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal conditions for automation %d: %w", automation.ID, err)
 	}
+	conditions.Normalize()
 	automation.Conditions = &conditions
 
 	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
@@ -246,6 +248,7 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if automation == nil {
 		return nil, errors.New("automation is nil")
 	}
+	automation.Conditions.Normalize()
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
@@ -305,6 +308,7 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	if automation == nil {
 		return nil, errors.New("automation is nil")
 	}
+	automation.Conditions.Normalize()
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
@@ -609,8 +613,11 @@ type ActionConditions struct {
 	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
 	Pause           *PauseAction           `json:"pause,omitempty"`
 	Resume          *ResumeAction          `json:"resume,omitempty"`
+	Recheck         *RecheckAction         `json:"recheck,omitempty"`
+	Reannounce      *ReannounceAction      `json:"reannounce,omitempty"`
 	Delete          *DeleteAction          `json:"delete,omitempty"`
-	Tag             *TagAction             `json:"tag,omitempty"`
+	Tag             *TagAction             `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags            []*TagAction           `json:"tags,omitempty"` // Preferred multi-tag actions
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
@@ -640,6 +647,18 @@ type PauseAction struct {
 
 // ResumeAction configures resume action with conditions.
 type ResumeAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// RecheckAction configures force recheck action with optional conditions.
+type RecheckAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// ReannounceAction configures force reannounce action with optional conditions.
+type ReannounceAction struct {
 	Enabled   bool           `json:"enabled"`
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
@@ -730,5 +749,53 @@ func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Resume == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil && ac.ExternalProgram == nil
+	return ac.SpeedLimits == nil &&
+		ac.ShareLimits == nil &&
+		ac.Pause == nil &&
+		ac.Resume == nil &&
+		ac.Recheck == nil &&
+		ac.Reannounce == nil &&
+		ac.Delete == nil &&
+		len(ac.TagActions()) == 0 &&
+		ac.Category == nil &&
+		ac.Move == nil &&
+		ac.ExternalProgram == nil
+}
+
+// Normalize normalizes legacy/new action fields for in-memory use.
+func (ac *ActionConditions) Normalize() {
+	if ac == nil {
+		return
+	}
+
+	if len(ac.Tags) == 0 && ac.Tag != nil {
+		ac.Tags = []*TagAction{ac.Tag}
+	}
+
+	normalized := make([]*TagAction, 0, len(ac.Tags))
+	for _, action := range ac.Tags {
+		if action == nil {
+			continue
+		}
+		normalized = append(normalized, action)
+	}
+	ac.Tags = normalized
+
+	if len(ac.Tags) > 0 {
+		ac.Tag = ac.Tags[0]
+	}
+}
+
+// TagActions returns all configured tag actions (multi-tag aware).
+func (ac *ActionConditions) TagActions() []*TagAction {
+	if ac == nil {
+		return nil
+	}
+	if len(ac.Tags) > 0 {
+		return ac.Tags
+	}
+	if ac.Tag != nil {
+		return []*TagAction{ac.Tag}
+	}
+	return nil
 }

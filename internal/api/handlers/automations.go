@@ -326,6 +326,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
 		return http.StatusBadRequest, "At least one action must be configured", errors.New("conditions required")
 	}
+	payload.Conditions.Normalize()
 
 	// Validate category action has a category name
 	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
@@ -341,8 +342,12 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
 			(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
 			(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
-			(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
+			(payload.Conditions.Resume != nil && payload.Conditions.Resume.Enabled) ||
+			(payload.Conditions.Recheck != nil && payload.Conditions.Recheck.Enabled) ||
+			(payload.Conditions.Reannounce != nil && payload.Conditions.Reannounce.Enabled) ||
+			(len(payload.Conditions.TagActions()) > 0) ||
 			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
+			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
 			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
@@ -460,10 +465,23 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 	return (c.SpeedLimits != nil && check(c.SpeedLimits.Enabled, c.SpeedLimits.Condition)) ||
 		(c.ShareLimits != nil && check(c.ShareLimits.Enabled, c.ShareLimits.Condition)) ||
 		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
+		(c.Resume != nil && check(c.Resume.Enabled, c.Resume.Condition)) ||
+		(c.Recheck != nil && check(c.Recheck.Enabled, c.Recheck.Condition)) ||
+		(c.Reannounce != nil && check(c.Reannounce.Enabled, c.Reannounce.Condition)) ||
 		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
-		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
+		anyEnabledTagActionUsesField(c.TagActions(), field) ||
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
+		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
 		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
+}
+
+func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations.ConditionField) bool {
+	for _, action := range actions {
+		if action != nil && action.Enabled && automations.ConditionUsesField(action.Condition, field) {
+			return true
+		}
+	}
+	return false
 }
 
 // conditionsRequireLocalAccess checks if any enabled action condition uses fields
@@ -505,21 +523,19 @@ func deleteUsesGroupIDOutsideKeepFiles(conditions *models.ActionConditions) bool
 }
 
 func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (string, error) {
-	if conditions == nil || conditions.Tag == nil || !conditions.Tag.Enabled {
+	if conditions == nil {
 		return "", nil
 	}
-
-	tagAction := conditions.Tag
-	if !tagAction.DeleteFromClient {
-		return "", nil
-	}
-
-	if tagAction.UseTrackerAsTag {
-		return "tag.deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient", errors.New("invalid tag deleteFromClient configuration")
-	}
-
-	if len(models.SanitizeCommaSeparatedStringSlice(tagAction.Tags)) == 0 {
-		return "tag.deleteFromClient requires at least one explicit tag", errors.New("invalid tag deleteFromClient configuration")
+	for index, tagAction := range conditions.TagActions() {
+		if tagAction == nil || !tagAction.Enabled || !tagAction.DeleteFromClient {
+			continue
+		}
+		if tagAction.UseTrackerAsTag {
+			return fmt.Sprintf("tags[%d].deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient", index), errors.New("invalid tag deleteFromClient configuration")
+		}
+		if len(models.SanitizeCommaSeparatedStringSlice(tagAction.Tags)) == 0 {
+			return fmt.Sprintf("tags[%d].deleteFromClient requires at least one explicit tag", index), errors.New("invalid tag deleteFromClient configuration")
+		}
 	}
 
 	return "", nil
@@ -577,11 +593,19 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	if conditions.Resume != nil && conditions.Resume.Enabled {
 		trees = append(trees, conditions.Resume.Condition)
 	}
+	if conditions.Recheck != nil && conditions.Recheck.Enabled {
+		trees = append(trees, conditions.Recheck.Condition)
+	}
+	if conditions.Reannounce != nil && conditions.Reannounce.Enabled {
+		trees = append(trees, conditions.Reannounce.Condition)
+	}
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		trees = append(trees, conditions.Delete.Condition)
 	}
-	if conditions.Tag != nil && conditions.Tag.Enabled {
-		trees = append(trees, conditions.Tag.Condition)
+	for _, action := range conditions.TagActions() {
+		if action != nil && action.Enabled {
+			trees = append(trees, action.Condition)
+		}
 	}
 	if conditions.Category != nil && conditions.Category.Enabled {
 		trees = append(trees, conditions.Category.Condition)
@@ -973,14 +997,26 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	if conditions.Pause != nil {
 		validateConditionRegex(conditions.Pause.Condition, "/conditions/pause/condition", &result)
 	}
+	if conditions.Resume != nil {
+		validateConditionRegex(conditions.Resume.Condition, "/conditions/resume/condition", &result)
+	}
+	if conditions.Recheck != nil {
+		validateConditionRegex(conditions.Recheck.Condition, "/conditions/recheck/condition", &result)
+	}
+	if conditions.Reannounce != nil {
+		validateConditionRegex(conditions.Reannounce.Condition, "/conditions/reannounce/condition", &result)
+	}
 	if conditions.Delete != nil {
 		validateConditionRegex(conditions.Delete.Condition, "/conditions/delete/condition", &result)
 	}
-	if conditions.Tag != nil {
-		validateConditionRegex(conditions.Tag.Condition, "/conditions/tag/condition", &result)
+	for idx, action := range conditions.TagActions() {
+		validateConditionRegex(action.Condition, fmt.Sprintf("/conditions/tags/%d/condition", idx), &result)
 	}
 	if conditions.Category != nil {
 		validateConditionRegex(conditions.Category.Condition, "/conditions/category/condition", &result)
+	}
+	if conditions.Move != nil {
+		validateConditionRegex(conditions.Move.Condition, "/conditions/move/condition", &result)
 	}
 	if conditions.ExternalProgram != nil {
 		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)

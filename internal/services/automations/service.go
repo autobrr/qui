@@ -61,6 +61,8 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionShareLimitsChanged:  "Share limits updated",
 	models.ActivityActionPaused:              "Paused torrents",
 	models.ActivityActionResumed:             "Resumed torrents",
+	models.ActivityActionRechecked:           "Rechecked torrents",
+	models.ActivityActionReannounced:         "Reannounced torrents",
 	models.ActivityActionMoved:               "Moved torrents",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
 }
@@ -2006,6 +2008,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				Int("speedNoMatch", stats.SpeedConditionNotMet).
 				Int("shareNoMatch", stats.ShareConditionNotMet).
 				Int("pauseNoMatch", stats.PauseConditionNotMet).
+				Int("resumeNoMatch", stats.ResumeConditionNotMet).
+				Int("recheckNoMatch", stats.RecheckConditionNotMet).
+				Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
 				Int("tagNoMatch", stats.TagConditionNotMet).
 				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
 				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
@@ -2042,12 +2047,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	downloadBatches := make(map[int64][]string)
 	pauseHashes := make([]string, 0)
 	resumeHashes := make([]string, 0)
+	recheckHashes := make([]string, 0)
+	reannounceHashes := make([]string, 0)
 	uploadRuleByHash := make(map[string]ruleRef)
 	downloadRuleByHash := make(map[string]ruleRef)
 	shareRatioRuleByHash := make(map[string]ruleRef)
 	shareSeedingRuleByHash := make(map[string]ruleRef)
 	pauseRuleByHash := make(map[string]ruleRef)
 	resumeRuleByHash := make(map[string]ruleRef)
+	recheckRuleByHash := make(map[string]ruleRef)
+	reannounceRuleByHash := make(map[string]ruleRef)
 	categoryRuleByHash := make(map[string]ruleRef)
 	moveRuleByHash := make(map[string]ruleRef)
 
@@ -2405,6 +2414,18 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			resumeRuleByHash[hash] = state.resumeRule
 		}
 
+		// Recheck
+		if state.shouldRecheck {
+			recheckHashes = append(recheckHashes, hash)
+			recheckRuleByHash[hash] = state.recheckRule
+		}
+
+		// Reannounce
+		if state.shouldReannounce {
+			reannounceHashes = append(reannounceHashes, hash)
+			reannounceRuleByHash[hash] = state.reannounceRule
+		}
+
 		// Tags
 		if len(state.tagActions) > 0 {
 			var toAdd, toRemove []string
@@ -2472,6 +2493,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			shareBatches,
 			pauseHashes,
 			resumeHashes,
+			recheckHashes,
+			reannounceHashes,
 			tagChanges,
 			categoryBatches,
 			moveBatches,
@@ -2696,6 +2719,96 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
 			} else if s.activityRuns != nil {
 				items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Execute recheck actions for expression-based rules
+	recheckedCount := 0
+	recheckedHashesSuccess := make([]string, 0)
+	if len(recheckHashes) > 0 {
+		limited := limitHashBatch(recheckHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "recheck"); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: recheck action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: rechecked torrents")
+				recheckedCount += len(batch)
+				recheckedHashesSuccess = append(recheckedHashesSuccess, batch...)
+			}
+		}
+	}
+
+	// Record aggregated recheck activity
+	if recheckedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": recheckedCount})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionRechecked,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, recheckedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionRechecked,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(recheckedHashesSuccess, recheckRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record recheck activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(recheckedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Execute reannounce actions for expression-based rules
+	reannouncedCount := 0
+	reannouncedHashesSuccess := make([]string, 0)
+	if len(reannounceHashes) > 0 {
+		limited := limitHashBatch(reannounceHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "reannounce"); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: reannounce action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: reannounced torrents")
+				reannouncedCount += len(batch)
+				reannouncedHashesSuccess = append(reannouncedHashesSuccess, batch...)
+			}
+		}
+	}
+
+	// Record aggregated reannounce activity
+	if reannouncedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": reannouncedCount})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionReannounced,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, reannouncedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionReannounced,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(reannouncedHashesSuccess, reannounceRuleByHash),
+		)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record reannounce activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(reannouncedHashesSuccess, torrentByHash, s.syncManager)
 				if len(items) > 0 {
 					s.activityRuns.Put(activityID, instanceID, items)
 				}
@@ -4165,11 +4278,19 @@ func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
 	if ac.Resume != nil && ConditionUsesField(ac.Resume.Condition, field) {
 		return true
 	}
+	if ac.Recheck != nil && ConditionUsesField(ac.Recheck.Condition, field) {
+		return true
+	}
+	if ac.Reannounce != nil && ConditionUsesField(ac.Reannounce.Condition, field) {
+		return true
+	}
 	if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
 		return true
 	}
-	if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, field) {
-		return true
+	for _, action := range ac.TagActions() {
+		if action != nil && ConditionUsesField(action.Condition, field) {
+			return true
+		}
 	}
 	if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
 		return true
@@ -4199,9 +4320,10 @@ func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
 		}
-		tag := rule.Conditions.Tag
-		if tag != nil && tag.Enabled && tag.UseTrackerAsTag && tag.UseDisplayName {
-			return true
+		for _, tag := range rule.Conditions.TagActions() {
+			if tag != nil && tag.Enabled && tag.UseTrackerAsTag && tag.UseDisplayName {
+				return true
+			}
 		}
 	}
 	return false
@@ -4397,6 +4519,8 @@ func (s *Service) recordDryRunActivities(
 	shareBatches map[shareKey][]string,
 	pauseHashes []string,
 	resumeHashes []string,
+	recheckHashes []string,
+	reannounceHashes []string,
 	tagChanges map[string]*tagChange,
 	categoryBatches map[string][]string,
 	moveBatches map[string][]string,
@@ -4501,6 +4625,8 @@ func (s *Service) recordDryRunActivities(
 	}{
 		{action: models.ActivityActionPaused, hashes: pauseHashes},
 		{action: models.ActivityActionResumed, hashes: resumeHashes},
+		{action: models.ActivityActionRechecked, hashes: recheckHashes},
+		{action: models.ActivityActionReannounced, hashes: reannounceHashes},
 	} {
 		if len(a.hashes) == 0 {
 			continue
@@ -5091,18 +5217,19 @@ func collectManagedTagsForClientReset(rules []*models.Automation) []string {
 
 	unique := make(map[string]struct{})
 	for _, rule := range rules {
-		if rule == nil || rule.Conditions == nil || rule.Conditions.Tag == nil {
+		if rule == nil || rule.Conditions == nil {
 			continue
 		}
-		action := rule.Conditions.Tag
-		if !shouldResetTagActionInClient(action) {
-			continue
-		}
-		for _, tag := range models.SanitizeCommaSeparatedStringSlice(action.Tags) {
-			if tag == "" {
+		for _, action := range rule.Conditions.TagActions() {
+			if !shouldResetTagActionInClient(action) {
 				continue
 			}
-			unique[tag] = struct{}{}
+			for _, tag := range models.SanitizeCommaSeparatedStringSlice(action.Tags) {
+				if tag == "" {
+					continue
+				}
+				unique[tag] = struct{}{}
+			}
 		}
 	}
 

@@ -43,6 +43,14 @@ type torrentDesiredState struct {
 	shouldResume bool
 	resumeRule   ruleRef
 
+	// Recheck (OR - any rule can trigger)
+	shouldRecheck bool
+	recheckRule   ruleRef
+
+	// Reannounce (OR - any rule can trigger)
+	shouldReannounce bool
+	reannounceRule   ruleRef
+
 	// Tags (accumulated, last action per tag wins)
 	currentTags  map[string]struct{}
 	tagActions   map[string]string // tag -> "add" | "remove"
@@ -97,6 +105,10 @@ type ruleRunStats struct {
 	PauseConditionNotMet             int
 	ResumeApplied                    int
 	ResumeConditionNotMet            int
+	RecheckApplied                   int
+	RecheckConditionNotMet           int
+	ReannounceApplied                int
+	ReannounceConditionNotMet        int
 	TagConditionMet                  int
 	TagConditionNotMet               int
 	TagSkippedMissingUnregisteredSet int
@@ -116,7 +128,7 @@ func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -327,23 +339,63 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Recheck (last rule wins)
+	if conditions.Recheck != nil && conditions.Recheck.Enabled {
+		shouldApply := conditions.Recheck.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Recheck.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.RecheckApplied++
+			}
+			// Avoid re-triggering while already checking.
+			if torrent.State != qbt.TorrentStateCheckingUp &&
+				torrent.State != qbt.TorrentStateCheckingDl &&
+				torrent.State != qbt.TorrentStateCheckingResumeData {
+				state.shouldRecheck = true
+				state.recheckRule = ruleRef{id: rule.ID, name: rule.Name}
+			}
+		} else if stats != nil {
+			stats.RecheckConditionNotMet++
+		}
+	}
+
+	// Reannounce (last rule wins)
+	if conditions.Reannounce != nil && conditions.Reannounce.Enabled {
+		shouldApply := conditions.Reannounce.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Reannounce.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ReannounceApplied++
+			}
+			state.shouldReannounce = true
+			state.reannounceRule = ruleRef{id: rule.ID, name: rule.Name}
+		} else if stats != nil {
+			stats.ReannounceConditionNotMet++
+		}
+	}
+
 	// Tags
-	if conditions.Tag != nil && conditions.Tag.Enabled && (len(conditions.Tag.Tags) > 0 || conditions.Tag.UseTrackerAsTag) {
+	for _, tagAction := range conditions.TagActions() {
+		if tagAction == nil || !tagAction.Enabled || (len(tagAction.Tags) == 0 && !tagAction.UseTrackerAsTag) {
+			continue
+		}
 		// Skip if condition uses IS_UNREGISTERED but health data isn't available
-		if ConditionUsesField(conditions.Tag.Condition, FieldIsUnregistered) &&
+		if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) &&
 			(evalCtx == nil || evalCtx.UnregisteredSet == nil) {
 			// Skip tag processing for this rule
 			if stats != nil {
 				stats.TagSkippedMissingUnregisteredSet++
 			}
-		} else {
-			matches := processTagAction(rule, conditions.Tag, torrent, state, evalCtx)
-			if stats != nil {
-				if matches {
-					stats.TagConditionMet++
-				} else {
-					stats.TagConditionNotMet++
-				}
+			continue
+		}
+		matches := processTagAction(rule, tagAction, torrent, state, evalCtx)
+		if stats != nil {
+			if matches {
+				stats.TagConditionMet++
+			} else {
+				stats.TagConditionNotMet++
 			}
 		}
 	}
@@ -696,6 +748,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.seedingMinutes != nil ||
 		state.shouldPause ||
 		state.shouldResume ||
+		state.shouldRecheck ||
+		state.shouldReannounce ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||

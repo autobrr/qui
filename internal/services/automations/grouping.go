@@ -227,17 +227,22 @@ func conditionTreesForRule(rule *models.Automation) []*models.RuleCondition {
 		return nil
 	}
 	conditions := rule.Conditions
-	return []*models.RuleCondition{
+	trees := []*models.RuleCondition{
 		conditionFromSpeedLimitAction(conditions.SpeedLimits),
 		conditionFromShareLimitsAction(conditions.ShareLimits),
 		conditionFromPauseAction(conditions.Pause),
 		conditionFromResumeAction(conditions.Resume),
+		conditionFromRecheckAction(conditions.Recheck),
+		conditionFromReannounceAction(conditions.Reannounce),
 		conditionFromDeleteAction(conditions.Delete),
-		conditionFromTagAction(conditions.Tag),
 		conditionFromCategoryAction(conditions.Category),
 		conditionFromMoveAction(conditions.Move),
 		conditionFromExternalProgramAction(conditions.ExternalProgram),
 	}
+	for _, action := range conditions.TagActions() {
+		trees = append(trees, conditionFromTagAction(action))
+	}
+	return trees
 }
 
 func conditionFromSpeedLimitAction(action *models.SpeedLimitAction) *models.RuleCondition {
@@ -262,6 +267,20 @@ func conditionFromPauseAction(action *models.PauseAction) *models.RuleCondition 
 }
 
 func conditionFromResumeAction(action *models.ResumeAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromRecheckAction(action *models.RecheckAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromReannounceAction(action *models.ReannounceAction) *models.RuleCondition {
 	if action == nil || !action.Enabled {
 		return nil
 	}

@@ -19,7 +19,7 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { useCallback, useMemo } from "react";
-import { ConditionGroup } from "./ConditionGroup";
+import { ConditionGroup, parseDropZoneID } from "./ConditionGroup";
 import type { DisabledField, DisabledStateValue } from "./constants";
 
 export interface GroupOption {
@@ -120,17 +120,61 @@ export function QueryBuilder({
       const overIdStr = over.id as string;
 
       const activePath = findPathByClientId(effectiveCondition, activeIdStr);
+      if (!activePath) return;
+
+      const dropZone = parseDropZoneID(overIdStr);
+      if (dropZone) {
+        const movedCondition = moveNodeToGroupIndex(
+          effectiveCondition,
+          activePath,
+          dropZone.groupID,
+          dropZone.index
+        );
+        if (movedCondition) {
+          handleChange(movedCondition);
+        }
+        return;
+      }
+
+      if (overIdStr === effectiveCondition.clientId) {
+        const movedCondition = moveNodeToGroupIndex(
+          effectiveCondition,
+          activePath,
+          effectiveCondition.clientId ?? "root",
+          (effectiveCondition.conditions ?? []).length
+        );
+        if (movedCondition) {
+          handleChange(movedCondition);
+        }
+        return;
+      }
+
       const overPath = findPathByClientId(effectiveCondition, overIdStr);
-      if (!activePath || !overPath) return;
+      if (!overPath) return;
 
       // Prevent moving a group into one of its own descendants.
       if (isAncestorPath(activePath, overPath)) return;
 
-      if (!pathsHaveSameParent(activePath, overPath)) {
-        const movedCondition = moveAcrossGroups(
+      const overNode = getNodeAtPath(effectiveCondition, overPath);
+      if (overNode && isGroupCondition(overNode)) {
+        const movedCondition = moveNodeToGroupIndex(
           effectiveCondition,
           activePath,
-          overIdStr
+          overIdStr,
+          (overNode.conditions ?? []).length
+        );
+        if (movedCondition) {
+          handleChange(movedCondition);
+        }
+        return;
+      }
+
+      if (!pathsHaveSameParent(activePath, overPath)) {
+        const movedCondition = moveNodeToPathIndex(
+          effectiveCondition,
+          activePath,
+          overPath.slice(0, -1),
+          overPath[overPath.length - 1]
         );
         if (movedCondition) {
           handleChange(movedCondition);
@@ -314,6 +358,11 @@ function isAncestorPath(path: number[], candidateDescendant: number[]): boolean 
   return path.every((segment, index) => segment === candidateDescendant[index]);
 }
 
+function isSamePath(pathA: number[], pathB: number[]): boolean {
+  if (pathA.length !== pathB.length) return false;
+  return pathA.every((segment, index) => segment === pathB[index]);
+}
+
 function cloneConditionTree(condition: RuleCondition): RuleCondition {
   return {
     ...condition,
@@ -333,12 +382,45 @@ function getNodeAtPath(root: RuleCondition, path: number[]): RuleCondition | nul
   return current;
 }
 
-function moveAcrossGroups(
+function resolveGroupPath(root: RuleCondition, groupID: string): number[] | null {
+  if (root.clientId === groupID) {
+    return [];
+  }
+  return findPathByClientId(root, groupID);
+}
+
+function isGroupCondition(condition: RuleCondition | null | undefined): boolean {
+  if (!condition) return false;
+  return condition.operator === "AND" || condition.operator === "OR";
+}
+
+function moveNodeToGroupIndex(
   root: RuleCondition,
   sourcePath: number[],
-  overClientID: string
+  targetGroupID: string,
+  targetIndex: number
+): RuleCondition | null {
+  const targetGroupPath = resolveGroupPath(root, targetGroupID);
+  if (targetGroupPath == null) {
+    return null;
+  }
+  return moveNodeToPathIndex(root, sourcePath, targetGroupPath, targetIndex);
+}
+
+function moveNodeToPathIndex(
+  root: RuleCondition,
+  sourcePath: number[],
+  targetParentPath: number[],
+  targetIndex: number
 ): RuleCondition | null {
   if (sourcePath.length === 0) return null;
+  if (targetIndex < 0) return null;
+
+  const sourceNode = getNodeAtPath(root, sourcePath);
+  if (isGroupCondition(sourceNode) &&
+    (isAncestorPath(sourcePath, targetParentPath) || isSamePath(sourcePath, targetParentPath))) {
+    return null;
+  }
 
   const nextRoot = cloneConditionTree(root);
   const sourceParentPath = sourcePath.slice(0, -1);
@@ -348,16 +430,16 @@ function moveAcrossGroups(
 
   const [moved] = sourceParent.conditions.splice(sourceIndex, 1);
   if (!moved) return null;
-
-  const nextOverPath = findPathByClientId(nextRoot, overClientID);
-  if (!nextOverPath) return null;
-
-  const targetParentPath = nextOverPath.slice(0, -1);
-  const targetIndex = nextOverPath[nextOverPath.length - 1];
   const targetParent = getNodeAtPath(nextRoot, targetParentPath);
-  if (!targetParent?.conditions) return null;
+  if (!targetParent?.conditions || !isGroupCondition(targetParent)) return null;
 
-  targetParent.conditions.splice(targetIndex, 0, moved);
+  let insertIndex = targetIndex;
+  if (isSamePath(sourceParentPath, targetParentPath) && sourceIndex < targetIndex) {
+    insertIndex -= 1;
+  }
+  insertIndex = Math.max(0, Math.min(insertIndex, targetParent.conditions.length));
+
+  targetParent.conditions.splice(insertIndex, 0, moved);
   return pruneEmptyGroups(nextRoot, true);
 }
 
@@ -372,10 +454,6 @@ function pruneEmptyGroups(condition: RuleCondition, isRoot: boolean): RuleCondit
 
   if (!isRoot && cleanedChildren.length === 0) {
     return null;
-  }
-
-  if (!isRoot && cleanedChildren.length === 1) {
-    return cleanedChildren[0];
   }
 
   return {

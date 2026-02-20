@@ -5,6 +5,7 @@
 
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
+  CATEGORY_UNCATEGORIZED_VALUE,
   CAPABILITY_REASONS,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -56,7 +57,7 @@ import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { buildCategorySelectOptions } from "@/lib/category-utils"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
@@ -96,17 +97,19 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
   shareLimits: "Share limits",
   pause: "Pause",
-  delete: "Delete",
   resume: "Resume",
+  recheck: "Force recheck",
+  reannounce: "Force reannounce",
+  delete: "Delete",
   tag: "Tag",
   category: "Category",
   move: "Move",
@@ -126,6 +129,8 @@ const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
   share_limits_changed: "Share limits",
   paused: "Pause",
   resumed: "Resume",
+  rechecked: "Recheck",
+  reannounced: "Reannounce",
   moved: "Move",
   external_program: "External program",
   dry_run_no_match: "No matches",
@@ -185,6 +190,8 @@ function formatDryRunEventSummary(event: AutomationActivity): string {
       return "No torrents matched this dry-run"
     case "paused":
     case "resumed":
+    case "rechecked":
+    case "reannounced":
     case "external_program":
     case "deleted_ratio":
     case "deleted_seeding":
@@ -278,6 +285,24 @@ const AMBIGUOUS_POLICY_NONE_VALUE = "__none__"
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
 
+type TagActionForm = {
+  tags: string[]
+  mode: "full" | "add" | "remove"
+  deleteFromClient: boolean
+  useTrackerAsTag: boolean
+  useDisplayName: boolean
+}
+
+function createDefaultTagAction(): TagActionForm {
+  return {
+    tags: [],
+    mode: "full",
+    deleteFromClient: false,
+    useTrackerAsTag: false,
+    useDisplayName: false,
+  }
+}
+
 type FormState = {
   name: string
   trackerPattern: string
@@ -296,6 +321,8 @@ type FormState = {
   shareLimitsEnabled: boolean
   pauseEnabled: boolean
   resumeEnabled: boolean
+  recheckEnabled: boolean
+  reannounceEnabled: boolean
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -320,11 +347,7 @@ type FormState = {
   exprFreeSpaceSourceType: "qbittorrent" | "path"
   exprFreeSpaceSourcePath: string
   // Tag action settings
-  exprTags: string[]
-  exprTagMode: "full" | "add" | "remove"
-  exprTagDeleteFromClient: boolean
-  exprUseTrackerAsTag: boolean
-  exprUseDisplayName: boolean
+  exprTagActions: TagActionForm[]
   // Category action settings
   exprCategory: string
   exprIncludeCrossSeeds: boolean
@@ -352,8 +375,10 @@ const emptyFormState: FormState = {
   speedLimitsEnabled: false,
   shareLimitsEnabled: false,
   pauseEnabled: false,
-  deleteEnabled: false,
   resumeEnabled: false,
+  recheckEnabled: false,
+  reannounceEnabled: false,
+  deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
   moveEnabled: false,
@@ -372,11 +397,7 @@ const emptyFormState: FormState = {
   exprDeleteAtomic: "",
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
-  exprTags: [],
-  exprTagMode: "full",
-  exprTagDeleteFromClient: false,
-  exprUseTrackerAsTag: false,
-  exprUseDisplayName: false,
+  exprTagActions: [createDefaultTagAction()],
   exprCategory: "",
   exprIncludeCrossSeeds: false,
   exprCategoryGroupId: "",
@@ -394,8 +415,10 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.speedLimitsEnabled) actions.push("speedLimits")
   if (state.shareLimitsEnabled) actions.push("shareLimits")
   if (state.pauseEnabled) actions.push("pause")
-  if (state.deleteEnabled) actions.push("delete")
   if (state.resumeEnabled) actions.push("resume")
+  if (state.recheckEnabled) actions.push("recheck")
+  if (state.reannounceEnabled) actions.push("reannounce")
+  if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
@@ -407,6 +430,21 @@ function getEnabledActions(state: FormState): ActionType[] {
 function setActionEnabled(action: ActionType, enabled: boolean): Partial<FormState> {
   const key = `${action}Enabled` as keyof FormState
   return { [key]: enabled }
+}
+
+function validateTagActions(actions: TagActionForm[]): string | null {
+  if (actions.length === 0) {
+    return "Add at least one tag action"
+  }
+  for (const action of actions) {
+    if (action.deleteFromClient && action.useTrackerAsTag) {
+      return "Replace mode requires explicit tags (disable 'Use tracker name as tag')"
+    }
+    if (!action.useTrackerAsTag && action.tags.length === 0) {
+      return "Specify at least one tag or enable 'Use tracker name'"
+    }
+  }
+  return null
 }
 
 // Hydration helpers for converting stored values to form state
@@ -474,7 +512,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [newGroupMinOverlap, setNewGroupMinOverlap] = useState("90")
   const previewPageSize = 25
   const livePreviewPageSize = 5
-  const tagsInputRef = useRef<HTMLInputElement>(null)
   const livePreviewRequestRef = useRef(0)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
   const isHydrating = useRef(true)
@@ -495,14 +532,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       window.localStorage.setItem(dryRunPromptKey, "1")
     }
   }, [dryRunPromptKey, rule?.id])
-
-  const commitPendingTags = () => {
-    if (tagsInputRef.current) {
-      const tags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
-      setFormState(prev => ({ ...prev, exprTags: tags }))
-      tagsInputRef.current.value = tags.join(", ")
-    }
-  }
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -582,6 +611,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const selected = [formState.exprCategory, ...formState.exprBlockIfCrossSeedInCategories].filter(Boolean)
     return buildCategorySelectOptions(metadata.categories, selected)
   }, [metadata?.categories, formState.exprCategory, formState.exprBlockIfCrossSeedInCategories])
+
+  const categoryActionOptions = useMemo(() => {
+    const filtered = categoryOptions.filter((opt) => opt.value !== "")
+    return [
+      { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+      ...filtered,
+    ]
+  }, [categoryOptions])
+
+  const tagOptions = useMemo(() => {
+    const selected = formState.exprTagActions.flatMap(action => action.tags)
+    return buildTagSelectOptions(metadata?.tags ?? [], selected)
+  }, [formState.exprTagActions, metadata?.tags])
 
   const trackerCustomizationMaps = useMemo(
     () => buildTrackerCustomizationMaps(trackerCustomizations),
@@ -730,6 +772,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let shareLimitsEnabled = false
         let pauseEnabled = false
         let resumeEnabled = false
+        let recheckEnabled = false
+        let reannounceEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
@@ -747,11 +791,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprIncludeHardlinks = false
         let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
         let exprFreeSpaceSourcePath = ""
-        let exprTags: string[] = []
-        let exprTagMode: FormState["exprTagMode"] = "full"
-        let exprTagDeleteFromClient = false
-        let exprUseTrackerAsTag = false
-        let exprUseDisplayName = false
+        let exprTagActions: TagActionForm[] = [createDefaultTagAction()]
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
@@ -780,7 +820,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.shareLimits?.condition
             ?? conditions.pause?.condition
             ?? conditions.resume?.condition
+            ?? conditions.recheck?.condition
+            ?? conditions.reannounce?.condition
             ?? conditions.delete?.condition
+            ?? conditions.tags?.[0]?.condition
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
             ?? conditions.move?.condition
@@ -815,6 +858,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           if (conditions.resume?.enabled) {
             resumeEnabled = true
           }
+          if (conditions.recheck?.enabled) {
+            recheckEnabled = true
+          }
+          if (conditions.reannounce?.enabled) {
+            reannounceEnabled = true
+          }
           if (conditions.delete?.enabled) {
             deleteEnabled = true
             exprDeleteMode = conditions.delete.mode ?? "deleteWithFilesPreserveCrossSeeds"
@@ -822,13 +871,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprDeleteGroupId = conditions.delete.groupId ?? ""
             exprDeleteAtomic = conditions.delete.atomic ?? ""
           }
-          if (conditions.tag?.enabled) {
+          const resolvedTagActions = (conditions.tags && conditions.tags.length > 0
+            ? conditions.tags
+            : conditions.tag ? [conditions.tag] : [])
+            .filter((action) => action && action.enabled)
+          if (resolvedTagActions.length > 0) {
             tagEnabled = true
-            exprTags = conditions.tag.tags ?? []
-            exprTagMode = conditions.tag.mode ?? "full"
-            exprTagDeleteFromClient = conditions.tag.deleteFromClient ?? false
-            exprUseTrackerAsTag = conditions.tag.useTrackerAsTag ?? false
-            exprUseDisplayName = conditions.tag.useDisplayName ?? false
+            exprTagActions = resolvedTagActions.map((action) => ({
+              tags: action.tags ?? [],
+              mode: action.mode ?? "full",
+              deleteFromClient: action.deleteFromClient ?? false,
+              useTrackerAsTag: action.useTrackerAsTag ?? false,
+              useDisplayName: action.useDisplayName ?? false,
+            }))
           }
           if (conditions.category?.enabled) {
             categoryEnabled = true
@@ -865,6 +920,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           shareLimitsEnabled,
           pauseEnabled,
           resumeEnabled,
+          recheckEnabled,
+          reannounceEnabled,
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -884,11 +941,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprDeleteAtomic,
           exprFreeSpaceSourceType,
           exprFreeSpaceSourcePath,
-          exprTags,
-          exprTagMode,
-          exprTagDeleteFromClient,
-          exprUseTrackerAsTag,
-          exprUseDisplayName,
+          exprTagActions,
           exprCategory,
           exprMovePath,
           exprMoveBlockIfCrossSeed,
@@ -1100,6 +1153,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.recheckEnabled) {
+      conditions.recheck = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
+    if (input.reannounceEnabled) {
+      conditions.reannounce = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.deleteEnabled) {
       conditions.delete = {
         enabled: true,
@@ -1112,14 +1177,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
     if (input.tagEnabled) {
-      conditions.tag = {
-        enabled: true,
-        tags: input.exprTags,
-        mode: input.exprTagMode,
-        deleteFromClient: input.exprTagDeleteFromClient,
-        useTrackerAsTag: input.exprUseTrackerAsTag,
-        useDisplayName: input.exprUseDisplayName,
-        condition: input.actionCondition ?? undefined,
+      const tagActions = input.exprTagActions
+        .filter((action) => action.useTrackerAsTag || action.tags.length > 0)
+        .map((action) => ({
+          enabled: true,
+          tags: action.tags,
+          mode: action.mode,
+          deleteFromClient: action.deleteFromClient,
+          useTrackerAsTag: action.useTrackerAsTag,
+          useDisplayName: action.useDisplayName,
+          condition: input.actionCondition ?? undefined,
+        }))
+
+      if (tagActions.length > 0) {
+        conditions.tags = tagActions
+        // Keep legacy single-tag payload for backward compatibility.
+        conditions.tag = tagActions[0]
       }
     }
     if (input.categoryEnabled) {
@@ -1195,6 +1268,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.shareLimitsEnabled,
     formState.pauseEnabled,
     formState.resumeEnabled,
+    formState.recheckEnabled,
+    formState.reannounceEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
@@ -1381,17 +1456,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [instanceId, livePreviewPayload, livePreviewPayloadKey])
 
   const handleRunDryRunNow = () => {
-    // Parse tags from the uncontrolled input first so the dry-run uses current values.
-    let parsedTags = formState.exprTags
-    if (!formState.exprUseTrackerAsTag && tagsInputRef.current) {
-      parsedTags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
-      tagsInputRef.current.value = parsedTags.join(", ")
-    }
-
-    const dryRunInput: FormState = {
-      ...formState,
-      exprTags: formState.exprUseTrackerAsTag ? [] : parsedTags,
-    }
+    const dryRunInput: FormState = { ...formState }
 
     if (!validateFreeSpaceSource(dryRunInput)) return
     if (!dryRunInput.name.trim()) {
@@ -1419,12 +1484,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     if (dryRunInput.tagEnabled) {
-      if (dryRunInput.exprTagDeleteFromClient && dryRunInput.exprUseTrackerAsTag) {
-        toast.error("Replace mode requires explicit tags (disable 'Use tracker name as tag')")
-        return
-      }
-      if (!dryRunInput.exprUseTrackerAsTag && dryRunInput.exprTags.length === 0) {
-        toast.error("Specify at least one tag or enable 'Use tracker name'")
+      const validationError = validateTagActions(dryRunInput.exprTagActions)
+      if (validationError) {
+        toast.error(validationError)
         return
       }
     }
@@ -1575,27 +1637,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     event.preventDefault()
     setRegexErrors([]) // Clear previous errors
 
-    // Parse tags from input ref synchronously to avoid relying on async setFormState
-    let parsedTags: string[] = []
-    if (!formState.exprUseTrackerAsTag && tagsInputRef.current) {
-      parsedTags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
-    }
-
-    // Build submitState with parsed tags for validation and mutation
-    const submitState: FormState = {
-      ...formState,
-      exprTags: formState.exprUseTrackerAsTag ? [] : parsedTags,
-    }
+    const submitState: FormState = { ...formState }
 
     if (!validateFreeSpaceSource(submitState)) {
       return
     }
-
-    // Sync the input display and formState (for UI consistency after save)
-    if (tagsInputRef.current) {
-      tagsInputRef.current.value = parsedTags.join(", ")
-    }
-    setFormState(submitState)
 
     if (!submitState.name) {
       toast.error("Name is required")
@@ -1646,12 +1692,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
     if (submitState.tagEnabled) {
-      if (submitState.exprTagDeleteFromClient && submitState.exprUseTrackerAsTag) {
-        toast.error("Replace mode requires explicit tags (disable 'Use tracker name as tag')")
-        return
-      }
-      if (!submitState.exprUseTrackerAsTag && submitState.exprTags.length === 0) {
-        toast.error("Specify at least one tag or enable 'Use tracker name'")
+      const validationError = validateTagActions(submitState.exprTagActions)
+      if (validationError) {
+        toast.error(validationError)
         return
       }
     }
@@ -1963,7 +2006,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <Select
                           value=""
                           onValueChange={(action: ActionType) => {
-                            setFormState(prev => ({ ...prev, ...setActionEnabled(action, true) }))
+                            setFormState(prev => {
+                              const next = { ...prev, ...setActionEnabled(action, true) }
+                              if (action === "tag" && next.exprTagActions.length === 0) {
+                                next.exprTagActions = [createDefaultTagAction()]
+                              }
+                              return next
+                            })
                           }}
                         >
                           <SelectTrigger className="w-fit h-7 text-xs">
@@ -1993,6 +2042,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             shareLimitsEnabled: false,
                             pauseEnabled: false,
                             resumeEnabled: false,
+                            recheckEnabled: false,
+                            reannounceEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
@@ -2002,7 +2053,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             enabled: !rule ? false : prev.enabled,
                           }))
                         } else {
-                          setFormState(prev => ({ ...prev, ...setActionEnabled(action, true) }))
+                          setFormState(prev => {
+                            const next = { ...prev, ...setActionEnabled(action, true) }
+                            if (action === "tag" && next.exprTagActions.length === 0) {
+                              next.exprTagActions = [createDefaultTagAction()]
+                            }
+                            return next
+                          })
                         }
                       }}
                     >
@@ -2014,6 +2071,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="shareLimits">Share limits</SelectItem>
                         <SelectItem value="pause">Pause</SelectItem>
                         <SelectItem value="resume">Resume</SelectItem>
+                        <SelectItem value="recheck">Force recheck</SelectItem>
+                        <SelectItem value="reannounce">Force reannounce</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
@@ -2330,11 +2389,45 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                       </div>
                     )}
+                    {/* Recheck */}
+                    {formState.recheckEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Force recheck</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, recheckEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {/* Reannounce */}
+                    {formState.reannounceEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Force reannounce</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, reannounceEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {/* Tag */}
                     {formState.tagEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Tag</Label>
+                          <Label className="text-sm font-medium">Tag actions</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2345,124 +2438,188 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-start">
-                          {formState.exprUseTrackerAsTag ? (
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
-                              <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
-                                Torrents will be tagged with their tracker name
+                        <div className="space-y-3">
+                          {formState.exprTagActions.map((tagAction, index) => (
+                            <div key={`tag-action-${index}`} className="rounded-md border bg-muted/20 p-3 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs font-medium">Tag action {index + 1}</Label>
+                                {formState.exprTagActions.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => setFormState(prev => ({
+                                      ...prev,
+                                      exprTagActions: prev.exprTagActions.filter((_, i) => i !== index),
+                                    }))}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-start">
+                                {tagAction.useTrackerAsTag ? (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
+                                    <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
+                                      Torrents will be tagged with their tracker name
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Tags</Label>
+                                    <MultiSelect
+                                      options={tagOptions}
+                                      selected={tagAction.tags}
+                                      onChange={(next) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, tags: next } : item),
+                                      }))}
+                                      placeholder="Select tags..."
+                                      creatable
+                                      onCreateOption={(value) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, tags: [...item.tags, value] } : item),
+                                      }))}
+                                    />
+                                  </div>
+                                )}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Action mode</Label>
+                                  <Select
+                                    value={tagAction.mode}
+                                    onValueChange={(value: TagActionForm["mode"]) => setFormState(prev => ({
+                                      ...prev,
+                                      exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, mode: value } : item),
+                                    }))}
+                                  >
+                                    <SelectTrigger className="w-[120px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="full">Full sync</SelectItem>
+                                      <SelectItem value="add">Add only</SelectItem>
+                                      <SelectItem value="remove">Remove only</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Tag strategy</Label>
+                                  <Select
+                                    value={tagAction.deleteFromClient ? "replace" : "managed"}
+                                    onValueChange={(value: "managed" | "replace") => {
+                                      const replace = value === "replace"
+                                      setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => {
+                                          if (i !== index) return item
+                                          return {
+                                            ...item,
+                                            deleteFromClient: replace,
+                                            useTrackerAsTag: replace ? false : item.useTrackerAsTag,
+                                            useDisplayName: replace ? false : item.useDisplayName,
+                                          }
+                                        }),
+                                      }))
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-[170px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="managed">Managed (default)</SelectItem>
+                                      <SelectItem value="replace">Replace in client</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              {tagAction.deleteFromClient ? (
+                                <div className="text-xs text-muted-foreground">
+                                  Replace mode forces a full client-wide reset of these tags before applying this rule.
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground">
+                                  Managed mode keeps tags accurate; with Full sync it resets selected tags and re-adds only current matches.
+                                </div>
+                              )}
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    id={`use-tracker-tag-${index}`}
+                                    checked={tagAction.useTrackerAsTag}
+                                    disabled={tagAction.deleteFromClient}
+                                    onCheckedChange={(checked) => setFormState(prev => ({
+                                      ...prev,
+                                      exprTagActions: prev.exprTagActions.map((item, i) => {
+                                        if (i !== index) return item
+                                        return {
+                                          ...item,
+                                          useTrackerAsTag: checked,
+                                          useDisplayName: checked ? item.useDisplayName : false,
+                                          tags: checked ? [] : item.tags,
+                                        }
+                                      }),
+                                    }))}
+                                  />
+                                  <Label
+                                    htmlFor={`use-tracker-tag-${index}`}
+                                    className={`text-sm cursor-pointer whitespace-nowrap ${tagAction.deleteFromClient ? "text-muted-foreground" : ""}`}
+                                  >
+                                    Use tracker name as tag
+                                  </Label>
+                                </div>
+                                {tagAction.useTrackerAsTag && (
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      id={`use-display-name-${index}`}
+                                      checked={tagAction.useDisplayName}
+                                      onCheckedChange={(checked) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, useDisplayName: checked } : item),
+                                      }))}
+                                    />
+                                    <Label htmlFor={`use-display-name-${index}`} className="text-sm cursor-pointer whitespace-nowrap">
+                                      Use display name
+                                    </Label>
+                                    <TooltipProvider delayDuration={150}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                            aria-label="About display names"
+                                          >
+                                            <Info className="h-3.5 w-3.5" />
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-[280px]">
+                                          <p>Uses friendly names from Tracker Customizations instead of raw domains (e.g., "MyTracker" instead of "tracker.example.com").</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <Label className="text-xs">Tags</Label>
-                              <Input
-                                ref={tagsInputRef}
-                                type="text"
-                                defaultValue={formState.exprTags.join(", ")}
-                                onBlur={commitPendingTags}
-                                placeholder="tag1, tag2, ..."
-                              />
-                            </div>
-                          )}
-                          <div className="space-y-1">
-                            <Label className="text-xs">Action mode</Label>
-                            <Select
-                              value={formState.exprTagMode}
-                              onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
-                            >
-                              <SelectTrigger className="w-[120px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="full">Full sync</SelectItem>
-                                <SelectItem value="add">Add only</SelectItem>
-                                <SelectItem value="remove">Remove only</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Tag strategy</Label>
-                            <Select
-                              value={formState.exprTagDeleteFromClient ? "replace" : "managed"}
-                              onValueChange={(value: "managed" | "replace") => {
-                                const replace = value === "replace"
-                                setFormState(prev => ({
-                                  ...prev,
-                                  exprTagDeleteFromClient: replace,
-                                  exprUseTrackerAsTag: replace ? false : prev.exprUseTrackerAsTag,
-                                  exprUseDisplayName: replace ? false : prev.exprUseDisplayName,
-                                }))
-                              }}
-                            >
-                              <SelectTrigger className="w-[170px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="managed">Managed (default)</SelectItem>
-                                <SelectItem value="replace">Replace in client</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-fit"
+                            onClick={() => setFormState(prev => ({
+                              ...prev,
+                              exprTagActions: [...prev.exprTagActions, createDefaultTagAction()],
+                            }))}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Add tag action
+                          </Button>
                         </div>
-                        {formState.exprTagDeleteFromClient ? (
-                          <div className="text-xs text-muted-foreground">
-                            Replace mode forces a full client-wide reset of these tags before applying this rule.
-                          </div>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">
-                            Managed mode keeps tags accurate; with Full sync it resets selected tags and re-adds only current matches.
-                          </div>
-                        )}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              id="use-tracker-tag"
-                              checked={formState.exprUseTrackerAsTag}
-                              disabled={formState.exprTagDeleteFromClient}
-                              onCheckedChange={(checked) => setFormState(prev => ({
-                                ...prev,
-                                exprUseTrackerAsTag: checked,
-                                exprUseDisplayName: checked ? prev.exprUseDisplayName : false,
-                                exprTags: checked ? [] : prev.exprTags,
-                              }))}
-                            />
-                            <Label
-                              htmlFor="use-tracker-tag"
-                              className={`text-sm cursor-pointer whitespace-nowrap ${formState.exprTagDeleteFromClient ? "text-muted-foreground" : ""}`}
-                            >
-                              Use tracker name as tag
-                            </Label>
-                          </div>
-                          {formState.exprUseTrackerAsTag && (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                id="use-display-name"
-                                checked={formState.exprUseDisplayName}
-                                onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprUseDisplayName: checked }))}
-                              />
-                              <Label htmlFor="use-display-name" className="text-sm cursor-pointer whitespace-nowrap">
-                                Use display name
-                              </Label>
-                              <TooltipProvider delayDuration={150}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                                      aria-label="About display names"
-                                    >
-                                      <Info className="h-3.5 w-3.5" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[280px]">
-                                    <p>Uses friendly names from Tracker Customizations instead of raw domains (e.g., "MyTracker" instead of "tracker.example.com").</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                          )}
-                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Use multiple tag actions when you need different modes (for example add one tag and remove another in the same workflow).
+                        </p>
                       </div>
                     )}
 
@@ -2485,16 +2642,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <div className="space-y-1">
                             <Label className="text-xs">Move to category</Label>
                             <Select
-                              value={formState.exprCategory}
-                              onValueChange={(value) => setFormState(prev => ({ ...prev, exprCategory: value }))}
+                              value={formState.exprCategory === "" ? CATEGORY_UNCATEGORIZED_VALUE : formState.exprCategory}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprCategory: value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value,
+                              }))}
                             >
                               <SelectTrigger className="w-fit min-w-[160px]">
                                 <Folder className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
                                 <SelectValue placeholder="Select category" />
                               </SelectTrigger>
                               <SelectContent>
-                                {categoryOptions.map(opt => (
-                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                {categoryActionOptions.map(opt => (
+                                  <SelectItem key={`${opt.value}-${opt.label}`} value={opt.value}>
+                                    {opt.value === CATEGORY_UNCATEGORIZED_VALUE ? (
+                                      <span className="italic text-muted-foreground">{opt.label}</span>
+                                    ) : (
+                                      opt.label
+                                    )}
+                                  </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>

@@ -144,6 +144,16 @@ function formatSpeedLimitCompact(kiB: number): string {
   return String(kiB)
 }
 
+function getRuleTagActions(rule: Automation) {
+  if (rule.conditions?.tags && rule.conditions.tags.length > 0) {
+    return rule.conditions.tags
+  }
+  if (rule.conditions?.tag) {
+    return [rule.conditions.tag]
+  }
+  return []
+}
+
 function formatAction(action: AutomationActivity["action"]): string {
   switch (action) {
     case "deleted_ratio":
@@ -170,6 +180,10 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Pause"
     case "resumed":
       return "Resume"
+    case "rechecked":
+      return "Recheck"
+    case "reannounced":
+      return "Reannounce"
     case "moved":
       return "Move"
     case "external_program":
@@ -232,6 +246,18 @@ function formatResumedSummary(details: AutomationActivity["details"], outcome?: 
   return formatCountWithVerb(count, "torrent", verb)
 }
 
+function formatRecheckedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const verb = outcome === "dry-run" ? "would be rechecked" : "rechecked"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
+function formatReannouncedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const verb = outcome === "dry-run" ? "would be reannounced" : "reannounced"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
   if (outcome === "failed") {
@@ -269,6 +295,8 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "share_limits_changed",
   "paused",
   "resumed",
+  "rechecked",
+  "reannounced",
   "moved",
 ])
 
@@ -770,6 +798,8 @@ export function WorkflowsOverview({
     share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
+    rechecked: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
@@ -1188,6 +1218,14 @@ export function WorkflowsOverview({
                                         ) : event.action === "resumed" ? (
                                           <span className="font-medium text-sm block">
                                             {formatResumedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "rechecked" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatRecheckedSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "reannounced" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatReannouncedSummary(event.details, event.outcome)}
                                           </span>
                                         ) : event.action === "moved" ? (
                                           <span className="font-medium text-sm block">
@@ -1724,13 +1762,16 @@ function RulePreview({
 }: RulePreviewProps) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
+  const tagActions = getRuleTagActions(rule)
   const hasAnyCondition = Boolean(
     (rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.condition) ||
     (rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.condition) ||
     (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
     (rule.conditions?.resume?.enabled && rule.conditions.resume.condition) ||
+    (rule.conditions?.recheck?.enabled && rule.conditions.recheck.condition) ||
+    (rule.conditions?.reannounce?.enabled && rule.conditions.reannounce.condition) ||
     (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
-    (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
+    tagActions.some((action) => action.enabled && action.condition) ||
     (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
     (rule.conditions?.move?.enabled && rule.conditions.move.condition) ||
     (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition)
@@ -1814,16 +1855,28 @@ function RulePreview({
             Resume
           </Badge>
         )}
+        {rule.conditions?.recheck?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <RefreshCcw className="h-3 w-3" />
+            Recheck
+          </Badge>
+        )}
+        {rule.conditions?.reannounce?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <RefreshCcw className="h-3 w-3" />
+            Reannounce
+          </Badge>
+        )}
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
             {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "+ XS": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
           </Badge>
         )}
-        {rule.conditions?.tag?.enabled && (
+        {tagActions.some((action) => action.enabled) && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Tag className="h-3 w-3" />
-            {rule.conditions.tag.tags?.join(", ")}
+            {tagActions.length} tag action{tagActions.length === 1 ? "" : "s"}
           </Badge>
         )}
         {rule.conditions?.category?.enabled && (

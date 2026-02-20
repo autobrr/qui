@@ -8,11 +8,14 @@ import { cn } from "@/lib/utils";
 import type { ConditionOperator, RuleCondition } from "@/types";
 import {
   SortableContext,
+  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Plus, X } from "lucide-react";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Plus, X } from "lucide-react";
 import { useCallback } from "react";
 import type { DisabledField, DisabledStateValue } from "./constants";
+import { DropZone } from "./DropZone";
 import { LeafCondition } from "./LeafCondition";
 import type { GroupOption } from "./QueryBuilder";
 
@@ -34,6 +37,19 @@ interface ConditionGroupProps {
 }
 
 const MAX_DEPTH = 5;
+const DROP_ZONE_PREFIX = "drop-zone";
+
+export function buildDropZoneID(groupID: string, index: number): string {
+  return `${DROP_ZONE_PREFIX}:${groupID}:${index}`;
+}
+
+export function parseDropZoneID(value: string): { groupID: string; index: number } | null {
+  const match = value.match(/^drop-zone:(.+):(\d+)$/);
+  if (!match) return null;
+  const index = Number(match[2]);
+  if (!Number.isInteger(index) || index < 0) return null;
+  return { groupID: match[1], index };
+}
 
 export function ConditionGroup({
   id,
@@ -49,6 +65,17 @@ export function ConditionGroup({
 }: ConditionGroupProps) {
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
   const children = condition.conditions ?? [];
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useSortable({ id, disabled: isRoot });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+  };
 
   const toggleOperator = useCallback(() => {
     onChange({
@@ -106,10 +133,7 @@ export function ConditionGroup({
   const removeChild = useCallback(
     (index: number) => {
       const newChildren = children.filter((_, i) => i !== index);
-      // If removing leaves only one child in a non-root group, replace group with child
-      if (!isRoot && newChildren.length === 1) {
-        onChange(newChildren[0]);
-      } else if (newChildren.length === 0) {
+      if (newChildren.length === 0) {
         // Remove empty group (or clear root when allowEmpty)
         if (onRemove) {
           onRemove();
@@ -151,14 +175,28 @@ export function ConditionGroup({
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={cn(
         "rounded-lg border p-2 sm:p-3 transition-colors",
+        isDragging && "opacity-60",
         depth === 0 && "border-border bg-card",
         depth > 0 && nestedColorClasses,
         depth > 1 && "border-dashed"
       )}
     >
       <div className="mb-2 flex items-center gap-2">
+        {!isRoot && (
+          <button
+            type="button"
+            className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
+            {...attributes}
+            {...listeners}
+            aria-label="Drag group"
+          >
+            <GripVertical className="size-4" />
+          </button>
+        )}
         {/* Operator toggle */}
         <Button
           type="button"
@@ -194,43 +232,43 @@ export function ConditionGroup({
 
       {/* Children */}
       <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {children.map((child, index) => {
             const childId = childIds[index];
             const isChildGroup = child.operator === "AND" || child.operator === "OR";
 
-            if (isChildGroup) {
-              return (
-                <ConditionGroup
-                  key={childId}
-                  id={childId}
-                  condition={child}
-                  onChange={(updated) => updateChild(index, updated)}
-                  onRemove={() => removeChild(index)}
-                  depth={depth + 1}
-                  categoryOptions={categoryOptions}
-                  disabledFields={disabledFields}
-                  disabledStateValues={disabledStateValues}
-                  groupOptions={groupOptions}
-                />
-              );
-            }
-
             return (
-              <LeafCondition
-                key={childId}
-                id={childId}
-                condition={child}
-                onChange={(updated) => updateChild(index, updated)}
-                onRemove={() => removeChild(index)}
-                isOnly={children.length === 1 && isRoot && !onRemove}
-                categoryOptions={categoryOptions}
-                disabledFields={disabledFields}
-                disabledStateValues={disabledStateValues}
-                groupOptions={groupOptions}
-              />
+              <div key={`${childId}-slot`} className="space-y-1.5">
+                <DropZone id={buildDropZoneID(id, index)} />
+                {isChildGroup ? (
+                  <ConditionGroup
+                    id={childId}
+                    condition={child}
+                    onChange={(updated) => updateChild(index, updated)}
+                    onRemove={() => removeChild(index)}
+                    depth={depth + 1}
+                    categoryOptions={categoryOptions}
+                    disabledFields={disabledFields}
+                    disabledStateValues={disabledStateValues}
+                    groupOptions={groupOptions}
+                  />
+                ) : (
+                  <LeafCondition
+                    id={childId}
+                    condition={child}
+                    onChange={(updated) => updateChild(index, updated)}
+                    onRemove={() => removeChild(index)}
+                    isOnly={children.length === 1 && isRoot && !onRemove}
+                    categoryOptions={categoryOptions}
+                    disabledFields={disabledFields}
+                    disabledStateValues={disabledStateValues}
+                    groupOptions={groupOptions}
+                  />
+                )}
+              </div>
             );
           })}
+          <DropZone id={buildDropZoneID(id, children.length)} />
         </div>
       </SortableContext>
 
