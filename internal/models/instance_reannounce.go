@@ -23,6 +23,8 @@ const (
 	maxMaxRetries                 = 50
 )
 
+var defaultHealthIgnoreTrackers = []string{"sptracker.cc"}
+
 // InstanceReannounceSettings stores per-instance tracker reannounce configuration.
 type InstanceReannounceSettings struct {
 	InstanceID                int       `json:"instanceId"`
@@ -33,6 +35,8 @@ type InstanceReannounceSettings struct {
 	MaxRetries                int       `json:"maxRetries"`
 	Aggressive                bool      `json:"aggressive"`
 	MonitorAll                bool      `json:"monitorAll"`
+	HealthFocusTrackers       []string  `json:"healthFocusTrackers"`
+	HealthIgnoreTrackers      []string  `json:"healthIgnoreTrackers"`
 	ExcludeCategories         bool      `json:"excludeCategories"`
 	Categories                []string  `json:"categories"`
 	ExcludeTags               bool      `json:"excludeTags"`
@@ -63,6 +67,8 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 		MaxRetries:                defaultMaxRetries,
 		Aggressive:                false,
 		MonitorAll:                false,
+		HealthFocusTrackers:       []string{},
+		HealthIgnoreTrackers:      append([]string{}, defaultHealthIgnoreTrackers...),
 		ExcludeCategories:         false,
 		Categories:                []string{},
 		ExcludeTags:               false,
@@ -76,6 +82,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
 		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		health_focus_trackers_json, health_ignore_trackers_json,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings WHERE instance_id = ?`
 
@@ -94,6 +101,7 @@ func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*Ins
 func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
 		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		health_focus_trackers_json, health_ignore_trackers_json,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings`
 
@@ -138,12 +146,21 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 	if err != nil {
 		return nil, err
 	}
+	healthFocusJSON, err := EncodeStringSliceJSON(coerced.HealthFocusTrackers)
+	if err != nil {
+		return nil, err
+	}
+	healthIgnoreJSON, err := EncodeStringSliceJSON(coerced.HealthIgnoreTrackers)
+	if err != nil {
+		return nil, err
+	}
 
 	const stmt = `INSERT INTO instance_reannounce_settings (
 		instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
 		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json,
+		health_focus_trackers_json, health_ignore_trackers_json,
 		exclude_categories, exclude_tags, exclude_trackers)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		initial_wait_seconds = excluded.initial_wait_seconds,
@@ -155,6 +172,8 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		categories_json = excluded.categories_json,
 		tags_json = excluded.tags_json,
 		trackers_json = excluded.trackers_json,
+		health_focus_trackers_json = excluded.health_focus_trackers_json,
+		health_ignore_trackers_json = excluded.health_ignore_trackers_json,
 		exclude_categories = excluded.exclude_categories,
 		exclude_tags = excluded.exclude_tags,
 		exclude_trackers = excluded.exclude_trackers`
@@ -171,6 +190,8 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		catJSON,
 		tagJSON,
 		trackerJSON,
+		healthFocusJSON,
+		healthIgnoreJSON,
 		BoolToSQLite(coerced.ExcludeCategories),
 		BoolToSQLite(coerced.ExcludeTags),
 		BoolToSQLite(coerced.ExcludeTrackers),
@@ -209,6 +230,11 @@ func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *Instance
 	clone.Categories = SanitizeStringSlice(clone.Categories)
 	clone.Tags = SanitizeStringSlice(clone.Tags)
 	clone.Trackers = SanitizeCommaSeparatedStringSlice(clone.Trackers)
+	clone.HealthFocusTrackers = SanitizeCommaSeparatedStringSlice(clone.HealthFocusTrackers)
+	clone.HealthIgnoreTrackers = SanitizeCommaSeparatedStringSlice(clone.HealthIgnoreTrackers)
+	if len(clone.HealthIgnoreTrackers) == 0 {
+		clone.HealthIgnoreTrackers = append([]string{}, defaultHealthIgnoreTrackers...)
+	}
 	return &clone
 }
 
@@ -227,6 +253,8 @@ func scanInstanceReannounceSettings(scanner interface {
 		catJSON              sql.NullString
 		tagJSON              sql.NullString
 		trackerJSON          sql.NullString
+		healthFocusJSON      sql.NullString
+		healthIgnoreJSON     sql.NullString
 		updatedAt            sql.NullTime
 		excludeCategoriesInt int
 		excludeTagsInt       int
@@ -246,6 +274,8 @@ func scanInstanceReannounceSettings(scanner interface {
 		&tagJSON,
 		&trackerJSON,
 		&updatedAt,
+		&healthFocusJSON,
+		&healthIgnoreJSON,
 		&excludeCategoriesInt,
 		&excludeTagsInt,
 		&excludeTrackersInt,
@@ -265,6 +295,14 @@ func scanInstanceReannounceSettings(scanner interface {
 	if err != nil {
 		return nil, fmt.Errorf("decode trackers: %w", err)
 	}
+	healthFocus, err := DecodeStringSliceJSON(healthFocusJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode health focus trackers: %w", err)
+	}
+	healthIgnore, err := DecodeStringSliceJSON(healthIgnoreJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode health ignore trackers: %w", err)
+	}
 
 	settings := &InstanceReannounceSettings{
 		InstanceID:                instanceID,
@@ -275,6 +313,8 @@ func scanInstanceReannounceSettings(scanner interface {
 		MaxRetries:                maxRetries,
 		Aggressive:                aggressiveInt == 1,
 		MonitorAll:                monitorAllInt == 1,
+		HealthFocusTrackers:       healthFocus,
+		HealthIgnoreTrackers:      healthIgnore,
 		ExcludeCategories:         excludeCategoriesInt == 1,
 		Categories:                categories,
 		ExcludeTags:               excludeTagsInt == 1,

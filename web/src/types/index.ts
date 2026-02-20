@@ -70,6 +70,8 @@ export interface InstanceReannounceSettings {
   maxRetries: number
   aggressive: boolean
   monitorAll: boolean
+  healthFocusTrackers: string[]
+  healthIgnoreTrackers: string[]
   excludeCategories: boolean
   categories: string[]
   excludeTags: boolean

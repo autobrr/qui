@@ -105,5 +105,7 @@ func cloneSettings(src *models.InstanceReannounceSettings) *models.InstanceReann
 	clone.Categories = append([]string{}, src.Categories...)
 	clone.Tags = append([]string{}, src.Tags...)
 	clone.Trackers = append([]string{}, src.Trackers...)
+	clone.HealthFocusTrackers = append([]string{}, src.HealthFocusTrackers...)
+	clone.HealthIgnoreTrackers = append([]string{}, src.HealthIgnoreTrackers...)
 	return &clone
 }
