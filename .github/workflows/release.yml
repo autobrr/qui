@@ -11,17 +11,19 @@ on:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/images/**"
       - "config.toml"
-      - "docker-compose.yml"
+      - "distrib/docker/docker-compose.yml"
       - "Makefile"
       - "**.md"
+      - "documentation/**"
   pull_request:
     paths-ignore:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/images/**"
       - "config.toml"
-      - "docker-compose.yml"
+      - "distrib/docker/docker-compose.yml"
       - "Makefile"
       - "**.md"
+      - "documentation/**"
 
 env:
   REGISTRY: ghcr.io
@@ -32,6 +34,7 @@ env:
 permissions:
   contents: write
   packages: write
+  actions: write
 
 jobs:
   web:
@@ -254,19 +257,18 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./ci.Dockerfile
+          file: ./distrib/docker/ci.Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && 'true' || 'false' }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
             BUILDER=${{ github.actor }}@github-actions
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            POLAR_ORG_ID=${{ secrets.POLAR_ORG_ID }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            POLAR_ORG_ID=${{ env.POLAR_ORG_ID }}
           provenance: false
 
       - name: Export image digest

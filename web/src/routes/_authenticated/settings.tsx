@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -12,14 +12,20 @@ const settingsSearchSchema = z.object({
     "instances",
     "indexers",
     "search-cache",
+    "integrations",
     "client-api",
     "api",
     "external-programs",
+    "notifications",
     "datetime",
     "themes",
     "security",
+    "logs",
   ]).optional().catch(undefined),
   modal: z.enum(["add-instance"]).optional().catch(undefined),
+  checkout: z.enum(["success"]).optional().catch(undefined),
+  status: z.string().optional().catch(undefined),
+  payment_id: z.string().optional().catch(undefined),
 })
 
 export type SettingsSearch = z.infer<typeof settingsSearchSchema>

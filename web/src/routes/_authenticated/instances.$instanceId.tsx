@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -14,11 +14,16 @@ import { z } from "zod"
 
 const instanceSearchSchema = z.object({
   modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
+  torrent: z.string().optional(),
+  tab: z.string().optional(),
 })
 
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
+  staticData: {
+    title: "Torrents",
+  },
 })
 
 function InstanceTorrents() {

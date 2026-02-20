@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -758,7 +758,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     if (lastSlash === -1) return { folderPath: "", fileName: initialPath }
     return {
       folderPath: initialPath.slice(0, lastSlash),
-      fileName: initialPath.slice(lastSlash + 1)
+      fileName: initialPath.slice(lastSlash + 1),
     }
   }, [initialPath])
 
@@ -912,7 +912,7 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     if (lastSlash === -1) return { parentPath: "", folderName: path }
     return {
       parentPath: path.slice(0, lastSlash),
-      folderName: path.slice(lastSlash + 1)
+      folderName: path.slice(lastSlash + 1),
     }
   }, [selectedPath, initialPath])
 
@@ -1213,89 +1213,89 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                 ref={scrollContainerRef}
                 className="max-h-64 border rounded-md overflow-y-auto"
               >
-              {/* No category option */}
-              <button
-                type="button"
-                onClick={() => setCategoryInput("")}
-                className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                  categoryInput === "" ? "bg-accent" : ""
-                }`}
-              >
-                <span className="text-sm text-muted-foreground italic">(No category)</span>
-              </button>
-
-              {shouldUseVirtualization ? (
-                // Virtualized rendering for large lists
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: "100%",
-                    position: "relative",
-                  }}
+                {/* No category option */}
+                <button
+                  type="button"
+                  onClick={() => setCategoryInput("")}
+                  className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                    categoryInput === "" ? "bg-accent" : ""
+                  }`}
                 >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const category = filteredCategories[virtualRow.index]
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setCategoryInput(category.name)}
-                          className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                            categoryInput === category.name ? "bg-accent" : ""
-                          }`}
-                          title={category.name}
-                        >
-                          <span
-                            className="text-sm"
-                            style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                          >
-                            {category.displayName}
-                          </span>
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                // Simple rendering for small lists - much faster!
-                <div>
-                  {filteredCategories.map((category) => (
-                    <button
-                      key={category.name}
-                      type="button"
-                      onClick={() => setCategoryInput(category.name)}
-                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                        categoryInput === category.name ? "bg-accent" : ""
-                      }`}
-                      title={category.name}
-                    >
-                      <span
-                        className="text-sm"
-                        style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                      >
-                        {category.displayName}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                  <span className="text-sm text-muted-foreground italic">(No category)</span>
+                </button>
 
-              {filteredCategories.length === 0 && searchQuery && (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No categories found matching "{searchQuery}"
-                </div>
-              )}
+                {shouldUseVirtualization ? (
+                // Virtualized rendering for large lists
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const category = filteredCategories[virtualRow.index]
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setCategoryInput(category.name)}
+                            className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                              categoryInput === category.name ? "bg-accent" : ""
+                            }`}
+                            title={category.name}
+                          >
+                            <span
+                              className="text-sm"
+                              style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                            >
+                              {category.displayName}
+                            </span>
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                // Simple rendering for small lists - much faster!
+                  <div>
+                    {filteredCategories.map((category) => (
+                      <button
+                        key={category.name}
+                        type="button"
+                        onClick={() => setCategoryInput(category.name)}
+                        className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                          categoryInput === category.name ? "bg-accent" : ""
+                        }`}
+                        title={category.name}
+                      >
+                        <span
+                          className="text-sm"
+                          style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                        >
+                          {category.displayName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {filteredCategories.length === 0 && searchQuery && (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No categories found matching "{searchQuery}"
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1595,6 +1595,8 @@ interface EditTrackerDialogProps {
   selectedHashes: string[]
   onConfirm: (oldURL: string, newURL: string) => void
   isPending?: boolean
+  onConvertHttpToHttps?: () => void
+  isConverting?: boolean
 }
 
 export const EditTrackerDialog = memo(function EditTrackerDialog({
@@ -1607,6 +1609,8 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   selectedHashes,
   onConfirm,
   isPending = false,
+  onConvertHttpToHttps,
+  isConverting = false,
 }: EditTrackerDialogProps) {
   const [oldURL, setOldURL] = useState("")
   const [newURL, setNewURL] = useState("")
@@ -1626,6 +1630,44 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
     wasOpen.current = open
   }, [open, tracker, trackerURLs])
 
+  // Update oldURL selection when trackerURLs refresh (e.g., after HTTP→HTTPS conversion)
+  // If the selected URL was converted, try to select its https equivalent or first available
+  useEffect(() => {
+    if (!open || !oldURL) return
+    // If current selection still exists, keep it
+    if (trackerURLs.includes(oldURL)) return
+    // If it was an http:// URL, try to find its https:// equivalent by matching hostname/pathname
+    if (oldURL.startsWith("http://")) {
+      try {
+        const parsed = new URL(oldURL)
+        // Find an HTTPS URL with matching hostname and pathname (port may differ)
+        const httpsMatch = trackerURLs.find((url) => {
+          if (!url.startsWith("https://")) return false
+          try {
+            const candidate = new URL(url)
+            return (
+              candidate.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+              candidate.pathname === parsed.pathname &&
+              candidate.search === parsed.search
+            )
+          } catch {
+            return false
+          }
+        })
+        if (httpsMatch) {
+          setOldURL(httpsMatch)
+          return
+        }
+      } catch {
+        // Parsing failed, fall through to fallback
+      }
+    }
+    // Fall back to first available URL
+    if (trackerURLs.length > 0) {
+      setOldURL(trackerURLs[0])
+    }
+  }, [open, oldURL, trackerURLs])
+
   const handleConfirm = useCallback((): void => {
     if (oldURL.trim() && newURL.trim()) {
       onConfirm(oldURL.trim(), newURL.trim())
@@ -1642,6 +1684,12 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
 
   const hashCount = selectedHashes.length
   const isFilteredMode = hashCount === 0 // When no hashes provided, we're updating all torrents with this tracker
+
+  // Check if there are any HTTP URLs that could be converted to HTTPS
+  const hasHttpUrls = useMemo(
+    () => trackerURLs.some((url) => url.startsWith("http://")),
+    [trackerURLs]
+  )
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -1686,11 +1734,15 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
                   onChange={(e) => setOldURL(e.target.value)}
                   placeholder={trackerURLs.length === 0 ? `e.g., http://${tracker}:6969/announce` : ""}
                   className="font-mono text-sm"
-                  readOnly={trackerURLs.length === 1}
                 />
                 {trackerURLs.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Enter the complete tracker URL including the announce path
+                  </p>
+                )}
+                {trackerURLs.length === 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    Pre-populated from detected URL. Edit if needed (e.g., different scheme).
                   </p>
                 )}
               </>
@@ -1716,12 +1768,29 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
               </p>
             </div>
           )}
+          {hasHttpUrls && onConvertHttpToHttps && (
+            <div className="pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onConvertHttpToHttps}
+                disabled={isConverting || loadingURLs || isPending}
+                className="w-full"
+              >
+                {isConverting ? "Converting..." : "Convert all HTTP to HTTPS"}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                Upgrades all http:// tracker URLs to https:// for this domain
+              </p>
+            </div>
+          )}
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs}
+            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs || isConverting}
           >
             Update Tracker
           </AlertDialogAction>
@@ -1731,9 +1800,6 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   )
 })
 
-const SHARE_DEFAULT_RATIO_LIMIT = 0
-const SHARE_DEFAULT_SEEDING_LIMIT = 0
-const SHARE_DEFAULT_INACTIVE_LIMIT = 0
 const LIMIT_USE_GLOBAL = -2
 const LIMIT_UNLIMITED = -1
 const SPEED_DEFAULT_LIMIT = 0
@@ -1764,61 +1830,75 @@ interface ShareLimitDialogProps {
   isPending?: boolean
 }
 
-interface ShareLimitFormState {
-  ratioEnabled: boolean
-  ratioLimit: number
-  seedingTimeEnabled: boolean
-  seedingTimeLimit: number
-  inactiveSeedingTimeEnabled: boolean
-  inactiveSeedingTimeLimit: number
+// Share limit mode: matches qBittorrent sentinel values
+type ShareLimitMode = "global" | "unlimited" | "custom"
+
+interface ShareLimitFieldState {
+  mode: ShareLimitMode
+  customValue: number
+  isMixed: boolean // True when selection has different values
 }
 
-const normalizeShareSignature = (torrent: TorrentLimitSnapshot): string => {
-  return [
-    safeNumber(torrent.ratio_limit, LIMIT_USE_GLOBAL),
-    safeNumber(torrent.seeding_time_limit, LIMIT_USE_GLOBAL),
-    safeNumber(torrent.inactive_seeding_time_limit, LIMIT_USE_GLOBAL),
-    safeNumber(torrent.max_ratio, LIMIT_UNLIMITED),
-    safeNumber(torrent.max_seeding_time, LIMIT_UNLIMITED),
-    safeNumber(torrent.max_inactive_seeding_time, LIMIT_UNLIMITED),
-  ].join("|")
-}
-
-const buildShareLimitInitialState = (torrents?: TorrentLimitSnapshot[]): ShareLimitFormState => {
-  const base: ShareLimitFormState = {
-    ratioEnabled: false,
-    ratioLimit: SHARE_DEFAULT_RATIO_LIMIT,
-    seedingTimeEnabled: false,
-    seedingTimeLimit: SHARE_DEFAULT_SEEDING_LIMIT,
-    inactiveSeedingTimeEnabled: false,
-    inactiveSeedingTimeLimit: SHARE_DEFAULT_INACTIVE_LIMIT,
+// Convert a raw limit value to mode + custom value
+function valueToFieldState(value: number | undefined, defaultCustom: number): Omit<ShareLimitFieldState, "isMixed"> {
+  if (value === undefined || value === LIMIT_USE_GLOBAL) {
+    return { mode: "global", customValue: defaultCustom }
   }
+  if (value === LIMIT_UNLIMITED) {
+    return { mode: "unlimited", customValue: defaultCustom }
+  }
+  return { mode: "custom", customValue: value }
+}
 
+// Check if all torrents have the same value for a field
+function checkFieldConsistency(
+  torrents: TorrentLimitSnapshot[] | undefined,
+  getter: (t: TorrentLimitSnapshot) => number | undefined
+): { isMixed: boolean; commonValue: number | undefined } {
   if (!torrents || torrents.length === 0) {
-    return base
+    return { isMixed: false, commonValue: undefined }
   }
+  const firstValue = getter(torrents[0])
+  const allSame = torrents.every(t => getter(t) === firstValue)
+  return { isMixed: !allSame, commonValue: allSame ? firstValue : undefined }
+}
 
-  const signatures = torrents.map(normalizeShareSignature)
-  const allMatch = signatures.every((signature) => signature === signatures[0])
-
-  if (!allMatch) {
-    return base
-  }
-
-  const [first] = torrents
-  const ratioLimitValue = safeNumber(first.ratio_limit, LIMIT_UNLIMITED)
-  const seedingTimeLimitValue = safeNumber(first.seeding_time_limit, LIMIT_UNLIMITED)
-  const inactiveSeedingTimeLimitValue = safeNumber(first.inactive_seeding_time_limit, LIMIT_UNLIMITED)
+// Build initial state from selected torrents
+function buildShareLimitFieldStates(torrents?: TorrentLimitSnapshot[]): {
+  ratio: ShareLimitFieldState
+  seedTime: ShareLimitFieldState
+  inactiveTime: ShareLimitFieldState
+} {
+  const ratioCheck = checkFieldConsistency(torrents, t => t.ratio_limit)
+  const seedTimeCheck = checkFieldConsistency(torrents, t => t.seeding_time_limit)
+  const inactiveTimeCheck = checkFieldConsistency(torrents, t => t.inactive_seeding_time_limit)
 
   return {
-    ...base,
-    ratioEnabled: ratioLimitValue >= 0,
-    ratioLimit: ratioLimitValue >= 0 ? ratioLimitValue : base.ratioLimit,
-    seedingTimeEnabled: seedingTimeLimitValue >= 0,
-    seedingTimeLimit: seedingTimeLimitValue >= 0 ? seedingTimeLimitValue : base.seedingTimeLimit,
-    inactiveSeedingTimeEnabled: inactiveSeedingTimeLimitValue >= 0,
-    inactiveSeedingTimeLimit:
-      inactiveSeedingTimeLimitValue >= 0 ? inactiveSeedingTimeLimitValue : base.inactiveSeedingTimeLimit,
+    ratio: {
+      ...valueToFieldState(ratioCheck.commonValue, 1.0),
+      isMixed: ratioCheck.isMixed,
+    },
+    seedTime: {
+      ...valueToFieldState(seedTimeCheck.commonValue, 1440),
+      isMixed: seedTimeCheck.isMixed,
+    },
+    inactiveTime: {
+      ...valueToFieldState(inactiveTimeCheck.commonValue, 10080),
+      isMixed: inactiveTimeCheck.isMixed,
+    },
+  }
+}
+
+// Convert mode + custom value to API value
+function fieldStateToValue(mode: ShareLimitMode, customValue: number, isRatio: boolean): number {
+  switch (mode) {
+    case "global":
+      return LIMIT_USE_GLOBAL
+    case "unlimited":
+      return LIMIT_UNLIMITED
+    case "custom":
+      // Normalize ratio to 2 decimal places
+      return isRatio ? Math.round(customValue * 100) / 100 : customValue
   }
 }
 
@@ -1830,71 +1910,98 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   onConfirm,
   isPending = false,
 }: ShareLimitDialogProps) {
-  const [useGlobalLimits, setUseGlobalLimits] = useState(false)
-  const [ratioEnabled, setRatioEnabled] = useState(false)
-  const [ratioLimit, setRatioLimit] = useState(SHARE_DEFAULT_RATIO_LIMIT)
-  const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
-  const [seedingTimeLimit, setSeedingTimeLimit] = useState(SHARE_DEFAULT_SEEDING_LIMIT) // 24 hours in minutes
-  const [inactiveSeedingTimeEnabled, setInactiveSeedingTimeEnabled] = useState(false)
-  const [inactiveSeedingTimeLimit, setInactiveSeedingTimeLimit] = useState(SHARE_DEFAULT_INACTIVE_LIMIT) // 7 days in minutes
-  const wasOpen = useRef(false)
+  const [ratioMode, setRatioMode] = useState<ShareLimitMode>("global")
+  const [ratioCustom, setRatioCustom] = useState(1.0)
+  const [ratioMixed, setRatioMixed] = useState(false)
+  const [ratioTouched, setRatioTouched] = useState(false) // User explicitly changed this field
 
-  const shareInitialState = useMemo(() => buildShareLimitInitialState(torrents), [torrents])
+  const [seedTimeMode, setSeedTimeMode] = useState<ShareLimitMode>("global")
+  const [seedTimeCustom, setSeedTimeCustom] = useState(1440)
+  const [seedTimeMixed, setSeedTimeMixed] = useState(false)
+  const [seedTimeTouched, setSeedTimeTouched] = useState(false)
+
+  const [inactiveTimeMode, setInactiveTimeMode] = useState<ShareLimitMode>("global")
+  const [inactiveTimeCustom, setInactiveTimeCustom] = useState(10080)
+  const [inactiveTimeMixed, setInactiveTimeMixed] = useState(false)
+  const [inactiveTimeTouched, setInactiveTimeTouched] = useState(false)
+
+  const wasOpen = useRef(false)
 
   // Reset form when dialog opens with torrent values
   useEffect(() => {
     if (open && !wasOpen.current) {
-      // Check if all torrents have global limits (-2 for all three)
-      const hasGlobalLimits = torrents && torrents.length > 0 &&
-        torrents.every(t =>
-          t.ratio_limit === LIMIT_USE_GLOBAL &&
-          t.seeding_time_limit === LIMIT_USE_GLOBAL &&
-          t.inactive_seeding_time_limit === LIMIT_USE_GLOBAL
-        )
+      const states = buildShareLimitFieldStates(torrents)
 
-      setUseGlobalLimits(hasGlobalLimits || false)
-      setRatioEnabled(!hasGlobalLimits && shareInitialState.ratioEnabled)
-      setRatioLimit(shareInitialState.ratioLimit)
-      setSeedingTimeEnabled(!hasGlobalLimits && shareInitialState.seedingTimeEnabled)
-      setSeedingTimeLimit(shareInitialState.seedingTimeLimit)
-      setInactiveSeedingTimeEnabled(!hasGlobalLimits && shareInitialState.inactiveSeedingTimeEnabled)
-      setInactiveSeedingTimeLimit(shareInitialState.inactiveSeedingTimeLimit)
+      setRatioMode(states.ratio.isMixed ? "global" : states.ratio.mode)
+      setRatioCustom(states.ratio.customValue)
+      setRatioMixed(states.ratio.isMixed)
+      setRatioTouched(false)
+
+      setSeedTimeMode(states.seedTime.isMixed ? "global" : states.seedTime.mode)
+      setSeedTimeCustom(states.seedTime.customValue)
+      setSeedTimeMixed(states.seedTime.isMixed)
+      setSeedTimeTouched(false)
+
+      setInactiveTimeMode(states.inactiveTime.isMixed ? "global" : states.inactiveTime.mode)
+      setInactiveTimeCustom(states.inactiveTime.customValue)
+      setInactiveTimeMixed(states.inactiveTime.isMixed)
+      setInactiveTimeTouched(false)
     }
     wasOpen.current = open
-  }, [open, shareInitialState, torrents])
+  }, [open, torrents])
+
+  // Check if any mixed field hasn't been explicitly addressed by the user
+  const hasUnresolvedMixed = (ratioMixed && !ratioTouched) ||
+    (seedTimeMixed && !seedTimeTouched) ||
+    (inactiveTimeMixed && !inactiveTimeTouched)
 
   const handleConfirm = useCallback((): void => {
-    if (useGlobalLimits) {
-      // When using global limits, set all to -2
-      onConfirm(LIMIT_USE_GLOBAL, LIMIT_USE_GLOBAL, LIMIT_USE_GLOBAL)
-    } else {
-      onConfirm(
-        ratioEnabled ? ratioLimit : -1,  // -1 means unlimited (no limit)
-        seedingTimeEnabled ? seedingTimeLimit : -1,
-        inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1
-      )
-    }
+    onConfirm(
+      fieldStateToValue(ratioMode, ratioCustom, true),
+      fieldStateToValue(seedTimeMode, seedTimeCustom, false),
+      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false)
+    )
     // Reset form
-    setUseGlobalLimits(false)
-    setRatioEnabled(false)
-    setRatioLimit(SHARE_DEFAULT_RATIO_LIMIT)
-    setSeedingTimeEnabled(false)
-    setSeedingTimeLimit(SHARE_DEFAULT_SEEDING_LIMIT)
-    setInactiveSeedingTimeEnabled(false)
-    setInactiveSeedingTimeLimit(SHARE_DEFAULT_INACTIVE_LIMIT)
+    setRatioMode("global")
+    setRatioCustom(1.0)
+    setRatioMixed(false)
+    setRatioTouched(false)
+    setSeedTimeMode("global")
+    setSeedTimeCustom(1440)
+    setSeedTimeMixed(false)
+    setSeedTimeTouched(false)
+    setInactiveTimeMode("global")
+    setInactiveTimeCustom(10080)
+    setInactiveTimeMixed(false)
+    setInactiveTimeTouched(false)
     onOpenChange(false)
-  }, [onConfirm, useGlobalLimits, ratioEnabled, ratioLimit, seedingTimeEnabled, seedingTimeLimit, inactiveSeedingTimeEnabled, inactiveSeedingTimeLimit, onOpenChange])
+  }, [onConfirm, ratioMode, ratioCustom, seedTimeMode, seedTimeCustom, inactiveTimeMode, inactiveTimeCustom, onOpenChange])
 
   const handleCancel = useCallback((): void => {
-    setUseGlobalLimits(false)
-    setRatioEnabled(false)
-    setRatioLimit(SHARE_DEFAULT_RATIO_LIMIT)
-    setSeedingTimeEnabled(false)
-    setSeedingTimeLimit(SHARE_DEFAULT_SEEDING_LIMIT)
-    setInactiveSeedingTimeEnabled(false)
-    setInactiveSeedingTimeLimit(SHARE_DEFAULT_INACTIVE_LIMIT)
+    setRatioMode("global")
+    setRatioCustom(1.0)
+    setRatioMixed(false)
+    setRatioTouched(false)
+    setSeedTimeMode("global")
+    setSeedTimeCustom(1440)
+    setSeedTimeMixed(false)
+    setSeedTimeTouched(false)
+    setInactiveTimeMode("global")
+    setInactiveTimeCustom(10080)
+    setInactiveTimeMixed(false)
+    setInactiveTimeTouched(false)
     onOpenChange(false)
   }, [onOpenChange])
+
+  // Helper to set all fields to global (shortcut) - marks all as touched
+  const setAllGlobal = useCallback(() => {
+    setRatioMode("global")
+    setRatioTouched(true)
+    setSeedTimeMode("global")
+    setSeedTimeTouched(true)
+    setInactiveTimeMode("global")
+    setInactiveTimeTouched(true)
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1902,114 +2009,176 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
         <DialogHeader>
           <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
           <DialogDescription>
-            Configure seeding limits or use global defaults from qBittorrent settings.
+            Configure seeding limits for selected torrents. All three fields will be applied.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-4">
-          {/* Global limits toggle */}
-          <div className="space-y-2 pb-2 border-b">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="useGlobalLimits"
-                checked={useGlobalLimits}
-                onCheckedChange={setUseGlobalLimits}
-              />
-              <Label htmlFor="useGlobalLimits" className="text-sm font-medium">Use global limits</Label>
+          {/* Quick action: Set all to global */}
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={setAllGlobal}>
+              Set all to Global
+            </Button>
+          </div>
+
+          {/* Ratio limit */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Ratio limit</Label>
+              {ratioMixed && !ratioTouched && (
+                <span className="text-xs text-yellow-600">Select a value</span>
+              )}
+              {ratioMixed && ratioTouched && (
+                <span className="text-xs text-muted-foreground">(was mixed)</span>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground ml-6">
-              When enabled, torrents will follow the global share limits configured in qBittorrent settings
+            <div className="flex gap-2">
+              <Select
+                value={ratioMode}
+                onValueChange={(value: ShareLimitMode) => {
+                  setRatioMode(value)
+                  setRatioTouched(true)
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Use global</SelectItem>
+                  <SelectItem value="unlimited">Unlimited</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {ratioMode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="flex-1"
+                  value={ratioCustom}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value)
+                    if (Number.isFinite(val)) setRatioCustom(val)
+                  }}
+                  placeholder="e.g. 2.0"
+                />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {ratioMode === "global" ? "Follow qBittorrent global settings" :ratioMode === "unlimited" ? "No ratio limit" :"Stop seeding when ratio reaches this value"}
             </p>
           </div>
 
+          {/* Seeding time limit */}
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="ratioEnabled"
-                checked={ratioEnabled}
-                onCheckedChange={setRatioEnabled}
-                disabled={useGlobalLimits}
-              />
-              <Label htmlFor="ratioEnabled" className="text-sm">Set ratio limit</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Seeding time limit</Label>
+              {seedTimeMixed && !seedTimeTouched && (
+                <span className="text-xs text-yellow-600">Select a value</span>
+              )}
+              {seedTimeMixed && seedTimeTouched && (
+                <span className="text-xs text-muted-foreground">(was mixed)</span>
+              )}
             </div>
-            <div className="ml-6 space-y-1">
-              <Input
-                id="ratioLimit"
-                type="number"
-                min="0"
-                step="0.1"
-                value={ratioLimit}
-                disabled={!ratioEnabled || useGlobalLimits}
-                onChange={(e) => setRatioLimit(parseFloat(e.target.value) || 0)}
-                placeholder="0"
-              />
-              <p className="text-xs text-muted-foreground">
-                Stop seeding when ratio reaches this value
-              </p>
+            <div className="flex gap-2">
+              <Select
+                value={seedTimeMode}
+                onValueChange={(value: ShareLimitMode) => {
+                  setSeedTimeMode(value)
+                  setSeedTimeTouched(true)
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Use global</SelectItem>
+                  <SelectItem value="unlimited">Unlimited</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {seedTimeMode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  className="flex-1"
+                  value={seedTimeCustom}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (Number.isFinite(val)) setSeedTimeCustom(val)
+                  }}
+                  placeholder="e.g. 1440"
+                />
+              )}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {seedTimeMode === "global" ? "Follow qBittorrent global settings" :seedTimeMode === "unlimited" ? "No time limit" :"Minutes (1440 = 24 hours)"}
+            </p>
           </div>
 
+          {/* Inactive seeding time limit */}
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="seedingTimeEnabled"
-                checked={seedingTimeEnabled}
-                onCheckedChange={setSeedingTimeEnabled}
-                disabled={useGlobalLimits}
-              />
-              <Label htmlFor="seedingTimeEnabled" className="text-sm">Set seeding time limit</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Inactive seeding limit</Label>
+              {inactiveTimeMixed && !inactiveTimeTouched && (
+                <span className="text-xs text-yellow-600">Select a value</span>
+              )}
+              {inactiveTimeMixed && inactiveTimeTouched && (
+                <span className="text-xs text-muted-foreground">(was mixed)</span>
+              )}
             </div>
-            <div className="ml-6 space-y-1">
-              <Input
-                id="seedingTimeLimit"
-                type="number"
-                min="0"
-                value={seedingTimeLimit}
-                disabled={!seedingTimeEnabled || useGlobalLimits}
-                onChange={(e) => setSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="0"
-              />
-              <p className="text-xs text-muted-foreground">
-                Minutes (1440 = 24 hours)
-              </p>
+            <div className="flex gap-2">
+              <Select
+                value={inactiveTimeMode}
+                onValueChange={(value: ShareLimitMode) => {
+                  setInactiveTimeMode(value)
+                  setInactiveTimeTouched(true)
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Use global</SelectItem>
+                  <SelectItem value="unlimited">Unlimited</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {inactiveTimeMode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  className="flex-1"
+                  value={inactiveTimeCustom}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (Number.isFinite(val)) setInactiveTimeCustom(val)
+                  }}
+                  placeholder="e.g. 10080"
+                />
+              )}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="inactiveSeedingTimeEnabled"
-                checked={inactiveSeedingTimeEnabled}
-                onCheckedChange={setInactiveSeedingTimeEnabled}
-                disabled={useGlobalLimits}
-              />
-              <Label htmlFor="inactiveSeedingTimeEnabled" className="text-sm">Set inactive seeding limit</Label>
-            </div>
-            <div className="ml-6 space-y-1">
-              <Input
-                id="inactiveSeedingTimeLimit"
-                type="number"
-                min="0"
-                value={inactiveSeedingTimeLimit}
-                disabled={!inactiveSeedingTimeEnabled || useGlobalLimits}
-                onChange={(e) => setInactiveSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="0"
-              />
-              <p className="text-xs text-muted-foreground">
-                Minutes (10080 = 7 days)
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              {inactiveTimeMode === "global" ? "Follow qBittorrent global settings" :inactiveTimeMode === "unlimited" ? "No inactive limit" :"Minutes (10080 = 7 days)"}
+            </p>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending}
-          >
-            {isPending ? "Setting..." : "Apply Limits"}
-          </Button>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {hasUnresolvedMixed && (
+            <p className="text-xs text-yellow-600 text-left sm:flex-1">
+              Select values for all mixed fields before applying
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isPending || hasUnresolvedMixed}
+            >
+              {isPending ? "Setting..." : "Apply Limits"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

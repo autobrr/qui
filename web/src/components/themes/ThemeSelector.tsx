@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -10,7 +10,8 @@ import { themes, isThemePremium, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
-import { Sparkles, Lock, Check, Palette, AlertTriangle } from "lucide-react"
+import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff } from "lucide-react"
 import { toast } from "sonner"
 
 interface ThemeCardProps {
@@ -140,23 +141,40 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
 
 export function ThemeSelector() {
   const { theme: currentTheme, setTheme, setVariation } = useTheme()
-  const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
+  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
+
+  const canSwitchPremium = canSwitchToPremiumTheme({
+    hasPremiumAccess,
+    isError,
+    isLoading,
+  })
 
   const isThemeLicensed = (themeId: string) => {
     if (!isThemePremium(themeId)) return true // Free themes are always available
-    return hasPremiumAccess // Premium themes require premium access
+    return canSwitchPremium
   }
 
   const freeThemes = themes.filter(theme => !theme.isPremium)
   const premiumThemes = themes.filter(theme => theme.isPremium)
 
+  const showThemeLockedToast = () => {
+    if (isError) {
+      toast.error("Unable to verify license", {
+        description: "License check failed. Premium theme switching is temporarily unavailable.",
+      })
+      return
+    }
+
+    toast.error("This theme requires a premium license", {
+      description: "Open Settings → Themes to see payment options and redeem your discount code.",
+    })
+  }
+
   const handleThemeSelect = (themeId: string) => {
     if (isThemeLicensed(themeId)) {
       setTheme(themeId)
     } else {
-      toast.error("This theme requires a premium license", {
-        description: "Please purchase a license to access premium themes",
-      })
+      showThemeLockedToast()
     }
   }
 
@@ -165,9 +183,7 @@ export function ThemeSelector() {
       setTheme(themeId)
       setVariation(variationId)
     } else {
-      toast.error("This theme requires a premium license", {
-        description: "Please purchase a license to access premium themes",
-      })
+      showThemeLockedToast()
     }
   }
 
@@ -206,6 +222,15 @@ export function ThemeSelector() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {isError && !canSwitchPremium && (
+          <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
+            <WifiOff className="h-4 w-4 flex-shrink-0" />
+            <p className="text-sm">
+              License verification unavailable. Premium theme switching is temporarily disabled.
+            </p>
+          </div>
+        )}
+
         {/* Free Themes */}
         <div>
           <h4 className="font-medium mb-3 flex items-center gap-2">

@@ -26,6 +26,8 @@ export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
 
 interface UseTorrentsListOptions {
   enabled?: boolean
+  pollingEnabled?: boolean
+  refetchIntervalInBackground?: boolean
   search?: string
   filters?: TorrentFilters
   sort?: string
@@ -38,7 +40,15 @@ export function useTorrentsList(
   instanceId: number,
   options: UseTorrentsListOptions = {}
 ) {
-  const { enabled = true, search, filters, sort = "added_on", order = "desc" } = options
+  const {
+    enabled = true,
+    pollingEnabled = true,
+    refetchIntervalInBackground = false,
+    search,
+    filters,
+    sort = "added_on",
+    order = "desc",
+  } = options
 
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
@@ -252,7 +262,7 @@ export function useTorrentsList(
           filters,
         })
       }
-      
+
       return api.getTorrents(instanceId, {
         page: currentPage,
         limit: pageSize,
@@ -271,9 +281,14 @@ export function useTorrentsList(
     // Only poll the first page to get fresh data - don't poll pagination pages
     refetchInterval:
       currentPage === 0
-        ? (isCrossSeedFiltering ? 10000 : (shouldDisablePolling ? false : TORRENT_STREAM_POLL_INTERVAL_MS))
+        ? (
+            pollingEnabled
+              ? (isCrossSeedFiltering ? 10000 : (shouldDisablePolling ? false : TORRENT_STREAM_POLL_INTERVAL_MS))
+              : false
+          )
         : false,
-    refetchIntervalInBackground: false, // Don't poll when tab is not active
+    refetchIntervalInBackground,
+    refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
     enabled: queryEnabled,
   })
 
@@ -322,10 +337,10 @@ export function useTorrentsList(
     }
 
     // Handle both regular torrents and cross-instance torrents
-    const torrentsData = data.isCrossInstance 
+    const torrentsData = data.isCrossInstance
       ? (data.crossInstanceTorrents || data.cross_instance_torrents)
       : data.torrents
-    
+
     if (!torrentsData) {
       setIsLoadingMore(false)
       return

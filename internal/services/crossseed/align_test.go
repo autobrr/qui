@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -6,6 +9,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestBuildFileRenamePlan_MovieRelease(t *testing.T) {
@@ -184,7 +189,7 @@ func TestShouldRenameTorrentDisplay(t *testing.T) {
 	otherPack := rls.Release{Series: 2, Episode: 0}
 
 	require.False(t, shouldRenameTorrentDisplay(&episode, &seasonPack))
-	require.True(t, shouldRenameTorrentDisplay(&seasonPack, &episode))
+	require.False(t, shouldRenameTorrentDisplay(&seasonPack, &episode))
 	require.True(t, shouldRenameTorrentDisplay(&seasonPack, &otherPack))
 	require.False(t, shouldRenameTorrentDisplay(&episode, &otherPack))
 }
@@ -293,6 +298,67 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			},
 			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1000000000}},
 			expectedResult: true, // main file name differs (spaces vs periods)
+		},
+		{
+			name:           "bare file to folder - folder name differs (apostrophe)",
+			torrentName:    "Someones.Movie.2014.mkv",
+			matchedName:    "Someone's.Movie.2014",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Someones.Movie.2014.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Someone's.Movie.2014/Someones.Movie.2014.mkv", Size: 1000}},
+			expectedResult: true, // "Someones.Movie.2014" != "Someone's.Movie.2014"
+		},
+		{
+			name:           "bare file to folder - folder name differs (service name)",
+			torrentName:    "Movie.2024.Amazon.mkv",
+			matchedName:    "Movie.2024.AMZN",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.Amazon.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.AMZN/Movie.2024.Amazon.mkv", Size: 1000}},
+			expectedResult: true, // "Movie.2024.Amazon" != "Movie.2024.AMZN"
+		},
+		{
+			name:           "bare file to folder - folder differs, filename equal (bug chain test)",
+			torrentName:    "Someones.Movie.2014.1080p.Amazon.WEB-DL.DD+5.1.x264-GRP.mkv",
+			matchedName:    "Someone's.Movie.2014.1080p.AMZN.WEB-DL.DD+5.1.x264-GRP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Someones.Movie.2014.1080p.Amazon.WEB-DL.DD+5.1.x264-GRP.mkv", Size: 1500000000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Someone's.Movie.2014.1080p.AMZN.WEB-DL.DD+5.1.x264-GRP/Someones.Movie.2014.1080p.Amazon.WEB-DL.DD+5.1.x264-GRP.mkv", Size: 1500000000}},
+			expectedResult: true, // Folder differs even though filenames match - must trigger recheck
+		},
+		// Tests for internal path differences (same root/name but different paths inside)
+		{
+			name:        "same root and name, different filename - alignment needed",
+			torrentName: "Show.S01",
+			matchedName: "Show.S01",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/ep1.mkv", Size: 1000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/Episode.1.mkv", Size: 1000},
+			},
+			expectedResult: true, // filenames differ inside matching root
+		},
+		{
+			name:        "same root and name and filename, different subfolder path - alignment needed",
+			torrentName: "Show.S01",
+			matchedName: "Show.S01",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/Season 01/E01.mkv", Size: 1000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/E01.mkv", Size: 1000},
+			},
+			expectedResult: true, // subfolder structure differs
+		},
+		{
+			name:        "identical paths - no alignment needed",
+			torrentName: "Show.S01",
+			matchedName: "Show.S01",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/E01.mkv", Size: 1000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/E01.mkv", Size: 1000},
+			},
+			expectedResult: false, // paths are identical
 		},
 	}
 
@@ -421,7 +487,9 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			name: "both have same count, different sizes matches by size",
+			// Files with different normalized keys are extras even if sizes match.
+			// a.mkv and x.mkv have different normalized keys, so they don't match.
+			name: "different normalized keys same size - has extras",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/a.mkv", Size: 1000},
 				{Name: "Movie/b.mkv", Size: 2000},
@@ -430,7 +498,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/x.mkv", Size: 1000},
 				{Name: "Movie/y.mkv", Size: 2000},
 			},
-			expectedResult: false,
+			expectedResult: true, // a.mkv ≠ x.mkv, b.mkv ≠ y.mkv by normalized key
 		},
 		{
 			name: "candidate has more files than source - no extras",
@@ -473,6 +541,36 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			sourceFiles:    qbt.TorrentFiles{},
 			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 			expectedResult: false,
+		},
+		{
+			// Regression test: same size, different extension should be detected as extras.
+			// Source has .srt, candidate has .nfo - both are 1024 bytes.
+			// Without normalizedKey matching, size-only matching would wrongly see no extras.
+			name: "same size different extension - has extras (regression)",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.srt", Size: 1024}, // subtitle file
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.nfo", Size: 1024}, // NFO file with same size as srt
+			},
+			expectedResult: true, // .srt has no match (even though .nfo has same size), so it's extra
+		},
+		{
+			// Different filenames with same extension and size are still extras.
+			// english.srt and spanish.srt have different normalized keys, so they don't match.
+			// This prevents wrong hardlinks when different sidecar files happen to have same size.
+			name: "same size same extension different name - has extras",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/english.srt", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/spanish.srt", Size: 1024}, // same extension, different name, same size
+			},
+			expectedResult: true, // english.srt ≠ spanish.srt by normalized key
 		},
 	}
 
@@ -549,6 +647,391 @@ func TestNormalizeFileKey_UnicodeMatching(t *testing.T) {
 			norm1 := normalizeFileKey(tt.file1)
 			norm2 := normalizeFileKey(tt.file2)
 			require.Equal(t, norm1, norm2, "Expected %q and %q to normalize to the same key", tt.file1, tt.file2)
+		})
+	}
+}
+
+func TestNormalizeFileKey_AudioAliasMatching(t *testing.T) {
+	// DD+ and DDP represent the same Dolby Digital Plus codec and should normalize the same.
+	normDDPlus := normalizeFileKey("Example.Show.S03.720p.AMZN.WEB-DL.DD+5.1.H.264-GRP.mkv")
+	normDDP := normalizeFileKey("Example.Show.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv")
+	require.Equal(t, normDDP, normDDPlus)
+}
+
+func TestHasContentFileSizeMismatch(t *testing.T) {
+	normalizer := stringutils.NewDefaultNormalizer()
+
+	tests := []struct {
+		name             string
+		sourceFiles      qbt.TorrentFiles
+		candidateFiles   qbt.TorrentFiles
+		expectedMismatch bool
+		expectedFiles    []string
+	}{
+		{
+			name: "identical single files - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E08.720p.WEB-DL.DDP5.1.H.264-GRP.mkv", Size: 1000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show S01E08 720p WEB-DL DDP5 1 H 264-GRP.mkv", Size: 1000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "different file sizes - mismatch detected",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 1000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 1000000001}, // 1 byte difference
+			},
+			expectedMismatch: true,
+			expectedFiles:    []string{"movie.mkv"},
+		},
+		{
+			name: "same scene release different naming - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.Title.2024.1080p.BluRay.x264-GROUP/Movie.Title.2024.1080p.BluRay.x264-GROUP.mkv", Size: 4000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie Title 2024 1080p BluRay x264-GROUP/Movie Title 2024 1080p BluRay x264-GROUP.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "extra NFO in source filtered out by hardcoded patterns - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.nfo", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "extra ZIP in source - no mismatch (extras allowed)",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/archive.zip", Size: 1024}, // Extra file with no matching key in candidate
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false, // Extra files don't cause mismatch; piece-boundary check handles safety
+			expectedFiles:    nil,
+		},
+		{
+			name: "multiple files all match",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 500000000},
+				{Name: "Show.S01E02.mkv", Size: 600000000},
+				{Name: "Show.S01E03.mkv", Size: 550000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show S01E01.mkv", Size: 500000000},
+				{Name: "Show S01E02.mkv", Size: 600000000},
+				{Name: "Show S01E03.mkv", Size: 550000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "one of multiple files has size mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 500000000},
+				{Name: "Show.S01E02.mkv", Size: 600000001}, // Different size
+				{Name: "Show.S01E03.mkv", Size: 550000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show S01E01.mkv", Size: 500000000},
+				{Name: "Show S01E02.mkv", Size: 600000000},
+				{Name: "Show S01E03.mkv", Size: 550000000},
+			},
+			expectedMismatch: true,
+			expectedFiles:    []string{"Show.S01E02.mkv"},
+		},
+		{
+			name:             "empty source files - no mismatch",
+			sourceFiles:      qbt.TorrentFiles{},
+			candidateFiles:   qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000000000}},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "all source files filtered by hardcoded patterns - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.nfo", Size: 1024},  // .nfo is hardcoded
+				{Name: "movie.srt", Size: 50000}, // .srt is hardcoded
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "candidate has more files with matching sizes - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 500000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show S01/Show S01E01.mkv", Size: 500000000},
+				{Name: "Show S01/Show S01E02.mkv", Size: 600000000}, // Extra file
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "source has extra sidecars filtered by hardcoded patterns - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.nfo", Size: 1024},
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.srt", Size: 50000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				// Existing torrent only has the mkv
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "folder path with hardcoded sample keyword",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/Sample/sample.mkv", Size: 50000}, // sample is hardcoded keyword
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "cross-tracker size mismatch - different file sizes rejected",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E08.Episode.Title.720p.WEB-DL.DDP5.1.H.264-GRP.mkv", Size: 1234567890},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show S01E08 Episode Title 720p WEB-DL DDP5 1 H 264-GRP/Show S01E08 Episode Title 720p WEB-DL DDP5 1 H 264-GRP.mkv", Size: 1234567891},
+			},
+			expectedMismatch: true,
+			expectedFiles:    []string{"Show.S01E08.Episode.Title.720p.WEB-DL.DDP5.1.H.264-GRP.mkv"},
+		},
+		{
+			name: "sample files filtered by hardcoded keyword",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/sample.mkv", Size: 50000000}, // 'sample' keyword matches
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "multiple size mismatches",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 500000001},
+				{Name: "Show.S01E02.mkv", Size: 600000001},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show S01E01.mkv", Size: 500000000},
+				{Name: "Show S01E02.mkv", Size: 600000000},
+			},
+			expectedMismatch: true,
+			expectedFiles:    []string{"Show.S01E01.mkv", "Show.S01E02.mkv"},
+		},
+		{
+			// This test proves that even when release matching allows DDP vs DDPA through
+			// (due to relaxed audio checks), the file size mismatch is caught here.
+			// If audio truly differs, the file sizes will differ and we reject.
+			name: "audio mismatch caught by size difference - DDP vs DDPA different files",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv", Size: 1500000000}, // DDP 5.1 file
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDPA5.1.H.264-Btn.mkv", Size: 1600000000}, // DDPA (Atmos) file - larger
+			},
+			expectedMismatch: true,
+			expectedFiles: []string{
+				"Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv",
+			},
+		},
+		{
+			// This test proves that when indexer metadata is wrong (says DDPA but file is DDP),
+			// and the files are actually identical, we correctly allow the match.
+			name: "audio metadata mismatch but same file - allowed",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv", Size: 1500000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				// Indexer says DDPA but actual file is same size as source (it's DDP really)
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDPA5.1.H.264-Btn.mkv", Size: 1500000000},
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			name: "season pack source vs single episode candidate - mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E01.1080p.WEB-DL.H.264-GRP.mkv", Size: 1400000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E02.1080p.WEB-DL.H.264-GRP.mkv", Size: 1350000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E03.1080p.WEB-DL.H.264-GRP.mkv", Size: 1380000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E04.1080p.WEB-DL.H.264-GRP.mkv", Size: 1420000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E05.1080p.WEB-DL.H.264-GRP.mkv", Size: 1390000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E06.1080p.WEB-DL.H.264-GRP.mkv", Size: 1360000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E07.1080p.WEB-DL.H.264-GRP.mkv", Size: 1410000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E08.1080p.WEB-DL.H.264-GRP.mkv", Size: 1370000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E09.1080p.WEB-DL.H.264-GRP.mkv", Size: 1340000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E10.1080p.WEB-DL.H.264-GRP.mkv", Size: 1430000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E11.1080p.WEB-DL.H.264-GRP.mkv", Size: 1385000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E12.1080p.WEB-DL.H.264-GRP.mkv", Size: 1450000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				// Only one episode exists - matched via partial-in-pack
+				{Name: "Fake.Show.S01E09.Episode.Title.1080p.WEB-DL.H.264-GRP.mkv", Size: 1340000000},
+			},
+			expectedMismatch: true,
+			// 11 of 12 source files have no matching size in candidate
+			// Fallback: largest source file is S01E12 (1450000000), largest candidate is 1340000000
+			// These differ, so fallback catches the mismatch
+			expectedFiles: []string{
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E12.1080p.WEB-DL.H.264-GRP.mkv",
+			},
+		},
+		// New test cases for matched-files-only logic
+		{
+			name: "source has extra SFV, candidate has only MKV - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.sfv", Size: 512}, // .sfv not in ignore list
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+			},
+			expectedMismatch: false, // MKV matches, SFV is extra - allowed
+			expectedFiles:    nil,
+		},
+		{
+			name: "matched file with different size - mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie 2024 1080p BluRay x264-GRP.mkv", Size: 8000000001}, // Same normalized key, different size
+			},
+			expectedMismatch: true,
+			expectedFiles:    []string{"Movie.2024.1080p.BluRay.x264-GRP.mkv"},
+		},
+		{
+			name: "no key matches, largest files same - no mismatch (fallback passes)",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "TrackerA.Release.Name.mkv", Size: 5000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Completely.Different.Name.mkv", Size: 5000000000}, // Different key but same size
+			},
+			expectedMismatch: false, // Fallback: largest files have same size
+			expectedFiles:    nil,
+		},
+		{
+			name: "no key matches, largest files differ - mismatch (fallback catches)",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "TrackerA.Release.Name.mkv", Size: 5000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Completely.Different.Name.mkv", Size: 5000000001}, // Different key AND different size
+			},
+			expectedMismatch: true, // Fallback: largest files have different sizes
+			expectedFiles:    []string{"TrackerA.Release.Name.mkv"},
+		},
+		{
+			name: "source has extra video file - no mismatch (extras allowed)",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/behind-the-scenes.mkv", Size: 500000000}, // Extra video file
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedMismatch: false, // Main content matches, extra is fine
+			expectedFiles:    nil,
+		},
+		{
+			name: "candidate has extra file, source file matches - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.mkv", Size: 4000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.mkv", Size: 4000000000},
+				{Name: "Movie.nfo", Size: 1024}, // Candidate has extra
+			},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
+			// Regression test: tiny sidecar matching shouldn't suppress fallback check
+			// when main content files have different names and different sizes
+			name: "only sidecar matches, main content differs - mismatch via fallback",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "MovieA.mkv", Size: 8000000000}, // Main content - different name from candidate
+				{Name: "Release.sfv", Size: 512},       // Sidecar matches by key
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "MovieB.mkv", Size: 8000000001}, // Different name AND different size
+				{Name: "Release.sfv", Size: 512},       // Sidecar matches
+			},
+			expectedMismatch: true, // Fallback catches it: .sfv is <1MB so not substantial, largest files differ
+			expectedFiles:    []string{"MovieA.mkv"},
+		},
+		{
+			// When sidecar matches and main content has same size (but different name),
+			// fallback should pass since largest files match
+			name: "only sidecar matches, main content same size - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "MovieA.mkv", Size: 8000000000},
+				{Name: "Release.sfv", Size: 512},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "MovieB.mkv", Size: 8000000000}, // Same size, different name
+				{Name: "Release.sfv", Size: 512},
+			},
+			expectedMismatch: false, // Fallback passes: largest files have same size
+			expectedFiles:    nil,
+		},
+		{
+			// Source has large extras (bigger than matched content), but main content matches.
+			// BehindTheScenes.mkv has no matching key in candidate, so it's a true "extra".
+			// Among files WITH matching keys (only Movie.mkv), the largest was matched.
+			name: "source has large extras bigger than matched content - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.mkv", Size: 4000000000},           // Has matching key, matched
+				{Name: "BehindTheScenes.mkv", Size: 6000000000}, // No matching key - true extra
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.mkv", Size: 4000000000}, // Only has main content
+			},
+			expectedMismatch: false, // Movie.mkv (largest with key) matched, BTS is extra
+			expectedFiles:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, normalizer)
+			require.Equal(t, tt.expectedMismatch, hasMismatch)
+			if tt.expectedFiles != nil {
+				require.ElementsMatch(t, tt.expectedFiles, mismatchedFiles)
+			} else {
+				require.Empty(t, mismatchedFiles)
+			}
 		})
 	}
 }

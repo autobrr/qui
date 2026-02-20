@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -22,13 +22,16 @@ import {
   useHasPremiumAccess,
   useLicenseDetails
 } from "@/hooks/useLicense"
+import { withBasePath } from "@/lib/base-url"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
-import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
-import { AlertTriangle, Bitcoin, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { DODO_CHECKOUT_URL, DODO_PORTAL_URL } from "@/lib/dodo-constants"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -38,9 +41,26 @@ function maskLicenseKey(key: string): string {
   return key.slice(0, 8) + "-***-***-***-***"
 }
 
-export function LicenseManager() {
+type LicenseManagerProps = {
+  checkoutStatus?: "success"
+  checkoutPaymentStatus?: string
+  onCheckoutConsumed?: () => void
+}
+
+function buildCheckoutUrlWithReturn(returnUrl: string): string {
+  try {
+    const checkoutUrl = new URL(DODO_CHECKOUT_URL)
+    checkoutUrl.searchParams.set("redirect_url", returnUrl)
+    return checkoutUrl.toString()
+  } catch {
+    const separator = DODO_CHECKOUT_URL.includes("?") ? "&" : "?"
+    return `${DODO_CHECKOUT_URL}${separator}redirect_url=${encodeURIComponent(returnUrl)}`
+  }
+}
+
+export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onCheckoutConsumed }: LicenseManagerProps) {
   const [showAddLicense, setShowAddLicense] = useState(false)
-  const [showCryptoDialog, setShowCryptoDialog] = useState(false)
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
@@ -49,9 +69,53 @@ export function LicenseManager() {
   const activateLicense = useActivateLicense()
   // const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteLicense()
+  const primaryLicense = licenses?.[0]
+  const hasStoredLicense = Boolean(primaryLicense)
+  const provider = primaryLicense?.provider ?? "dodo"
+  const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
+  const selectedLicense = selectedLicenseKey ? licenses?.find((l) => l.licenseKey === selectedLicenseKey) : undefined
+  const selectedPortalUrl = (selectedLicense?.provider ?? provider) === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
+  const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar" ? "Polar portal" : "Dodo portal"
 
   // Check if we have an invalid license (exists but not active)
-  const hasInvalidLicense = licenses && licenses.length > 0 && licenses[0].status !== "active"
+  const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
+  let accessTitle = "Unlock Premium Themes"
+  let accessDescription = "Pay what you want (min $4.99) • Lifetime license • All themes"
+  if (hasPremiumAccess) {
+    accessTitle = "Premium Access Active"
+    accessDescription = "You have access to all current and future premium themes"
+  } else if (hasInvalidLicense) {
+    accessTitle = "License Activation Required"
+    accessDescription = "Your license needs to be activated on this machine"
+  }
+  const checkoutUrl = useMemo(() => {
+    const returnPath = withBasePath("settings?tab=themes&checkout=success")
+    const returnUrl = new URL(returnPath, window.location.origin).toString()
+    return buildCheckoutUrlWithReturn(returnUrl)
+  }, [])
+  const openAddLicenseDialog = useCallback(() => {
+    setShowPaymentDialog(false)
+    setShowAddLicense(true)
+  }, [])
+
+  useEffect(() => {
+    if (checkoutStatus !== "success") {
+      return
+    }
+
+    const normalizedPaymentStatus = checkoutPaymentStatus?.toLowerCase()
+
+    if (normalizedPaymentStatus === "succeeded" || normalizedPaymentStatus === "success") {
+      openAddLicenseDialog()
+      toast.success("Payment completed. Enter your license key to activate premium.")
+    } else if (normalizedPaymentStatus) {
+      toast.error("Payment was not completed. Try checkout again.")
+    } else {
+      toast.success("Returned from checkout. Enter your license key if payment succeeded.")
+    }
+
+    onCheckoutConsumed?.()
+  }, [checkoutPaymentStatus, checkoutStatus, onCheckoutConsumed, openAddLicenseDialog])
 
   const form = useForm({
     defaultValues: {
@@ -113,7 +177,7 @@ export function LicenseManager() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              {(!licenses || licenses.length === 0) && (
+              {!hasStoredLicense && (
                 <Button
                   size="sm"
                   onClick={() => setShowAddLicense(true)}
@@ -133,45 +197,61 @@ export function LicenseManager() {
               <div className="flex items-start gap-3 flex-1">
                 <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
                 <div className="min-w-0 space-y-1 flex-1">
-                  <p className="font-medium text-base">
-                    {hasPremiumAccess ? "Premium Access Active" :hasInvalidLicense ? "License Activation Required" :"Unlock Premium Themes"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"One-time purchase • $9.99 • All themes"}
-                  </p>
+                  <p className="font-medium text-base">{accessTitle}</p>
+                  <p className="text-sm text-muted-foreground">{accessDescription}</p>
+                  {!hasPremiumAccess && !hasInvalidLicense && (
+                    <p className="text-xs text-muted-foreground">
+                      Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the{" "}
+                      <a
+                        href={DODO_PORTAL_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline hover:no-underline"
+                      >
+                        Dodo portal
+                      </a>
+                      .
+                    </p>
+                  )}
 
                   {/* License Key Details - Show for both active and invalid licenses */}
-                  {licenses && licenses.length > 0 && (
+                  {primaryLicense && (
                     <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
                       <div className="font-mono text-xs break-all text-muted-foreground">
-                        {maskLicenseKey(licenses[0].licenseKey)}
+                        {maskLicenseKey(primaryLicense.licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt))}
+                        {primaryLicense.productName} • Status: {primaryLicense.status} • Added {formatDate(new Date(primaryLicense.createdAt))}
                       </div>
                       {hasInvalidLicense && (
                         <div className="space-y-2">
                           <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
                             <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                            <span>License validation failed. This may occur if the license was activated on another machine or if the database was copied. To deactivate on another machine, visit{" "}
-                              <a
-                                href={POLAR_PORTAL_URL}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline hover:no-underline inline-flex items-center gap-0.5"
-                              >
-                                {POLAR_PORTAL_URL.replace("https://", "")}
-                                <ExternalLink className="h-2.5 w-2.5" />
-                              </a>
-                            </span>
+                            {provider === "polar" ? (
+                              <span>
+                                This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via{" "}
+                                <a
+                                  href={portalUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline hover:no-underline inline-flex items-center gap-0.5"
+                                >
+                                  {portalUrl.replace("https://", "")}
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                                .
+                              </span>
+                            ) : (
+                              <span>This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active.</span>
+                            )}
                           </div>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
                               // Re-attempt activation with the existing license key
-                              if (licenses && licenses[0]) {
-                                activateLicense.mutate(licenses[0].licenseKey)
+                              if (primaryLicense) {
+                                activateLicense.mutate(primaryLicense.licenseKey)
                               }
                             }}
                             disabled={activateLicense.isPending}
@@ -188,34 +268,25 @@ export function LicenseManager() {
               </div>
 
               <div className="flex gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
-                {licenses && licenses.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteLicense(licenses[0].licenseKey)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Remove
-                  </Button>
-                )}
-                {!hasPremiumAccess && !hasInvalidLicense && (
+                {primaryLicense && (
                   <>
-                    <Button size="sm" asChild>
-                      <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
-                        <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                        Buy license
-                      </a>
-                    </Button>
                     <Button
+                      variant="ghost"
                       size="sm"
-                      variant="outline"
-                      onClick={() => setShowCryptoDialog(true)}
+                      onClick={() => handleDeleteLicense(primaryLicense.licenseKey)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
-                      <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      Pay with Crypto
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Remove
                     </Button>
                   </>
+                )}
+                {!hasPremiumAccess && !hasInvalidLicense && (
+                  <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
+                    <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 -ml-1 mr-1 sm:mr-2" />
+                    Get Premium
+                  </Button>
                 )}
               </div>
             </div>
@@ -227,16 +298,16 @@ export function LicenseManager() {
       <Dialog open={!!selectedLicenseKey} onOpenChange={(open) => !open && setSelectedLicenseKey(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Release License Key</DialogTitle>
+            <DialogTitle>Remove license?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove this license? You will lose access to all premium themes and the license can be used elsewhere.
+              Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.
             </DialogDescription>
           </DialogHeader>
 
           {selectedLicenseKey && (
             <div className="my-4 space-y-3">
               <div>
-                <Label className="text-sm font-medium">License Key to Release:</Label>
+                <Label className="text-sm font-medium">License Key to Remove:</Label>
                 <div className="mt-2 p-3 bg-muted rounded-lg font-mono text-sm break-all">
                   {selectedLicenseKey}
                 </div>
@@ -262,12 +333,12 @@ export function LicenseManager() {
               <div className="text-sm text-muted-foreground">
                 If needed, you can recover it later from your{" "}
                 <a
-                  href={POLAR_PORTAL_URL}
+                  href={selectedPortalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
                 >
-                  Polar portal
+                  {selectedPortalLabel}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
@@ -283,7 +354,7 @@ export function LicenseManager() {
               onClick={confirmDeleteLicense}
               disabled={deleteLicense.isPending}
             >
-              {deleteLicense.isPending ? "Releasing..." : "Release License"}
+              {deleteLicense.isPending ? "Removing..." : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -339,10 +410,18 @@ export function LicenseManager() {
 
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
-                <a href={POLAR_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                   Recover key?
                 </a>
               </Button>
+              <a
+                href={POLAR_PORTAL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground hover:underline sm:mr-auto"
+              >
+                Legacy Polar portal
+              </a>
 
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button
@@ -372,50 +451,93 @@ export function LicenseManager() {
         </DialogContent>
       </Dialog>
 
-      {/* Crypto Payment Dialog */}
-      <Dialog open={showCryptoDialog} onOpenChange={setShowCryptoDialog}>
+      {/* Payment Options Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Bitcoin className="h-5 w-5" />
-              Pay with Cryptocurrency
+              <Sparkles className="h-5 w-5" />
+              Get Premium License
             </DialogTitle>
             <DialogDescription>
-              Support development directly with crypto. All payment methods unlock the same premium themes ($9.99 equivalent).
+              Pay what you want (min $4.99) • Lifetime license • All themes
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5">
-            <div className="rounded-lg border bg-background p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold">Get the current addresses</p>
-                <p className="text-xs text-muted-foreground">We accept all major cryptocurrencies.</p>
+          <div className="space-y-4">
+            {/* Step 1: Checkout */}
+            <div className="rounded-lg border bg-background p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</div>
+                <p className="text-sm font-semibold">Complete checkout</p>
               </div>
-              <Button size="sm" asChild>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-8">
                 <a
-                  href="https://github.com/autobrr/qui#cryptocurrency"
+                  href={checkoutUrl}
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
+                >
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">DodoPayments checkout</p>
+                    <p className="text-xs text-muted-foreground">Card & local methods, returns to qui after payment</p>
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                </a>
+                <a
+                  href={SUPPORT_CRYPTOCURRENCY_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center"
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
-                  View on GitHub
-                  <ExternalLink className="h-4 w-4 ml-2" />
+                  <Bitcoin className="h-5 w-5 text-orange-500" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Cryptocurrency</p>
+                    <p className="text-xs text-muted-foreground">BTC, ETH, XMR, and more (manual)</p>
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
-              </Button>
+              </div>
             </div>
 
-            <div className="rounded-lg bg-muted/30 border p-4 space-y-3">
-              <p className="text-sm font-medium">Redeem your premium license</p>
-              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>Open the README link above and send a payment using your preferred cryptocurrency and address.</li>
-                <li>Join our <a href="https://discord.autobrr.com/qui" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">Discord server</a>.</li>
-                <li>Share the transaction hash with a maintainer to receive a 100% discount code.</li>
-              </ol>
+            {/* Step 2: Find license key */}
+            <div className="rounded-lg border bg-background p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">2</div>
+                <p className="text-sm font-semibold">Find your license key</p>
+              </div>
+              <div className="pl-8 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Your license key is shown after checkout. You can also recover it later from the Dodo customer portal.
+                </p>
+                <Button size="sm" variant="outline" asChild>
+                  <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open Dodo portal
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* Step 3: Enter License */}
+            <div className="rounded-lg border bg-background p-4">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>
+                <p className="text-sm font-semibold">Activate your license</p>
+              </div>
+              <div className="pl-8 mt-2 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  After checkout returns here, use Add License to activate your key.
+                </p>
+                <Button size="sm" variant="outline" onClick={openAddLicenseDialog}>
+                  <Key className="h-4 w-4 mr-2" />
+                  Add License
+                </Button>
+              </div>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCryptoDialog(false)}>
+            <Button variant="outline" onClick={() => setShowPaymentDialog(false)}>
               Close
             </Button>
           </DialogFooter>

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -18,7 +21,6 @@ func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				FindIndividualEpisodes: true,
-				IgnorePatterns:         []string{"*.nfo"},
 			}, nil
 		},
 	}
@@ -38,7 +40,6 @@ func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes)
-	require.Equal(t, []string{"*.nfo"}, captured.IgnorePatterns)
 }
 
 func TestAutobrrApplyHonorsRequestOverride(t *testing.T) {
@@ -63,14 +64,12 @@ func TestAutobrrApplyHonorsRequestOverride(t *testing.T) {
 		TorrentData:            "ZGF0YQ==",
 		InstanceIDs:            []int{1},
 		FindIndividualEpisodes: &override,
-		IgnorePatterns:         []string{"*.txt"},
 	}
 
 	_, err := service.AutobrrApply(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.False(t, captured.FindIndividualEpisodes)
-	require.Equal(t, []string{"*.txt"}, captured.IgnorePatterns)
 }
 
 func TestAutobrrApplyTargetInstanceIDs(t *testing.T) {
@@ -133,6 +132,177 @@ func TestAutobrrApplyTargetInstanceIDs(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, captured)
 			require.Equal(t, tt.expectIDs, captured.TargetInstanceIDs)
+		})
+	}
+}
+
+// TestAutobrrApply_IndexerNamePassthrough verifies that IndexerName from the request
+// is passed through to the CrossSeedRequest, enabling "Use indexer name as category" mode
+// for webhook applies where the indexer cannot be derived from the torrent file.
+func TestAutobrrApply_IndexerNamePassthrough(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		indexerName       string
+		expectIndexerName string
+	}{
+		{
+			name:              "indexer name passed through",
+			indexerName:       "TorrentDB",
+			expectIndexerName: "TorrentDB",
+		},
+		{
+			name:              "empty indexer name remains empty",
+			indexerName:       "",
+			expectIndexerName: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{}
+			var captured *CrossSeedRequest
+			service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				captured = req
+				return &CrossSeedResponse{Success: true}, nil
+			}
+
+			req := &AutobrrApplyRequest{
+				TorrentData: "ZGF0YQ==",
+				InstanceIDs: []int{1},
+				IndexerName: tt.indexerName,
+			}
+
+			_, err := service.AutobrrApply(ctx, req)
+			require.NoError(t, err)
+			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
+			require.Equal(t, tt.expectIndexerName, captured.IndexerName, "IndexerName mismatch")
+		})
+	}
+}
+
+// TestAutobrrApply_RespectsWebhookSourceFilters verifies that AutobrrApply passes
+// webhook source filters through to the CrossSeedRequest. This is an integration test
+// that catches the bug where filters worked in isolation but weren't passed through the flow.
+func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name                    string
+		settings                *models.CrossSeedAutomationSettings
+		expectCategories        []string
+		expectTags              []string
+		expectExcludeCategories []string
+		expectExcludeTags       []string
+	}{
+		{
+			name: "include categories passed through",
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies", "tv"},
+			},
+			expectCategories:        []string{"movies", "tv"},
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+		},
+		{
+			name: "include tags passed through",
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceTags: []string{"cross-seed", "priority"},
+			},
+			expectCategories:        nil,
+			expectTags:              []string{"cross-seed", "priority"},
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+		},
+		{
+			name: "exclude categories passed through",
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link", "temp"},
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: []string{"cross-seed-link", "temp"},
+			expectExcludeTags:       nil,
+		},
+		{
+			name: "exclude tags passed through",
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeTags: []string{"no-cross-seed", "blocked"},
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       []string{"no-cross-seed", "blocked"},
+		},
+		{
+			name: "all filters passed through together",
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories:        []string{"movies-LTS"},
+				WebhookSourceTags:              []string{"important"},
+				WebhookSourceExcludeCategories: []string{"movies-Race"},
+				WebhookSourceExcludeTags:       []string{"temporary"},
+			},
+			expectCategories:        []string{"movies-LTS"},
+			expectTags:              []string{"important"},
+			expectExcludeCategories: []string{"movies-Race"},
+			expectExcludeTags:       []string{"temporary"},
+		},
+		{
+			name:                    "nil settings results in empty filters",
+			settings:                nil,
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+		},
+		{
+			name:                    "empty settings results in empty filters",
+			settings:                &models.CrossSeedAutomationSettings{},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return tt.settings, nil
+				},
+			}
+
+			var captured *CrossSeedRequest
+			service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				captured = req
+				return &CrossSeedResponse{Success: true}, nil
+			}
+
+			req := &AutobrrApplyRequest{
+				TorrentData: "ZGF0YQ==",
+				InstanceIDs: []int{1},
+			}
+
+			_, err := service.AutobrrApply(ctx, req)
+			require.NoError(t, err)
+			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
+
+			// Verify source filters were passed through
+			require.Equal(t, tt.expectCategories, captured.SourceFilterCategories, "SourceFilterCategories mismatch")
+			require.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
+			require.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
+			require.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
 		})
 	}
 }

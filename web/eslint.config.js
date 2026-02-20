@@ -1,10 +1,10 @@
 import js from '@eslint/js'
-import globals from 'globals'
+import stylistic from '@stylistic/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
 import { globalIgnores } from 'eslint/config'
-import stylistic from '@stylistic/eslint-plugin'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
@@ -13,7 +13,6 @@ export default tseslint.config([
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
-      reactHooks.configs['recommended-latest'],
       reactRefresh.configs.vite,
     ],
     languageOptions: {
@@ -21,7 +20,8 @@ export default tseslint.config([
       globals: globals.browser,
     },
     plugins: {
-      '@stylistic': stylistic
+      '@stylistic': stylistic,
+      'react-hooks': reactHooks,
     },
     rules: {
       '@stylistic/quotes': ['warn', 'double'],
@@ -41,7 +41,9 @@ export default tseslint.config([
       '@stylistic/object-curly-spacing': ['error', 'always'],
       '@typescript-eslint/no-unused-vars': ['warn'],
       'linebreak-style': ['error', 'unix'],
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     }
   },
 ])

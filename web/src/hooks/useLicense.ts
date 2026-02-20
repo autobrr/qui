@@ -1,22 +1,34 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { api } from "@/lib/api"
 import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
+import { clearLicenseEntitlement, setLicenseEntitlement } from "@/lib/license-entitlement"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect } from "react"
 import { toast } from "sonner"
 
 // Hook to check premium access status
 export const usePremiumAccess = () => {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["licenses"],
     queryFn: () => api.getLicensedThemes(),
-    staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 30 * 1000, // Poll every 30 seconds
+    staleTime: 60 * 60 * 1000, // 1 hour
+    refetchInterval: 60 * 60 * 1000, // Poll every 1 hour
     refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    retry: 2,
   })
+
+  useEffect(() => {
+    if (query.data) {
+      setLicenseEntitlement(query.data.hasPremiumAccess)
+    }
+  }, [query.data])
+
+  return query
 }
 
 // Hook to activate a license
@@ -66,12 +78,13 @@ export const useDeleteLicense = () => {
   return useMutation({
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
-      toast.success("License released successfully")
+      toast.success("License removed from this machine")
+      clearLicenseEntitlement()
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to release license")
+      toast.error(getLicenseErrorMessage(error))
     },
   })
 }
@@ -95,11 +108,12 @@ export const useRefreshLicenses = () => {
 
 // Helper hook to check if user has premium access
 export const useHasPremiumAccess = () => {
-  const { data, isLoading } = usePremiumAccess()
+  const { data, isLoading, isError } = usePremiumAccess()
 
   return {
     hasPremiumAccess: data?.hasPremiumAccess ?? false,
     isLoading,
+    isError,
   }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -1449,6 +1449,11 @@ func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabInde
 	return "mock-api-key", nil
 }
 
+func (m *mockTorznabIndexerStore) GetDecryptedBasicPassword(_ *models.TorznabIndexer) (string, error) {
+	// Service only calls this when BasicUsername is set; tests don't cover basic auth yet.
+	return "", nil
+}
+
 func (m *mockTorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1468,6 +1473,10 @@ func (m *mockTorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID
 }
 
 func (m *mockTorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error {
+	return nil
+}
+
+func (m *mockTorznabIndexerStore) SetLimits(ctx context.Context, indexerID, limitDefault, limitMax int) error {
 	return nil
 }
 
@@ -1612,6 +1621,21 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 				// year parameter should be removed
 			},
 			description: "Prowlarr indexer should use year as query when original query is empty",
+		},
+		{
+			name:    "prowlarr with year parameter and ids present",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "movie",
+				"year":   "1999",
+				"imdbid": "0133093",
+			},
+			expected: map[string]string{
+				"t":      "movie",
+				"imdbid": "0133093",
+				// year parameter should be removed
+			},
+			description: "Prowlarr indexer should drop year when doing ID-driven search",
 		},
 		{
 			name:    "jackett with year parameter",
@@ -2146,6 +2170,285 @@ func TestExtractInfoHashFromMagnet(t *testing.T) {
 			result := extractInfoHashFromMagnet(tt.magnet)
 			if result != tt.expected {
 				t.Errorf("extractInfoHashFromMagnet() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestApplyCapabilitySpecificParams(t *testing.T) {
+	s := NewService(nil)
+
+	tests := []struct {
+		name        string
+		indexer     *models.TorznabIndexer
+		meta        *searchContext
+		inputParams map[string]string
+		wantParams  map[string]string
+		description string
+	}{
+		{
+			name: "movie search - prunes unsupported imdbid",
+			indexer: &models.TorznabIndexer{
+				ID:           1,
+				Name:         "TestIndexer",
+				Capabilities: []string{"movie-search", "movie-search-tmdbid"}, // no movie-search-imdbid
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "The Matrix",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+				"tmdbid": "603",
+			},
+			wantParams: map[string]string{
+				"tmdbid": "603",
+			},
+			description: "IMDb ID pruned when indexer lacks movie-search-imdbid capability",
+		},
+		{
+			name: "movie search - keeps supported tmdbid",
+			indexer: &models.TorznabIndexer{
+				ID:           2,
+				Name:         "TMDbIndexer",
+				Capabilities: []string{"movie-search", "movie-search-tmdbid"},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "Inception",
+			},
+			inputParams: map[string]string{
+				"tmdbid": "27205",
+			},
+			wantParams: map[string]string{
+				"tmdbid": "27205",
+			},
+			description: "TMDb ID kept when indexer supports movie-search-tmdbid",
+		},
+		{
+			name: "tv search - prunes unsupported tvmazeid",
+			indexer: &models.TorznabIndexer{
+				ID:           3,
+				Name:         "TVIndexer",
+				Capabilities: []string{"tv-search", "tv-search-tvdbid"}, // no tv-search-tvmazeid
+			},
+			meta: &searchContext{
+				searchMode:    "tvsearch",
+				originalQuery: "Breaking Bad",
+			},
+			inputParams: map[string]string{
+				"tvdbid":   "81189",
+				"tvmazeid": "169",
+			},
+			wantParams: map[string]string{
+				"tvdbid": "81189",
+			},
+			description: "TVMaze ID pruned when indexer lacks tv-search-tvmazeid capability",
+		},
+		{
+			name: "tv search - keeps all supported IDs",
+			indexer: &models.TorznabIndexer{
+				ID:           4,
+				Name:         "FullCapIndexer",
+				Capabilities: []string{"tv-search", "tv-search-tvdbid", "tv-search-imdbid", "tv-search-tmdbid", "tv-search-tvmazeid"},
+			},
+			meta: &searchContext{
+				searchMode:    "tvsearch",
+				originalQuery: "Game of Thrones",
+			},
+			inputParams: map[string]string{
+				"tvdbid":   "121361",
+				"imdbid":   "tt0944947",
+				"tmdbid":   "1399",
+				"tvmazeid": "82",
+			},
+			wantParams: map[string]string{
+				"tvdbid":   "121361",
+				"imdbid":   "tt0944947",
+				"tmdbid":   "1399",
+				"tvmazeid": "82",
+			},
+			description: "All IDs kept when indexer supports all capabilities",
+		},
+		{
+			name: "movie search - prunes tvdbid (not applicable for movies)",
+			indexer: &models.TorznabIndexer{
+				ID:           5,
+				Name:         "MovieOnlyIndexer",
+				Capabilities: []string{"movie-search", "movie-search-imdbid"},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "The Matrix",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+				"tvdbid": "12345", // shouldn't be here for movie search
+			},
+			wantParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			description: "TVDb ID pruned for movie search (not applicable)",
+		},
+		{
+			name: "all IDs pruned - restores query param",
+			indexer: &models.TorznabIndexer{
+				ID:           6,
+				Name:         "NoIDsIndexer",
+				Capabilities: []string{"movie-search"}, // no ID capabilities
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "The Matrix",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+				"tmdbid": "603",
+			},
+			wantParams: map[string]string{
+				"q": "The Matrix",
+			},
+			description: "Query restored when all IDs are pruned",
+		},
+		{
+			name: "all IDs pruned - no query to restore",
+			indexer: &models.TorznabIndexer{
+				ID:           7,
+				Name:         "NoIDsIndexer",
+				Capabilities: []string{"movie-search"},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "", // no original query
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			wantParams:  map[string]string{},
+			description: "No query restored when original query is empty",
+		},
+		{
+			name: "all IDs pruned - restores release name when original query empty",
+			indexer: &models.TorznabIndexer{
+				ID:           12,
+				Name:         "NoIDsIndexer",
+				Capabilities: []string{"movie-search"},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "",
+				releaseName:   "The Matrix (1999)",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			wantParams: map[string]string{
+				"q": "The Matrix (1999)",
+			},
+			description: "Release name restored when all IDs are pruned and original query is empty",
+		},
+		{
+			name: "case-insensitive capability matching",
+			indexer: &models.TorznabIndexer{
+				ID:           8,
+				Name:         "MixedCaseIndexer",
+				Capabilities: []string{"Movie-Search", "MOVIE-SEARCH-IMDBID", "movie-search-tmdbid"},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "Test",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+				"tmdbid": "603",
+			},
+			wantParams: map[string]string{
+				"imdbid": "tt0133093",
+				"tmdbid": "603",
+			},
+			description: "Capability matching is case-insensitive",
+		},
+		{
+			name: "nil meta - no changes",
+			indexer: &models.TorznabIndexer{
+				ID:           9,
+				Name:         "TestIndexer",
+				Capabilities: []string{"movie-search"},
+			},
+			meta: nil,
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			wantParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			description: "No pruning when meta is nil",
+		},
+		{
+			name: "empty capabilities - preserves q restoration fallback",
+			indexer: &models.TorznabIndexer{
+				ID:           10,
+				Name:         "EmptyCapsIndexer",
+				Capabilities: []string{},
+			},
+			meta: &searchContext{
+				searchMode:    "movie",
+				originalQuery: "Test Movie",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			wantParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			description: "No pruning when capabilities are empty",
+		},
+		{
+			name: "other search mode - no pruning",
+			indexer: &models.TorznabIndexer{
+				ID:           11,
+				Name:         "GeneralIndexer",
+				Capabilities: []string{"search"},
+			},
+			meta: &searchContext{
+				searchMode:    "search",
+				originalQuery: "Test",
+			},
+			inputParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			wantParams: map[string]string{
+				"imdbid": "tt0133093",
+			},
+			description: "No pruning for non-movie/tv search modes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clone input params to avoid mutation across tests
+			params := maps.Clone(tt.inputParams)
+
+			s.applyCapabilitySpecificParams(tt.indexer, tt.meta, params)
+
+			// Compare resulting params
+			if len(params) != len(tt.wantParams) {
+				t.Errorf("%s: got %d params, want %d params\ngot: %v\nwant: %v",
+					tt.description, len(params), len(tt.wantParams), params, tt.wantParams)
+				return
+			}
+
+			for k, wantV := range tt.wantParams {
+				if gotV, exists := params[k]; !exists || gotV != wantV {
+					t.Errorf("%s: param %q = %q, want %q", tt.description, k, gotV, wantV)
+				}
+			}
+
+			// Check no extra params
+			for k := range params {
+				if _, exists := tt.wantParams[k]; !exists {
+					t.Errorf("%s: unexpected param %q = %q", tt.description, k, params[k])
+				}
 			}
 		})
 	}

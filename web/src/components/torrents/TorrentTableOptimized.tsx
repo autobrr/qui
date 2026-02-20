@@ -932,13 +932,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const combinedFiltersExpr = useMemo(() => {
     const columnExpr = columnFiltersExpr
     const filterExpr = filters?.expr
-    
+
     // If we're doing cross-seed filtering, don't send column filters to backend
     // They will be applied client-side by TanStack Table (along with sorting)
     if (isDoingCrossSeedFiltering) {
       return filterExpr // Only use the cross-seed expression for backend
     }
-    
+
     // For regular filtering, combine column filters with existing filters
     if (columnExpr && filterExpr) {
       const combined = `(${columnExpr}) && (${filterExpr})`
@@ -1750,7 +1750,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [serverAltSpeedEnabled, altSpeedOverride])
 
   // Poll for async cross-seed filtering status updates
-  
+
 
   const handleToggleAltSpeedLimits = useCallback(async () => {
     if (isTogglingAltSpeed) {
@@ -1943,11 +1943,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setSorting([]);
       virtualizer.scrollToOffset(0);
       virtualizer.measure();
-      
+
       // Reset loadedRows to a reasonable initial value
       const newLoadedRows = Math.min(100, sortedTorrents.length);
       setLoadedRows(newLoadedRows);
-      
+
       // Only clear parent filters if clearing all (not just columns)
       if (filterLifecycleState === 'clearing-all') {
         const emptyFilters: TorrentFilters = {

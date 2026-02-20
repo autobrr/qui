@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -60,6 +63,8 @@ func TestJoinNormalizedCodecSlice(t *testing.T) {
 		{"x265 alone", []string{"x265"}, "HEVC"},
 		{"H.265 alone", []string{"H.265"}, "HEVC"},
 		{"multiple codecs sorted", []string{"HEVC", "AVC"}, "AVC HEVC"},
+		{"dedupe hevc aliases", []string{"HEVC", "x265"}, "HEVC"},
+		{"dedupe avc aliases", []string{"x264", "H.264"}, "AVC"},
 		{"passthrough codec", []string{"VP9"}, "VP9"},
 	}
 
@@ -278,6 +283,113 @@ func TestReleasesMatch_CodecAliasing(t *testing.T) {
 			},
 			wantMatch:   false,
 			description: "VP9 and AVC are different codecs",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			if tt.wantMatch {
+				require.True(t, result, tt.description)
+			} else {
+				require.False(t, result, tt.description)
+			}
+		})
+	}
+}
+
+// TestReleasesMatch_AudioRelaxed verifies that audio codec and channel differences
+// are allowed through at the release matching stage. This is intentional because
+// indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the actual
+// file is DDP5.1). The downstream file size matching will catch real mismatches.
+func TestReleasesMatch_AudioRelaxed(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	tests := []struct {
+		name        string
+		source      rls.Release
+		candidate   rls.Release
+		wantMatch   bool
+		description string
+	}{
+		{
+			name: "DDP vs DDPA allowed through - indexer metadata mismatch",
+			source: rls.Release{
+				Title:      "Strange Things",
+				Series:     5,
+				Episode:    3,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+				Collection: "NF",
+				Codec:      []string{"H.264"},
+				Audio:      []string{"DDP"},
+				Channels:   "5.1",
+				Group:      "Btn",
+			},
+			candidate: rls.Release{
+				Title:      "Strange Things",
+				Series:     5,
+				Episode:    3,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+				Collection: "NF",
+				Codec:      []string{"H.264"},
+				Audio:      []string{"DDPA"}, // BTN returns this incorrectly
+				Channels:   "5.1",
+				Group:      "Btn",
+			},
+			wantMatch:   true,
+			description: "DDP vs DDPA should match - downstream size check catches real mismatches",
+		},
+		{
+			name: "different channels allowed through",
+			source: rls.Release{
+				Title:      "Movie",
+				Year:       2024,
+				Resolution: "2160p",
+				Source:     "BluRay",
+				Codec:      []string{"HEVC"},
+				Audio:      []string{"TrueHD"},
+				Channels:   "7.1",
+				Group:      "FraMeSToR",
+			},
+			candidate: rls.Release{
+				Title:      "Movie",
+				Year:       2024,
+				Resolution: "2160p",
+				Source:     "BluRay",
+				Codec:      []string{"HEVC"},
+				Audio:      []string{"TrueHD"},
+				Channels:   "5.1", // Different channels
+				Group:      "FraMeSToR",
+			},
+			wantMatch:   true,
+			description: "different channels should match - downstream size check catches real mismatches",
+		},
+		{
+			name: "completely different audio codecs allowed through",
+			source: rls.Release{
+				Title:      "Show",
+				Series:     1,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+				Codec:      []string{"H.264"},
+				Audio:      []string{"AAC"},
+				Channels:   "2.0",
+				Group:      "GROUP",
+			},
+			candidate: rls.Release{
+				Title:      "Show",
+				Series:     1,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+				Codec:      []string{"H.264"},
+				Audio:      []string{"DDP"},
+				Channels:   "5.1",
+				Group:      "GROUP",
+			},
+			wantMatch:   true,
+			description: "AAC vs DDP should match - downstream size check catches real mismatches",
 		},
 	}
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package backups
@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
@@ -37,9 +38,11 @@ var (
 
 // Config controls background backup scheduling.
 type Config struct {
-	DataDir      string
-	PollInterval time.Duration
-	WorkerCount  int
+	DataDir         string
+	PollInterval    time.Duration
+	WorkerCount     int
+	FailureCooldown time.Duration
+	ExportThrottle  time.Duration
 }
 
 type BackupProgress struct {
@@ -58,6 +61,7 @@ type Service struct {
 	store       *models.BackupStore
 	syncManager *qbittorrent.SyncManager
 	jackettSvc  *jackett.Service
+	notifier    notifications.Notifier
 	cfg         Config
 	cacheDir    string
 
@@ -106,12 +110,18 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc interface{}, cfg Config) *Service {
+func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = time.Minute
+	}
+	if cfg.FailureCooldown <= 0 {
+		cfg.FailureCooldown = 10 * time.Minute
+	}
+	if cfg.ExportThrottle <= 0 {
+		cfg.ExportThrottle = 200 * time.Millisecond
 	}
 
 	cacheDir := ""
@@ -131,6 +141,7 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		store:       store,
 		syncManager: syncManager,
 		jackettSvc:  jackettService,
+		notifier:    notifier,
 		cfg:         cfg,
 		cacheDir:    cacheDir,
 		jobs:        make(chan job, cfg.WorkerCount*2),
@@ -304,6 +315,30 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 		return false
 	}
 
+	// Short-circuit if the latest run is still in flight or within failure cooldown.
+	for _, r := range runs {
+		if r == nil {
+			continue
+		}
+		switch r.Status {
+		case models.BackupRunStatusPending, models.BackupRunStatusRunning:
+			return false
+		case models.BackupRunStatusFailed, models.BackupRunStatusCanceled:
+			if s.cfg.FailureCooldown > 0 {
+				ref := r.CompletedAt
+				if ref == nil {
+					ref = &r.RequestedAt
+				}
+				if ref != nil && now.Before(ref.Add(s.cfg.FailureCooldown)) {
+					return false
+				}
+			}
+		case models.BackupRunStatusSuccess:
+			// Success is handled below when selecting schedule reference.
+		}
+		break
+	}
+
 	// Find the most recent successful run
 	var refTime *time.Time
 	var foundSuccess bool
@@ -428,6 +463,14 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		})
 		s.clearInstance(j.instanceID, j.runID)
 		log.Error().Int("instanceID", j.instanceID).Msg("Backup run failed: sync manager not configured")
+		s.notify(ctx, notifications.Event{
+			Type:         notifications.EventBackupFailed,
+			InstanceID:   j.instanceID,
+			BackupKind:   j.kind,
+			BackupRunID:  j.runID,
+			ErrorMessage: msg,
+			CompletedAt:  &now,
+		})
 		return
 	}
 
@@ -455,6 +498,15 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			return nil
 		})
 		log.Error().Err(execErr).Int("instanceID", j.instanceID).Int64("runID", j.runID).Msg("Backup run failed")
+		s.notify(ctx, notifications.Event{
+			Type:         notifications.EventBackupFailed,
+			InstanceID:   j.instanceID,
+			BackupKind:   j.kind,
+			BackupRunID:  j.runID,
+			ErrorMessage: msg,
+			StartedAt:    &start,
+			CompletedAt:  &now,
+		})
 	} else {
 		now := s.now()
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -483,9 +535,25 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 				log.Warn().Err(err).Int("instanceID", j.instanceID).Msg("Failed to apply backup retention")
 			}
 		}
+		s.notify(ctx, notifications.Event{
+			Type:               notifications.EventBackupSucceeded,
+			InstanceID:         j.instanceID,
+			BackupKind:         j.kind,
+			BackupRunID:        j.runID,
+			BackupTorrentCount: result.torrentCount,
+			StartedAt:          &start,
+			CompletedAt:        &now,
+		})
 	}
 
 	s.clearInstance(j.instanceID, j.runID)
+}
+
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(ctx, event)
 }
 
 type backupResult struct {
@@ -522,6 +590,16 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	if err := os.MkdirAll(baseAbs, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
+	}
+
+	var exportTicker *time.Ticker
+	var exportThrottle <-chan time.Time
+	if s.cfg.ExportThrottle > 0 {
+		exportTicker = time.NewTicker(s.cfg.ExportThrottle)
+		exportThrottle = exportTicker.C
+	}
+	if exportTicker != nil {
+		defer exportTicker.Stop()
 	}
 
 	var snapshotCategories map[string]models.CategorySnapshot
@@ -619,9 +697,22 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
+			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
+				return nil, err
+			}
 			var tracker string
 			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
 			if err != nil {
+				if isExportMetadataUnavailable(err) {
+					log.Warn().
+						Err(err).
+						Str("hash", torrent.Hash).
+						Str("name", torrent.Name).
+						Int("instanceID", j.instanceID).
+						Msg("Skipping torrent export; metadata not downloaded yet")
+					s.updateProgress(j.runID, idx+1)
+					continue
+				}
 				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
 			}
 			trackerDomain = tracker
@@ -778,6 +869,19 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
+func waitForExportThrottle(ctx context.Context, throttle <-chan time.Time) error {
+	if throttle == nil {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-throttle:
+		return nil
+	}
+}
+
 func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings, instanceID int) (string, string, error) {
 	var baseSegment string
 	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil {
@@ -889,6 +993,16 @@ func (s *Service) updateProgress(runID int64, current int) {
 		p.Current = current
 		p.Percentage = float64(current) / float64(p.Total) * 100
 	}
+}
+
+func isExportMetadataUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet) {
+		return true
+	}
+	return strings.Contains(err.Error(), "status code: 409")
 }
 
 func (s *Service) GetProgress(runID int64) *BackupProgress {

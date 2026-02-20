@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -37,7 +37,7 @@ interface CategorySubmenuProps {
 
 // Threshold for when to use virtualization vs simple rendering
 // Below this, simple CSS scrolling is faster
-const VIRTUALIZATION_THRESHOLD = 50
+const VIRTUALIZATION_THRESHOLD = 250
 
 export const CategorySubmenu = memo(function CategorySubmenu({
   type,
@@ -48,10 +48,15 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   currentCategory,
   useSubcategories = false,
 }: CategorySubmenuProps) {
+  // Store callback in ref so it doesn't trigger re-renders
+  const onSetCategoryRef = useRef(onSetCategory)
+  onSetCategoryRef.current = onSetCategory
+
   const [searchQuery, setSearchQuery] = useState("")
   // Use deferred value to prevent search from blocking the UI
   const deferredSearchQuery = useDeferredValue(searchQuery)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  // Use state ref so the virtualizer re-initializes
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
 
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
@@ -128,7 +133,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   // Only initialize virtualizer if we need it
   const virtualizer = useVirtualizer({
     count: shouldUseVirtualization ? filteredCategories.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
+    getScrollElement: () => scrollContainer,
     estimateSize: () => 36,
     overscan: 5,
   })
@@ -137,7 +142,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const renderCategoryItem = (category: { name: string; displayName: string; level: number }) => (
     <MenuItem
       key={category.name}
-      onClick={() => onSetCategory(category.name)}
+      onClick={() => onSetCategoryRef.current(category.name)}
       disabled={isPending}
       className={cn(
         "flex items-center gap-2",
@@ -169,7 +174,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
       <SubContent className="p-0 min-w-[240px]">
         {/* Remove Category option */}
         <MenuItem
-          onClick={() => onSetCategory("")}
+          onClick={() => onSetCategoryRef.current("")}
           disabled={isPending}
         >
           <X className="mr-2 h-4 w-4" />
@@ -207,7 +212,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Category list - use virtualization only for large lists */}
         {hasCategories && (
           <div
-            ref={scrollContainerRef}
+            ref={setScrollContainer}
             className="max-h-[300px] overflow-y-auto"
           >
             {hasFilteredCategories ? (
@@ -257,6 +262,16 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Creating new categories from this menu is disabled. */}
       </SubContent>
     </Sub>
+  )
+}, (prevProps, nextProps) => {
+  // Custom comparison that ignores onSetCategory reference changes
+  return (
+    prevProps.type === nextProps.type &&
+    prevProps.hashCount === nextProps.hashCount &&
+    prevProps.availableCategories === nextProps.availableCategories &&
+    prevProps.isPending === nextProps.isPending &&
+    prevProps.currentCategory === nextProps.currentCategory &&
+    prevProps.useSubcategories === nextProps.useSubcategories
   )
 })
 

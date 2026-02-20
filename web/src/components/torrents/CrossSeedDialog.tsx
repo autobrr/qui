@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
+  CollapsibleTrigger
 } from "@/components/ui/collapsible"
 import {
   Dialog,
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { api } from "@/lib/api"
 import { formatBytes, formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
@@ -38,11 +39,16 @@ import type {
 } from "@/types"
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
   id: number
   name: string
+}
+
+function getBlocklistPendingKey(instanceId: number, infoHash: string): string {
+  return `${instanceId}:${infoHash}`
 }
 
 export interface CrossSeedDialogProps {
@@ -77,6 +83,8 @@ export interface CrossSeedDialogProps {
   onUseTagChange: (value: boolean) => void
   tagName: string
   onTagNameChange: (value: string) => void
+  startPaused: boolean
+  onStartPausedChange: (value: boolean) => void
   hasSearched: boolean
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   canForceRefresh?: boolean
@@ -116,6 +124,8 @@ const CrossSeedDialogComponent = ({
   onUseTagChange,
   tagName,
   onTagNameChange,
+  startPaused,
+  onStartPausedChange,
   hasSearched,
   cacheMetadata,
   canForceRefresh,
@@ -155,6 +165,7 @@ const CrossSeedDialogComponent = ({
 
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
+  const [blocklistPendingKeys, setBlocklistPendingKeys] = useState<Set<string>>(() => new Set())
 
   // Auto-expand results when there are failures
   const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
@@ -163,6 +174,28 @@ const CrossSeedDialogComponent = ({
       setApplyResultOpen(true)
     }
   }, [hasFailures])
+
+  const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string) => {
+    if (instanceId <= 0) {
+      toast.error("Missing instance for blocklist")
+      return
+    }
+    const pendingKey = getBlocklistPendingKey(instanceId, infoHash)
+    setBlocklistPendingKeys(prev => new Set(prev).add(pendingKey))
+    try {
+      await api.addCrossSeedBlocklist({ instanceId, infoHash })
+      toast.success("Added to blocklist")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add to blocklist"
+      toast.error(message)
+    } finally {
+      setBlocklistPendingKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(pendingKey)
+        return next
+      })
+    }
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -317,19 +350,19 @@ const CrossSeedDialogComponent = ({
           ) : error ? (
             <div className="space-y-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
               <p className="break-words text-xs">{error}</p>
-              {(error.includes('rate limit') || error.includes('429') || error.includes('too many requests') || 
-                error.includes('cooldown') || error.includes('rate-limited')) ? (
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <p><strong>Why this happens:</strong> Trackers limit request frequency to prevent abuse and bans.</p>
-                  <p><strong>What you can do:</strong></p>
-                  <ul className="list-disc list-inside space-y-0.5 ml-2">
-                    <li>Wait 30-60 minutes before trying again</li>
-                    <li>Try searching with fewer indexers selected</li>
-                    <li>Use the RSS automation feature for ongoing cross-seeding</li>
-                    <li>Check the indexers page to see which ones are rate-limited</li>
-                  </ul>
-                </div>
-              ) : null}
+              {(error.includes("rate limit") || error.includes("429") || error.includes("too many requests") ||
+                error.includes("cooldown") || error.includes("rate-limited")) ? (
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p><strong>Why this happens:</strong> Trackers limit request frequency to prevent abuse and bans.</p>
+                    <p><strong>What you can do:</strong></p>
+                    <ul className="list-disc list-inside space-y-0.5 ml-2">
+                      <li>Wait 30-60 minutes before trying again</li>
+                      <li>Try searching with fewer indexers selected</li>
+                      <li>Use the RSS automation feature for ongoing cross-seeding</li>
+                      <li>Check the indexers page to see which ones are rate-limited</li>
+                    </ul>
+                  </div>
+                ) : null}
               <div className="flex gap-2">
                 <Button size="sm" onClick={onRetry} className="h-7">
                   Retry
@@ -402,24 +435,36 @@ const CrossSeedDialogComponent = ({
                       )
                     })}
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md border p-2.5">
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Switch
-                        id="cross-seed-tag-toggle"
-                        checked={useTag}
-                        onCheckedChange={(value) => onUseTagChange(Boolean(value))}
+                  <div className="flex flex-col gap-2 rounded-md border p-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Switch
+                          id="cross-seed-tag-toggle"
+                          checked={useTag}
+                          onCheckedChange={(value) => onUseTagChange(Boolean(value))}
+                        />
+                        <label htmlFor="cross-seed-tag-toggle" className="text-sm whitespace-nowrap">
+                          Tag added torrents
+                        </label>
+                      </div>
+                      <Input
+                        value={tagName}
+                        onChange={(event) => onTagNameChange(event.target.value)}
+                        placeholder="cross-seed"
+                        disabled={!useTag}
+                        className="w-32 min-w-0 h-8"
                       />
-                      <label htmlFor="cross-seed-tag-toggle" className="text-sm whitespace-nowrap">
-                        Tag added torrents
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="cross-seed-start-paused"
+                        checked={startPaused}
+                        onCheckedChange={(value) => onStartPausedChange(Boolean(value))}
+                      />
+                      <label htmlFor="cross-seed-start-paused" className="text-sm">
+                        Start paused
                       </label>
                     </div>
-                    <Input
-                      value={tagName}
-                      onChange={(event) => onTagNameChange(event.target.value)}
-                      placeholder="cross-seed"
-                      disabled={!useTag}
-                      className="w-32 min-w-0 h-8"
-                    />
                   </div>
                 </>
               )}
@@ -453,6 +498,9 @@ const CrossSeedDialogComponent = ({
                             {result.instanceResults && result.instanceResults.length > 0 && (
                               <ul className="mt-1.5 space-y-1 text-xs">
                                 {result.instanceResults.map(instance => {
+                                  const infoHash = result.infoHash
+                                  const pendingKey = infoHash ? getBlocklistPendingKey(instance.instanceId, infoHash) : null
+                                  const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
                                   const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
@@ -464,6 +512,19 @@ const CrossSeedDialogComponent = ({
                                         >
                                           {statusDisplay.text}
                                         </Badge>
+                                        {infoHash && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleBlockInfoHash(instance.instanceId, infoHash!)}
+                                            disabled={isBlocking}
+                                            aria-label={`Block ${infoHash} for ${instance.instanceName}`}
+                                            title={`Block ${infoHash}`}
+                                            className="h-5 px-2 text-[10px]"
+                                          >
+                                            {isBlocking ? "Blocking..." : "Block"}
+                                          </Button>
+                                        )}
                                       </div>
                                       {instance.message && instance.message !== instance.status && (
                                         <span className={`break-words pl-0.5 ${instance.success ? "text-muted-foreground" : "text-destructive/80"}`}>
@@ -529,14 +590,26 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
   switch (status) {
     case "added":
       return { text: "Added", variant: "success" }
+    case "added_hardlink":
+      return { text: "Added (hardlink)", variant: "success" }
+    case "added_reflink":
+      return { text: "Added (reflink)", variant: "success" }
     case "exists":
       return { text: "Already exists", variant: "warning" }
+    case "blocked":
+      return { text: "Blocked", variant: "warning" }
     case "no_match":
       return { text: "No match", variant: "destructive" }
+    case "rejected":
+      return { text: "Size mismatch", variant: "destructive" }
     case "no_save_path":
       return { text: "No save path", variant: "destructive" }
     case "invalid_content_path":
       return { text: "Invalid path", variant: "destructive" }
+    case "skipped_recheck":
+      return { text: "Skipped - recheck required", variant: "destructive" }
+    case "skipped_unsafe_pieces":
+      return { text: "Skipped - unsafe pieces", variant: "destructive" }
     case "error":
       return { text: "Error", variant: "destructive" }
     default:

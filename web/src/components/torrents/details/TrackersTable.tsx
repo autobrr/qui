@@ -1,13 +1,14 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { containsLinks, renderTextWithLinks } from "@/lib/linkUtils"
+import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn } from "@/lib/utils"
 import type { TorrentTracker } from "@/types"
 import {
@@ -21,81 +22,101 @@ import {
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { TrackerContextMenu } from "./TrackerContextMenu"
 
 interface TrackersTableProps {
   trackers: TorrentTracker[] | undefined
   loading: boolean
   incognitoMode: boolean
+  onEditTracker?: (tracker: TorrentTracker) => void
+  supportsTrackerEditing?: boolean
 }
 
 const columnHelper = createColumnHelper<TorrentTracker>()
-
-function getStatusBadge(status: number) {
-  switch (status) {
-    case 0:
-      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Disabled</Badge>
-    case 1:
-      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Not contacted</Badge>
-    case 2:
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-500">Working</Badge>
-    case 3:
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0">Updating</Badge>
-    case 4:
-      return <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Error</Badge>
-    default:
-      return <Badge variant="outline" className="text-[10px] px-1.5 py-0">Unknown</Badge>
-  }
-}
 
 export const TrackersTable = memo(function TrackersTable({
   trackers,
   loading,
   incognitoMode,
+  onEditTracker,
+  supportsTrackerEditing = false,
 }: TrackersTableProps) {
-  const [sorting, setSorting] = useState<SortingState>([])
+  // Default sort by status with disabled at bottom
+  const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }])
   const { data: trackerIcons } = useTrackerIcons()
 
   const columns = useMemo(() => [
     columnHelper.accessor("status", {
       header: "Status",
-      cell: (info) => getStatusBadge(info.getValue()),
+      cell: (info) => getTrackerStatusBadge(info.getValue(), true),
       size: 90,
+      // Custom sort: disabled (0) always at bottom
+      sortingFn: (rowA, rowB) => {
+        const a = rowA.original.status
+        const b = rowB.original.status
+        if (a === 0 && b !== 0) return 1
+        if (b === 0 && a !== 0) return -1
+        return a - b
+      },
     }),
     columnHelper.accessor("url", {
-      header: "URL",
+      header: "Tracker",
       cell: (info) => {
         const url = info.getValue()
-        const displayUrl = incognitoMode ? "https://tracker.example.com/announce" : url
+        const fullUrl = incognitoMode ? "https://tracker.example.com/announce" : url
 
-        // In incognito mode, use masked hostname to prevent real tracker icon lookup
+        // Extract hostname for display, fall back to full value for non-URLs (DHT, PeX, LSD)
         let hostname = ""
+        let isValidUrl = false
         if (incognitoMode) {
           hostname = "tracker.example.com"
+          isValidUrl = true
         } else {
           try {
             hostname = new URL(url).hostname
+            isValidUrl = true
           } catch {
             hostname = url
           }
         }
 
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
             <TrackerIconImage tracker={hostname} trackerIcons={trackerIcons} />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="font-mono text-xs truncate block max-w-[500px]">
-                  {displayUrl}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[400px]">
-                <p className="font-mono text-xs break-all">{displayUrl}</p>
-              </TooltipContent>
-            </Tooltip>
+            {isValidUrl ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="font-mono text-xs">
+                    {hostname}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[500px]">
+                  <p className="font-mono text-xs break-all">{fullUrl}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-mono text-xs">{hostname}</span>
+            )}
           </div>
         )
       },
-      size: 520,
+    }),
+    columnHelper.accessor("msg", {
+      header: "Message",
+      meta: { fullWidth: true },
+      cell: (info) => {
+        const msg = info.getValue()
+        if (!msg) return <span className="text-muted-foreground">-</span>
+
+        const hasLinks = containsLinks(msg)
+
+        // Render message with clickable links, no truncation - table will scroll
+        return (
+          <span className="whitespace-nowrap text-muted-foreground [&_a]:text-primary [&_a]:hover:underline">
+            {hasLinks ? renderTextWithLinks(msg) : msg}
+          </span>
+        )
+      },
     }),
     columnHelper.accessor("num_seeds", {
       header: "Seeds",
@@ -110,32 +131,12 @@ export const TrackersTable = memo(function TrackersTable({
     columnHelper.accessor("num_leeches", {
       header: "Leeches",
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
-      size: 70,
+      size: 80,
     }),
     columnHelper.accessor("num_downloaded", {
-      header: "Downloaded",
+      header: "DLs",
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
-      size: 90,
-    }),
-    columnHelper.accessor("msg", {
-      header: "Message",
-      cell: (info) => {
-        const msg = info.getValue()
-        if (!msg) return <span className="text-muted-foreground">-</span>
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="truncate block max-w-[200px] text-muted-foreground">
-                {msg}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[400px]">
-              <p className="text-xs break-all">{msg}</p>
-            </TooltipContent>
-          </Tooltip>
-        )
-      },
-      size: 200,
+      size: 60,
     }),
   ], [incognitoMode, trackerIcons])
 
@@ -168,8 +169,8 @@ export const TrackersTable = memo(function TrackersTable({
 
   return (
     <ScrollArea className="h-full">
-      <div className="min-w-[600px]">
-        <table className="w-full text-xs">
+      <div className="w-max min-w-full">
+        <table className="text-xs">
           <thead className="sticky top-0 z-10 bg-background border-b">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -177,10 +178,16 @@ export const TrackersTable = memo(function TrackersTable({
                   <th
                     key={header.id}
                     className={cn(
-                      "px-3 py-2 text-left font-medium text-muted-foreground select-none",
+                      "px-3 py-2 text-left font-medium text-muted-foreground select-none whitespace-nowrap",
                       header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
                     )}
-                    style={{ width: header.getSize() }}
+                    style={
+                      (header.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
+                        ? { width: "100%" }
+                        : header.column.columnDef.size
+                          ? { width: header.getSize() }
+                          : undefined
+                    }
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <div className="flex items-center gap-1">
@@ -195,25 +202,40 @@ export const TrackersTable = memo(function TrackersTable({
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-border/50 hover:bg-muted/30"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className="px-3 py-2"
-                    style={{ width: cell.column.getSize() }}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {table.getRowModel().rows.map((row) => {
+              const tracker = row.original
+
+              return (
+                <TrackerContextMenu
+                  key={row.id}
+                  tracker={tracker}
+                  onEditTracker={onEditTracker}
+                  supportsTrackerEditing={supportsTrackerEditing}
+                >
+                  <tr className="border-b border-border/50 hover:bg-muted/30">
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="px-3 py-2"
+                        style={
+                          (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
+                            ? { width: "100%" }
+                            : cell.column.columnDef.size
+                              ? { width: cell.column.getSize() }
+                              : undefined
+                        }
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                </TrackerContextMenu>
+              )
+            })}
           </tbody>
         </table>
       </div>
+      <ScrollBar orientation="horizontal" />
     </ScrollArea>
   )
 })

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package api
@@ -17,6 +17,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -27,7 +28,9 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
@@ -49,12 +52,17 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}:           {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:                        {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:                        {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/tracker-rules"}:                           {},
-	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/tracker-rules"}:                          {},
-	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/tracker-rules/apply"}:                    {},
-	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/tracker-rules/order"}:                     {},
-	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/tracker-rules/{ruleID}"}:               {},
-	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/tracker-rules/{ruleID}"}:                  {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/automations"}:                             {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations"}:                            {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/apply"}:                      {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/preview"}:                    {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/validate-regex"}:             {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/order"}:                       {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/automations/activity"}:                    {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/automations/activity/{activityId}"}:       {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/activity"}:                 {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:                 {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:                    {},
 	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                                         {},
 	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                                        {},
 	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                                    {},
@@ -121,6 +129,21 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
+	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, &models.InstanceStore{}, log.Logger)
+	dirScanService := dirscan.NewService(
+		dirscan.DefaultConfig(),
+		models.NewDirScanStore(db),
+		nil,
+		&models.InstanceStore{},
+		&qbittorrent.SyncManager{},
+		nil,
+		nil,
+		trackerCustomizationStore,
+		nil,
+	)
+
 	return &Dependencies{
 		Config: &config.AppConfig{
 			Config: &domain.Config{
@@ -133,15 +156,18 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		InstanceStore:             &models.InstanceStore{},
 		ClientAPIKeyStore:         &models.ClientAPIKeyStore{},
 		ClientPool:                &qbittorrent.ClientPool{},
-		SyncManager:               &qbittorrent.SyncManager{},
+		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
 		WebHandler:                &web.Handler{},
 		LicenseService:            &license.Service{},
 		UpdateService:             &update.Service{},
 		TrackerIconService:        trackerIconService,
 		BackupService:             &backups.Service{},
-		TrackerRuleStore:          models.NewTrackerRuleStore(db),
-		TrackerCustomizationStore: models.NewTrackerCustomizationStore(db),
+		AutomationStore:           models.NewAutomationStore(db),
+		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		NotificationTargetStore:   notificationTargetStore,
+		NotificationService:       notificationService,
+		DirScanService:            dirScanService,
 	}
 }
 

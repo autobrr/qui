@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -7,21 +7,23 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { cn, copyTextToClipboard, formatErrorReason, formatRelativeTime } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
-import { Input } from "@/components/ui/input"
-import { Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
+import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
+  expandedInstances?: string[]
+  onExpandedInstancesChange?: (values: string[]) => void
 }
 
 interface InstanceStats {
@@ -55,11 +57,21 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
   return { successToday, failedToday, lastActivity }
 }
 
-export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewProps) {
+export function ReannounceOverview({
+  onConfigureInstance,
+  expandedInstances: controlledExpanded,
+  onExpandedInstancesChange,
+}: ReannounceOverviewProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
-  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+
+  // Internal state for standalone usage
+  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
+
+  // Use controlled props if provided, otherwise internal state
+  const expandedInstances = controlledExpanded ?? internalExpanded
+  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
 
@@ -132,7 +144,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
           <CardDescription>
             No instances configured. Add one in Settings to use this service.
           </CardDescription>
@@ -145,7 +157,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -194,54 +206,71 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
               .reverse()
 
             return (
-              <AccordionItem key={instance.id} value={String(instance.id)}>
-                <AccordionTrigger className="px-6 py-4 hover:no-underline group">
-                  <div className="flex items-center justify-between w-full pr-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="font-medium truncate">{instance.name}</span>
-                      {isEnabled && stats.successToday > 0 && (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                          {stats.successToday} today
-                        </Badge>
-                      )}
-                      {isEnabled && stats.failedToday > 0 && (
-                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                          {stats.failedToday} failed
-                        </Badge>
-                      )}
-                    </div>
+              <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
+                <div className="grid grid-cols-[1fr_auto] items-center px-6">
+                  <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-medium truncate">{instance.name}</span>
+                        {isEnabled && stats.successToday > 0 && (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                            {stats.successToday} today
+                          </Badge>
+                        )}
+                        {isEnabled && stats.failedToday > 0 && (
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                            {stats.failedToday} failed
+                          </Badge>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-4">
                       {isEnabled && stats.lastActivity && (
                         <span className="text-xs text-muted-foreground hidden sm:block">
                           {formatRelativeTime(stats.lastActivity)}
                         </span>
                       )}
-                      <div
-                        className="flex items-center gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span className={cn(
-                          "text-xs font-medium",
-                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
-                        )}>
-                          {isEnabled ? "On" : "Off"}
-                        </span>
-                        <Switch
-                          checked={isEnabled}
-                          onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
-                          disabled={isUpdating}
-                          className="scale-90"
-                        />
-                      </div>
                     </div>
+                  </AccordionTrigger>
+                  <div className="flex items-center gap-4 py-4">
+                    <div
+                      className="flex items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className={cn(
+                        "text-xs font-medium",
+                        isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                      )}>
+                        {isEnabled ? "On" : "Off"}
+                      </span>
+                      <Switch
+                        checked={isEnabled}
+                        onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
+                        disabled={isUpdating}
+                        className="scale-90"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const itemValue = String(instance.id)
+                        if (expandedInstances.includes(itemValue)) {
+                          setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                        } else {
+                          setExpandedInstances([...expandedInstances, itemValue])
+                        }
+                      }}
+                      aria-expanded={expandedInstances.includes(String(instance.id))}
+                      aria-label={expandedInstances.includes(String(instance.id)) ? "Collapse" : "Expand"}
+                    >
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+                    </button>
                   </div>
-                </AccordionTrigger>
+                </div>
 
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
                     {/* Settings summary */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
                       <div className="space-y-0.5">
                         <p className="text-sm text-muted-foreground">
                           {getSettingsSummary(settings)}
@@ -345,11 +374,11 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                             </p>
                           </div>
                         ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/10">
+                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
                             <p className="text-sm text-muted-foreground">Loading activity...</p>
                           </div>
                         ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-4">
+                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
                             <p className="text-sm text-muted-foreground">
                               {searchTerm ? "No matching events found." : "No activity recorded yet."}
                             </p>
@@ -360,12 +389,12 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                             </p>
                           </div>
                         ) : (
-                          <div className="max-h-[350px] overflow-auto rounded-md border">
-                            <div className="divide-y divide-border/40">
+                          <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                            <div className="divide-y divide-border">
                               {filteredEvents.map((event, eventIndex) => (
                                 <div
                                   key={`${event.hash}-${eventIndex}-${event.timestamp}`}
-                                  className="p-3 hover:bg-muted/20 transition-colors"
+                                  className="p-3 hover:bg-muted/30 transition-colors"
                                 >
                                   <div className="flex flex-col gap-2">
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -391,7 +420,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                                     </div>
 
                                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                      <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                         <span className="font-mono">{event.hash.substring(0, 7)}</span>
                                         <button
                                           type="button"
@@ -410,7 +439,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                                     </div>
 
                                     {event.reason && (
-                                      <div className="text-xs bg-muted/30 p-2 rounded">
+                                      <div className="text-xs bg-muted/40 p-2 rounded">
                                         {formatErrorReason(event.reason) !== event.reason ? (
                                           <Tooltip>
                                             <TooltipTrigger asChild>

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -83,6 +83,7 @@ interface TorrentContextMenuProps {
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
   onFilterChange?: (filters: TorrentFilters) => void
+  onFetchAllField?: (field: "name" | "hash" | "full_path") => Promise<string[]>
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -118,6 +119,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onCrossSeedSearch,
   isCrossSeedSearching = false,
   onFilterChange,
+  onFetchAllField,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -127,12 +129,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   // Memoize hashes and torrents to avoid re-creating arrays on every render
   const hashes = useMemo(() =>
     useSelection ? selectedHashes : [torrent.hash],
-    [useSelection, selectedHashes, torrent.hash]
+  [useSelection, selectedHashes, torrent.hash]
   )
 
   const torrents = useMemo(() =>
     useSelection ? selectedTorrents : [torrent],
-    [useSelection, selectedTorrents, torrent]
+  [useSelection, selectedTorrents, torrent]
   )
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
@@ -162,7 +164,28 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
   }, [])
 
-  const handleCopyNames = useCallback(() => {
+  const handleCopyNames = useCallback(async () => {
+    // Select all fetch from backend
+    if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
+      try {
+        if (incognitoMode) {
+          // In incognito mode, fetch hashes and transform client-side
+          const hashes = await onFetchAllField("hash")
+          const values = hashes.map(h => getLinuxIsoName(h)).filter(Boolean)
+          if (values.length === 0) { toast.error("Name not available"); return }
+          void copyToClipboard(values.join("\n"), "name", values.length)
+        } else {
+          const values = await onFetchAllField("name")
+          if (values.length === 0) { toast.error("Name not available"); return }
+          void copyToClipboard(values.join("\n"), "name", values.length)
+        }
+      } catch (error) {
+        console.error("Failed to fetch torrent names:", error)
+        toast.error("Failed to fetch torrent names")
+      }
+      return
+    }
+
     const values = torrents
       .map(t => incognitoMode ? getLinuxIsoName(t.hash) : t.name)
       .map(value => (value ?? "").trim())
@@ -174,9 +197,21 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
 
     void copyToClipboard(values.join("\n"), "name", values.length)
-  }, [copyToClipboard, incognitoMode, torrents])
+  }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
 
-  const handleCopyHashes = useCallback(() => {
+  const handleCopyHashes = useCallback(async () => {
+    if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
+      try {
+        const values = await onFetchAllField("hash")
+        if (values.length === 0) { toast.error("Hash not available"); return }
+        void copyToClipboard(values.join("\n"), "hash", values.length)
+      } catch (error) {
+        console.error("Failed to fetch torrent hashes:", error)
+        toast.error("Failed to fetch torrent hashes")
+      }
+      return
+    }
+
     const values = torrents
       .map(t => getTorrentDisplayHash(t) || t.hash || "")
       .map(value => value.trim())
@@ -187,9 +222,31 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       return
     }
     void copyToClipboard(values.join("\n"), "hash", values.length)
-  }, [copyToClipboard, torrents])
+  }, [copyToClipboard, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
 
-  const handleCopyFullPaths = useCallback(() => {
+  const handleCopyFullPaths = useCallback(async () => {
+    if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
+      try {
+        if (incognitoMode) {
+          // In incognito mode, fetch hashes and construct fake paths
+          const hashes = await onFetchAllField("hash")
+          const values = hashes
+            .map(h => `${getLinuxSavePath(h)}/${getLinuxIsoName(h)}`)
+            .filter(Boolean)
+          if (values.length === 0) { toast.error("Full path not available"); return }
+          void copyToClipboard(values.join("\n"), "full path", values.length)
+        } else {
+          const values = await onFetchAllField("full_path")
+          if (values.length === 0) { toast.error("Full path not available"); return }
+          void copyToClipboard(values.join("\n"), "full path", values.length)
+        }
+      } catch (error) {
+        console.error("Failed to fetch torrent paths:", error)
+        toast.error("Failed to fetch torrent paths")
+      }
+      return
+    }
+
     const values = torrents
       .map(t => {
         const name = incognitoMode ? getLinuxIsoName(t.hash) : t.name
@@ -208,7 +265,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
 
     void copyToClipboard(values.join("\n"), "full path", values.length)
-  }, [copyToClipboard, incognitoMode, torrents])
+  }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
 
   const handleExport = useCallback(() => {
     if (!onExport) {
@@ -310,9 +367,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             disabled={isPending}
           >
             <FastForward className="mr-2 h-4 w-4" />
-            {allForceStarted
-              ? `Disable Force Start ${count > 1 ? `(${count})` : ""}`
-              : `Force Start ${count > 1 ? `(${count})` : ""}`}
+            {allForceStarted? `Disable Force Start ${count > 1 ? `(${count})` : ""}`: `Force Start ${count > 1 ? `(${count})` : ""}`}
           </ContextMenuItem>
         )}
         <ContextMenuItem
@@ -359,9 +414,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             disabled={isPending}
           >
             <Blocks className="mr-2 h-4 w-4" />
-            {allSeqDlEnabled
-              ? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`
-              : `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
+            {allSeqDlEnabled? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`: `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />

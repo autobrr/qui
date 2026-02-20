@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -12,6 +12,13 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
+// Local match type constants for determineLocalMatchType.
+const (
+	matchTypeContentPath = "content_path"
+	matchTypeName        = "name"
+	matchTypeRelease     = "release"
+)
+
 // CrossSeedRequest represents a request to cross-seed a torrent
 type CrossSeedRequest struct {
 	// TorrentData is the base64-encoded torrent file
@@ -23,8 +30,6 @@ type CrossSeedRequest struct {
 	Category string `json:"category,omitempty"`
 	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
 	Tags []string `json:"tags,omitempty"`
-	// IgnorePatterns specify files to ignore when matching
-	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
 	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
 	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
@@ -33,8 +38,12 @@ type CrossSeedRequest struct {
 	InheritSourceTags bool `json:"inherit_source_tags,omitempty"`
 	// IndexerName specifies the name of the indexer for this torrent (used with useCategoryFromIndexer setting)
 	IndexerName string `json:"indexer_name,omitempty"`
-	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
-	// If false (default), season packs will only match with other season packs
+	// FindIndividualEpisodes enables episode-aware matching for season packs. When true,
+	// a season pack source can match individual episode candidates (useful for finding
+	// episodes to seed within a pack). However, applying a season pack cross-seed is
+	// rejected when the only available match is a single-episode torrent, preventing
+	// incomplete "season pack from episode" outcomes.
+	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
 	// If not set (0), defaults to 5%.
@@ -42,6 +51,25 @@ type CrossSeedRequest struct {
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
+	// SkipRecheck skips matches that would require a manual recheck (rename alignment or extra files).
+	SkipRecheck bool `json:"skip_recheck,omitempty"`
+	// SkipPieceBoundarySafetyCheck bypasses the piece boundary safety check that prevents
+	// corruption when extra files share pieces with content. Risky: may corrupt existing seeded data.
+	SkipPieceBoundarySafetyCheck bool `json:"skip_piece_boundary_safety_check,omitempty"`
+
+	// SourceFilterCategories filters candidate torrents to only those in these categories.
+	// Used by RSS automation to respect RSSSourceCategories setting.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterCategories []string `json:"-"`
+	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterTags []string `json:"-"`
+	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterExcludeCategories []string `json:"-"`
+	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterExcludeTags []string `json:"-"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -98,6 +126,9 @@ type TorrentInfo struct {
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
 	// Async filtering status
 	ContentFilteringCompleted bool `json:"content_filtering_completed,omitempty"` // Whether async content filtering has finished
+	// Disc layout detection
+	DiscLayout bool   `json:"disc_layout,omitempty"` // True if this torrent contains disc-based media (Blu-ray/DVD)
+	DiscMarker string `json:"disc_marker,omitempty"` // The marker directory name (e.g., "BDMV" or "VIDEO_TS") if DiscLayout is true
 }
 
 // TorrentFile represents a file in the torrent
@@ -112,16 +143,31 @@ type TorrentFile struct {
 type FindCandidatesRequest struct {
 	// TorrentName is the title/name of the torrent you want to add (just a string, torrent doesn't exist yet)
 	TorrentName string `json:"torrent_name"`
-	// IgnorePatterns are file patterns to ignore when matching (e.g., "*.srt", "*sample*.mkv")
-	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
 	// SourceIndexer optionally records where the request originated (e.g., automation feed indexer)
 	SourceIndexer string `json:"source_indexer,omitempty"`
 	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files
 	// If empty, will search all instances
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
-	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
-	// If false (default), season packs will only match with other season packs
+	// FindIndividualEpisodes enables episode-aware matching for season packs. When true,
+	// a season pack source can match individual episode candidates (useful for finding
+	// episodes to seed within a pack). However, applying a season pack cross-seed is
+	// rejected when the only available match is a single-episode torrent, preventing
+	// incomplete "season pack from episode" outcomes.
+	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+
+	// Source filters - used to restrict which existing torrents are considered as candidates.
+	// These are applied when fetching torrents (if no pre-built snapshot is provided).
+	// Internal-only, not exposed via JSON API.
+
+	// SourceFilterCategories filters candidate torrents to only those in these categories.
+	SourceFilterCategories []string `json:"-"`
+	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
+	SourceFilterTags []string `json:"-"`
+	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
+	SourceFilterExcludeCategories []string `json:"-"`
+	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
+	SourceFilterExcludeTags []string `json:"-"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates
@@ -169,11 +215,17 @@ type TorrentSearchOptions struct {
 	Limit int `json:"limit,omitempty"`
 	// IndexerIDs restricts the search to specific Torznab indexers.
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
-	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
-	// If false (default), season packs will only match with other season packs
+	// FindIndividualEpisodes enables episode-aware matching for season packs. When true,
+	// a season pack source can match individual episode candidates (useful for finding
+	// episodes to seed within a pack). However, applying a season pack cross-seed is
+	// rejected when the only available match is a single-episode torrent, preventing
+	// incomplete "season pack from episode" outcomes.
+	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
+	DisableTorznab bool `json:"disable_torznab,omitempty"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
@@ -223,7 +275,7 @@ type ApplyTorrentSearchRequest struct {
 	UseTag      bool                     `json:"use_tag"`
 	TagName     string                   `json:"tag_name,omitempty"`
 	StartPaused *bool                    `json:"start_paused,omitempty"`
-	// FindIndividualEpisodes ensures manual apply reuses season packs for single episodes when enabled.
+	// FindIndividualEpisodes controls episode-aware behaviour when searching with season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 }
 
@@ -232,6 +284,7 @@ type TorrentSearchAddResult struct {
 	Title           string                    `json:"title"`
 	Indexer         string                    `json:"indexer"`
 	TorrentName     string                    `json:"torrent_name,omitempty"`
+	InfoHash        string                    `json:"info_hash,omitempty"`
 	Success         bool                      `json:"success"`
 	InstanceResults []InstanceCrossSeedResult `json:"instance_results,omitempty"`
 	Error           string                    `json:"error,omitempty"`
@@ -240,6 +293,29 @@ type TorrentSearchAddResult struct {
 // ApplyTorrentSearchResponse aggregates the results of adding multiple search selections.
 type ApplyTorrentSearchResponse struct {
 	Results []TorrentSearchAddResult `json:"results"`
+}
+
+// LocalMatchesResponse contains torrents from all instances that match a source torrent.
+type LocalMatchesResponse struct {
+	Matches []LocalMatch `json:"matches"`
+}
+
+// LocalMatch represents a torrent that matches the source across instances.
+type LocalMatch struct {
+	InstanceID    int     `json:"instance_id"`
+	InstanceName  string  `json:"instance_name"`
+	Hash          string  `json:"hash"`
+	Name          string  `json:"name"`
+	Size          int64   `json:"size"`
+	Progress      float64 `json:"progress"`
+	SavePath      string  `json:"save_path"`
+	ContentPath   string  `json:"content_path"`
+	Category      string  `json:"category"`
+	Tags          string  `json:"tags"`
+	State         string  `json:"state"`
+	Tracker       string  `json:"tracker"`
+	TrackerHealth string  `json:"tracker_health,omitempty"`
+	MatchType     string  `json:"match_type"` // "content_path", "name", "release"
 }
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations
@@ -332,12 +408,15 @@ type WebhookCheckResponse struct {
 type AutobrrApplyRequest struct {
 	TorrentData string `json:"torrentData"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
-	InstanceIDs    []int    `json:"instanceIds,omitempty"`
-	Category       string   `json:"category,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	IgnorePatterns []string `json:"ignorePatterns,omitempty"`
-	StartPaused    *bool    `json:"startPaused,omitempty"`
-	SkipIfExists   *bool    `json:"skipIfExists,omitempty"`
+	InstanceIDs  []int    `json:"instanceIds,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	StartPaused  *bool    `json:"startPaused,omitempty"`
+	SkipIfExists *bool    `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
+	// IndexerName is the display name of the indexer (e.g., "TorrentDB") used when
+	// "Use indexer name as category" mode is enabled. Without this field, webhook applies
+	// cannot derive the indexer from the torrent file itself.
+	IndexerName string `json:"indexerName,omitempty"`
 }

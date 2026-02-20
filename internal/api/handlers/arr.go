@@ -1,0 +1,480 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/arr"
+)
+
+// ArrHandler handles ARR instance management endpoints
+type ArrHandler struct {
+	instanceStore *models.ArrInstanceStore
+	arrService    *arr.Service
+}
+
+// NewArrHandler creates a new ARR handler
+func NewArrHandler(instanceStore *models.ArrInstanceStore, arrService *arr.Service) *ArrHandler {
+	return &ArrHandler{
+		instanceStore: instanceStore,
+		arrService:    arrService,
+	}
+}
+
+// arrTestResponse is the response for test endpoints
+type arrTestResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// ListInstances handles GET /api/arr/instances
+func (h *ArrHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	instances, err := h.instanceStore.List(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list ARR instances")
+		RespondError(w, http.StatusInternalServerError, "Failed to list ARR instances")
+		return
+	}
+
+	// Mask API keys in the response
+	for i := range instances {
+		instances[i].APIKeyEncrypted = ""
+	}
+
+	RespondJSON(w, http.StatusOK, instances)
+}
+
+// GetInstance handles GET /api/arr/instances/{id}
+func (h *ArrHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		RespondError(w, http.StatusBadRequest, "Missing instance ID")
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx := r.Context()
+	instance, err := h.instanceStore.Get(ctx, id)
+	if err != nil {
+		if err == models.ErrArrInstanceNotFound {
+			RespondError(w, http.StatusNotFound, "ARR instance not found")
+			return
+		}
+		log.Error().Err(err).Int("id", id).Msg("Failed to get ARR instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to get ARR instance")
+		return
+	}
+
+	// Mask API key in the response
+	instance.APIKeyEncrypted = ""
+
+	RespondJSON(w, http.StatusOK, instance)
+}
+
+// arrCreateRequest represents the request to create an ARR instance
+type arrCreateRequest struct {
+	Type           models.ArrInstanceType `json:"type"`
+	Name           string                 `json:"name"`
+	BaseURL        string                 `json:"base_url"`
+	APIKey         string                 `json:"api_key"`
+	BasicUsername  *string                `json:"basic_username,omitempty"`
+	BasicPassword  *string                `json:"basic_password,omitempty"`
+	Enabled        bool                   `json:"enabled"`
+	Priority       int                    `json:"priority"`
+	TimeoutSeconds int                    `json:"timeout_seconds"`
+}
+
+// CreateInstance handles POST /api/arr/instances
+func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
+	var req arrCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode create ARR instance request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate required fields
+	if req.Name == "" {
+		RespondError(w, http.StatusBadRequest, "Name is required")
+		return
+	}
+
+	req.BaseURL = strings.TrimSpace(req.BaseURL)
+	if req.BaseURL == "" {
+		RespondError(w, http.StatusBadRequest, "Base URL is required")
+		return
+	}
+	req.BaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(req.BaseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
+
+	if req.APIKey == "" {
+		RespondError(w, http.StatusBadRequest, "API key is required")
+		return
+	}
+
+	if req.Type != models.ArrInstanceTypeSonarr && req.Type != models.ArrInstanceTypeRadarr {
+		RespondError(w, http.StatusBadRequest, "Invalid instance type (must be 'sonarr' or 'radarr')")
+		return
+	}
+
+	// Default timeout
+	if req.TimeoutSeconds <= 0 {
+		req.TimeoutSeconds = 15
+	}
+
+	ctx := r.Context()
+
+	instance, err := h.instanceStore.Create(ctx, req.Type, req.Name, req.BaseURL, req.APIKey, req.BasicUsername, req.BasicPassword, req.Enabled, req.Priority, req.TimeoutSeconds)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create ARR instance")
+		if errors.Is(err, models.ErrBasicAuthPasswordRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			RespondError(w, http.StatusConflict, "An instance with this URL already exists for this type")
+			return
+		}
+		RespondError(w, http.StatusInternalServerError, "Failed to create ARR instance")
+		return
+	}
+
+	// Mask API key in response
+	instance.APIKeyEncrypted = ""
+
+	RespondJSON(w, http.StatusCreated, instance)
+}
+
+// arrUpdateRequest represents the request to update an ARR instance
+type arrUpdateRequest struct {
+	Name           string  `json:"name"`
+	BaseURL        string  `json:"base_url"`
+	APIKey         string  `json:"api_key,omitempty"` // Optional - only update if provided
+	BasicUsername  *string `json:"basic_username,omitempty"`
+	BasicPassword  *string `json:"basic_password,omitempty"` // Optional - update if provided, omit to keep, empty to clear
+	Enabled        *bool   `json:"enabled,omitempty"`
+	Priority       *int    `json:"priority,omitempty"`
+	TimeoutSeconds *int    `json:"timeout_seconds,omitempty"`
+}
+
+// UpdateInstance handles PUT /api/arr/instances/{id}
+func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		RespondError(w, http.StatusBadRequest, "Missing instance ID")
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req arrUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode update ARR instance request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Build update params
+	params := &models.ArrInstanceUpdateParams{}
+
+	if req.Name != "" {
+		params.Name = &req.Name
+	}
+
+	if baseURL := strings.TrimSpace(req.BaseURL); baseURL != "" {
+		baseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(baseURL, req.BasicUsername, req.BasicPassword)
+		params.BaseURL = &baseURL
+	}
+
+	if req.APIKey != "" {
+		params.APIKey = &req.APIKey
+	}
+
+	// Basic auth: treat "<redacted>" as "keep existing".
+	if req.BasicPassword != nil && domain.IsRedactedString(strings.TrimSpace(*req.BasicPassword)) {
+		req.BasicPassword = nil
+	}
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForUpdate(req.BasicUsername, req.BasicPassword)
+	params.BasicUsername = req.BasicUsername
+	params.BasicPassword = req.BasicPassword
+
+	params.Enabled = req.Enabled
+	params.Priority = req.Priority
+	params.TimeoutSeconds = req.TimeoutSeconds
+
+	ctx := r.Context()
+	instance, err := h.instanceStore.Update(ctx, id, params)
+	if err != nil {
+		if err == models.ErrArrInstanceNotFound {
+			RespondError(w, http.StatusNotFound, "ARR instance not found")
+			return
+		}
+		if errors.Is(err, models.ErrBasicAuthPasswordRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		log.Error().Err(err).Int("id", id).Msg("Failed to update ARR instance")
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			RespondError(w, http.StatusConflict, "An instance with this URL already exists for this type")
+			return
+		}
+		RespondError(w, http.StatusInternalServerError, "Failed to update ARR instance")
+		return
+	}
+
+	// Mask API key in response
+	instance.APIKeyEncrypted = ""
+
+	RespondJSON(w, http.StatusOK, instance)
+}
+
+// DeleteInstance handles DELETE /api/arr/instances/{id}
+func (h *ArrHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		RespondError(w, http.StatusBadRequest, "Missing instance ID")
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx := r.Context()
+	if err := h.instanceStore.Delete(ctx, id); err != nil {
+		if err == models.ErrArrInstanceNotFound {
+			RespondError(w, http.StatusNotFound, "ARR instance not found")
+			return
+		}
+		log.Error().Err(err).Int("id", id).Msg("Failed to delete ARR instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete ARR instance")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// TestInstance handles POST /api/arr/instances/{id}/test
+func (h *ArrHandler) TestInstance(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		RespondError(w, http.StatusBadRequest, "Missing instance ID")
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx := r.Context()
+	testErr := h.arrService.TestInstance(ctx, id)
+
+	response := arrTestResponse{
+		Success: testErr == nil,
+	}
+
+	if testErr != nil {
+		response.Error = testErr.Error()
+		log.Debug().Err(testErr).Int("id", id).Msg("ARR instance test failed")
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// arrTestConnectionRequest represents the request to test a connection before saving
+type arrTestConnectionRequest struct {
+	Type          models.ArrInstanceType `json:"type"`
+	BaseURL       string                 `json:"base_url"`
+	APIKey        string                 `json:"api_key"`
+	BasicUsername *string                `json:"basic_username,omitempty"`
+	BasicPassword *string                `json:"basic_password,omitempty"`
+}
+
+// TestConnection handles POST /api/arr/test
+func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
+	var req arrTestConnectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode test connection request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	req.BaseURL = strings.TrimSpace(req.BaseURL)
+	if req.BaseURL == "" {
+		RespondError(w, http.StatusBadRequest, "Base URL is required")
+		return
+	}
+	req.BaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(req.BaseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
+
+	if req.APIKey == "" {
+		RespondError(w, http.StatusBadRequest, "API key is required")
+		return
+	}
+
+	if req.Type != models.ArrInstanceTypeSonarr && req.Type != models.ArrInstanceTypeRadarr {
+		RespondError(w, http.StatusBadRequest, "Invalid instance type (must be 'sonarr' or 'radarr')")
+		return
+	}
+
+	ctx := r.Context()
+	testErr := h.arrService.TestConnection(ctx, req.BaseURL, req.APIKey, req.BasicUsername, req.BasicPassword, req.Type)
+
+	response := arrTestResponse{
+		Success: testErr == nil,
+	}
+
+	if testErr != nil {
+		response.Error = testErr.Error()
+		log.Debug().Err(testErr).
+			Str("baseUrl", req.BaseURL).
+			Str("type", string(req.Type)).
+			Msg("ARR connection test failed")
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *string) (string, *string, *string) {
+	trimmedURL := strings.TrimSpace(rawBaseURL)
+	u, err := url.Parse(trimmedURL)
+	if err != nil || u == nil || u.User == nil {
+		return rawBaseURL, basicUsername, basicPassword
+	}
+
+	// If caller omitted basic auth fields entirely, use URL userinfo.
+	if basicUsername == nil && basicPassword == nil {
+		user := strings.TrimSpace(u.User.Username())
+		if user != "" {
+			basicUsername = &user
+			if pass, ok := u.User.Password(); ok {
+				p := strings.TrimSpace(pass)
+				basicPassword = &p
+			}
+		}
+	}
+
+	// Strip userinfo from stored URL.
+	u.User = nil
+	return strings.TrimRight(u.String(), "/"), basicUsername, basicPassword
+}
+
+func normalizeBasicAuthForCreate(basicUsername, basicPassword *string) (*string, *string) {
+	user := strings.TrimSpace(stringOrEmpty(basicUsername))
+	pass := strings.TrimSpace(stringOrEmpty(basicPassword))
+
+	if user == "" {
+		return nil, nil
+	}
+
+	basicUsername = &user
+	if basicPassword != nil {
+		p := pass
+		basicPassword = &p
+	}
+	return basicUsername, basicPassword
+}
+
+func normalizeBasicAuthForUpdate(basicUsername, basicPassword *string) (*string, *string) {
+	user := strings.TrimSpace(stringOrEmpty(basicUsername))
+	pass := strings.TrimSpace(stringOrEmpty(basicPassword))
+
+	// Field omitted entirely -> no change.
+	if basicUsername == nil && basicPassword == nil {
+		return nil, nil
+	}
+
+	// Explicit clear when username is present but empty.
+	if basicUsername != nil && user == "" {
+		empty := ""
+		return &empty, &empty
+	}
+
+	if user == "" {
+		// Username absent/empty and not an explicit clear -> no change.
+		return nil, nil
+	}
+
+	basicUsername = &user
+	if basicPassword != nil {
+		p := pass
+		basicPassword = &p
+	}
+	return basicUsername, basicPassword
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// arrResolveRequest represents a request to resolve a title to external IDs
+type arrResolveRequest struct {
+	Title       string `json:"title"`
+	ContentType string `json:"content_type"` // "movie" or "tv"
+}
+
+// Resolve handles POST /api/arr/resolve
+func (h *ArrHandler) Resolve(w http.ResponseWriter, r *http.Request) {
+	var req arrResolveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode resolve request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Title == "" {
+		RespondError(w, http.StatusBadRequest, "Title is required")
+		return
+	}
+
+	var contentType arr.ContentType
+	switch req.ContentType {
+	case "movie":
+		contentType = arr.ContentTypeMovie
+	case "tv":
+		contentType = arr.ContentTypeTV
+	default:
+		RespondError(w, http.StatusBadRequest, "Invalid content type (must be 'movie' or 'tv')")
+		return
+	}
+
+	ctx := r.Context()
+	result, err := h.arrService.DebugResolve(ctx, req.Title, contentType)
+	if err != nil {
+		log.Error().Err(err).Str("title", req.Title).Msg("Failed to resolve title")
+		RespondError(w, http.StatusInternalServerError, "Failed to resolve title")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, result)
+}

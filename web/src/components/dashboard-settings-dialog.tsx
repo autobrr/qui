@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -41,6 +41,7 @@ const SORT_COLUMN_LABELS: Record<string, string> = {
   "ratio": "Ratio",
   "buffer": "Buffer",
   "count": "Torrents",
+  "size": "Size",
   "performance": "Seeded",
 }
 

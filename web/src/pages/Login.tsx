@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/useAuth"
+import { navigateAfterAuth } from "@/lib/add-intent"
 import { api } from "@/lib/api"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "@tanstack/react-form"
@@ -24,7 +25,7 @@ import { toast } from "sonner"
 
 export function Login() {
   const navigate = useNavigate()
-  const { login, isLoggingIn, loginError, setIsAuthenticated } = useAuth()
+  const { login, isLoggingIn, loginError, setIsAuthenticated, isAuthenticated, isLoading } = useAuth()
 
   // Query to check if setup is required
   const { data: setupRequired } = useQuery({
@@ -45,6 +46,19 @@ export function Login() {
   })
 
   useEffect(() => {
+    if (sessionStorage.getItem("qui_sso_recovered")) {
+      sessionStorage.removeItem("qui_sso_recovered")
+      toast.info("SSO session refreshed. Please sign in again.")
+    }
+  }, [])
+
+  useEffect(() => {
+    // Redirect to homepage if user is already authenticated
+    if (isAuthenticated && !isLoading) {
+      navigate({ to: "/dashboard" })
+      return
+    }
+
     // Redirect to setup if required
     if (setupRequired) {
       navigate({ to: "/setup" })
@@ -59,15 +73,14 @@ export function Login() {
     if (code && state) {
       // This is an OIDC callback, validate the session
       api.validate().then(() => {
-        // If validation succeeds, set the user as logged in
         setIsAuthenticated(true)
-        navigate({ to: "/" })
+        navigateAfterAuth(navigate, "/")
       }).catch(error => {
         // If validation fails, show an error
         toast.error(error.message || "OIDC authentication failed")
       })
     }
-  }, [setupRequired, navigate, setIsAuthenticated])
+  }, [setupRequired, navigate, setIsAuthenticated, isAuthenticated, isLoading])
 
   const form = useForm({
     defaultValues: {

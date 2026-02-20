@@ -1,0 +1,72 @@
+labels: ["needs-triage", "needs-confirmation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > Before opening a discussion, please check the [documentation](https://qui.autobrr.com) and search existing [Discussions](https://github.com/autobrr/qui/discussions) and [Issues](https://github.com/autobrr/qui/issues).
+        >
+        > Code contributions: PR creation is restricted to collaborators only, so start here (or open an Issue) to coordinate changes.
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: |
+        Describe the issue or unexpected behavior.
+        - What happened?
+        - What did you expect to happen?
+      placeholder: |
+        When I try to add a qBittorrent instance, I get "connection refused" even though qBittorrent is running and accessible in my browser.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Go to Settings > Instances
+        2. Click "Add Instance"
+        3. Enter URL: http://localhost:8080
+        4. Click "Test Connection"
+        5. See error: "connection refused"
+
+  - type: textarea
+    attributes:
+      label: Environment
+      description: |
+        Please provide:
+        - qui version (`qui version` or from the UI footer)
+        - qBittorrent version(s)
+        - Deployment method (Docker, binary, seedbox installer)
+        - OS (if relevant)
+        - Reverse proxy / OIDC setup (if relevant to the issue)
+      placeholder: |
+        - qui: 1.11.0
+        - qBittorrent: 5.1.2
+        - Unraid OS 7.2.3
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Relevant logs
+      description: |
+        If applicable, include logs from qui. You can capture logs from:
+        - **Settings > Logs** - Click any entry to copy it
+        - **Log file** - If `logPath` is set in config.toml
+        - **Docker** - `docker logs qui`
+        - **Stdout** - If running the binary directly
+
+        Set log level to TRACE for more detail (Settings > Logs > gear icon).
+      render: text
+
+  - type: checkboxes
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing discussions and issues
+          required: true
+        - label: I have checked the documentation
+          required: true

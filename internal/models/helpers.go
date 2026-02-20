@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -30,12 +30,37 @@ func SanitizeStringSlice(values []string) []string {
 		if trimmed == "" {
 			continue
 		}
-		lower := strings.ToLower(trimmed)
+		lower := normalizeLowerTrim(trimmed)
 		if _, exists := seen[lower]; exists {
 			continue
 		}
 		seen[lower] = struct{}{}
 		result = append(result, trimmed)
+	}
+	return result
+}
+
+// SanitizeCommaSeparatedStringSlice splits values on comma, trims whitespace, removes empty strings,
+// lowercases entries, and deduplicates case-insensitively.
+func SanitizeCommaSeparatedStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(values))
+	var result []string
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			lower := normalizeLowerTrim(trimmed)
+			if _, exists := seen[lower]; exists {
+				continue
+			}
+			seen[lower] = struct{}{}
+			result = append(result, lower)
+		}
 	}
 	return result
 }

@@ -1,0 +1,57 @@
+---
+sidebar_position: 100
+title: Support Development
+description: Donation options that help fund ongoing qui development.
+---
+
+import CopyAddress from '@site/src/components/CopyAddress';
+
+# Support Development
+
+qui is developed and maintained by volunteers. Your support helps us continue improving the project.
+
+## License Key
+
+Donate what you want (minimum $4.99) to unlock premium themes:
+- Use any donation method below
+- After donating, DM soup or ze0s on Discord (whoever you donated to)
+  - For crypto, include the transaction hash/link
+- You'll receive a 100% discount code
+- Redeem the code on [Polar](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) (free order) to receive your license key
+- Enter the license key in Settings → Themes in your qui instance
+- License is lifetime
+
+## Donation Methods
+
+- **soup**
+  - [GitHub Sponsors](https://github.com/sponsors/s0up4200)
+  - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
+- **zze0s**
+  - [GitHub Sponsors](https://github.com/sponsors/zze0s)
+  - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)
+
+### Cryptocurrency
+
+#### Bitcoin (BTC)
+
+<CopyAddress label="soup" address="bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem" />
+<CopyAddress label="zze0s" address="bc1q2nvdd83hrzelqn4vyjm8tvjwmsuuxsdlg4ws7x" />
+
+#### Ethereum (ETH)
+
+<CopyAddress label="soup" address="0xD8f517c395a68FEa8d19832398d4dA7b45cbc38F" />
+<CopyAddress label="zze0s" address="0xBF7d749574aabF17fC35b27232892d3F0ff4D423" />
+
+#### Litecoin (LTC)
+
+<CopyAddress label="soup" address="ltc1q86nx64mu2j22psj378amm58ghvy4c9dw80z88h" />
+<CopyAddress label="zze0s" address="ltc1qza9ffjr5y43uk8nj9ndjx9hkj0ph3rhur6wudn" />
+
+#### Monero (XMR)
+
+<CopyAddress label="soup" address="8AMPTPgjmLG9armLBvRA8NMZqPWuNT4US3kQoZrxDDVSU21kpYpFr1UCWmmtcBKGsvDCFA3KTphGXExWb3aHEu67JkcjAvC" />
+<CopyAddress label="zze0s" address="44AvbWXzFN3bnv2oj92AmEaR26PQf5Ys4W155zw3frvEJf2s4g325bk4tRBgH7umSVMhk88vkU3gw9cDvuCSHgpRPsuWVJp" />
+
+---
+
+All methods unlock premium themes — use whichever works best for you. For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).

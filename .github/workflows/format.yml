@@ -12,33 +12,33 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
-      
+
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-      
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: latest
-      
+
       - name: Install frontend dependencies
         run: cd web && pnpm install
-      
+
       - name: Format code
         run: make fmt || true
-      
+
       - name: Commit and create PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -48,10 +48,10 @@ jobs:
             echo "Setting up git configuration..."
             git config --local user.email "action@github.com"
             git config --local user.name "GitHub Action"
-            
+
             # Check if PR already exists
             EXISTING_PR=$(gh pr list --head chore/auto-format --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-            
+
             if [ -n "$EXISTING_PR" ]; then
               echo "Existing PR #$EXISTING_PR found, updating it..."
               git fetch origin chore/auto-format || true
@@ -60,15 +60,21 @@ jobs:
               echo "Creating new branch and PR..."
               git checkout -b chore/auto-format
             fi
-            
+
             # Stage changes and exclude lockfile
             git add .
             git reset HEAD web/pnpm-lock.yaml 2>/dev/null || true
+
+            if git diff --staged --quiet; then
+              echo "No staged changes after excluding web/pnpm-lock.yaml; skipping commit/PR creation"
+              exit 0
+            fi
+
             git commit -m "chore(fmt): auto-format code"
-            
+
             # Force push to ensure clean state (removes any unwanted previous commits)
             git push --force-with-lease origin chore/auto-format
-            
+
             if [ -z "$EXISTING_PR" ]; then
               echo "Creating pull request..."
               gh pr create \

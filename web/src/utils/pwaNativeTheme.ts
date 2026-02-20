@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -102,9 +102,24 @@ export function initializePWANativeTheme(): void {
       // Determine if we're in dark mode
       const isDark = document.documentElement.classList.contains("dark")
 
-      // Get computed CSS variables from the root element
-      const rootStyles = getComputedStyle(document.documentElement)
-      const backgroundColor = rootStyles.getPropertyValue("--background").trim()
+      // Prefer stored critical vars to avoid forcing a style/layout recalculation.
+      // `theme.ts` writes `theme-critical-vars` on theme application.
+      let backgroundColor = ""
+      try {
+        const criticalVarsRaw = localStorage.getItem("theme-critical-vars")
+        if (criticalVarsRaw) {
+          const criticalVars = JSON.parse(criticalVarsRaw) as { background?: string }
+          backgroundColor = (criticalVars.background || "").trim()
+        }
+      } catch {
+        // ignore localStorage/JSON errors
+      }
+
+      // Fallback to computed CSS variables from the root element
+      if (!backgroundColor) {
+        const rootStyles = getComputedStyle(document.documentElement)
+        backgroundColor = rootStyles.getPropertyValue("--background").trim()
+      }
 
       // Use background color for seamless status bar
       let themeColor = backgroundColor
@@ -125,8 +140,19 @@ export function initializePWANativeTheme(): void {
     }
   }
 
+  // Coalesce multiple rapid updates (theme application can trigger several mutations)
+  let scheduled = false
+  const scheduleUpdate = () => {
+    if (scheduled) return
+    scheduled = true
+    requestAnimationFrame(() => {
+      scheduled = false
+      updatePWATheme()
+    })
+  }
+
   // Store the listener reference for cleanup
-  themeChangeListener = updatePWATheme
+  themeChangeListener = scheduleUpdate
 
   // Listen for theme change events
   window.addEventListener("themechange", themeChangeListener)
@@ -136,7 +162,7 @@ export function initializePWANativeTheme(): void {
     mutations.forEach((mutation) => {
       if (mutation.type === "attributes" &&
           (mutation.attributeName === "class" || mutation.attributeName === "data-theme")) {
-        updatePWATheme()
+        scheduleUpdate()
       }
     })
   })
@@ -147,10 +173,9 @@ export function initializePWANativeTheme(): void {
   })
 
   // Apply initial theme after a short delay to ensure CSS variables are loaded
-  setTimeout(updatePWATheme, 100)
+  setTimeout(scheduleUpdate, 100)
 }
 
 // Store references for cleanup
 let themeChangeListener: (() => void) | null = null
 let themeObserver: MutationObserver | null = null
-

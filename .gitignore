@@ -43,7 +43,6 @@ dist/
 .run/
 .dev/
 tmp/
-.golangci.yml
 web/eslint-sarif-report.sarif
 test/mockindexer/feeds/*
 test/mockindexer/files/*
@@ -60,6 +59,7 @@ docs/*
 .mcp_unused.json
 config.toml
 .env
+.envrc
 .mcp.json
 components.json
 .cache/
@@ -67,3 +67,11 @@ tracker-icons/*
 .device-id-*
 backups/*
 .gocache/*
+.gomodcache/*
+.golangci-cache/*
+torrentfiles/*
+analyses/*
+
+# Local reference dumps
+dodopayments.txt
+polar.txt

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package database provides a SQLite database layer with string interning.
@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -76,6 +77,7 @@ type DB struct {
 	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
 	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
 	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
+	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -91,6 +93,8 @@ type DB struct {
 
 	// Cleanup cancellation
 	cleanupCancel context.CancelFunc
+
+	closing atomic.Bool
 
 	closeOnce sync.Once
 	closeErr  error
@@ -183,11 +187,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	}
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
-	if t.isWriteTx {
-		t.db.writerStmts.Delete(query)
-	} else {
-		t.db.readerStmts.Delete(query)
-	}
+	t.db.deleteStmt(query, t.isWriteTx)
 
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
@@ -238,37 +238,50 @@ func (t *Tx) promoteStatementsToCache() {
 		return
 	}
 
-	// Determine which cache and connection to use based on transaction type
-	var stmts *ttlcache.Cache[string, *sql.Stmt]
-	var conn *sql.DB
-	if t.isWriteTx {
-		stmts = t.db.writerStmts
-		conn = t.db.writerConn
-	} else {
-		stmts = t.db.readerStmts
-		conn = t.db.readerPool
-	}
-
 	// Prepare statements on the appropriate connection and add to cache
 	// Use a background context since transaction is already committed
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	for query := range queries {
+		// Skip promotion during shutdown
+		if t.db.closing.Load() {
+			return
+		}
+
+		t.db.stmtMu.RLock()
+
+		// Determine which cache and connection to use based on transaction type
+		var stmts *ttlcache.Cache[string, *sql.Stmt]
+		var conn *sql.DB
+		if t.isWriteTx {
+			stmts = t.db.writerStmts
+			conn = t.db.writerConn
+		} else {
+			stmts = t.db.readerStmts
+			conn = t.db.readerPool
+		}
+
+		if stmts == nil || conn == nil {
+			t.db.stmtMu.RUnlock()
+			return
+		}
+
 		// Double-check it's not already cached (race condition protection)
 		if _, found := stmts.Get(query); found {
+			t.db.stmtMu.RUnlock()
 			continue
 		}
 
 		// Prepare and cache the statement
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
-			// Log but don't fail - caching is an optimization
-			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
-			continue
+			t.db.stmtMu.RUnlock()
+			continue // silently skip - caching is best-effort
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
+		t.db.stmtMu.RUnlock()
 	}
 }
 
@@ -467,6 +480,13 @@ func New(databasePath string) (*DB, error) {
 // When tx is provided, only cached statements are returned - no preparation
 // is done to avoid conflicts with active transactions.
 func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
+	if db.closing.Load() {
+		return nil, sql.ErrConnDone
+	}
+
+	db.stmtMu.RLock()
+	defer db.stmtMu.RUnlock()
+
 	// Determine which cache to use
 	var stmts *ttlcache.Cache[string, *sql.Stmt]
 	var conn *sql.DB
@@ -528,6 +548,22 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	return s, nil
 }
 
+func (db *DB) deleteStmt(query string, isWrite bool) {
+	db.stmtMu.RLock()
+	defer db.stmtMu.RUnlock()
+
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	if isWrite {
+		stmts = db.writerStmts
+	} else {
+		stmts = db.readerStmts
+	}
+	if stmts == nil {
+		return
+	}
+	stmts.Delete(query)
+}
+
 // isWriteQuery efficiently determines if a query is a write operation.
 // This uses a fast byte-level check to avoid string allocation and case conversion.
 func isWriteQuery(query string) bool {
@@ -553,6 +589,15 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "ALTER") ||
 		strings.HasPrefix(upper, "DROP") ||
 		strings.HasPrefix(upper, "VACUUM")
+}
+
+const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
+
+func isSQLiteNestedTxErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
 }
 
 const stmtClosedErrMsg = "statement is closed"
@@ -613,9 +658,9 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
-		db.writerStmts.Delete(query)
+		db.deleteStmt(query, true)
 	} else {
-		db.readerStmts.Delete(query)
+		db.deleteStmt(query, false)
 	}
 
 	stmt, err = db.getStmt(ctx, query, executor.getTx())
@@ -634,18 +679,42 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, execResult{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, queryRows{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if isWriteQuery(query) {
+		db.writerMu.Lock()
+		row := db.queryRowUnlocked(ctx, query, args...)
+		db.writerMu.Unlock()
+		return row
+	}
+	return db.queryRowUnlocked(ctx, query, args...)
+}
+
+func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		if isWriteQuery(query) {
@@ -661,9 +730,9 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
-		db.writerStmts.Delete(query)
+		db.deleteStmt(query, true)
 	} else {
-		db.readerStmts.Delete(query)
+		db.deleteStmt(query, false)
 	}
 
 	stmt, err = db.getStmt(ctx, query, nil)
@@ -801,8 +870,18 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock() // Unlock on error
-		return nil, err
+		db.writerMu.Unlock()
+		if isSQLiteNestedTxErr(err) {
+			// This indicates a bug: a previous transaction failed to rollback properly,
+			// leaving the connection wedged. Log with stack trace to help diagnose.
+			recordWedgedTransaction()
+			log.Error().
+				Err(err).
+				Str("stack", string(debug.Stack())).
+				Msg("SQLite writer connection is wedged in a transaction - this indicates a bug where a previous transaction failed to rollback properly")
+			return nil, fmt.Errorf("database connection wedged: %w", err)
+		}
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
@@ -817,6 +896,8 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 func (db *DB) Close() error {
 	db.closeOnce.Do(func() {
+		db.closing.Store(true)
+
 		// Cancel cleanup goroutine
 		if db.cleanupCancel != nil {
 			db.cleanupCancel()
@@ -828,6 +909,8 @@ func (db *DB) Close() error {
 		if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
 			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
 		}
+
+		db.stmtMu.Lock()
 
 		// Close statement caches (will close all prepared statements)
 		// Track closed caches to avoid double-closing the same cache instance
@@ -843,6 +926,8 @@ func (db *DB) Close() error {
 			closedCaches[db.readerStmts] = true
 			db.readerStmts = nil
 		}
+
+		db.stmtMu.Unlock()
 
 		// Close both connections
 		if err := db.writerConn.Close(); err != nil {
@@ -870,8 +955,15 @@ func (db *DB) migrate() error {
 			filename TEXT NOT NULL UNIQUE,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
-	`); err != nil {
+		`); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	// Handle historical migration file renames.
+	// If we ever rename an embedded migration file, we must update the filename
+	// stored in the migrations table so existing databases don't re-run it.
+	if err := db.normalizeMigrationFilenames(ctx); err != nil {
+		return fmt.Errorf("failed to normalize migration filenames: %w", err)
 	}
 
 	// Get all migration files
@@ -903,6 +995,49 @@ func (db *DB) migrate() error {
 	// Apply all pending migrations in a single transaction
 	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
+	renames := []struct {
+		from string
+		to   string
+	}{
+		{
+			from: "061_add_notifications.sql",
+			to:   "062_add_notifications.sql",
+		},
+		{
+			from: "052_add_dir_scan.sql",
+			to:   "053_add_dir_scan.sql",
+		},
+		{
+			from: "055_add_license_provider_dodo.sql",
+			to:   "057_add_license_provider_dodo.sql",
+		},
+	}
+
+	for _, r := range renames {
+		// If both entries exist, keep the new name.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			DELETE FROM migrations
+			WHERE filename = ?
+			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+		}
+
+		// Rename old -> new if the new entry doesn't already exist.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			UPDATE migrations
+			SET filename = ?
+			WHERE filename = ?
+			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.to, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+		}
 	}
 
 	return nil
@@ -1130,11 +1265,19 @@ const referencedStringsInsertQuery = `
 	UNION ALL
 	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
 	UNION ALL
+	SELECT basic_username_id AS string_id FROM torznab_indexers WHERE basic_username_id IS NOT NULL
+	UNION ALL
 	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
 	UNION ALL
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
 	UNION ALL
 	SELECT error_message_id AS string_id FROM torznab_indexer_errors WHERE error_message_id IS NOT NULL
+	UNION ALL
+	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
+	UNION ALL
+	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT basic_username_id AS string_id FROM arr_instances WHERE basic_username_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
@@ -1188,7 +1331,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM string_pool 
+		DELETE FROM string_pool
 		WHERE NOT EXISTS (
 			SELECT 1 FROM temp_referenced_strings trs WHERE trs.string_id = string_pool.id
 		)

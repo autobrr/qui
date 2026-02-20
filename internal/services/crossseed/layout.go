@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -48,12 +48,12 @@ func buildArchiveExtensionSet() map[string]struct{} {
 // regular media files (.mkv/.mp4/.flac/etc.). This heuristic mirrors how scene
 // releases are structured in practice—the main payload is always the largest
 // file, and any side files (.nfo, .sfv, etc.) are tiny.
-func classifyTorrentLayout(files qbt.TorrentFiles, ignorePatterns []string, normalizer *stringutils.Normalizer[string, string]) TorrentLayout {
+func classifyTorrentLayout(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) TorrentLayout {
 	var largestName string
 	var largestSize int64
 
 	for _, f := range files {
-		if shouldIgnoreFile(f.Name, ignorePatterns, normalizer) {
+		if shouldIgnoreFile(f.Name, normalizer) {
 			continue
 		}
 		if f.Size > largestSize {

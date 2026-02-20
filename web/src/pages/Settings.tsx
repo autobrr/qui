@@ -1,15 +1,19 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
+import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
+import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
+import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
+import { NotificationsManager } from "@/components/settings/NotificationsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -29,31 +33,35 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
+import { Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { api } from "@/lib/api"
+
 import { withBasePath } from "@/lib/base-url"
+import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import { Clock, Copy, Database, ExternalLink, Key, Layers, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
@@ -251,106 +259,116 @@ function ApiKeysManager() {
         <p className="text-sm text-muted-foreground">
           API keys allow external applications to access your qBittorrent instances.
         </p>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <Dialog
+          open={showCreateDialog}
+          onOpenChange={(open) => {
+            setShowCreateDialog(open)
+            if (!open) {
+              setNewKey(null)
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
               Create API Key
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Create API Key</DialogTitle>
               <DialogDescription>
                 Give your API key a descriptive name to remember its purpose.
               </DialogDescription>
             </DialogHeader>
 
-            {newKey ? (
-              <div className="space-y-4">
-                <div>
-                  <Label>Your new API key</Label>
-                  <div className="mt-2 flex items-center gap-2">
-                    <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
-                      {newKey.key}
-                    </code>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={async () => {
-                        try {
-                          await copyTextToClipboard(newKey.key)
-                          toast.success("API key copied to clipboard")
-                        } catch {
-                          toast.error("Failed to copy to clipboard")
-                        }
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-sm text-destructive">
-                    Save this key now. You won't be able to see it again.
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    setNewKey(null)
-                    setShowCreateDialog(false)
-                  }}
-                  className="w-full"
-                >
-                  Done
-                </Button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  form.handleSubmit()
-                }}
-                className="space-y-4"
-              >
-                <form.Field
-                  name="name"
-                  validators={{
-                    onChange: ({ value }) => !value ? "Name is required" : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="e.g., Automation Script"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        data-1p-ignore
-                        autoComplete='off'
-                      />
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {newKey ? (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Your new API key</Label>
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
+                        {newKey.key}
+                      </code>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await copyTextToClipboard(newKey.key)
+                            toast.success("API key copied to clipboard")
+                          } catch {
+                            toast.error("Failed to copy to clipboard")
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
-                </form.Field>
-
-                <form.Subscribe
-                  selector={(state) => [state.canSubmit, state.isSubmitting]}
+                    <p className="mt-2 text-sm text-destructive">
+                      Save this key now. You won't be able to see it again.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setNewKey(null)
+                      setShowCreateDialog(false)
+                    }}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    form.handleSubmit()
+                  }}
+                  className="space-y-4"
                 >
-                  {([canSubmit, isSubmitting]) => (
-                    <Button
-                      type="submit"
-                      disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                      className="w-full"
-                    >
-                      {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
-                    </Button>
-                  )}
-                </form.Subscribe>
-              </form>
-            )}
+                  <form.Field
+                    name="name"
+                    validators={{
+                      onChange: ({ value }) => !value ? "Name is required" : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Name</Label>
+                        <Input
+                          id="name"
+                          placeholder="e.g., Automation Script"
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          data-1p-ignore
+                          autoComplete="off"
+                        />
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+
+                  <form.Subscribe
+                    selector={(state) => [state.canSubmit, state.isSubmitting]}
+                  >
+                    {([canSubmit, isSubmitting]) => (
+                      <Button
+                        type="submit"
+                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
+                        className="w-full"
+                      >
+                        {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
+                      </Button>
+                    )}
+                  </form.Subscribe>
+                </form>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -428,19 +446,32 @@ interface InstancesManagerProps {
   onSearchChange: (search: SettingsSearch) => void
 }
 
-function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
-  const { instances, isLoading, reorderInstances, isReordering } = useInstances()
-  const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
-  const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
+const INSTANCE_FORM_ID = "instance-form"
 
-  const handleOpenDialog = (instance?: Instance) => {
-    setEditingInstance(instance)
+function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
+  const { instances, isLoading, reorderInstances, isReordering, isCreating } = useInstances()
+  const [titleBarSpeedsEnabled, setTitleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
+  const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
+  const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
+  const editingInstance = instances?.find(instance => instance.id === editingInstanceId)
+
+  // Close edit dialog if instance was deleted
+  useEffect(() => {
+    if (editingInstanceId !== null && !editingInstance && !isLoading) {
+      setEditingInstanceId(null)
+    }
+  }, [editingInstanceId, editingInstance, isLoading])
+
+  const handleOpenAddDialog = () => {
     onSearchChange({ ...search, tab: "instances", modal: "add-instance" })
   }
 
   const handleCloseDialog = () => {
-    setEditingInstance(undefined)
     onSearchChange({ tab: "instances" })
+  }
+
+  const handleEditInstance = (instance: Instance) => {
+    setEditingInstanceId(instance.id)
   }
 
   const handleReorder = (instanceId: number, direction: -1 | 1) => {
@@ -468,7 +499,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Button onClick={() => handleOpenDialog()} size="sm" className="w-full sm:w-auto">
+        <Button onClick={handleOpenAddDialog} size="sm" className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           Add Instance
         </Button>
@@ -489,7 +520,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
-                    onEdit={() => handleOpenDialog(instance)}
+                    onEdit={() => handleEditInstance(instance)}
                     onMoveUp={index > 0 ? () => handleReorder(instance.id, -1) : undefined}
                     onMoveDown={index < instances.length - 1 ? () => handleReorder(instance.id, 1) : undefined}
                     disableMoveUp={isReordering}
@@ -501,7 +532,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
               <div className="rounded-lg border border-dashed p-12 text-center">
                 <p className="text-muted-foreground">No instances configured</p>
                 <Button
-                  onClick={() => handleOpenDialog()}
+                  onClick={handleOpenAddDialog}
                   className="mt-4"
                   variant="outline"
                 >
@@ -514,23 +545,57 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
         )}
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingInstance ? "Edit Instance" : "Add Instance"}
-            </DialogTitle>
+      <div className="rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label className="text-sm font-medium">Title bar speeds</Label>
+            <p className="text-xs text-muted-foreground">
+              Show download and upload speeds in the browser title bar.
+            </p>
+          </div>
+          <Switch
+            checked={titleBarSpeedsEnabled}
+            onCheckedChange={(checked) => setTitleBarSpeedsEnabled(Boolean(checked))}
+          />
+        </div>
+      </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenAddDialog() : handleCloseDialog()}>
+        <DialogContent className="sm:max-w-[425px] max-h-[90dvh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>Add Instance</DialogTitle>
             <DialogDescription>
-              {editingInstance? "Update your qBittorrent instance configuration": "Add a new qBittorrent instance to manage"}
+              Add a new qBittorrent instance to manage
             </DialogDescription>
           </DialogHeader>
-          <InstanceForm
-            instance={editingInstance}
-            onSuccess={handleCloseDialog}
-            onCancel={handleCloseDialog}
-          />
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <InstanceForm
+              onSuccess={handleCloseDialog}
+              onCancel={handleCloseDialog}
+              formId={INSTANCE_FORM_ID}
+            />
+          </div>
+          <DialogFooter className="flex-shrink-0">
+            <Button type="button" variant="outline" onClick={handleCloseDialog}>
+              Cancel
+            </Button>
+            <Button type="submit" form={INSTANCE_FORM_ID} disabled={isCreating}>
+              {isCreating ? "Adding..." : "Add Instance"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Instance Preferences Dialog */}
+      {editingInstanceId && editingInstance && (
+        <InstancePreferencesDialog
+          open={true}
+          onOpenChange={(open) => !open && setEditingInstanceId(null)}
+          instanceId={editingInstance.id}
+          instanceName={editingInstance.name}
+          instance={editingInstance}
+        />
+      )}
     </div>
   )
 }
@@ -548,7 +613,7 @@ function TorznabSearchCachePanel() {
   const stats: TorznabSearchCacheStats | undefined = statsQuery.data
   const [ttlInput, setTtlInput] = useState("")
 
-  const formatCacheTimestamp = (value?: string | null) => {
+  const formatCacheTimestamp = useCallback((value?: string | null) => {
     if (!value) {
       return "—"
     }
@@ -557,7 +622,7 @@ function TorznabSearchCachePanel() {
       return "—"
     }
     return formatDate(parsed)
-  }
+  }, [formatDate])
 
   useEffect(() => {
     if (stats?.ttlMinutes !== undefined) {
@@ -613,7 +678,7 @@ function TorznabSearchCachePanel() {
       { label: "Newest entry", value: formatCacheTimestamp(stats?.newestCachedAt) },
       { label: "Last used", value: formatCacheTimestamp(stats?.lastUsedAt) },
     ],
-    [approxSize, formatDate, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+    [approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
   return (
@@ -683,7 +748,6 @@ function TorznabSearchCachePanel() {
           </form>
         </CardContent>
       </Card>
-
     </div>
   )
 }
@@ -737,6 +801,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 Search Cache
               </div>
             </SelectItem>
+            <SelectItem value="integrations">
+              <div className="flex items-center">
+                <Link2 className="w-4 h-4 mr-2" />
+                Integrations
+              </div>
+            </SelectItem>
             <SelectItem value="client-api">
               <div className="flex items-center">
                 <Share2 className="w-4 h-4 mr-2" />
@@ -753,6 +823,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               <div className="flex items-center">
                 <Terminal className="w-4 h-4 mr-2" />
                 External Programs
+              </div>
+            </SelectItem>
+            <SelectItem value="notifications">
+              <div className="flex items-center">
+                <Bell className="w-4 h-4 mr-2" />
+                Notifications
               </div>
             </SelectItem>
             <SelectItem value="datetime">
@@ -773,6 +849,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 Security
               </div>
             </SelectItem>
+            <SelectItem value="logs">
+              <div className="flex items-center">
+                <FileText className="w-4 h-4 mr-2" />
+                Logs
+              </div>
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -784,7 +866,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("instances")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "instances"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "instances" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Server className="w-4 h-4 mr-2" />
@@ -793,7 +875,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("indexers")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "indexers"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "indexers" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Database className="w-4 h-4 mr-2" />
@@ -802,16 +884,25 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("search-cache")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "search-cache"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "search-cache" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Layers className="w-4 h-4 mr-2" />
               Search Cache
             </button>
             <button
+              onClick={() => handleTabChange("integrations")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "integrations" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Link2 className="w-4 h-4 mr-2" />
+              Integrations
+            </button>
+            <button
               onClick={() => handleTabChange("client-api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "client-api" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Share2 className="w-4 h-4 mr-2" />
@@ -820,7 +911,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "api" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Key className="w-4 h-4 mr-2" />
@@ -829,16 +920,25 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("external-programs")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "external-programs"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "external-programs" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Terminal className="w-4 h-4 mr-2" />
               External Programs
             </button>
             <button
+              onClick={() => handleTabChange("notifications")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "notifications" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Bell className="w-4 h-4 mr-2" />
+              Notifications
+            </button>
+            <button
               onClick={() => handleTabChange("datetime")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "datetime"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "datetime" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Clock className="w-4 h-4 mr-2" />
@@ -847,7 +947,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("themes")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "themes"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "themes" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Palette className="w-4 h-4 mr-2" />
@@ -856,11 +956,20 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <button
               onClick={() => handleTabChange("security")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "security"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "security" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Shield className="w-4 h-4 mr-2" />
               Security
+            </button>
+            <button
+              onClick={() => handleTabChange("logs")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "logs" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Logs
             </button>
           </nav>
         </div>
@@ -893,6 +1002,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           {activeTab === "search-cache" && (
             <div className="space-y-4">
               <TorznabSearchCachePanel />
+            </div>
+          )}
+
+          {activeTab === "integrations" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>ARR Integrations</CardTitle>
+                  <CardDescription>
+                    Configure Sonarr and Radarr instances for enhanced cross-seed searches using external IDs
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ArrInstancesManager />
+                </CardContent>
+              </Card>
             </div>
           )}
 
@@ -958,6 +1083,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             </div>
           )}
 
+          {activeTab === "notifications" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notifications</CardTitle>
+                  <CardDescription>
+                    Send alerts and status updates via any Shoutrrr-supported service
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <NotificationsManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {activeTab === "datetime" && (
             <div className="space-y-4">
               <Card>
@@ -976,7 +1117,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
           {activeTab === "themes" && (
             <div className="space-y-4">
-              <LicenseManager />
+              <LicenseManager
+                checkoutStatus={search.checkout}
+                checkoutPaymentStatus={search.status}
+                onCheckoutConsumed={() => onSearchChange({ tab: "themes" })}
+              />
               <ThemeSelector />
             </div>
           )}
@@ -994,6 +1139,47 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ChangePasswordForm />
                 </CardContent>
               </Card>
+
+              {canRegisterProtocolHandler() && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Browser Integration</CardTitle>
+                    <CardDescription>
+                      Configure how your browser handles magnet links
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Register qui as your browser's handler for magnet links.
+                        This allows you to open magnet links directly in qui.
+                      </p>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          const success = registerMagnetHandler()
+                          if (success) {
+                            toast.success("Magnet handler registration requested", {
+                              description: getMagnetHandlerRegistrationGuidance(),
+                            })
+                          } else {
+                            toast.error("Failed to register magnet handler")
+                          }
+                        }}
+                        className="w-fit"
+                      >
+                        Register as Handler
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {activeTab === "logs" && (
+            <div className="space-y-4">
+              <LogSettingsPanel />
             </div>
           )}
         </div>

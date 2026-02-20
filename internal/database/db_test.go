@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package database
@@ -181,6 +181,12 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 		{Name: "sort_order", Type: "INTEGER"},
 		{Name: "is_active", Type: "BOOLEAN"},
+		{Name: "has_local_filesystem_access", Type: "BOOLEAN"},
+		{Name: "use_hardlinks", Type: "BOOLEAN"},
+		{Name: "hardlink_base_dir", Type: "TEXT"},
+		{Name: "hardlink_dir_preset", Type: "TEXT"},
+		{Name: "use_reflinks", Type: "BOOLEAN"},
+		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -190,6 +196,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "activated_at", Type: "DATETIME"},
 		{Name: "expires_at", Type: "DATETIME"},
 		{Name: "last_validated", Type: "DATETIME"},
+		{Name: "provider", Type: "TEXT"},
+		{Name: "dodo_instance_id", Type: "TEXT"},
 		{Name: "polar_customer_id", Type: "TEXT"},
 		{Name: "polar_product_id", Type: "TEXT"},
 		{Name: "polar_activation_id", Type: "TEXT"},
@@ -239,6 +247,34 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "torrent_progress", Type: "REAL"},
 		{Name: "file_count", Type: "INTEGER"},
 	},
+	"automations": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "name", Type: "TEXT"},
+		{Name: "tracker_pattern", Type: "TEXT"},
+		{Name: "conditions", Type: "TEXT"},
+		{Name: "enabled", Type: "INTEGER"},
+		{Name: "dry_run", Type: "INTEGER"},
+		{Name: "sort_order", Type: "INTEGER"},
+		{Name: "interval_seconds", Type: "INTEGER"},
+		{Name: "free_space_source", Type: "TEXT"},
+		{Name: "created_at", Type: "DATETIME"},
+		{Name: "updated_at", Type: "DATETIME"},
+	},
+	"automation_activity": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "hash", Type: "TEXT"},
+		{Name: "torrent_name", Type: "TEXT"},
+		{Name: "tracker_domain", Type: "TEXT"},
+		{Name: "action", Type: "TEXT"},
+		{Name: "rule_id", Type: "INTEGER"},
+		{Name: "rule_name", Type: "TEXT"},
+		{Name: "outcome", Type: "TEXT"},
+		{Name: "reason", Type: "TEXT"},
+		{Name: "details", Type: "TEXT"},
+		{Name: "created_at", Type: "DATETIME"},
+	},
 }
 
 var expectedIndexes = map[string][]string{
@@ -249,11 +285,14 @@ var expectedIndexes = map[string][]string{
 	"sessions":            {"sessions_expiry_idx"},
 	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
 	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
+	"automations":         {"idx_automations_instance"},
+	"automation_activity": {"idx_automation_activity_instance_created"},
 }
 
 var expectedTriggers = []string{
 	"update_user_updated_at",
 	"cleanup_old_instance_errors",
+	"trg_automations_updated",
 }
 
 func listMigrationFiles(t *testing.T) []string {
@@ -441,6 +480,52 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	// Verify our referenced string still exists
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
 	require.True(t, exists)
+}
+
+func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	insertString := func(value string) int64 {
+		t.Helper()
+		var id int64
+		require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", value).Scan(&id))
+		return id
+	}
+
+	arrNameID := insertString("arr_name")
+	arrBaseURLID := insertString("http://arr.local")
+	arrBasicUserID := insertString("arr_basic_user")
+	torNameID := insertString("tor_name")
+	torBaseURLID := insertString("http://tor.local")
+	torBasicUserID := insertString("tor_basic_user")
+	orphanID := insertString("orphan_to_cleanup")
+
+	_, err := conn.ExecContext(ctx, `
+		INSERT INTO arr_instances (type, name_id, base_url_id, basic_username_id, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "sonarr", arrNameID, arrBaseURLID, arrBasicUserID, "enc-basic", "enc-api", true, 0, 15)
+	require.NoError(t, err)
+
+	_, err = conn.ExecContext(ctx, `
+		INSERT INTO torznab_indexers (name_id, base_url_id, basic_username_id, basic_password_encrypted, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, torNameID, torBaseURLID, torBasicUserID, "enc-basic", "jackett", "enc-api", true, 0, 30, 100, 100)
+	require.NoError(t, err)
+
+	deleted, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Positive(t, deleted)
+
+	var exists bool
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", arrBasicUserID).Scan(&exists))
+	require.True(t, exists, "arr basic username string must remain referenced")
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", torBasicUserID).Scan(&exists))
+	require.True(t, exists, "torznab basic username string must remain referenced")
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
+	require.False(t, exists, "orphan string should be cleaned up")
 }
 
 // TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released

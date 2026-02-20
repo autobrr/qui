@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -26,6 +26,7 @@ import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
+import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -45,6 +46,7 @@ import {
   Copyright,
   CornerDownRight,
   Download,
+  FileText,
   GitBranch,
   Github,
   HardDrive,
@@ -59,8 +61,8 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Wrench,
-  Sun
+  Sun,
+  Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -95,7 +97,8 @@ export function MobileFooterNav() {
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { currentMode, currentTheme } = useThemeChange()
-  const { hasPremiumAccess } = useHasPremiumAccess()
+  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
+  const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -123,7 +126,7 @@ export function MobileFooterNav() {
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const hasMultipleActiveInstances = activeInstances.length > 1
   const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
-  const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
+  const currentInstanceId = isOnInstancePage ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
   const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
 
@@ -135,20 +138,32 @@ export function MobileFooterNav() {
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId)
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        })
+      } else {
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+      }
       return
     }
 
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme`)
-  }, [hasPremiumAccess])
+  }, [canSwitchPremium, isError])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     const isPremium = isThemePremium(themeId)
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        })
+      } else {
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+      }
       return false
     }
 
@@ -157,7 +172,7 @@ export function MobileFooterNav() {
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
     return true
-  }, [hasPremiumAccess])
+  }, [canSwitchPremium, isError])
 
   if (isSelectionMode) {
     return null
@@ -177,7 +192,7 @@ export function MobileFooterNav() {
           to="/dashboard"
           className={cn(
             "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
-            location.pathname === "/dashboard"? "text-primary": "text-muted-foreground hover:text-foreground"
+            location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
           <Home className={cn(
@@ -195,7 +210,7 @@ export function MobileFooterNav() {
                 type="button"
                 className={cn(
                   "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                  isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
+                  isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <div className="relative">
@@ -265,7 +280,7 @@ export function MobileFooterNav() {
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="left" className="text-xs">
-                              Seeded search running
+                              Scan running
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -330,7 +345,7 @@ export function MobileFooterNav() {
             <button
               className={cn(
                 "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                location.pathname === "/settings"? "text-primary": "text-muted-foreground hover:text-foreground"
+                location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <div className="relative">
@@ -391,11 +406,11 @@ export function MobileFooterNav() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link
-                to="/services"
+                to="/automations"
                 className="flex items-center gap-2"
               >
-                <Wrench className="h-4 w-4" />
-                Services
+                <Zap className="h-4 w-4" />
+                Automations
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -405,6 +420,15 @@ export function MobileFooterNav() {
               >
                 <Archive className="h-4 w-4" />
                 Instance Backups
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/rss"
+                className="flex items-center gap-2"
+              >
+                <Rss className="h-4 w-4" />
+                RSS
               </Link>
             </DropdownMenuItem>
 
@@ -427,6 +451,16 @@ export function MobileFooterNav() {
               >
                 <Server className="h-4 w-4" />
                 Manage Instances
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings"
+                search={{ tab: "logs" }}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Logs
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>

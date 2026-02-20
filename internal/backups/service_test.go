@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package backups
@@ -64,7 +64,7 @@ func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	svc.jobs = make(chan job)
 	svc.now = func() time.Time { return time.Unix(0, 0) }
 
@@ -125,7 +125,8 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
+	t.Cleanup(svc.Stop)
 
 	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
 	for _, name := range instanceNames {
@@ -189,7 +190,7 @@ func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "retention-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	svc.jobs = make(chan job)
 	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
 
@@ -238,7 +239,7 @@ func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "legacy-retention")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 
 	legacy := &models.BackupSettings{
 		InstanceID:     instanceID,
@@ -278,7 +279,7 @@ func TestUpdateSettingsClearsCustomPath(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "custom-path")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 
 	custom := "snapshots/daily"
 	settings := &models.BackupSettings{
@@ -305,7 +306,7 @@ func TestRecoverIncompleteRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -388,7 +389,7 @@ func TestCheckMissedBackups(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -477,7 +478,7 @@ func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -543,7 +544,7 @@ func TestCheckMissedBackupsNoneMissed(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -625,7 +626,7 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -670,7 +671,7 @@ func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -710,7 +711,7 @@ func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -749,7 +750,7 @@ func TestIsBackupMissedMixedStatusRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -809,7 +810,7 @@ func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -840,4 +841,128 @@ func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
 	// Should be missed because the successful run is overdue, even though there are failed runs after it
 	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
 	require.True(t, missed)
+}
+
+func TestIsBackupMissedPendingRunBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	pendingRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusPending,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	require.NoError(t, store.CreateRun(ctx, pendingRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedRunningRunBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	runningRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	startedAt := fixedTime.Add(-2 * time.Hour)
+	runningRun.StartedAt = &startedAt
+	require.NoError(t, store.CreateRun(ctx, runningRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedCanceledRunWithinCooldownBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	canceledRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusCanceled,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-5 * time.Minute),
+	}
+	require.NoError(t, store.CreateRun(ctx, canceledRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedFailedRunOutsideCooldownIsMissed(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	failedRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	failedCompletedAt := fixedTime.Add(-30 * time.Minute)
+	failedRun.CompletedAt = &failedCompletedAt
+	require.NoError(t, store.CreateRun(ctx, failedRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.True(t, missed)
+}
+
+func TestWaitForExportThrottleNoopWithoutThrottle(t *testing.T) {
+	require.NoError(t, waitForExportThrottle(context.Background(), nil))
+}
+
+func TestWaitForExportThrottleReturnsOnTick(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	throttle := make(chan time.Time, 1)
+	throttle <- time.Now()
+
+	require.NoError(t, waitForExportThrottle(ctx, throttle))
+}
+
+func TestWaitForExportThrottleRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	throttle := make(chan time.Time)
+
+	err := waitForExportThrottle(ctx, throttle)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+export const PGP_KEYS = {
+  soup: `-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+xjMEY4DG9xYJKwYBBAHaRw8BAQdAxKV+O9MILXTQXGkZX3gdb4uc45QSEMlm
+o/fT2xjlXZjNH3MwdXA0MjAwQHBtLm1lIDxzMHVwNDIwMEBwbS5tZT7CjAQQ
+FgoAPgUCY4DG9wQLCQcICRC11xNTYNiAFAMVCAoEFgACAQIZAQIbAwIeARYh
+BMteWk84w3qno5ifzrXXE1Ng2IAUAAAhPAEA2EzcpVDUT3uxn/fp6UOOFXgW
+YiS2YrEtsi9TaMED7FoBAKIdyMQGOWofaDET3AiiI2nub/+l+wfa0tC1yOg4
+gdkKzjgEY4DG9xIKKwYBBAGXVQEFAQEHQHbQLeLyMulf8zI8QbW4rAOwUwSi
+8h04UOOO7H+itothAwEIB8J4BBgWCAAqBQJjgMb3CRC11xNTYNiAFAIbDBYh
+BMteWk84w3qno5ifzrXXE1Ng2IAUAAB6dQEAuX5RxFpDiAexU75UT12TBn1m
+D8olF8k0jtPfPhFkS/MBALRFUqshHD5AOH+PWiuknsFjvi7J/6/pl3C0Oj0q
+IxcL
+=og8h
+-----END PGP PUBLIC KEY BLOCK-----`,
+  // ze0s: Add key here when available
+} as const

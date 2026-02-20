@@ -1,29 +1,26 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+
+import { useDirectoryContent } from "./useDirectoryContent";
 
 export function usePathAutocomplete(
   onSuggestionSelect: (path: string) => void,
   instanceId: number
 ) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState("");
   const deferredInput = useDeferredValue(inputValue);
-  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1); // -1 = none
-
-  const cache = useRef<Map<string, string[]>>(new Map());
-  const prevInstanceId = useRef<number>(instanceId);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const [dismissed, setDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // Clear cache when instanceId changes
-  if (prevInstanceId.current !== instanceId) {
-    cache.current.clear();
-    prevInstanceId.current = instanceId;
-  }
+  const skipHighlightResetRef = useRef(false);
 
   const getParentPath = useCallback((path: string) => {
     if (!path || path.trim() === "/") return "/";
-
     if (path.endsWith("/")) return path;
-
     const lastSlash = path.lastIndexOf("/");
     if (lastSlash === -1) return "/";
     return lastSlash === 0 ? "/" : path.slice(0, lastSlash + 1);
@@ -35,79 +32,45 @@ export function usePathAutocomplete(
     return path.slice(lastSlash + 1);
   }, []);
 
-  const fetchDirectoryContent = useCallback(
-    async (dirPath: string) => {
-      if (!dirPath || dirPath === "") return [];
-
-      const normalized = dirPath.startsWith("/") ? dirPath : `/${dirPath}`;
-      const key = normalized.endsWith("/") ? normalized : `${normalized}/`;
-
-      if (cache.current.has(key)) {
-        return cache.current.get(key);
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-      try {
-        const response = await fetch(
-          `/api/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`,
-          { signal: controller.signal }
-        );
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error("Failed to fetch directory");
-
-        const data: string[] = await response.json();
-
-        cache.current.set(key, data);
-        return data;
-      } catch (err) {
-        clearTimeout(timeoutId);
-        if (err instanceof Error && err.name !== "AbortError") {
-          console.warn("Failed to fetch directory content:", err.message);
-        }
-        return [];
-      }
-    },
-    [instanceId]
+  const parentPath = useMemo(
+    () => (deferredInput?.trim() ? getParentPath(deferredInput) : ""),
+    [deferredInput, getParentPath]
   );
 
+  const filterTerm = useMemo(
+    () => getFilterTerm(deferredInput).toLowerCase(),
+    [deferredInput, getFilterTerm]
+  );
+
+  const { data: directoryEntries = [] } = useDirectoryContent(instanceId, parentPath, {
+    enabled: Boolean(deferredInput?.trim()),
+    staleTimeMs: 30000,
+  });
+
+  const suggestions = useMemo(() => {
+    if (!directoryEntries.length) return [];
+    if (!filterTerm) return directoryEntries;
+    return directoryEntries.filter((e) => e.toLowerCase().includes(filterTerm));
+  }, [directoryEntries, filterTerm]);
+
+  // Update highlighted index when suggestions change
   useEffect(() => {
-    if (!deferredInput?.trim()) {
-      setSuggestions([]);
+    if (dismissed) {
       setHighlightedIndex(-1);
       return;
     }
-
-    const parentPath = getParentPath(deferredInput);
-    const filterTerm = getFilterTerm(deferredInput).toLowerCase();
-
-    let cancelled = false;
-
-    const load = async () => {
-      const entries = (await fetchDirectoryContent(parentPath)) ?? [];
-
-      if (cancelled) return;
-
-      const filtered = filterTerm ? entries.filter((e) => e.toLowerCase().includes(filterTerm)) : entries;
-
-      setSuggestions(filtered);
-      setHighlightedIndex(filtered.length > 0 ? 0 : -1);
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [deferredInput, fetchDirectoryContent, getFilterTerm, getParentPath]);
+    if (skipHighlightResetRef.current) {
+      skipHighlightResetRef.current = false;
+      return;
+    }
+    setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
+  }, [suggestions, dismissed]);
 
   const selectSuggestion = useCallback(
     (entry: string) => {
       setInputValue(entry);
       onSuggestionSelect(entry);
-      setSuggestions([]);
+      setDismissed(true);
       setHighlightedIndex(-1);
       inputRef.current?.focus();
     },
@@ -118,7 +81,20 @@ export function usePathAutocomplete(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (!suggestions.length) return;
 
-      switch(e.key) {
+      if (dismissed) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          skipHighlightResetRef.current = true;
+          setDismissed(false);
+        } else if (e.key === "Escape") {
+          setHighlightedIndex(-1);
+          setDismissed(true);
+          return;
+        } else {
+          return;
+        }
+      }
+
+      switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
           setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
@@ -146,18 +122,19 @@ export function usePathAutocomplete(
           // Otherwise let Tab proceed for normal form navigation
           break;
         case "Escape":
-          setSuggestions([]);
           setHighlightedIndex(-1);
+          setDismissed(true);
           break;
         default:
-          return
+          return;
       }
     },
-    [suggestions, highlightedIndex, selectSuggestion]
+    [suggestions, highlightedIndex, selectSuggestion, dismissed]
   );
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
+    setDismissed(false);
     setHighlightedIndex(-1);
   }, []);
 
@@ -172,9 +149,11 @@ export function usePathAutocomplete(
   // 1. No suggestions available
   // 2. Input ends with "/" and is an exact match to a suggestion (folder fully selected)
   // 3. Input exactly matches the only suggestion
-  const showSuggestions = suggestions.length > 0 &&
+  const showSuggestions =
+    !dismissed &&
+    suggestions.length > 0 &&
     !(suggestions.length === 1 && suggestions[0] === inputValue) &&
-    !(inputValue.endsWith("/") && suggestions.some(s => s === inputValue));
+    !(inputValue.endsWith("/") && suggestions.some((s) => s === inputValue));
 
   return {
     suggestions,

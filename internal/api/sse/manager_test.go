@@ -5,12 +5,12 @@ package sse
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -19,10 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tmaxmax/go-sse"
 
-	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
@@ -125,7 +123,7 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "user", "password", nil, nil, false)
+	_, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "user", "password", nil, nil, false, nil)
 	require.NoError(t, err, "failed to seed instance")
 
 	manager := NewStreamManager(nil, nil, store)
@@ -223,129 +221,24 @@ func decodeStreamPayload(t *testing.T, message *sse.Message) *StreamPayload {
 	return &payload
 }
 
-// testQuerier wraps *sql.DB to satisfy dbinterface.Querier for tests.
-type testQuerier struct {
-	db *sql.DB
-}
-
-func (q *testQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return q.db.QueryRowContext(ctx, query, args...)
-}
-
-func (q *testQuerier) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return q.db.ExecContext(ctx, query, args...)
-}
-
-func (q *testQuerier) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return q.db.QueryContext(ctx, query, args...)
-}
-
-func (q *testQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
-	tx, err := q.db.BeginTx(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
-	return &testTx{Tx: tx}, nil
-}
-
-type testTx struct {
-	*sql.Tx
-}
-
-func (tx *testTx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return tx.Tx.QueryRowContext(ctx, query, args...)
-}
-
-func (tx *testTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return tx.Tx.ExecContext(ctx, query, args...)
-}
-
-func (tx *testTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return tx.Tx.QueryContext(ctx, query, args...)
-}
-
-func (tx *testTx) Commit() error {
-	return tx.Tx.Commit()
-}
-
-func (tx *testTx) Rollback() error {
-	return tx.Tx.Rollback()
-}
-
 func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
 	t.Helper()
 
-	sqlDB, err := sql.Open("sqlite", ":memory:")
-	require.NoError(t, err, "failed to open test database")
-
-	// Ensure database resources are cleaned up on failure cases too.
-	cleanup := func() {
-		_ = sqlDB.Close()
-	}
-
-	// Create minimal schema needed by InstanceStore.
-	schema := []string{
-		`CREATE TABLE string_pool (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			value TEXT NOT NULL UNIQUE
-		);`,
-		`CREATE TABLE instances (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name_id INTEGER NOT NULL,
-			host_id INTEGER NOT NULL,
-			username_id INTEGER NOT NULL,
-			password_encrypted TEXT NOT NULL,
-			basic_username_id INTEGER,
-			basic_password_encrypted TEXT,
-			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
-			sort_order INTEGER NOT NULL DEFAULT 0,
-			is_active BOOLEAN DEFAULT 1,
-			last_connected_at TIMESTAMP,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (name_id) REFERENCES string_pool(id),
-			FOREIGN KEY (host_id) REFERENCES string_pool(id),
-			FOREIGN KEY (username_id) REFERENCES string_pool(id),
-			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
-		);`,
-		`CREATE VIEW instances_view AS
-			SELECT
-				i.id,
-				sp_name.value AS name,
-				sp_host.value AS host,
-				sp_username.value AS username,
-				i.password_encrypted,
-				sp_basic_username.value AS basic_username,
-				i.basic_password_encrypted,
-				i.tls_skip_verify,
-				i.sort_order,
-				i.is_active,
-				i.last_connected_at,
-				i.created_at,
-				i.updated_at
-			FROM instances i
-			INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-			INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-			INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
-			LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;`,
-	}
-
-	for _, stmt := range schema {
-		_, err := sqlDB.Exec(stmt)
-		require.NoError(t, err, "failed to apply schema statement")
-	}
-
-	querier := &testQuerier{db: sqlDB}
+	dbPath := filepath.Join(t.TempDir(), "sse-manager-test.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err, "failed to create test database")
 
 	key := make([]byte, 32)
 	for i := range key {
 		key[i] = byte(i)
 	}
 
-	store, err := models.NewInstanceStore(querier, key)
+	store, err := models.NewInstanceStore(db, key)
 	require.NoError(t, err, "failed to create instance store")
 
-	return store, cleanup
+	return store, func() {
+		_ = db.Close()
+	}
 }
 
 func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {

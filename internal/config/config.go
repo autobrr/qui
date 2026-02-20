@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package config
@@ -6,21 +6,23 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -33,8 +35,12 @@ type AppConfig struct {
 	dataDir string
 	version string
 
+	configMu sync.Mutex
+
 	listenersMu sync.RWMutex
 	listeners   []func(*domain.Config)
+
+	logManager *LogManager
 }
 
 func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
@@ -44,9 +50,10 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	}
 
 	c := &AppConfig{
-		viper:   viper.New(),
-		Config:  &domain.Config{},
-		version: version,
+		viper:      viper.New(),
+		Config:     &domain.Config{},
+		version:    version,
+		logManager: NewLogManager(version),
 	}
 
 	// Set defaults
@@ -64,6 +71,7 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	if err := c.viper.Unmarshal(c.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	c.hydrateConfigFromViper()
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
@@ -87,7 +95,7 @@ func (c *AppConfig) defaults() {
 	if err != nil {
 		// Log error but continue with a fallback
 		log.Error().Err(err).Msg("Failed to generate secure session secret, using fallback")
-		sessionSecret = "change-me-" + fmt.Sprintf("%d", os.Getpid())
+		sessionSecret = "change-me-" + strconv.Itoa(os.Getpid())
 	}
 
 	c.viper.SetDefault("host", host)
@@ -100,12 +108,19 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("trackerIconsFetchEnabled", true)
+	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
+
+	// Auth disabled
+	c.viper.SetDefault("authDisabled", false)
+	c.viper.SetDefault("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", false)
+	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
 
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
@@ -114,63 +129,60 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("oidcClientSecret", "")
 	c.viper.SetDefault("oidcRedirectUrl", "")
 	c.viper.SetDefault("oidcDisableBuiltInLogin", false)
-
 }
 
 func (c *AppConfig) load(configDirOrPath string) error {
 	c.viper.SetConfigType("toml")
 
 	if configDirOrPath != "" {
-		// Determine if this is a directory or file path
-		configPath := c.resolveConfigPath(configDirOrPath)
-		c.viper.SetConfigFile(configPath)
+		return c.loadFromPath(configDirOrPath)
+	}
+	return c.loadFromStandardLocations()
+}
 
-		// Try to read the config
-		if err := c.viper.ReadInConfig(); err != nil {
-			// If file doesn't exist, create it
-			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				if err := c.writeDefaultConfig(configPath); err != nil {
-					return err
-				}
-				// Re-read after creating
-				if err := c.viper.ReadInConfig(); err != nil {
-					return fmt.Errorf("failed to read newly created config: %w", err)
-				}
-				return nil
-			}
+func (c *AppConfig) loadFromPath(configDirOrPath string) error {
+	configPath := c.resolveConfigPath(configDirOrPath)
+	c.viper.SetConfigFile(configPath)
+
+	if err := c.viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
-	} else {
-		// Search for config in standard locations
-		c.viper.SetConfigName("config")
-		c.viper.AddConfigPath(".")                   // Current directory
-		c.viper.AddConfigPath(GetDefaultConfigDir()) // OS-specific config directory
-
-		// Try to read existing config
-		if err := c.viper.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				// No config found, create in OS-specific location
-				defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
-				if err := c.writeDefaultConfig(defaultConfigPath); err != nil {
-					return err
-				}
-				// Set the config file explicitly and read it
-				c.viper.SetConfigFile(defaultConfigPath)
-				if err := c.viper.ReadInConfig(); err != nil {
-					return fmt.Errorf("failed to read newly created config: %w", err)
-				}
-				// Explicitly set data directory for newly created config
-				configDir := filepath.Dir(defaultConfigPath)
-				c.dataDir = configDir
-				return nil
-			}
-			return fmt.Errorf("failed to read config: %w", err)
+		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
+			return writeErr
+		}
+		if readErr := c.viper.ReadInConfig(); readErr != nil {
+			return fmt.Errorf("failed to read newly created config: %w", readErr)
 		}
 	}
-
 	return nil
 }
 
+func (c *AppConfig) loadFromStandardLocations() error {
+	c.viper.SetConfigName("config")
+	c.viper.AddConfigPath(".")
+	c.viper.AddConfigPath(GetDefaultConfigDir())
+
+	if err := c.viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("failed to read config: %w", err)
+		}
+		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
+		if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
+			return writeErr
+		}
+		c.viper.SetConfigFile(defaultConfigPath)
+		if readErr := c.viper.ReadInConfig(); readErr != nil {
+			return fmt.Errorf("failed to read newly created config: %w", readErr)
+		}
+		c.dataDir = filepath.Dir(defaultConfigPath)
+	}
+	return nil
+}
+
+//nolint:errcheck // BindEnv only errors on empty key, which can't happen with static strings
 func (c *AppConfig) loadFromEnv() {
 	// DO NOT use AutomaticEnv() - it reads ALL env vars and causes conflicts with K8s
 	// Instead, explicitly bind only the environment variables we want
@@ -186,20 +198,25 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
+	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
 
+	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
+	c.viper.BindEnv("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", envPrefix+"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
+
 	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
 	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
 	c.viper.BindEnv("oidcClientId", envPrefix+"OIDC_CLIENT_ID")
-	c.viper.BindEnv("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
+	c.bindOrReadFromFile("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
 	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
 	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
-
 }
 
 func (c *AppConfig) watchConfig() {
@@ -207,25 +224,144 @@ func (c *AppConfig) watchConfig() {
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
+		c.configMu.Lock()
+		defer c.configMu.Unlock()
+
+		previousAuthSettings := authReloadSettings{
+			authDisabled:               c.Config.AuthDisabled,
+			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+			oidcEnabled:                c.Config.OIDCEnabled,
+		}
+
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
 			log.Error().Err(err).Msg("Failed to reload configuration")
 			return
 		}
+		c.hydrateConfigFromViper()
 
 		// Apply dynamic changes
-		c.applyDynamicChanges()
+		c.applyDynamicChanges(previousAuthSettings)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
-	c.Config.Version = c.version
-	c.ApplyLogConfig()
+type authReloadSettings struct {
+	authDisabled               bool
+	iAcknowledgeThisIsABadIdea bool
+	authDisabledAllowedCIDRs   []string
+	oidcEnabled                bool
+}
 
-	// Update check for updates flag from config changes
-	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings) {
+	c.Config.Version = c.version
+	if err := c.ApplyLogConfig(); err != nil {
+		log.Error().Err(err).Msg("Failed to apply log configuration")
+	}
+
+	if err := c.Config.ValidateAuthDisabledConfig(); err != nil {
+		log.Error().Err(err).Msg("auth-disabled config is invalid after reload; keeping previous valid auth-disabled settings")
+		c.Config.AuthDisabled = previousAuthSettings.authDisabled
+		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
+		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
+		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+
+		return
+	}
+
+	switch {
+	case c.Config.IsAuthDisabled():
+		log.Warn().Strs("authDisabledAllowedCIDRs", c.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
+	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
+	}
 
 	c.notifyListeners()
+}
+
+func (c *AppConfig) hydrateConfigFromViper() {
+	c.Config.Host = c.viper.GetString("host")
+	c.Config.Port = c.viper.GetInt("port")
+	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
+
+	c.Config.LogLevel = c.viper.GetString("logLevel")
+	c.Config.LogPath = c.viper.GetString("logPath")
+	c.Config.LogMaxSize = c.viper.GetInt("logMaxSize")
+	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
+
+	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
+	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
+
+	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
+	c.Config.MetricsHost = c.viper.GetString("metricsHost")
+	c.Config.MetricsPort = c.viper.GetInt("metricsPort")
+	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
+
+	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+
+	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
+	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.Config.AuthDisabledAllowedCIDRs = c.getNormalizedStringSlice("authDisabledAllowedCIDRs")
+
+	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
+	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")
+	c.Config.OIDCClientID = c.viper.GetString("oidcClientId")
+	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
+	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
+	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) getNormalizedStringSlice(key string) []string {
+	switch value := c.viper.Get(key).(type) {
+	case []string:
+		return normalizeStringSlice(value)
+	case []any:
+		normalized := make([]string, 0, len(value))
+		for _, item := range value {
+			entry, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(entry)
+			if trimmed != "" {
+				normalized = append(normalized, trimmed)
+			}
+		}
+		return normalized
+	case string:
+		return splitStringSliceValue(value)
+	default:
+		return normalizeStringSlice(c.viper.GetStringSlice(key))
+	}
+}
+
+func normalizeStringSlice(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			normalized = append(normalized, trimmed)
+		}
+	}
+
+	return normalized
+}
+
+func splitStringSliceValue(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+
+	return normalizeStringSlice(parts)
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
@@ -250,6 +386,7 @@ func (c *AppConfig) notifyListeners() {
 	}
 }
 
+//nolint:funlen // config template is inherently long
 func (c *AppConfig) writeDefaultConfig(path string) error {
 	// Check if config already exists
 	if _, err := os.Stat(path); err == nil {
@@ -259,7 +396,7 @@ func (c *AppConfig) writeDefaultConfig(path string) error {
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create config directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Created config directory: %s", dir)
@@ -308,6 +445,18 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Tracker icon fetching
+# Disable to prevent qui from requesting tracker favicons from remote trackers.
+# Default: true
+#trackerIconsFetchEnabled = true
+
+# Cross-seed errored torrent recovery (requires restart)
+# When enabled, cross-seed automation will attempt to recover torrents in error/missingFiles state
+# by triggering recheck and waiting for completion. This can cause runs to take 25+ minutes.
+# When disabled (default), errored torrents are simply excluded from candidate selection.
+# Default: false
+#crossSeedRecoverErroredTorrents = false
 
 # Log level
 # Default: "INFO"
@@ -415,12 +564,16 @@ func GetDefaultConfigDir() string {
 			return filepath.Join(appData, "qui")
 		}
 		// Fallback to home directory
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "AppData", "Roaming", "qui")
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, "AppData", "Roaming", "qui")
+		}
+		return filepath.Join(".", "qui")
 	default:
 		// Use ~/.config/qui for Unix-like systems
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".config", "qui")
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, ".config", "qui")
+		}
+		return filepath.Join(".", ".config", "qui")
 	}
 }
 
@@ -448,23 +601,22 @@ func generateSecureToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (c *AppConfig) ApplyLogConfig() {
+func (c *AppConfig) ApplyLogConfig() error {
 	zerolog.TimeFieldFormat = time.RFC3339
 
-	setLogLevel(c.Config.LogLevel)
+	// Initialize the log manager on first call (sets up switchable writer)
+	c.logManager.Initialize()
 
-	writer := c.baseLogWriter()
+	// Resolve relative log paths to config directory
+	resolvedPath := c.ResolveLogPath(c.Config.LogPath)
 
-	if c.Config.LogPath != "" {
-		multiWriter, err := setupLogFile(c.Config.LogPath, writer, c.Config.LogMaxSize, c.Config.LogMaxBackups)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to setup log file")
-		} else {
-			writer = multiWriter
-		}
-	}
+	// Apply configuration through the log manager
+	return c.logManager.Apply(c.Config.LogLevel, resolvedPath, c.Config.LogMaxSize, c.Config.LogMaxBackups)
+}
 
-	log.Logger = log.Logger.Output(writer)
+// GetLogManager returns the LogManager for log streaming.
+func (c *AppConfig) GetLogManager() *LogManager {
+	return c.logManager
 }
 
 func setLogLevel(level string) {
@@ -473,31 +625,6 @@ func setLogLevel(level string) {
 		lvl = zerolog.InfoLevel
 	}
 	zerolog.SetGlobalLevel(lvl)
-	log.Logger = log.Logger.Level(lvl)
-}
-
-func setupLogFile(path string, base io.Writer, maxSize, maxBackups int) (io.Writer, error) {
-	// Create log directory if needed
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	if maxSize <= 0 {
-		maxSize = 50
-	}
-
-	if maxBackups < 0 {
-		maxBackups = 0
-	}
-
-	rotator := &lumberjack.Logger{
-		Filename:   path,
-		MaxSize:    maxSize,
-		MaxBackups: maxBackups,
-	}
-
-	return io.MultiWriter(base, rotator), nil
 }
 
 func baseLogWriter(version string) io.Writer {
@@ -523,10 +650,6 @@ func baseLogWriter(version string) io.Writer {
 		return writer
 	}
 	return os.Stderr
-}
-
-func (c *AppConfig) baseLogWriter() io.Writer {
-	return baseLogWriter(c.version)
 }
 
 // DefaultLogWriter returns the base log writer for the provided version.
@@ -598,6 +721,18 @@ func (c *AppConfig) GetConfigDir() string {
 	return GetDefaultConfigDir()
 }
 
+// ResolveLogPath resolves a log path, making relative paths relative to the config directory.
+// Returns empty string if logPath is empty (stdout only).
+func (c *AppConfig) ResolveLogPath(logPath string) string {
+	if logPath == "" {
+		return ""
+	}
+	if filepath.IsAbs(logPath) {
+		return logPath
+	}
+	return filepath.Join(c.GetConfigDir(), logPath)
+}
+
 const encryptionKeySize = 32
 
 func WriteDefaultConfig(path string) error {
@@ -621,17 +756,17 @@ func (c *AppConfig) GetEncryptionKey() []byte {
 
 	// Pad the secret if it's too short
 	padded := make([]byte, encryptionKeySize)
-	copy(padded, []byte(secret))
+	copy(padded, secret)
 	return padded
 }
 
 // bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed
 // environment variable is present, otherwise it binds to the regular env var.
-func (c *AppConfig) bindOrReadFromFile(viperVar string, envVar string) {
+func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 	envVarFile := envVar + "_FILE"
 	filePath := os.Getenv(envVarFile)
 	if filePath == "" {
-		c.viper.BindEnv(viperVar, envVar)
+		c.viper.BindEnv(viperVar, envVar) //nolint:errcheck // BindEnv only errors on empty key
 		return
 	}
 

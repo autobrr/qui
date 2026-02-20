@@ -1,55 +1,57 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { useEffect } from "react"
 import { usePremiumAccess } from "@/hooks/useLicense.ts"
-import { themes, isThemePremium, getDefaultTheme } from "@/config/themes"
+import { themes, isThemePremium, getDefaultTheme, getThemeById } from "@/config/themes"
 import { setValidatedThemes, setTheme } from "@/utils/theme"
-import { router } from "@/router"
+import { getLicenseEntitlement, isWithinGracePeriod } from "@/lib/license-entitlement"
+
+const THEME_VALIDATION_INTERVAL_MS = 60 * 60 * 1000
 
 /**
  * ThemeValidator component validates theme access on mount and periodically
- * to prevent unauthorized access to premium themes via localStorage tampering
+ * to prevent unauthorized access to premium themes via localStorage tampering.
+ *
+ * Key behaviors:
+ * - On error: do not force-reset the current theme (fixes #837 UX issue)
+ * - On error: do not allow switching to premium unless within grace period
+ * - Only downgrade theme on confirmed unlicensed response, not on transient errors
  */
-export function ThemeValidator() {
+export function ThemeValidator(): null {
   const { data, isLoading, isError } = usePremiumAccess()
 
   useEffect(() => {
     // Don't do anything while loading - let the stored theme persist
     if (isLoading) return
 
-    // Check if we're on the login page using TanStack Router
-    const currentPath = router.state.location.pathname
-    const isLoginPage = currentPath === "/login"
+    const storedThemeId = localStorage.getItem("color-theme")
 
     // If there's an error fetching license data
     if (isError) {
       console.warn("Failed to fetch license data")
 
-      // Don't reset theme on login page to avoid disruption
-      if (isLoginPage) {
-        console.log("On login page, keeping current theme")
-        // Still set some validated themes to prevent lockout
-        const fallbackThemes: string[] = []
-        themes.forEach(theme => {
-          fallbackThemes.push(theme.id)
-        })
-        setValidatedThemes(fallbackThemes)
+      const storedEntitlement = getLicenseEntitlement()
+      const withinGrace =
+        storedEntitlement?.lastKnownHasPremiumAccess === true && isWithinGracePeriod(storedEntitlement)
+
+      if (withinGrace) {
+        // Previously-validated premium user within grace: allow current state.
+        setValidatedThemes(themes.map(theme => theme.id))
         return
       }
 
-      // Reset to minimal theme when not on login page
-      console.log("Resetting to minimal theme due to license fetch error")
-      const minimalThemes = themes.filter(theme => !isThemePremium(theme.id)).map(theme => theme.id)
-      setValidatedThemes(minimalThemes)
-
-      // Force reset to minimal theme
-      const currentTheme = localStorage.getItem("color-theme")
-      if (currentTheme && isThemePremium(currentTheme)) {
-        setTheme("minimal")
+      // Outside grace / unknown: restrict switching to premium but keep current theme applied.
+      const accessibleThemes = themes
+        .filter(theme => !isThemePremium(theme.id))
+        .map(theme => theme.id)
+      const storedTheme = storedThemeId ? getThemeById(storedThemeId) : undefined
+      if (storedTheme?.isPremium) {
+        accessibleThemes.push(storedTheme.id)
       }
+      setValidatedThemes(accessibleThemes)
       return
     }
 
@@ -66,37 +68,30 @@ export function ThemeValidator() {
     // Set the validated themes - this will also clear the isInitializing flag
     setValidatedThemes(accessibleThemes)
 
-    // Now validate the current theme after we've set the accessible themes
-    const validateCurrentTheme = () => {
-      const storedThemeId = localStorage.getItem("color-theme")
-
-      // Only reset if the stored theme is premium and user doesn't have access
-      // This ensures we don't unnecessarily reset the theme
-      if (storedThemeId && isThemePremium(storedThemeId) && !data?.hasPremiumAccess) {
-        console.log("Premium theme detected without access, reverting to default")
-        setTheme(getDefaultTheme().id)
-      }
+    // Only reset if we have a confirmed unlicensed response (not an error)
+    if (storedThemeId && isThemePremium(storedThemeId) && data?.hasPremiumAccess === false) {
+      setTheme(getDefaultTheme().id)
     }
-
-    validateCurrentTheme()
   }, [data, isLoading, isError])
 
   // Set up periodic validation and storage event listener
   useEffect(() => {
-    // Skip if still loading or no data
-    if (isLoading || !data) return
+    // Skip if still loading
+    if (isLoading) return
+
+    // Only validate if we have confirmed data (not in error state)
+    if (isError || !data) return
 
     const validateStoredTheme = () => {
       const storedThemeId = localStorage.getItem("color-theme")
       // Only validate and reset if we have confirmed the user doesn't have access
       if (storedThemeId && isThemePremium(storedThemeId) && data?.hasPremiumAccess === false) {
-        console.log("Periodic validation: Premium theme without access detected")
         localStorage.removeItem("color-theme")
         setTheme(getDefaultTheme().id)
       }
     }
 
-    const interval = setInterval(validateStoredTheme, 30000)
+    const interval = setInterval(validateStoredTheme, THEME_VALIDATION_INTERVAL_MS)
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "color-theme" && e.newValue) {
@@ -113,7 +108,7 @@ export function ThemeValidator() {
       clearInterval(interval)
       window.removeEventListener("storage", handleStorageChange)
     }
-  }, [data, isLoading])
+  }, [data, isLoading, isError])
 
   return null
 }
