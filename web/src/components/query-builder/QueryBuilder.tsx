@@ -430,17 +430,56 @@ function moveNodeToPathIndex(
 
   const [moved] = sourceParent.conditions.splice(sourceIndex, 1);
   if (!moved) return null;
-  const targetParent = getNodeAtPath(nextRoot, targetParentPath);
+  const adjustedTargetParentPath = adjustPathAfterRemoval(targetParentPath, sourcePath);
+  if (!adjustedTargetParentPath) return null;
+  const targetParent = getNodeAtPath(nextRoot, adjustedTargetParentPath);
   if (!targetParent?.conditions || !isGroupCondition(targetParent)) return null;
 
   let insertIndex = targetIndex;
-  if (isSamePath(sourceParentPath, targetParentPath) && sourceIndex < targetIndex) {
+  if (isSamePath(sourceParentPath, adjustedTargetParentPath) && sourceIndex < targetIndex) {
     insertIndex -= 1;
   }
   insertIndex = Math.max(0, Math.min(insertIndex, targetParent.conditions.length));
 
   targetParent.conditions.splice(insertIndex, 0, moved);
   return pruneEmptyGroups(nextRoot, true);
+}
+
+function adjustPathAfterRemoval(path: number[], removedPath: number[]): number[] | null {
+  if (path.length === 0 || removedPath.length === 0) {
+    return path;
+  }
+
+  const removedParentPath = removedPath.slice(0, -1);
+  const removedIndex = removedPath[removedPath.length - 1];
+
+  // If parent path diverges before the removal parent, no adjustment is needed.
+  for (let i = 0; i < removedParentPath.length; i++) {
+    if (i >= path.length || path[i] !== removedParentPath[i]) {
+      return path;
+    }
+  }
+
+  // Same parent path (or root move) => parent container remains valid.
+  if (path.length === removedParentPath.length) {
+    return path;
+  }
+
+  const divergingSegment = removedParentPath.length;
+  const currentIndex = path[divergingSegment];
+
+  // Target path points into removed node subtree; treat as invalid.
+  if (currentIndex === removedIndex) {
+    return null;
+  }
+
+  if (currentIndex > removedIndex) {
+    const adjusted = [...path];
+    adjusted[divergingSegment] = currentIndex - 1;
+    return adjusted;
+  }
+
+  return path;
 }
 
 function pruneEmptyGroups(condition: RuleCondition, isRoot: boolean): RuleCondition | null {
