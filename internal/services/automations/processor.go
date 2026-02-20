@@ -5,6 +5,7 @@ package automations
 
 import (
 	"bytes"
+	"path/filepath"
 	"sort"
 	"strings"
 	"text/template"
@@ -548,8 +549,24 @@ func resolveMovePath(path string, torrent qbt.Torrent, state *torrentDesiredStat
 	if resolvedPath == "" {
 		return "", false
 	}
+	// If the resolved path is not absolute, treat it as relative to the
+	// instance default save path (if available). This allows users to provide
+	// relative paths like "tv/Show.Name" which will be prepended with the
+	// qBittorrent instance default save path.
+	cleaned := filepath.Clean(resolvedPath)
+	if !filepath.IsAbs(cleaned) {
+		// Use instance default save path from evalCtx.
+		if evalCtx == nil || evalCtx.InstanceDefaultSavePath == "" {
+			return "", false
+		}
 
-	return resolvedPath, true
+		// Join using OS-native separators
+		joined := filepath.Join(evalCtx.InstanceDefaultSavePath, cleaned)
+		return filepath.ToSlash(joined), true
+	}
+
+	// Ensure absolute path uses forward slashes (qBittorrent uses forward slashes)
+	return filepath.ToSlash(cleaned), true
 }
 
 func containsStringFold(list []string, candidate string) bool {

@@ -1559,6 +1559,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	evalCtx := &EvalContext{
 		InstanceHasLocalAccess: instance.HasLocalFilesystemAccess,
 	}
+	// Populate instance default save path (used for resolving relative move paths).
+	if instance != nil {
+		if prefs, err := s.syncManager.GetAppPreferences(ctx, instanceID); err == nil {
+			// qBittorrent app preferences expose the default save path (save_path).
+			// Assign if present.
+			if prefs.SavePath != "" {
+				evalCtx.InstanceDefaultSavePath = prefs.SavePath
+			}
+		} else {
+			// If fetching app preferences fails, leave InstanceDefaultSavePath empty.
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get app preferences for instance (relative move paths may be unresolved)")
+		}
+	}
 
 	// Build category index for EXISTS_IN/CONTAINS_IN operators
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
