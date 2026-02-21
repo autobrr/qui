@@ -412,6 +412,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
                 error: payload.error ?? current.error,
                 streamError: payload.error ?? current.streamError,
                 streamConnected: false,
+                instanceMeta: null,
               },
               immediate: true,
             }
@@ -469,6 +470,10 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
             next.error = null
           }
 
+          if (!snapshot.connected || snapshot.error) {
+            next.instanceMeta = null
+          }
+
           return next
         })
       })
@@ -485,6 +490,10 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
           if (initialSnapshot.error) {
             next.error = initialSnapshot.error
             next.isLoading = false
+          }
+
+          if (!initialSnapshot.connected || initialSnapshot.error) {
+            next.instanceMeta = null
           }
 
           return next
@@ -550,7 +559,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
 
     // Merge SSE instanceMeta into the instance object for real-time status updates
     // This allows components to use SSE-based connection status instead of polled data
-    const mergedInstance: InstanceResponse = state.instanceMeta
+    const mergedInstance: InstanceResponse = state.streamConnected && state.instanceMeta
       ? {
         ...instance,
         connected: state.instanceMeta.connected,
