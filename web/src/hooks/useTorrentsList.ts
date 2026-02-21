@@ -134,14 +134,14 @@ export function useTorrentsList(
     [appInfoQueryKey, queryClient]
   )
 
-  const streamQueryKey = useMemo(
-    () => ["torrents-list", instanceId, 0, filters, search, sort, order] as const,
-    [instanceId, filters, search, sort, order]
-  )
-
   const isCrossSeedFiltering = useMemo(() => {
     return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
   }, [filters?.expr])
+
+  const streamQueryKey = useMemo(
+    () => ["torrents-list", instanceId, 0, filters, search, sort, order, isCrossSeedFiltering] as const,
+    [instanceId, filters, search, sort, order, isCrossSeedFiltering]
+  )
 
   const streamParams = useMemo(() => {
     if (!enabled || isCrossSeedFiltering) {
