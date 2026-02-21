@@ -2168,6 +2168,7 @@ export interface DirScanSettings {
   sizeTolerancePercent: number
   minPieceRatio: number
   maxSearcheesPerRun: number
+  maxSearcheeAgeDays: number
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
@@ -2183,6 +2184,7 @@ export interface DirScanSettingsUpdate {
   sizeTolerancePercent?: number
   minPieceRatio?: number
   maxSearcheesPerRun?: number
+  maxSearcheeAgeDays?: number
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean
