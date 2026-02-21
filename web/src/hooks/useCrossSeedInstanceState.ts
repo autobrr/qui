@@ -43,9 +43,7 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
   const searchStatusQuery = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: (query) => {
-      return query.state.data?.running ? 5_000 : 60_000
-    },
+    refetchInterval: (query) => query.state.data?.running ? 5_000 : 60_000,
     staleTime: 3_000,
   })
 

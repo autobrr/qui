@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
@@ -29,7 +30,7 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
@@ -127,6 +128,63 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const isContentTabActive = activeTab === "content"
   const isCrossSeedTabActive = activeTab === "crossseed"
+  const hashFilter = useMemo<TorrentFilters | undefined>(() => {
+    if (!torrent?.hash) {
+      return undefined
+    }
+
+    return {
+      expr: `Hash == "${torrent.hash}"`,
+      status: [],
+      excludeStatus: [],
+      categories: [],
+      excludeCategories: [],
+      tags: [],
+      excludeTags: [],
+      trackers: [],
+      excludeTrackers: [],
+    }
+  }, [torrent?.hash])
+  const streamParams = useMemo(() => {
+    if (!hashFilter || !isReady) {
+      return null
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+      filters: hashFilter,
+    }
+  }, [hashFilter, instanceId, isReady])
+  const [streamTorrent, setStreamTorrent] = useState<Torrent | null>(null)
+  const handleStreamPayload = useCallback(
+    (payload: TorrentStreamPayload) => {
+      if (!payload?.data || !torrent?.hash) {
+        return
+      }
+
+      const nextTorrent = payload.data.torrents?.find(item => item.hash === torrent.hash) ?? null
+      if (!nextTorrent && payload.data.total === 0) {
+        setStreamTorrent(null)
+        return
+      }
+      if (nextTorrent) {
+        setStreamTorrent(nextTorrent)
+      }
+    },
+    [torrent?.hash]
+  )
+  const streamState = useSyncStream(streamParams, {
+    enabled: Boolean(streamParams),
+    onMessage: handleStreamPayload,
+  })
+
+  useEffect(() => {
+    setStreamTorrent(null)
+  }, [torrent?.hash])
 
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
@@ -188,33 +246,25 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
-  // Poll for live torrent data (the prop is a stale snapshot from selection time)
-  // This keeps state, priority, progress, and other fields up-to-date across all tabs
-  const { data: liveTorrent } = useQuery({
+  const shouldUseFallbackPolling = !!torrent && isReady && (!streamState.connected || !!streamState.error)
+
+  // SSE is primary for live row state; polling only runs while stream is unavailable.
+  const { data: polledLiveTorrent } = useQuery({
     queryKey: ["torrent-live-state", instanceId, torrent?.hash],
     queryFn: async () => {
       const response = await api.getTorrents(instanceId, {
-        filters: {
-          expr: `Hash == "${torrent!.hash}"`,
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: [],
-        },
+        filters: hashFilter!,
         limit: 1,
       })
       return response.torrents[0] ?? null
     },
-    enabled: !!torrent && isReady,
+    enabled: shouldUseFallbackPolling && !!hashFilter,
     staleTime: 1000,
-    refetchInterval: 2000,
+    refetchInterval: shouldUseFallbackPolling ? 2000 : false,
   })
 
   // Merge live data with prop, preferring live values for frequently-changing fields
+  const liveTorrent = streamTorrent ?? polledLiveTorrent ?? null
   const displayTorrent = useMemo(() => {
     if (!torrent) return null
     if (!liveTorrent) return torrent

@@ -5,6 +5,7 @@
 
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { SyncStreamProvider } from "@/contexts/SyncStreamContext"
 import { useDynamicFavicon } from "@/hooks/useDynamicFavicon"
 import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
 import { initializeTheme } from "@/utils/theme"
@@ -38,10 +39,12 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-        <Toaster />
-      </TooltipProvider>
+      <SyncStreamProvider>
+        <TooltipProvider>
+          <RouterProvider router={router} />
+          <Toaster />
+        </TooltipProvider>
+      </SyncStreamProvider>
     </QueryClientProvider>
   )
 }

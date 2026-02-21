@@ -726,7 +726,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { data: searchStatus, refetch: refetchSearchStatus } = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: 5_000,
+    // Only poll frequently when search is running, otherwise poll slowly
+    refetchInterval: (query) => query.state.data?.running ? 5_000 : 60_000,
   })
 
   const { data: searchRuns, refetch: refetchSearchRuns } = useQuery({

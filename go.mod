@@ -31,6 +31,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ulikunitz/xz v0.5.15
 	golang.org/x/crypto v0.47.0
 	golang.org/x/image v0.35.0

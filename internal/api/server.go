@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/api/sse"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
@@ -66,6 +67,7 @@ type Server struct {
 	updateService                    *update.Service
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
+	streamManager                    *sse.StreamManager
 	filesManager                     *filesmanager.Service
 	crossSeedService                 *crossseed.Service
 	jackettService                   *jackett.Service
@@ -126,6 +128,11 @@ type Dependencies struct {
 }
 
 func NewServer(deps *Dependencies) *Server {
+	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.InstanceStore)
+	if deps.ClientPool != nil {
+		deps.ClientPool.SetSyncEventSink(streamManager)
+	}
+
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -150,6 +157,7 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:                    deps.UpdateService,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
+		streamManager:                    streamManager,
 		filesManager:                     deps.FilesManager,
 		crossSeedService:                 deps.CrossSeedService,
 		reannounceService:                deps.ReannounceService,
@@ -247,6 +255,15 @@ func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error 
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.streamManager != nil {
+		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
+		}
+	}
+
 	return s.server.Shutdown(ctx)
 }
 
@@ -442,6 +459,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
+
+			if s.streamManager != nil {
+				r.Get("/stream", s.streamManager.Serve)
+			}
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {

@@ -184,6 +184,17 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Determine freshness preference
+	preferParam := strings.TrimSpace(r.URL.Query().Get("prefer"))
+	preferCached := strings.EqualFold(preferParam, "stale") ||
+		strings.EqualFold(preferParam, "cache") ||
+		strings.EqualFold(preferParam, "cached")
+
+	ctx := r.Context()
+	if preferCached {
+		ctx = qbittorrent.WithSkipFreshData(ctx)
+	}
+
 	// Debug logging with truncated expression to prevent log bloat
 	logEvent := log.Debug().
 		Int("instanceID", instanceID).
@@ -192,6 +203,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Int("page", page).
 		Int("limit", limit).
 		Str("search", search).
+		Bool("preferCached", preferCached).
 		Str("sessionID", sessionID)
 
 	// Log filters but truncate long expressions
@@ -215,14 +227,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Get torrents with search, sorting and filters
 	// The sync manager will handle stale-while-revalidate internally
-	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
 			return
 		}
 		// Record error for user visibility
 		errorStore := h.syncManager.GetErrorStore()
-		if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
+		if recordErr := errorStore.RecordError(ctx, instanceID, err); recordErr != nil {
 			log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
 		}
 
@@ -231,8 +243,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Data is always fresh from sync manager
-	w.Header().Set("X-Data-Source", "fresh")
+	switch {
+	case response.CacheMetadata != nil && response.CacheMetadata.Source != "":
+		w.Header().Set("X-Data-Source", response.CacheMetadata.Source)
+	case preferCached:
+		w.Header().Set("X-Data-Source", "cache")
+	default:
+		w.Header().Set("X-Data-Source", "fresh")
+	}
 
 	RespondJSON(w, http.StatusOK, response)
 }
