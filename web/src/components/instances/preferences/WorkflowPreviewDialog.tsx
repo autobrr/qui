@@ -151,7 +151,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     key: "addedAge",
     header: "Added",
     align: "right",
-    triggerFields: ["ADDED_ON_AGE"],
+    triggerFields: ["ADDED_ON", "ADDED_ON_AGE"],
     render: (t) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
         {formatDurationCompact(Math.floor(Date.now() / 1000) - t.addedOn)}
@@ -162,7 +162,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     key: "completedAge",
     header: "Completed",
     align: "right",
-    triggerFields: ["COMPLETION_ON_AGE"],
+    triggerFields: ["COMPLETION_ON", "COMPLETION_ON_AGE"],
     render: (t) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
         {t.completionOn > 0
@@ -175,7 +175,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     key: "lastActivityAge",
     header: "Inactive",
     align: "right",
-    triggerFields: ["LAST_ACTIVITY_AGE"],
+    triggerFields: ["LAST_ACTIVITY", "LAST_ACTIVITY_AGE"],
     render: (t) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
         {t.lastActivity > 0
