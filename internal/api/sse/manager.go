@@ -448,6 +448,10 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 
 	req := r.WithContext(ctx)
 
+	// SSE connections are long-lived; disable the write deadline inherited from
+	// the main HTTP server so streams aren't terminated by global WriteTimeout.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
 	// ServeHTTP blocks until the client disconnects.
 	m.server.ServeHTTP(w, req)
 }
