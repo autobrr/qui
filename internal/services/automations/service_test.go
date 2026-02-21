@@ -1787,12 +1787,12 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 			nil,
 			map[string]qbt.Torrent{"abc123": torrent},
 			[]qbt.Torrent{torrent},
-				states,
-				ruleByID,
-				nil,
-				true,
-			)
-		})
+			states,
+			ruleByID,
+			nil,
+			true,
+		)
+	})
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -1887,11 +1887,11 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		nil,
 		torrentByHash,
 		torrents,
-			states,
-			ruleByID,
-			nil,
-			true,
-		)
+		states,
+		ruleByID,
+		nil,
+		true,
+	)
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -1933,8 +1933,8 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 		false,
 	)
 
-	require.Len(t, activities, 0)
-	require.Len(t, mockDB.activities, 0)
+	require.Empty(t, activities)
+	require.Empty(t, mockDB.activities)
 }
 
 // mockQuerier implements dbinterface.Querier for testing activity logging
