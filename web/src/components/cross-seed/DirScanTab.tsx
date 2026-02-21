@@ -859,15 +859,15 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Directory Scanner Settings</DialogTitle>
           <DialogDescription>
             Configure global settings for directory scanning.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
           <div className="space-y-2">
             <Label htmlFor="match-mode">Match Mode</Label>
             <Select
@@ -1114,7 +1114,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
