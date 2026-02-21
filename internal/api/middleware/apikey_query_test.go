@@ -36,7 +36,7 @@ func TestAPIKeyFromQuery_AllowsQueryParam(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	authMiddleware := IsAuthenticated(authService, sessionManager)
+	authMiddleware := IsAuthenticated(authService, sessionManager, nil)
 	handler := sessionManager.LoadAndSave(APIKeyFromQuery("apikey")(authMiddleware(okHandler)))
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/cross-seed/apply?apikey="+apiKeyValue, nil)

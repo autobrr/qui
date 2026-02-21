@@ -35,6 +35,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
@@ -75,6 +76,8 @@ type Server struct {
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
 	logExclusionsStore               *models.LogExclusionsStore
+	notificationTargetStore          *models.NotificationTargetStore
+	notificationService              *notifications.Service
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
@@ -112,6 +115,8 @@ type Dependencies struct {
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
 	LogExclusionsStore               *models.LogExclusionsStore
+	NotificationTargetStore          *models.NotificationTargetStore
+	NotificationService              *notifications.Service
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
@@ -156,6 +161,8 @@ func NewServer(deps *Dependencies) *Server {
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
+		notificationTargetStore:          deps.NotificationTargetStore,
+		notificationService:              deps.NotificationService,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
@@ -250,6 +257,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
 	// r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
+	// Enforce auth-disabled IP allowlist against the direct TCP peer.
+	// This runs before RealIP so forwarded headers cannot bypass restrictions.
+	r.Use(middleware.RequireAuthDisabledIPAllowlist(s.config.Config))
 	r.Use(middleware.RealIP)
 
 	// HTTP compression - handles gzip, brotli, zstd, deflate automatically
@@ -286,7 +296,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
@@ -310,6 +320,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
+	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -343,7 +354,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		})
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
-		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager)
+		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 
 		// Cross-seed routes (query param auth for select endpoints)
 		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
@@ -386,6 +397,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Put("/{id}", externalProgramsHandler.UpdateExternalProgram)
 				r.Delete("/{id}", externalProgramsHandler.DeleteExternalProgram)
 				r.Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
+			})
+
+			// Notification targets and events
+			r.Route("/notifications", func(r chi.Router) {
+				r.Get("/events", notificationsHandler.ListEvents)
+				r.Get("/targets", notificationsHandler.ListTargets)
+				r.Post("/targets", notificationsHandler.CreateTarget)
+				r.Put("/targets/{id}", notificationsHandler.UpdateTarget)
+				r.Delete("/targets/{id}", notificationsHandler.DeleteTarget)
+				r.Post("/targets/{id}/test", notificationsHandler.TestTarget)
 			})
 
 			// ARR (Sonarr/Radarr) instance management
@@ -442,6 +463,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 						r.Post("/add-peers", torrentsHandler.AddPeers)
 						r.Post("/ban-peers", torrentsHandler.BanPeers)
+						r.Post("/field", torrentsHandler.GetTorrentField)
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
@@ -459,6 +481,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
+							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 						})
 					})
 
@@ -495,6 +518,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/", automationsHandler.Create)
 						r.Put("/order", automationsHandler.Reorder)
 						r.Post("/apply", automationsHandler.ApplyNow)
+						r.Post("/dry-run", automationsHandler.DryRunNow)
 						r.Post("/preview", automationsHandler.PreviewDeleteRule)
 						r.Post("/validate-regex", automationsHandler.ValidateRegex)
 						r.Get("/activity", automationsHandler.ListActivity)

@@ -52,8 +52,10 @@ import (
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -274,6 +276,7 @@ type Service struct {
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
 	arrService               *arr.Service // ARR service for ID lookup
+	notifier                 notifications.Notifier
 
 	// External program execution
 	externalProgramStore   *models.ExternalProgramStore
@@ -349,6 +352,7 @@ func NewService(
 	externalProgramService *externalprograms.Service,
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
+	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
@@ -379,6 +383,7 @@ func NewService(
 		blocklistStore:                blocklistStore,
 		jackettService:                jackettService,
 		arrService:                    arrService,
+		notifier:                      notifier,
 		externalProgramStore:          externalProgramStore,
 		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
@@ -463,7 +468,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
 	// Normalize content path for comparison (case-insensitive, cleaned)
-	normalizedContentPath := strings.ToLower(normalizePath(sourceTorrent.ContentPath))
+	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
 
 	// Create match context with lazy file loading - files are only fetched
 	// when an ambiguous content_path match is encountered
@@ -623,7 +628,7 @@ func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBy
 
 	m.sourceFileKeys = make(map[string]int64, len(srcFiles))
 	for _, f := range srcFiles {
-		key := strings.ToLower(normalizePath(f.Name)) + "|" + strconv.FormatInt(f.Size, 10)
+		key := normalizePathForComparison(f.Name) + "|" + strconv.FormatInt(f.Size, 10)
 		m.sourceFileKeys[key] = f.Size
 		m.sourceTotalBytes += f.Size
 	}
@@ -646,9 +651,9 @@ func (s *Service) determineLocalMatchType(
 	// (e.g. "create subfolder" disabled). In that case, many unrelated torrents can share
 	// the same content_path. Avoid treating "content_path == save_path" as a definitive
 	// cross-seed signal.
-	candidateContentPath := strings.ToLower(normalizePath(candidate.ContentPath))
-	sourceSavePath := strings.ToLower(normalizePath(source.SavePath))
-	candidateSavePath := strings.ToLower(normalizePath(candidate.SavePath))
+	candidateContentPath := normalizePathForComparison(candidate.ContentPath)
+	sourceSavePath := normalizePathForComparison(source.SavePath)
+	candidateSavePath := normalizePathForComparison(candidate.SavePath)
 	if normalizedContentPath != "" && candidateContentPath != "" && normalizedContentPath == candidateContentPath {
 		sourceIsAmbiguousDir := sourceSavePath != "" && normalizedContentPath == sourceSavePath
 		candidateIsAmbiguousDir := candidateSavePath != "" && candidateContentPath == candidateSavePath
@@ -697,8 +702,8 @@ func (s *Service) determineLocalMatchType(
 	}
 
 	// Strategy 2: Exact name match
-	sourceName := strings.ToLower(strings.TrimSpace(source.Name))
-	candidateName := strings.ToLower(strings.TrimSpace(candidate.Name))
+	sourceName := normalizeLowerTrim(source.Name)
+	candidateName := normalizeLowerTrim(candidate.Name)
 	if sourceName != "" && candidateName != "" && sourceName == candidateName {
 		return matchTypeName
 	}
@@ -750,7 +755,7 @@ func (s *Service) candidateSharesSourceFiles(
 	var overlapBytes, candTotalBytes int64
 	for _, f := range candFiles {
 		candTotalBytes += f.Size
-		key := strings.ToLower(normalizePath(f.Name)) + "|" + strconv.FormatInt(f.Size, 10)
+		key := normalizePathForComparison(f.Name) + "|" + strconv.FormatInt(f.Size, 10)
 		if size, ok := srcFileKeys[key]; ok {
 			overlapBytes += size
 		}
@@ -1568,6 +1573,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return errors.New("qbittorrent sync manager not configured")
 	}
 
+	startedAt := time.Now().UTC()
 	var searchResp *TorrentSearchResponse
 
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
@@ -1770,9 +1776,31 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	successCount := 0
+	failedCount := 0
+	skippedCount := 0
+	completionErrorsSeen := make(map[string]struct{}, 3)
+	completionErrors := make([]string, 0, 3)
+	results := make([]models.CrossSeedSearchResult, 0, len(searchResp.Results))
 	for _, match := range searchResp.Results {
 		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
+		if result != nil {
+			results = append(results, *result)
+			switch {
+			case result.Added:
+				successCount++
+			case attemptErr != nil:
+				failedCount++
+			default:
+				skippedCount++
+			}
+		}
 		if attemptErr != nil {
+			if msg := strings.TrimSpace(attemptErr.Error()); msg != "" {
+				if _, ok := completionErrorsSeen[msg]; !ok && len(completionErrors) < 3 {
+					completionErrorsSeen[msg] = struct{}{}
+					completionErrors = append(completionErrors, msg)
+				}
+			}
 			log.Debug().
 				Err(attemptErr).
 				Int("instanceID", instanceID).
@@ -1780,9 +1808,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				Str("matchIndexer", match.Indexer).
 				Msg("[CROSSSEED-COMPLETION] Cross-seed apply attempt failed")
 			continue
-		}
-		if result != nil && result.Added {
-			successCount++
 		}
 	}
 
@@ -1799,6 +1824,58 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Completion search executed with no additions")
+	}
+
+	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
+		completedAt := time.Now().UTC()
+		eventType := notifications.EventCrossSeedCompletionSucceeded
+		if failedCount > 0 {
+			eventType = notifications.EventCrossSeedCompletionFailed
+		}
+		var errorMessage string
+		if eventType == notifications.EventCrossSeedCompletionFailed {
+			if len(completionErrors) > 0 {
+				errorMessage = completionErrors[0]
+			} else {
+				errorMessage = "cross-seed completion failed"
+			}
+		}
+		lines := []string{
+			"Torrent: " + torrent.Name,
+			fmt.Sprintf("Matches: %d", len(searchResp.Results)),
+			fmt.Sprintf("Added: %d", successCount),
+			fmt.Sprintf("Failed: %d", failedCount),
+			fmt.Sprintf("Skipped: %d", skippedCount),
+		}
+		samples := collectSearchResultSamples(results, 0)
+		if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+			lines = append(lines, "Samples: "+sampleText)
+		}
+		notifyCtx := context.WithoutCancel(ctx)
+		s.notifier.Notify(notifyCtx, notifications.Event{
+			Type:        eventType,
+			InstanceID:  instanceID,
+			TorrentName: torrent.Name,
+			Message:     strings.Join(lines, "\n"),
+			CrossSeed: &notifications.CrossSeedEventData{
+				Matches: len(searchResp.Results),
+				Added:   successCount,
+				Failed:  failedCount,
+				Skipped: skippedCount,
+				Samples: samples,
+			},
+			ErrorMessage: errorMessage,
+			ErrorMessages: func() []string {
+				if len(completionErrors) == 0 {
+					return nil
+				}
+				out := make([]string, len(completionErrors))
+				copy(out, completionErrors)
+				return out
+			}(),
+			StartedAt:   &startedAt,
+			CompletedAt: &completedAt,
+		})
 	}
 
 	return nil
@@ -2159,6 +2236,10 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
+	var runErr error
+	defer func() {
+		s.notifyAutomationRun(context.WithoutCancel(ctx), run, runErr)
+	}()
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)
 
@@ -2206,6 +2287,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
+		runErr = err
 		return run, err
 	}
 
@@ -2221,6 +2303,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
+		runErr = err
 		return run, err
 	case <-time.After(10 * time.Minute): // generous timeout for RSS automation
 		msg := "Recent search timed out"
@@ -2231,7 +2314,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
-		return run, errors.New("recent search timed out")
+		timeoutErr := errors.New("recent search timed out")
+		runErr = timeoutErr
+		return run, timeoutErr
 	case <-ctx.Done():
 		msg := "canceled by user"
 		run.ErrorMessage = &msg
@@ -2241,6 +2326,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		if updated, updateErr := s.updateAutomationRunWithRetry(context.WithoutCancel(ctx), run); updateErr == nil {
 			run = updated
 		}
+		runErr = ctx.Err()
 		return run, ctx.Err()
 	}
 
@@ -2262,8 +2348,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		Msg("[RSS] Starting feed item processing")
 
 	processed := 0
-	var runErr error
-
 	for _, result := range searchResp.Results {
 		if ctx.Err() != nil {
 			runErr = ctx.Err()
@@ -2709,12 +2793,17 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			continue
 		}
 
-		// Apply RSS source filters if configured
+		// Apply RSS source filters if configured - track filtering stats inline
+		var excludedCategories, includedCategories map[string]int
+		if hasRSSSourceFilters {
+			excludedCategories = make(map[string]int)
+			includedCategories = make(map[string]int)
+		}
+
+		// Filter torrents inline without creating intermediate copies
 		if hasRSSSourceFilters {
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
-			excludedCategories := make(map[string]int)
-			includedCategories := make(map[string]int)
 			for i := range torrents {
 				if matchesRSSSourceFilters(&torrents[i], settings) {
 					filtered = append(filtered, torrents[i])
@@ -2725,24 +2814,26 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			}
 			torrents = filtered
 
-			// Build summary of excluded categories
-			excludedSummary := make([]string, 0, len(excludedCategories))
-			for cat, count := range excludedCategories {
-				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-			includedSummary := make([]string, 0, len(includedCategories))
-			for cat, count := range includedCategories {
-				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
+			// Log filter results
+			if len(excludedCategories) > 0 || len(includedCategories) > 0 {
+				excludedSummary := make([]string, 0, len(excludedCategories))
+				for cat, count := range excludedCategories {
+					excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
+				}
+				includedSummary := make([]string, 0, len(includedCategories))
+				for cat, count := range includedCategories {
+					includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
+				}
 
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("instanceName", snap.instance.Name).
-				Int("original", originalCount).
-				Int("filtered", len(torrents)).
-				Strs("excludedCategories", excludedSummary).
-				Strs("includedCategories", includedSummary).
-				Msg("[RSS] Source filter results")
+				log.Debug().
+					Int("instanceID", instanceID).
+					Str("instanceName", snap.instance.Name).
+					Int("original", originalCount).
+					Int("filtered", len(torrents)).
+					Strs("excludedCategories", excludedSummary).
+					Strs("includedCategories", includedSummary).
+					Msg("[RSS] Source filter results")
+			}
 		}
 
 		snap.torrents = torrents
@@ -3284,7 +3375,7 @@ func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownlo
 		}
 		client := (*gazellemusic.Client)(nil)
 		if clients != nil {
-			client = clients.byHost[strings.ToLower(strings.TrimSpace(host))]
+			client = clients.byHost[normalizeLowerTrim(host)]
 		}
 		if client == nil {
 			return nil, fmt.Errorf("gazelle API key not configured for %s", host)
@@ -3329,7 +3420,7 @@ func (s *Service) processCrossSeedCandidate(
 		if trimmed == "" {
 			continue
 		}
-		canonical := strings.ToLower(trimmed)
+		canonical := normalizeHash(trimmed)
 		if _, ok := seenHashes[canonical]; ok {
 			continue
 		}
@@ -4072,7 +4163,7 @@ func dedupeHashes(hashes ...string) []string {
 		if trimmed == "" {
 			continue
 		}
-		canonical := strings.ToLower(trimmed)
+		canonical := normalizeHash(trimmed)
 		if _, ok := seen[canonical]; ok {
 			continue
 		}
@@ -4084,7 +4175,7 @@ func dedupeHashes(hashes ...string) []string {
 }
 
 func normalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
+	return normalizeLowerTrim(hash)
 }
 
 // queueRecheckResume adds a torrent to the recheck resume queue.
@@ -4194,13 +4285,13 @@ func (s *Service) recheckResumeWorker() {
 				// Build lookup map by hash
 				torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 				for _, t := range torrents {
-					torrentByHash[strings.ToLower(t.Hash)] = t
+					torrentByHash[normalizeHash(t.Hash)] = t
 				}
 
 				// Process each pending torrent for this instance
 				for _, hash := range hashes {
 					req := pending[hash]
-					torrent, found := torrentByHash[strings.ToLower(hash)]
+					torrent, found := torrentByHash[normalizeHash(hash)]
 					if !found {
 						log.Debug().
 							Int("instanceID", instanceID).
@@ -4350,8 +4441,8 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 		normalizer = stringutils.NewDefaultNormalizer()
 	}
 
-	sourceTitle := strings.ToLower(strings.TrimSpace(sourceRelease.Title))
-	fileTitle := strings.ToLower(strings.TrimSpace(largestRelease.Title))
+	sourceTitle := normalizeLowerTrim(sourceRelease.Title)
+	fileTitle := normalizeLowerTrim(largestRelease.Title)
 	if normalizer != nil {
 		sourceTitle = normalizer.Normalize(sourceRelease.Title)
 		fileTitle = normalizer.Normalize(largestRelease.Title)
@@ -5184,7 +5275,7 @@ const (
 )
 
 func gazelleIndexerIDForHost(host string) int {
-	switch strings.ToLower(strings.TrimSpace(host)) {
+	switch normalizeLowerTrim(host) {
 	case "redacted.sh":
 		return gazelleIndexerIDRedacted
 	case "orpheus.network":
@@ -5195,7 +5286,7 @@ func gazelleIndexerIDForHost(host string) int {
 }
 
 func gazelleIndexerNameForHost(host string) string {
-	switch strings.ToLower(strings.TrimSpace(host)) {
+	switch normalizeLowerTrim(host) {
 	case "redacted.sh":
 		return "Gazelle (RED)"
 	case "orpheus.network":
@@ -5206,7 +5297,7 @@ func gazelleIndexerNameForHost(host string) string {
 }
 
 func gazelleTargetForSource(sourceSiteHost string) string {
-	switch strings.ToLower(strings.TrimSpace(sourceSiteHost)) {
+	switch normalizeLowerTrim(sourceSiteHost) {
 	case "redacted.sh":
 		return "orpheus.network"
 	case "orpheus.network":
@@ -5233,7 +5324,7 @@ func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSetti
 	if clients == nil || len(clients.byHost) == 0 {
 		return false
 	}
-	target := strings.ToLower(strings.TrimSpace(gazelleTargetForSource(sourceSiteHost)))
+	target := normalizeLowerTrim(gazelleTargetForSource(sourceSiteHost))
 	if target == "" {
 		return false
 	}
@@ -5252,7 +5343,7 @@ func (s *Service) detectGazelleSourceSite(torrent *qbt.Torrent) (string, bool) {
 		candidates = append(candidates, tr.Url)
 	}
 	for _, c := range candidates {
-		domain := strings.ToLower(strings.TrimSpace(s.syncManager.ExtractDomainFromURL(strings.TrimSpace(c))))
+		domain := normalizeLowerTrim(s.syncManager.ExtractDomainFromURL(strings.TrimSpace(c)))
 		if domain == "" || domain == "unknown" {
 			continue
 		}
@@ -5299,7 +5390,7 @@ func (s *Service) searchGazelleMatches(
 		if clients == nil || len(clients.byHost) == 0 {
 			continue
 		}
-		client := clients.byHost[strings.ToLower(strings.TrimSpace(targetHost))]
+		client := clients.byHost[normalizeLowerTrim(targetHost)]
 		if client == nil {
 			continue
 		}
@@ -5404,7 +5495,7 @@ func mergeTorrentSearchResults(gazelleResults, torznabResults []TorrentSearchRes
 			if key == "" {
 				key = fmt.Sprintf("%d:%s", item.IndexerID, strings.TrimSpace(item.Title))
 			}
-			key = strings.ToLower(key)
+			key = normalizeLowerTrim(key)
 			if _, ok := seen[key]; ok {
 				continue
 			}
@@ -5450,15 +5541,15 @@ func (s *Service) filterOutGazelleTorznabIndexers(ctx context.Context, indexerID
 			continue
 		}
 
-		name := strings.ToLower(strings.TrimSpace(idx.Name))
+		name := normalizeLowerTrim(idx.Name)
 		rawURL := strings.TrimSpace(idx.Description)
-		rawLower := strings.ToLower(rawURL)
+		rawLower := normalizeLowerTrim(rawURL)
 
 		host := ""
 		pathLower := ""
 		if parsed, err := url.Parse(rawURL); err == nil {
-			host = strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-			pathLower = strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
+			host = normalizeLowerTrim(parsed.Hostname())
+			pathLower = normalizeLowerTrim(parsed.EscapedPath())
 		}
 
 		// Prefer URL-derived signals; fall back to name.
@@ -5609,7 +5700,7 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 
 	out := &gazelleClientSet{byHost: make(map[string]*gazellemusic.Client, 2)}
 	for _, host := range []string{"redacted.sh", "orpheus.network"} {
-		hostKey := strings.ToLower(strings.TrimSpace(host))
+		hostKey := normalizeLowerTrim(host)
 		if hostKey == "" {
 			continue
 		}
@@ -6672,6 +6763,8 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 		s.searchCancel = nil
 	}
 	s.searchMu.Unlock()
+
+	s.notifySearchRun(context.Background(), state, canceled)
 }
 
 // dedupCacheKey generates a cache key for deduplication results based on instance ID
@@ -6998,6 +7091,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 	}
 
+	// Filter torrents inline without creating intermediate copies
 	filtered := make([]qbt.Torrent, 0, len(torrents))
 	for _, torrent := range torrents {
 		// Skip errored torrents when recovery is disabled
@@ -7017,11 +7111,11 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	if len(state.opts.SpecificHashes) > 0 {
 		hashSet := make(map[string]bool, len(state.opts.SpecificHashes))
 		for _, h := range state.opts.SpecificHashes {
-			hashSet[strings.ToUpper(h)] = true
+			hashSet[normalizeUpperTrim(h)] = true
 		}
 		specific := make([]qbt.Torrent, 0, len(deduplicated))
 		for _, torrent := range deduplicated {
-			if hashSet[strings.ToUpper(torrent.Hash)] {
+			if hashSet[normalizeUpperTrim(torrent.Hash)] {
 				specific = append(specific, torrent)
 			}
 		}
@@ -7942,7 +8036,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		}
 
 		// Skip searching indexers that already provided the source torrent
-		if sourceTorrent != nil && s.torrentMatchesIndexer(*sourceTorrent, indexerName) {
+		if sourceTorrent != nil && s.torrentMatchesIndexer(sourceTorrent, indexerName) {
 			shouldIncludeIndexer = false
 			exclusionReason = "already seeded from this tracker"
 		}
@@ -7978,7 +8072,11 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 }
 
 // torrentMatchesIndexer checks if a torrent came from a tracker associated with the given indexer.
-func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string) bool {
+func (s *Service) torrentMatchesIndexer(torrent *qbt.Torrent, indexerName string) bool {
+	if torrent == nil {
+		return false
+	}
+
 	trackerDomains := s.extractTrackerDomainsFromTorrent(torrent)
 	return s.trackerDomainsMatchIndexer(trackerDomains, indexerName)
 }
@@ -7994,12 +8092,12 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 
 	// Check hardcoded domain mappings first
 	for _, trackerDomain := range trackerDomains {
-		normalizedTrackerDomain := strings.ToLower(trackerDomain)
+		normalizedTrackerDomain := normalizeLowerTrim(trackerDomain)
 
 		// Check if this tracker domain maps to the indexer domain
 		if mappedDomains, exists := s.domainMappings[normalizedTrackerDomain]; exists {
 			for _, mappedDomain := range mappedDomains {
-				normalizedMappedDomain := strings.ToLower(mappedDomain)
+				normalizedMappedDomain := normalizeLowerTrim(mappedDomain)
 
 				// Check if mapped domain matches indexer name or specific indexer domain
 				if normalizedMappedDomain == normalizedIndexerName ||
@@ -8019,7 +8117,7 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 
 	// Check if any tracker domain matches or contains the indexer name
 	for _, domain := range trackerDomains {
-		normalizedDomain := strings.ToLower(domain)
+		normalizedDomain := normalizeLowerTrim(domain)
 
 		// 1. Direct match: normalized indexer name matches domain
 		if normalizedIndexerName == normalizedDomain {
@@ -8033,7 +8131,7 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 
 		// 2. Check if torrent domain matches the specific indexer's domain
 		if specificIndexerDomain != "" {
-			normalizedSpecificDomain := strings.ToLower(specificIndexerDomain)
+			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
 			// Direct domain match
 			if normalizedDomain == normalizedSpecificDomain {
@@ -8078,7 +8176,7 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 
 		// 4. Check partial matches against the specific indexer domain
 		if specificIndexerDomain != "" {
-			normalizedSpecificDomain := strings.ToLower(specificIndexerDomain)
+			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
 			// Check if torrent domain contains indexer domain or vice versa
 			if strings.Contains(normalizedDomain, normalizedSpecificDomain) {
@@ -8144,7 +8242,7 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 
 		// 5. Check normalized matches against the specific indexer domain with TLD normalization
 		if specificIndexerDomain != "" {
-			normalizedSpecificDomain := strings.ToLower(specificIndexerDomain)
+			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
 			// Remove TLD from indexer domain for comparison
 			indexerDomainWithoutTLD := normalizedSpecificDomain
@@ -8273,17 +8371,15 @@ func (s *Service) normalizeIndexerName(indexerName string) string {
 
 // normalizeDomainName normalizes domain names for comparison by removing common separators
 func (s *Service) normalizeDomainName(domainName string) string {
-	// Remove hyphens, underscores, dots (except TLD), and spaces
-	normalized := strings.ReplaceAll(domainName, "-", "")
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	normalized = strings.ReplaceAll(normalized, ".", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
-
-	return normalized
+	return normalizeDomainNameValue(domainName)
 }
 
 // extractTrackerDomainsFromTorrent extracts unique tracker domains from a torrent
-func (s *Service) extractTrackerDomainsFromTorrent(torrent qbt.Torrent) []string {
+func (s *Service) extractTrackerDomainsFromTorrent(torrent *qbt.Torrent) []string {
+	if torrent == nil {
+		return nil
+	}
+
 	domains := make(map[string]struct{})
 
 	// Add primary tracker domain
@@ -8324,6 +8420,368 @@ func (s *Service) appendSearchResult(state *searchRunState, result models.CrossS
 		}
 	}
 	s.searchMu.Unlock()
+}
+
+func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeedRun, runErr error) {
+	if s == nil || s.notifier == nil || run == nil {
+		return
+	}
+
+	eventType := notifications.EventCrossSeedAutomationSucceeded
+	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
+		eventType = notifications.EventCrossSeedAutomationFailed
+	}
+
+	var errorMessage string
+	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
+		errorMessage = strings.TrimSpace(*run.ErrorMessage)
+	} else if runErr != nil {
+		errorMessage = runErr.Error()
+	}
+	if errorMessage == "" && eventType == notifications.EventCrossSeedAutomationFailed {
+		errorMessage = fmt.Sprintf("status: %s", run.Status)
+	}
+
+	lines := []string{
+		fmt.Sprintf("Run: %d", run.ID),
+		fmt.Sprintf("Mode: %s", run.Mode),
+		fmt.Sprintf("Status: %s", run.Status),
+		fmt.Sprintf("Feed items: %d", run.TotalFeedItems),
+		fmt.Sprintf("Candidates: %d", run.CandidatesFound),
+		fmt.Sprintf("Added: %d", run.TorrentsAdded),
+		fmt.Sprintf("Failed: %d", run.TorrentsFailed),
+		fmt.Sprintf("Skipped: %d", run.TorrentsSkipped),
+	}
+	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
+		lines = append(lines, "Message: "+strings.TrimSpace(*run.Message))
+	}
+	if run.ErrorMessage != nil && strings.TrimSpace(*run.ErrorMessage) != "" {
+		lines = append(lines, "Error: "+strings.TrimSpace(*run.ErrorMessage))
+	} else if runErr != nil {
+		lines = append(lines, "Error: "+runErr.Error())
+	}
+	samples := collectCrossSeedRunSamples(run.Results, 0)
+	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+		lines = append(lines, "Samples: "+sampleText)
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         eventType,
+		InstanceName: "Cross-seed RSS",
+		Message:      strings.Join(lines, "\n"),
+		CrossSeed: &notifications.CrossSeedEventData{
+			RunID:      run.ID,
+			Mode:       string(run.Mode),
+			Status:     string(run.Status),
+			FeedItems:  run.TotalFeedItems,
+			Candidates: run.CandidatesFound,
+			Added:      run.TorrentsAdded,
+			Failed:     run.TorrentsFailed,
+			Skipped:    run.TorrentsSkipped,
+			Samples:    samples,
+		},
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if strings.TrimSpace(errorMessage) == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
+		StartedAt:   &run.StartedAt,
+		CompletedAt: run.CompletedAt,
+	})
+}
+
+func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, canceled bool) {
+	if s == nil || s.notifier == nil || state == nil || state.run == nil {
+		return
+	}
+
+	eventType := notifications.EventCrossSeedSearchSucceeded
+	if state.run.Status != models.CrossSeedSearchRunStatusSuccess {
+		eventType = notifications.EventCrossSeedSearchFailed
+	}
+
+	var errorMessage string
+	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
+		errorMessage = strings.TrimSpace(*state.run.ErrorMessage)
+	} else if canceled {
+		errorMessage = "canceled"
+	}
+	if errorMessage == "" && eventType == notifications.EventCrossSeedSearchFailed {
+		errorMessage = fmt.Sprintf("status: %s", state.run.Status)
+	}
+
+	lines := []string{
+		fmt.Sprintf("Run: %d", state.run.ID),
+		fmt.Sprintf("Status: %s", state.run.Status),
+		fmt.Sprintf("Processed: %d/%d", state.run.Processed, state.run.TotalTorrents),
+		fmt.Sprintf("Added: %d", state.run.TorrentsAdded),
+		fmt.Sprintf("Failed: %d", state.run.TorrentsFailed),
+		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
+	}
+	if state.run.ErrorMessage != nil && strings.TrimSpace(*state.run.ErrorMessage) != "" {
+		lines = append(lines, "Error: "+strings.TrimSpace(*state.run.ErrorMessage))
+	} else if canceled {
+		lines = append(lines, "Error: canceled")
+	}
+
+	results := state.recentResults
+	if len(results) == 0 && state.run != nil {
+		results = state.run.Results
+	}
+	samples := collectSearchResultSamples(results, 0)
+	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+		lines = append(lines, "Samples: "+sampleText)
+	}
+
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:       eventType,
+		InstanceID: state.run.InstanceID,
+		Message:    strings.Join(lines, "\n"),
+		CrossSeed: &notifications.CrossSeedEventData{
+			RunID:     state.run.ID,
+			Status:    string(state.run.Status),
+			Processed: state.run.Processed,
+			Total:     state.run.TotalTorrents,
+			Added:     state.run.TorrentsAdded,
+			Failed:    state.run.TorrentsFailed,
+			Skipped:   state.run.TorrentsSkipped,
+			Samples:   samples,
+		},
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if strings.TrimSpace(errorMessage) == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
+		StartedAt:   &state.run.StartedAt,
+		CompletedAt: state.run.CompletedAt,
+	})
+}
+
+func collectCrossSeedRunSamples(results []models.CrossSeedRunResult, limit int) []string {
+	if len(results) == 0 {
+		return nil
+	}
+
+	capHint := 64
+	if limit > 0 {
+		capHint = min(limit, len(results))
+	} else {
+		capHint = min(capHint, len(results))
+	}
+	seen := make(map[string]struct{}, capHint)
+	samples := make([]string, 0, capHint)
+	for _, result := range results {
+		if !result.Success {
+			continue
+		}
+		label := ""
+		if result.MatchedTorrentName != nil && strings.TrimSpace(*result.MatchedTorrentName) != "" {
+			label = strings.TrimSpace(*result.MatchedTorrentName)
+		} else if result.MatchedTorrentHash != nil && strings.TrimSpace(*result.MatchedTorrentHash) != "" {
+			label = strings.TrimSpace(*result.MatchedTorrentHash)
+		}
+		if label == "" {
+			continue
+		}
+		if strings.TrimSpace(result.InstanceName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, result.InstanceName)
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if limit > 0 && len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func collectSearchResultSamples(results []models.CrossSeedSearchResult, limit int) []string {
+	if len(results) == 0 {
+		return nil
+	}
+
+	capHint := 64
+	if limit > 0 {
+		capHint = min(limit, len(results))
+	} else {
+		capHint = min(capHint, len(results))
+	}
+	seen := make(map[string]struct{}, capHint)
+	samples := make([]string, 0, capHint)
+	for _, result := range results {
+		if !result.Added {
+			continue
+		}
+		label := strings.TrimSpace(result.TorrentName)
+		if label == "" {
+			label = "torrent"
+		}
+		if strings.TrimSpace(result.ReleaseTitle) != "" {
+			label = fmt.Sprintf("%s → %s", label, strings.TrimSpace(result.ReleaseTitle))
+		}
+		if strings.TrimSpace(result.IndexerName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(result.IndexerName))
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if limit > 0 && len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func formatSampleText(samples []string) string {
+	if len(samples) == 0 {
+		return ""
+	}
+	return strings.Join(samples, "; ")
+}
+
+func formatSamplesForMessage(samples []string, maxCount int) string {
+	if len(samples) == 0 || maxCount <= 0 {
+		return ""
+	}
+	shown := samples
+	more := 0
+	if len(samples) > maxCount {
+		shown = samples[:maxCount]
+		more = len(samples) - maxCount
+	}
+	out := formatSampleText(shown)
+	if out == "" {
+		return ""
+	}
+	if more > 0 {
+		out = fmt.Sprintf("%s (+%d more)", out, more)
+	}
+	return out
+}
+
+func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string {
+	if len(matches) == 0 {
+		return nil
+	}
+
+	capHint := 64
+	if limit > 0 {
+		capHint = min(limit, len(matches))
+	} else {
+		capHint = min(capHint, len(matches))
+	}
+	seen := make(map[string]struct{}, capHint)
+	samples := make([]string, 0, capHint)
+	for _, match := range matches {
+		label := strings.TrimSpace(match.TorrentName)
+		if label == "" {
+			label = strings.TrimSpace(match.TorrentHash)
+		}
+		if label == "" {
+			continue
+		}
+		if strings.TrimSpace(match.InstanceName) != "" {
+			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(match.InstanceName))
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		samples = append(samples, label)
+		if limit > 0 && len(samples) >= limit {
+			break
+		}
+	}
+	return samples
+}
+
+func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
+	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
+		return
+	}
+
+	completeCount := 0
+	pendingCount := 0
+	for _, match := range matches {
+		if match.Progress >= 1.0 {
+			completeCount++
+		} else {
+			pendingCount++
+		}
+	}
+
+	lines := []string{
+		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		fmt.Sprintf("Matches: %d", len(matches)),
+		fmt.Sprintf("Complete matches: %d", completeCount),
+		fmt.Sprintf("Pending matches: %d", pendingCount),
+	}
+	if strings.TrimSpace(recommendation) != "" {
+		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
+	}
+	samples := collectWebhookMatchSamples(matches, 0)
+	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+		lines = append(lines, "Samples: "+sampleText)
+	}
+
+	completedAt := time.Now().UTC()
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventCrossSeedWebhookSucceeded,
+		InstanceName: "Cross-seed webhook",
+		Message:      strings.Join(lines, "\n"),
+		TorrentName:  strings.TrimSpace(req.TorrentName),
+		CrossSeed: &notifications.CrossSeedEventData{
+			Matches:        len(matches),
+			Complete:       completeCount,
+			Pending:        pendingCount,
+			Recommendation: strings.TrimSpace(recommendation),
+			Samples:        samples,
+		},
+		StartedAt:   &startedAt,
+		CompletedAt: &completedAt,
+	})
+}
+
+func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookCheckRequest, err error, startedAt time.Time) {
+	if s == nil || s.notifier == nil || req == nil || err == nil {
+		return
+	}
+	if errors.Is(err, ErrInvalidWebhookRequest) {
+		return
+	}
+
+	errorMessage := strings.TrimSpace(err.Error())
+
+	lines := []string{
+		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		"Error: " + err.Error(),
+	}
+
+	completedAt := time.Now().UTC()
+	s.notifier.Notify(ctx, notifications.Event{
+		Type:         notifications.EventCrossSeedWebhookFailed,
+		InstanceName: "Cross-seed webhook",
+		Message:      strings.Join(lines, "\n"),
+		TorrentName:  strings.TrimSpace(req.TorrentName),
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if errorMessage == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
+		StartedAt:   &startedAt,
+		CompletedAt: &completedAt,
+	})
 }
 
 func (s *Service) persistSearchRun(state *searchRunState) {
@@ -8741,53 +9199,16 @@ func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCateg
 	}
 }
 
-// isWindowsDriveAbs returns true if p is a Windows absolute path (e.g., C:/...).
-// It requires a drive letter, colon, and forward slash (backslashes should be
-// normalized before calling).
+// isWindowsDriveAbs is preserved for local readability.
+// Shared implementation lives in pkg/pathcmp.
 func isWindowsDriveAbs(p string) bool {
-	if len(p) < 3 {
-		return false
-	}
-	c := p[0]
-	return (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') && p[1] == ':' && p[2] == '/'
+	return pathcmp.IsWindowsDriveAbs(p)
 }
 
-// normalizePath normalizes a file path for comparison by:
-// - Converting backslashes to forward slashes
-// - Removing trailing slashes (preserving Windows drive roots like C:/)
-// - Cleaning the path (removing . and .. where possible)
+// normalizePath is preserved for local readability.
+// Shared implementation lives in pkg/pathcmp.
 func normalizePath(p string) string {
-	if p == "" {
-		return ""
-	}
-	// Convert backslashes to forward slashes for cross-platform comparison
-	p = strings.ReplaceAll(p, "\\", "/")
-
-	// Handle Windows drive paths specially to preserve C:/ (path.Clean turns it into C:)
-	if len(p) >= 2 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':' {
-		// Extract drive prefix and clean the rest
-		drive := p[:2] // "C:"
-		rest := p[2:]  // "/foo/bar" or "/" or "" (drive-relative)
-
-		// Bare drive letter (C:) is drive-relative - leave unchanged
-		if rest == "" {
-			return drive
-		}
-
-		rest = path.Clean(rest)
-		// Ensure drive root stays as C:/ not C:
-		if rest == "/" || rest == "." {
-			return drive + "/"
-		}
-		return drive + rest
-	}
-
-	// Non-Windows path: standard cleaning
-	p = path.Clean(p)
-	if len(p) > 1 {
-		p = strings.TrimSuffix(p, "/")
-	}
-	return p
+	return pathcmp.NormalizePath(p)
 }
 
 func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles) string {
@@ -9060,6 +9481,7 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 // This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
 // and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
 func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
+	startedAt := time.Now().UTC()
 	if err := validateWebhookCheckRequest(req); err != nil {
 		return nil, err
 	}
@@ -9086,6 +9508,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	instances, err := s.resolveInstances(ctx, requestedInstanceIDs)
 	if err != nil {
+		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
 		return nil, err
 	}
 
@@ -9142,12 +9565,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			continue
 		}
 
-		// Convert CrossInstanceTorrentView to qbt.Torrent for matching
-		torrents := make([]qbt.Torrent, len(torrentsView))
-		for i, tv := range torrentsView {
-			torrents[i] = tv.Torrent
-		}
-
 		// Apply webhook source filters if configured
 		hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
 			len(settings.WebhookSourceTags) > 0 ||
@@ -9165,51 +9582,41 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Bool("hasFilters", hasWebhookSourceFilters).
 			Msg("[Webhook] Source filter settings for instance")
 
+		// Track filtering stats if we're logging them
+		var excludedCategories map[string]int
+		var includedCategories map[string]int
+		var filteredCount int
 		if hasWebhookSourceFilters {
-			originalCount := len(torrents)
-			filtered := make([]qbt.Torrent, 0, len(torrents))
-			excludedCategories := make(map[string]int)
-			includedCategories := make(map[string]int)
-			for i := range torrents {
-				if matchesWebhookSourceFilters(&torrents[i], settings) {
-					filtered = append(filtered, torrents[i])
-					includedCategories[torrents[i].Category]++
-				} else {
-					excludedCategories[torrents[i].Category]++
-				}
-			}
-			torrents = filtered
-
-			// Build summary of excluded categories
-			excludedSummary := make([]string, 0, len(excludedCategories))
-			for cat, count := range excludedCategories {
-				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-			includedSummary := make([]string, 0, len(includedCategories))
-			for cat, count := range includedCategories {
-				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-
-			log.Debug().
-				Str("source", "cross-seed.webhook").
-				Int("instanceID", instance.ID).
-				Str("instanceName", instance.Name).
-				Int("original", originalCount).
-				Int("filtered", len(torrents)).
-				Strs("excludedCategories", excludedSummary).
-				Strs("includedCategories", includedSummary).
-				Msg("[Webhook] Source filter results")
+			excludedCategories = make(map[string]int)
+			includedCategories = make(map[string]int)
 		}
 
 		log.Debug().
 			Str("source", "cross-seed.webhook").
 			Int("instanceId", instance.ID).
 			Str("instanceName", instance.Name).
-			Int("torrentCount", len(torrents)).
+			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
-		// Check each torrent for a match
-		for _, torrent := range torrents {
+		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
+		for _, torrentView := range torrentsView {
+			// Guard against nil torrentView or nil torrentView.Torrent
+			if torrentView.Torrent == nil {
+				continue
+			}
+
+			torrent := torrentView.Torrent
+
+			// Skip torrents that don't match webhook source filters
+			if hasWebhookSourceFilters {
+				if matchesWebhookSourceFilters(torrent, settings) {
+					filteredCount++
+					includedCategories[torrent.Category]++
+				} else {
+					excludedCategories[torrent.Category]++
+					continue
+				}
+			}
 			// Parse the existing torrent's release info
 			existingRelease := s.releaseCache.Parse(torrent.Name)
 
@@ -9293,6 +9700,28 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				hasPendingMatch = true
 			}
 		}
+
+		// Log filter results if we tracked them
+		if hasWebhookSourceFilters && (len(excludedCategories) > 0 || len(includedCategories) > 0) {
+			excludedSummary := make([]string, 0, len(excludedCategories))
+			for cat, count := range excludedCategories {
+				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
+			}
+			includedSummary := make([]string, 0, len(includedCategories))
+			for cat, count := range includedCategories {
+				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
+			}
+
+			log.Debug().
+				Str("source", "cross-seed.webhook").
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Int("original", len(torrentsView)).
+				Int("filtered", filteredCount).
+				Strs("excludedCategories", excludedSummary).
+				Strs("includedCategories", includedSummary).
+				Msg("[Webhook] Source filter results")
+		}
 	}
 
 	// Build response
@@ -9311,6 +9740,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
+
+	s.notifyWebhookCheck(ctx, req, matches, recommendation, startedAt)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,
@@ -9693,7 +10124,7 @@ func wrapCrossSeedSearchError(err error) error {
 		return nil
 	}
 
-	msg := strings.ToLower(err.Error())
+	msg := normalizeLowerTrim(err.Error())
 	if strings.Contains(msg, "rate-limited") || strings.Contains(msg, "cooldown") {
 		return fmt.Errorf("cross-seed search temporarily unavailable: %w. This is normal protection against tracker bans. Try again in 30-60 minutes or use fewer indexers", err)
 	}

@@ -30,7 +30,7 @@ func SanitizeStringSlice(values []string) []string {
 		if trimmed == "" {
 			continue
 		}
-		lower := strings.ToLower(trimmed)
+		lower := normalizeLowerTrim(trimmed)
 		if _, exists := seen[lower]; exists {
 			continue
 		}
@@ -54,7 +54,7 @@ func SanitizeCommaSeparatedStringSlice(values []string) []string {
 			if trimmed == "" {
 				continue
 			}
-			lower := strings.ToLower(trimmed)
+			lower := normalizeLowerTrim(trimmed)
 			if _, exists := seen[lower]; exists {
 				continue
 			}

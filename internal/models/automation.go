@@ -153,6 +153,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal conditions for automation %d: %w", automation.ID, err)
 		}
+		conditions.Normalize()
 		automation.Conditions = &conditions
 
 		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
@@ -213,6 +214,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal conditions for automation %d: %w", automation.ID, err)
 	}
+	conditions.Normalize()
 	automation.Conditions = &conditions
 
 	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
@@ -246,6 +248,7 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if automation == nil {
 		return nil, errors.New("automation is nil")
 	}
+	automation.Conditions.Normalize()
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
@@ -305,6 +308,7 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	if automation == nil {
 		return nil, errors.New("automation is nil")
 	}
+	automation.Conditions.Normalize()
 	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
 		return nil, errors.New("automation must have conditions")
 	}
@@ -439,56 +443,96 @@ type ConditionField string
 
 const (
 	// String fields
-	FieldName        ConditionField = "NAME"
-	FieldHash        ConditionField = "HASH"
-	FieldCategory    ConditionField = "CATEGORY"
-	FieldTags        ConditionField = "TAGS"
-	FieldSavePath    ConditionField = "SAVE_PATH"
-	FieldContentPath ConditionField = "CONTENT_PATH"
-	FieldState       ConditionField = "STATE"
-	FieldTracker     ConditionField = "TRACKER"
-	FieldComment     ConditionField = "COMMENT"
+	FieldName          ConditionField = "NAME"
+	FieldHash          ConditionField = "HASH"
+	FieldInfohashV1    ConditionField = "INFOHASH_V1"
+	FieldInfohashV2    ConditionField = "INFOHASH_V2"
+	FieldMagnetURI     ConditionField = "MAGNET_URI"
+	FieldCategory      ConditionField = "CATEGORY"
+	FieldTags          ConditionField = "TAGS"
+	FieldSavePath      ConditionField = "SAVE_PATH"
+	FieldContentPath   ConditionField = "CONTENT_PATH"
+	FieldDownloadPath  ConditionField = "DOWNLOAD_PATH"
+	FieldCreatedBy     ConditionField = "CREATED_BY"
+	FieldTrackers      ConditionField = "TRACKERS"
+	FieldContentType   ConditionField = "CONTENT_TYPE"
+	FieldEffectiveName ConditionField = "EFFECTIVE_NAME"
+
+	// RLS-derived specifiers (from torrent name parsing)
+	FieldRlsSource     ConditionField = "RLS_SOURCE"
+	FieldRlsResolution ConditionField = "RLS_RESOLUTION"
+	FieldRlsCodec      ConditionField = "RLS_CODEC"
+	FieldRlsHDR        ConditionField = "RLS_HDR"
+	FieldRlsAudio      ConditionField = "RLS_AUDIO"
+	FieldRlsChannels   ConditionField = "RLS_CHANNELS"
+	FieldRlsGroup      ConditionField = "RLS_GROUP"
+	FieldState         ConditionField = "STATE"
+	FieldTracker       ConditionField = "TRACKER"
+	FieldComment       ConditionField = "COMMENT"
 
 	// Numeric fields (bytes)
-	FieldSize       ConditionField = "SIZE"
-	FieldTotalSize  ConditionField = "TOTAL_SIZE"
-	FieldDownloaded ConditionField = "DOWNLOADED"
-	FieldUploaded   ConditionField = "UPLOADED"
-	FieldAmountLeft ConditionField = "AMOUNT_LEFT"
-	FieldFreeSpace  ConditionField = "FREE_SPACE"
+	FieldSize              ConditionField = "SIZE"
+	FieldTotalSize         ConditionField = "TOTAL_SIZE"
+	FieldCompleted         ConditionField = "COMPLETED"
+	FieldDownloaded        ConditionField = "DOWNLOADED"
+	FieldDownloadedSession ConditionField = "DOWNLOADED_SESSION"
+	FieldUploaded          ConditionField = "UPLOADED"
+	FieldUploadedSession   ConditionField = "UPLOADED_SESSION"
+	FieldAmountLeft        ConditionField = "AMOUNT_LEFT"
+	FieldFreeSpace         ConditionField = "FREE_SPACE"
 
-	// Numeric fields (timestamps/seconds)
-	FieldAddedOn      ConditionField = "ADDED_ON"
-	FieldCompletionOn ConditionField = "COMPLETION_ON"
-	FieldLastActivity ConditionField = "LAST_ACTIVITY"
-	FieldSeedingTime  ConditionField = "SEEDING_TIME"
-	FieldTimeActive   ConditionField = "TIME_ACTIVE"
+	// Time fields (timestamp-backed ages + duration seconds)
+	FieldAddedOn                  ConditionField = "ADDED_ON"
+	FieldCompletionOn             ConditionField = "COMPLETION_ON"
+	FieldLastActivity             ConditionField = "LAST_ACTIVITY"
+	FieldSeenComplete             ConditionField = "SEEN_COMPLETE"
+	FieldETA                      ConditionField = "ETA"
+	FieldReannounce               ConditionField = "REANNOUNCE"
+	FieldSeedingTime              ConditionField = "SEEDING_TIME"
+	FieldTimeActive               ConditionField = "TIME_ACTIVE"
+	FieldMaxSeedingTime           ConditionField = "MAX_SEEDING_TIME"
+	FieldMaxInactiveSeedingTime   ConditionField = "MAX_INACTIVE_SEEDING_TIME"
+	FieldSeedingTimeLimit         ConditionField = "SEEDING_TIME_LIMIT"
+	FieldInactiveSeedingTimeLimit ConditionField = "INACTIVE_SEEDING_TIME_LIMIT"
 
-	// Age fields (time since timestamp - computed as nowUnix - timestamp)
+	// Legacy age aliases (computed as nowUnix - timestamp)
 	FieldAddedOnAge      ConditionField = "ADDED_ON_AGE"
 	FieldCompletionOnAge ConditionField = "COMPLETION_ON_AGE"
 	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"
 
 	// Numeric fields (float64)
 	FieldRatio        ConditionField = "RATIO"
+	FieldRatioLimit   ConditionField = "RATIO_LIMIT"
+	FieldMaxRatio     ConditionField = "MAX_RATIO"
 	FieldProgress     ConditionField = "PROGRESS"
 	FieldAvailability ConditionField = "AVAILABILITY"
+	FieldPopularity   ConditionField = "POPULARITY"
 
 	// Numeric fields (speeds)
 	FieldDlSpeed ConditionField = "DL_SPEED"
 	FieldUpSpeed ConditionField = "UP_SPEED"
+	FieldDlLimit ConditionField = "DL_LIMIT"
+	FieldUpLimit ConditionField = "UP_LIMIT"
 
-	// Numeric fields (counts)
+	// Numeric fields (counts/misc)
 	FieldNumSeeds      ConditionField = "NUM_SEEDS"
 	FieldNumLeechs     ConditionField = "NUM_LEECHS"
 	FieldNumComplete   ConditionField = "NUM_COMPLETE"
 	FieldNumIncomplete ConditionField = "NUM_INCOMPLETE"
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
+	FieldPriority      ConditionField = "PRIORITY"
+	FieldGroupSize     ConditionField = "GROUP_SIZE"
 
 	// Boolean fields
-	FieldPrivate         ConditionField = "PRIVATE"
-	FieldIsUnregistered  ConditionField = "IS_UNREGISTERED"
-	FieldHasMissingFiles ConditionField = "HAS_MISSING_FILES"
+	FieldPrivate            ConditionField = "PRIVATE"
+	FieldAutoManaged        ConditionField = "AUTO_MANAGED"
+	FieldFirstLastPiecePrio ConditionField = "FIRST_LAST_PIECE_PRIO"
+	FieldForceStart         ConditionField = "FORCE_START"
+	FieldSequentialDownload ConditionField = "SEQUENTIAL_DOWNLOAD"
+	FieldSuperSeeding       ConditionField = "SUPER_SEEDING"
+	FieldIsUnregistered     ConditionField = "IS_UNREGISTERED"
+	FieldHasMissingFiles    ConditionField = "HAS_MISSING_FILES"
+	FieldIsGrouped          ConditionField = "IS_GROUPED"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
@@ -532,6 +576,7 @@ const (
 type RuleCondition struct {
 	Field      ConditionField    `json:"field,omitempty"`
 	Operator   ConditionOperator `json:"operator"`
+	GroupID    string            `json:"groupId,omitempty"` // Optional grouping ID for GROUP_SIZE/IS_GROUPED conditions
 	Value      string            `json:"value,omitempty"`
 	MinValue   *float64          `json:"minValue,omitempty"`
 	MaxValue   *float64          `json:"maxValue,omitempty"`
@@ -563,12 +608,16 @@ func (c *RuleCondition) CompileRegex() error {
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
 	SchemaVersion   string                 `json:"schemaVersion"`
+	Grouping        *GroupingConfig        `json:"grouping,omitempty"`
 	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
 	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
 	Pause           *PauseAction           `json:"pause,omitempty"`
 	Resume          *ResumeAction          `json:"resume,omitempty"`
+	Recheck         *RecheckAction         `json:"recheck,omitempty"`
+	Reannounce      *ReannounceAction      `json:"reannounce,omitempty"`
 	Delete          *DeleteAction          `json:"delete,omitempty"`
-	Tag             *TagAction             `json:"tag,omitempty"`
+	Tag             *TagAction             `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags            []*TagAction           `json:"tags,omitempty"` // Preferred multi-tag actions
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
@@ -602,22 +651,37 @@ type ResumeAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
+// RecheckAction configures force recheck action with optional conditions.
+type RecheckAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// ReannounceAction configures force reannounce action with optional conditions.
+type ReannounceAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
 // DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
 	Enabled          bool           `json:"enabled"`
 	Mode             string         `json:"mode"`                       // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds", "deleteWithFilesIncludeCrossSeeds"
 	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
+	GroupID          string         `json:"groupId,omitempty"`          // Optional grouping ID for expanding/atomically applying deletes
+	Atomic           string         `json:"atomic,omitempty"`           // Optional atomic policy: "all" (apply only if all group members match)
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
 // TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
-	Enabled         bool           `json:"enabled"`
-	Tags            []string       `json:"tags"`                      // Tags to manage (fallback if UseTrackerAsTag has no domains)
-	Mode            string         `json:"mode"`                      // "full", "add", "remove"
-	UseTrackerAsTag bool           `json:"useTrackerAsTag,omitempty"` // Derive tag from torrent's tracker domain
-	UseDisplayName  bool           `json:"useDisplayName,omitempty"`  // Use tracker customization display name instead of raw domain
-	Condition       *RuleCondition `json:"condition,omitempty"`
+	Enabled          bool           `json:"enabled"`
+	Tags             []string       `json:"tags"`                       // Tags to manage (fallback if UseTrackerAsTag has no domains)
+	Mode             string         `json:"mode"`                       // "full", "add", "remove"
+	DeleteFromClient bool           `json:"deleteFromClient,omitempty"` // Delete managed tags from qBittorrent before applying matches
+	UseTrackerAsTag  bool           `json:"useTrackerAsTag,omitempty"`  // Derive tag from torrent's tracker domain
+	UseDisplayName   bool           `json:"useDisplayName,omitempty"`   // Use tracker customization display name instead of raw domain
+	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 
 // CategoryAction configures category assignment with optional conditions.
@@ -625,6 +689,7 @@ type CategoryAction struct {
 	Enabled           bool   `json:"enabled"`
 	Category          string `json:"category"`                    // Target category name
 	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
+	GroupID           string `json:"groupId,omitempty"`           // Optional grouping ID for expanding category changes
 	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent
 	// (same ContentPath + SavePath) is found in one of the listed categories.
 	BlockIfCrossSeedInCategories []string       `json:"blockIfCrossSeedInCategories,omitempty"`
@@ -635,7 +700,30 @@ type MoveAction struct {
 	Enabled          bool           `json:"enabled"`
 	Path             string         `json:"path"`
 	BlockIfCrossSeed bool           `json:"blockIfCrossSeed,omitempty"`
+	GroupID          string         `json:"groupId,omitempty"` // Optional grouping ID for move cross-seed protection/atomicity
+	Atomic           string         `json:"atomic,omitempty"`  // Optional atomic policy: "all" (apply only if all group members match)
 	Condition        *RuleCondition `json:"condition,omitempty"`
+}
+
+// GroupingConfig defines how torrents can be grouped for group-aware actions and conditions.
+// Group definitions are per-rule (stored inside the rule's conditions JSON).
+type GroupingConfig struct {
+	// DefaultGroupID is the group to use for group-derived condition fields (e.g. GROUP_SIZE, IS_GROUPED).
+	DefaultGroupID string            `json:"defaultGroupId,omitempty"`
+	Groups         []GroupDefinition `json:"groups,omitempty"`
+}
+
+// GroupDefinition defines a single grouping strategy.
+type GroupDefinition struct {
+	ID string `json:"id"`
+	// Keys are combined to form a group key.
+	// Supported keys are documented in the automations service (built-ins include contentPath, savePath, effectiveName, contentType, tracker, rlsSource, rlsResolution, rlsCodec, rlsGroup, hardlinkSignature).
+	Keys []string `json:"keys"`
+	// AmbiguousPolicy controls how groups are handled when ContentPath is ambiguous (ContentPath == SavePath).
+	// Valid: "verify_overlap" (default for contentPath group), "skip".
+	AmbiguousPolicy string `json:"ambiguousPolicy,omitempty"`
+	// MinFileOverlapPercent applies when AmbiguousPolicy == "verify_overlap". Defaults to 90.
+	MinFileOverlapPercent int `json:"minFileOverlapPercent,omitempty"`
 }
 
 // ExternalProgramAction configures external program execution with optional conditions.
@@ -661,5 +749,53 @@ func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Resume == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil && ac.Move == nil && ac.ExternalProgram == nil
+	return ac.SpeedLimits == nil &&
+		ac.ShareLimits == nil &&
+		ac.Pause == nil &&
+		ac.Resume == nil &&
+		ac.Recheck == nil &&
+		ac.Reannounce == nil &&
+		ac.Delete == nil &&
+		len(ac.TagActions()) == 0 &&
+		ac.Category == nil &&
+		ac.Move == nil &&
+		ac.ExternalProgram == nil
+}
+
+// Normalize normalizes legacy/new action fields for in-memory use.
+func (ac *ActionConditions) Normalize() {
+	if ac == nil {
+		return
+	}
+
+	if len(ac.Tags) == 0 && ac.Tag != nil {
+		ac.Tags = []*TagAction{ac.Tag}
+	}
+
+	normalized := make([]*TagAction, 0, len(ac.Tags))
+	for _, action := range ac.Tags {
+		if action == nil {
+			continue
+		}
+		normalized = append(normalized, action)
+	}
+	ac.Tags = normalized
+
+	if len(ac.Tags) > 0 {
+		ac.Tag = ac.Tags[0]
+	}
+}
+
+// TagActions returns all configured tag actions (multi-tag aware).
+func (ac *ActionConditions) TagActions() []*TagAction {
+	if ac == nil {
+		return nil
+	}
+	if len(ac.Tags) > 0 {
+		return ac.Tags
+	}
+	if ac.Tag != nil {
+		return []*TagAction{ac.Tag}
+	}
+	return nil
 }

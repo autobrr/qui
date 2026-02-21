@@ -2508,11 +2508,10 @@ type fakeSyncManager struct {
 
 func buildCrossInstanceViews(instance *models.Instance, torrents []qbt.Torrent) []internalqb.CrossInstanceTorrentView {
 	views := make([]internalqb.CrossInstanceTorrentView, len(torrents))
-	for i, tor := range torrents {
+	for i := range torrents {
+		tor := &torrents[i]
 		views[i] = internalqb.CrossInstanceTorrentView{
-			TorrentView: internalqb.TorrentView{
-				Torrent: tor,
-			},
+			TorrentView:  &internalqb.TorrentView{Torrent: tor},
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -3569,12 +3568,11 @@ func (f *infohashTestSyncManager) GetCachedInstanceTorrents(_ context.Context, i
 	// Build views from torrents
 	if list, ok := f.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
-		for i, t := range list {
+		for i := range list {
+			t := &list[i]
 			views[i] = internalqb.CrossInstanceTorrentView{
-				TorrentView: internalqb.TorrentView{
-					Torrent: t,
-				},
-				InstanceID: instanceID,
+				TorrentView: &internalqb.TorrentView{Torrent: t},
+				InstanceID:  instanceID,
 			}
 		}
 		return views, nil
@@ -5106,12 +5104,11 @@ func (m *rssFilterTestSyncManager) SetTags(context.Context, int, []string, strin
 func (m *rssFilterTestSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
 	if list, ok := m.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
-		for i, t := range list {
+		for i := range list {
+			t := &list[i]
 			views[i] = internalqb.CrossInstanceTorrentView{
-				TorrentView: internalqb.TorrentView{
-					Torrent: t,
-				},
-				InstanceID: instanceID,
+				TorrentView: &internalqb.TorrentView{Torrent: t},
+				InstanceID:  instanceID,
 			}
 		}
 		return views, nil
