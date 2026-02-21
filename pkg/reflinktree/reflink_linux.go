@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -102,9 +104,9 @@ func cloneFile(src, dst string) (retErr error) {
 		if cloneErr == nil {
 			return nil
 		}
-		if errors.Is(cloneErr, unix.EAGAIN) {
+		if shouldRetryCloneError(cloneErr) {
 			if attempt == reflinkCloneRetryAttempts-1 {
-				return fmt.Errorf("ioctl FICLONE: %w (retries exhausted)", cloneErr)
+				return fmt.Errorf("ioctl FICLONE: %w (retries exhausted)%s", cloneErr, cloneDiagnostics(src, dst))
 			}
 			sleepForRetry(reflinkCloneRetryBaseDelay * time.Duration(1<<attempt))
 			continue
@@ -120,16 +122,48 @@ func cloneFile(src, dst string) (retErr error) {
 			Dest_offset: 0,
 		}
 		if rangeErr := ioctlFileCloneRange(dstFd, &cloneRange); rangeErr != nil {
-			return fmt.Errorf("ioctl FICLONERANGE: %w", rangeErr)
+			return fmt.Errorf("ioctl FICLONERANGE: %w%s", rangeErr, cloneDiagnostics(src, dst))
 		}
 		return nil
 	}
 
-	return fmt.Errorf("ioctl FICLONE: %w", cloneErr)
+	return fmt.Errorf("ioctl FICLONE: %w%s", cloneErr, cloneDiagnostics(src, dst))
+}
+
+func shouldRetryCloneError(err error) bool {
+	return errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINVAL)
 }
 
 func shouldTryCloneRange(err error) bool {
 	return errors.Is(err, unix.EOPNOTSUPP) ||
 		errors.Is(err, unix.ENOTTY) ||
 		errors.Is(err, unix.ENOSYS)
+}
+
+func cloneDiagnostics(srcPath, dstPath string) string {
+	srcDev := deviceID(srcPath)
+	dstDev := deviceID(dstPath)
+	srcFsType := filesystemType(srcPath)
+	dstFsType := filesystemType(dstPath)
+	return fmt.Sprintf(" (srcDev=%s dstDev=%s srcFsType=%s dstFsType=%s)", srcDev, dstDev, srcFsType, dstFsType)
+}
+
+func deviceID(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "unknown"
+	}
+	sys, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "unknown"
+	}
+	return strconv.FormatUint(uint64(sys.Dev), 10)
+}
+
+func filesystemType(path string) string {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("0x%x", uint64(stat.Type))
 }
