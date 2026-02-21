@@ -115,7 +115,12 @@ export function useTitleBarSpeeds({
     instanceId,
     shouldUseFallbackPolling
   )
-  const backgroundSpeeds = backgroundSpeedsOverride ?? streamSpeeds ?? backgroundSpeedsQuery
+  const backgroundSpeeds = backgroundSpeedsOverride ??
+    (
+      shouldUseFallbackPolling
+        ? (backgroundSpeedsQuery ?? streamSpeeds)
+        : (streamSpeeds ?? backgroundSpeedsQuery)
+    )
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
   const effectiveSpeeds = isHiddenDelayed
     ? (backgroundSpeeds ?? cachedBackgroundSpeeds)

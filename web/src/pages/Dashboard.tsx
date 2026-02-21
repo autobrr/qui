@@ -574,7 +574,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       serverState,
       torrentCounts,
       appInfo,
-      altSpeedEnabled: serverState?.use_alt_speed_limits || state.altSpeedEnabled,
+      altSpeedEnabled: serverState?.use_alt_speed_limits ?? state.altSpeedEnabled,
       isLoading,
       error,
       streamConnected: state.streamConnected,
