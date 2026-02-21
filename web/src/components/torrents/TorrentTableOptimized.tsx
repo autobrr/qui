@@ -669,7 +669,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  const { formatTimestamp, formatDate } = useDateTimeFormatters()
+  const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false })
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
@@ -1043,19 +1043,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     order: activeSortOrder,
   })
 
-  const lastStreamUpdate = useMemo(() => {
-    if (!streamMeta?.timestamp) {
-      return null
-    }
-
-    const parsed = new Date(streamMeta.timestamp)
-    if (Number.isNaN(parsed.getTime())) {
-      return null
-    }
-
-  return parsed
-  }, [streamMeta])
-
   const derivedStreamPhase = useMemo<StreamPhase>(() => {
     if (streamRetrying || typeof streamNextRetryAt === "number") {
       return "reconnecting"
@@ -1117,9 +1104,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         }
       case "healthy":
         return {
-          label: "Live updates via SSE",
-          message: "Polling is paused while the stream is healthy.",
-          secondary: lastStreamUpdate ? `Last update ${formatDate(lastStreamUpdate)}` : "Polling paused",
+          label: "",
+          message: null,
+          secondary: null,
           tone: "success" as const,
           animate: false,
         }
@@ -1133,9 +1120,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         }
     }
   }, [
-    formatDate,
     isCrossSeedFiltering,
-    lastStreamUpdate,
     stableStreamPhase,
     streamConnected,
     streamError,
@@ -1156,6 +1141,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         return { dot: "bg-muted-foreground/60", text: "text-muted-foreground" }
     }
   }, [streamStatus.tone])
+  const hasStreamStatusLabel = streamStatus.label.length > 0
+  const hasStreamStatusDetails =
+    hasStreamStatusLabel || Boolean(streamStatus.message) || Boolean(streamStatus.secondary)
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
@@ -2949,27 +2937,41 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {/* Compact SSE status */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 cursor-default text-[11px]">
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full transition",
-                      streamToneStyles.dot,
-                      streamStatus.animate && "animate-pulse"
+            {hasStreamStatusDetails ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full transition",
+                        streamToneStyles.dot,
+                        streamStatus.animate && "animate-pulse"
+                      )}
+                    />
+                    {hasStreamStatusLabel && (
+                      <span className={cn("opacity-80", streamToneStyles.text)}>{streamStatus.label}</span>
                     )}
-                  />
-                  <span className={cn("opacity-80", streamToneStyles.text)}>{streamStatus.label}</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs text-xs">
-                <div className="space-y-1">
-                  <p className="font-medium">{streamStatus.label}</p>
-                  {streamStatus.message && <p>{streamStatus.message}</p>}
-                  {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
-                </div>
-              </TooltipContent>
-            </Tooltip>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-xs">
+                  <div className="space-y-1">
+                    {hasStreamStatusLabel && <p className="font-medium">{streamStatus.label}</p>}
+                    {streamStatus.message && <p>{streamStatus.message}</p>}
+                    {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="flex items-center cursor-default text-[11px]">
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full transition",
+                    streamToneStyles.dot,
+                    streamStatus.animate && "animate-pulse"
+                  )}
+                />
+              </div>
+            )}
             <div>
               {effectiveSelectionCount > 0 ? (
                 <>
