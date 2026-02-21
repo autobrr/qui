@@ -102,7 +102,7 @@ func TestStreamManagerServeInstanceNotFound(t *testing.T) {
 			"instanceId": 99,
 			"page":       0,
 			"limit":      50,
-			"sort":       "addedOn",
+			"sort":       "added_on",
 			"order":      "desc",
 			"search":     "",
 			"filters":    nil,
@@ -134,7 +134,7 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 			"instanceId": 1,
 			"page":       -1,
 			"limit":      50,
-			"sort":       "addedOn",
+			"sort":       "added_on",
 			"order":      "desc",
 			"search":     "",
 			"filters":    nil,
@@ -495,7 +495,7 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	manager.server.Provider = provider
 
 	// Create two subscriptions with identical StreamOptions (same group)
-	opts := StreamOptions{InstanceID: 1, Page: 0, Limit: 50, Sort: "addedOn", Order: "desc"}
+	opts := StreamOptions{InstanceID: 1, Page: 0, Limit: 50, Sort: "added_on", Order: "desc"}
 	groupKey := streamOptionsKey(opts)
 
 	sub1 := &subscriptionState{
@@ -676,7 +676,7 @@ func TestParseStreamRequests_InvalidInstanceID(t *testing.T) {
 					"instanceId": tt.instanceID,
 					"page":       0,
 					"limit":      50,
-					"sort":       "addedOn",
+					"sort":       "added_on",
 					"order":      "desc",
 				},
 			}
@@ -698,7 +698,7 @@ func TestParseStreamRequests_LimitExceedsMax(t *testing.T) {
 			"instanceId": 1,
 			"page":       0,
 			"limit":      3000, // exceeds maxLimit of 2000
-			"sort":       "addedOn",
+			"sort":       "added_on",
 			"order":      "desc",
 		},
 	}
@@ -718,7 +718,7 @@ func TestParseStreamRequests_NegativePage(t *testing.T) {
 			"instanceId": 1,
 			"page":       -1,
 			"limit":      50,
-			"sort":       "addedOn",
+			"sort":       "added_on",
 			"order":      "desc",
 		},
 	}
@@ -751,7 +751,7 @@ func TestParseStreamRequests_DefaultsApplied(t *testing.T) {
 	require.Equal(t, 1, opts.InstanceID)
 	require.Equal(t, 0, opts.Page, "page should default to 0")
 	require.Equal(t, defaultLimit, opts.Limit, "limit should default to 300")
-	require.Equal(t, "addedOn", opts.Sort, "sort should default to addedOn")
+	require.Equal(t, "added_on", opts.Sort, "sort should default to added_on")
 	require.Equal(t, "desc", opts.Order, "order should default to desc")
 }
 

@@ -247,6 +247,17 @@ export function useTorrentsList(
     setLastStreamSnapshot(null)
   }, [instanceId, filterKey, searchKey, sort, order])
 
+  useEffect(() => {
+    if (lastKnownTotal <= 0) {
+      return
+    }
+
+    setHasLoadedAll(previous => {
+      const next = allTorrents.length >= lastKnownTotal
+      return previous === next ? previous : next
+    })
+  }, [allTorrents.length, lastKnownTotal])
+
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
     queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order, isCrossSeedFiltering],

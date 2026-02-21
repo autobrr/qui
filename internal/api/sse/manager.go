@@ -1109,7 +1109,7 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 
 	sort := p.Sort
 	if sort == "" {
-		sort = "addedOn"
+		sort = "added_on"
 	}
 
 	order := strings.ToLower(p.Order)
