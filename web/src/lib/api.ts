@@ -812,6 +812,8 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
     }
   ): Promise<{ values: string[]; total: number }> {
     return this.request(
@@ -825,6 +827,8 @@ class ApiClient {
           search: params.search,
           filters: params.filters,
           excludeHashes: params.excludeHashes,
+          excludeTargets: params.excludeTargets,
+          instanceIds: params.instanceIds,
         }),
       }
     )
@@ -838,6 +842,7 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
+      instanceIds?: number[]
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -847,6 +852,9 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.instanceIds && params.instanceIds.length > 0) {
+      searchParams.set("instanceIds", params.instanceIds.join(","))
+    }
 
     type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
       instanceId?: number
@@ -997,6 +1005,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
       action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
@@ -1006,6 +1015,8 @@ class ApiClient {
       filters?: TorrentFilters
       search?: string  // Search query when selectAll is true
       excludeHashes?: string[]  // Hashes to exclude when selectAll is true
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
