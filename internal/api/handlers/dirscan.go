@@ -39,6 +39,7 @@ type DirScanSettingsPayload struct {
 	SizeTolerancePercent         *float64 `json:"sizeTolerancePercent"`
 	MinPieceRatio                *float64 `json:"minPieceRatio"`
 	MaxSearcheesPerRun           *int     `json:"maxSearcheesPerRun"`
+	MaxSearcheeAgeDays           *int     `json:"maxSearcheeAgeDays"`
 	AllowPartial                 *bool    `json:"allowPartial"`
 	SkipPieceBoundarySafetyCheck *bool    `json:"skipPieceBoundarySafetyCheck"`
 	StartPaused                  *bool    `json:"startPaused"`
@@ -62,6 +63,7 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 			SizeTolerancePercent:         5.0,
 			MinPieceRatio:                98.0,
 			MaxSearcheesPerRun:           0,
+			MaxSearcheeAgeDays:           0,
 			AllowPartial:                 false,
 			SkipPieceBoundarySafetyCheck: true,
 			StartPaused:                  true,
@@ -118,6 +120,13 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		settings.MaxSearcheesPerRun = *payload.MaxSearcheesPerRun
+	}
+	if payload.MaxSearcheeAgeDays != nil {
+		if *payload.MaxSearcheeAgeDays < 0 {
+			RespondError(w, http.StatusBadRequest, "maxSearcheeAgeDays must be >= 0")
+			return
+		}
+		settings.MaxSearcheeAgeDays = *payload.MaxSearcheeAgeDays
 	}
 	if payload.AllowPartial != nil {
 		settings.AllowPartial = *payload.AllowPartial

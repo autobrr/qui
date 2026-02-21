@@ -55,6 +55,7 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/automations"}:                       {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations"}:                      {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/apply"}:                {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/dry-run"}:              {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/preview"}:              {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/validate-regex"}:       {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/order"}:                 {},

@@ -13,6 +13,7 @@ import type {
   Automation,
   AutomationActivity,
   AutomationActivityRun,
+  AutomationDryRunResult,
   AutomationInput,
   AutomationPreviewInput,
   AutomationPreviewResult,
@@ -1799,6 +1800,13 @@ class ApiClient {
   async applyAutomations(instanceId: number): Promise<void> {
     return this.request(`/instances/${instanceId}/automations/apply`, {
       method: "POST",
+    })
+  }
+
+  async dryRunAutomation(instanceId: number, payload: AutomationInput): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 

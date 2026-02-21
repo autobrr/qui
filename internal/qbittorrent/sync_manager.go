@@ -5215,7 +5215,7 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 
 // GetActiveTrackers returns all active tracker domains with their URLs and counts
 func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (map[string]string, error) {
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -5227,7 +5227,6 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 
 	// Map of domain -> example tracker URL
 	trackerMap := make(map[string]string)
-	trackerExclusions := client.getTrackerExclusionsCopy()
 
 	for trackerURL, hashes := range mainData.Trackers {
 		domain := sm.ExtractDomainFromURL(trackerURL)
@@ -5235,23 +5234,14 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 			continue
 		}
 
-		// Skip if all hashes are excluded
-		hasValidHash := false
-		for _, hash := range hashes {
-			if hashesToSkip, ok := trackerExclusions[domain]; ok {
-				if _, skip := hashesToSkip[hash]; skip {
-					continue
-				}
-			}
-			hasValidHash = true
-			break
+		if len(hashes) == 0 {
+			continue
 		}
 
-		if hasValidHash {
-			// Store the first valid tracker URL we find for this domain
-			if _, exists := trackerMap[domain]; !exists {
-				trackerMap[domain] = trackerURL
-			}
+		// Store the first tracker URL we find for this domain.
+		// Keep selector options complete, even when some hashes are excluded elsewhere.
+		if _, exists := trackerMap[domain]; !exists {
+			trackerMap[domain] = trackerURL
 		}
 	}
 
