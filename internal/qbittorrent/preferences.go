@@ -59,6 +59,14 @@ func (c *Client) refreshAppPreferences(ctx context.Context) (*qbt.AppPreferences
 	return cloneAppPreferences(cloned), nil
 }
 
+// GetCachedAppPreferences returns the last cached app preferences without triggering a refresh.
+func (c *Client) GetCachedAppPreferences() *qbt.AppPreferences {
+	c.preferencesMu.RLock()
+	defer c.preferencesMu.RUnlock()
+
+	return cloneAppPreferences(c.preferencesCache)
+}
+
 // InvalidateAppPreferencesCache clears the cached preferences to force a refresh on next access.
 func (c *Client) InvalidateAppPreferencesCache() {
 	c.preferencesMu.Lock()

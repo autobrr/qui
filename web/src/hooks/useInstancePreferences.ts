@@ -121,8 +121,11 @@ export function useInstancePreferences(
       return { previousPreferences, previousMetadata }
     },
     onError: (_err, _newPreferences, context) => {
-      if (context?.previousPreferences) {
-        queryClient.setQueryData(preferencesQueryKey, context.previousPreferences)
+      const rollbackPreferences =
+        context?.previousPreferences ?? context?.previousMetadata?.preferences
+
+      if (rollbackPreferences) {
+        queryClient.setQueryData(preferencesQueryKey, rollbackPreferences)
       }
 
       if (context?.previousMetadata) {

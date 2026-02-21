@@ -1290,7 +1290,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			appInfo = info
 		}
 
-		if prefs, err := client.GetAppPreferences(ctx); err != nil {
+		if skipFreshData {
+			appPreferences = client.GetCachedAppPreferences()
+		} else if prefs, err := client.GetAppPreferences(ctx); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instanceID).
