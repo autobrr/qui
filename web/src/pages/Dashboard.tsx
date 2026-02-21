@@ -1,11 +1,10 @@
 /*
- * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * Copyright (c) 2025, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
-import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
@@ -38,19 +37,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
-import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
-import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
-import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
-import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
+import type {
+  CacheMetadata,
+  DashboardSettings,
+  InstanceMeta,
+  InstanceResponse,
+  QBittorrentAppInfo,
+  ServerState,
+  TorrentResponse,
+  TorrentCounts,
+  TorrentStats,
+  TrackerCustomization,
+  TrackerTransferStats
+} from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import {
@@ -63,21 +71,96 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { DashboardSettingsDialog } from "@/components/dashboard-settings-dialog"
+import { createStreamKey, useSyncStreamManager } from "@/contexts/SyncStreamContext"
 import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
 import { useCreateTrackerCustomization, useDeleteTrackerCustomization, useTrackerCustomizations, useUpdateTrackerCustomization } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import type { DashboardSettings, TrackerCustomization, TrackerTransferStats } from "@/types"
+import type { TorrentStreamPayload } from "@/types"
 
 interface DashboardInstanceStats {
   instance: InstanceResponse
   stats: TorrentStats | null
   serverState: ServerState | null
   torrentCounts?: TorrentCounts
+  appInfo: QBittorrentAppInfo | null
   altSpeedEnabled: boolean
   isLoading: boolean
   error: unknown
+  streamConnected: boolean
+  streamError: string | null
+  cacheMetadata: CacheMetadata | null | undefined
+  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
+}
+
+type InstanceStreamData = {
+  stats: TorrentStats | null
+  serverState: ServerState | null
+  torrentCounts?: TorrentCounts
+  appInfo: QBittorrentAppInfo | null
+  altSpeedEnabled: boolean
+  isLoading: boolean
+  error: unknown
+  streamConnected: boolean
+  streamError: string | null
+  cacheMetadata: CacheMetadata | null | undefined
+  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
+}
+
+const createDefaultInstanceStreamData = (): InstanceStreamData => ({
+  stats: null,
+  serverState: null,
+  torrentCounts: undefined,
+  appInfo: null,
+  altSpeedEnabled: false,
+  isLoading: true,
+  error: null,
+  streamConnected: false,
+  streamError: null,
+  cacheMetadata: null,
+  instanceMeta: null,
+})
+
+const STREAM_REFRESH_INTERVAL_MS = 2000
+
+type InstanceUpdateResult =
+  | InstanceStreamData
+  | {
+    data: InstanceStreamData
+    immediate?: boolean
+  }
+
+function cloneInstanceDataRecord(source: Record<number, InstanceStreamData>) {
+  const next: Record<number, InstanceStreamData> = {}
+  for (const [key, value] of Object.entries(source)) {
+    next[Number(key)] = value
+  }
+  return next
+}
+
+function recordsShallowEqual(
+  a: Record<number, InstanceStreamData>,
+  b: Record<number, InstanceStreamData>
+) {
+  if (a === b) {
+    return true
+  }
+
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) {
+    return false
+  }
+
+  for (const key of aKeys) {
+    const numericKey = Number(key)
+    if (a[numericKey] !== b[numericKey]) {
+      return false
+    }
+  }
+
+  return true
 }
 
 // Shared hook for computing global stats across all instances
@@ -141,43 +224,363 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
-  const dashboardQueries = useQueries({
-    queries: instances.map(instance => ({
-      // Use same query key pattern as useTorrentsList for first page with no filters
-      queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
-      queryFn: () => api.getTorrents(instance.id, {
-        page: 0,
-        limit: 1, // Only need metadata, not actual torrents for Dashboard
-        sort: "added_on",
-        order: "desc" as const,
-      }),
-      enabled: options.enabled,
-      refetchInterval: 5000, // Match TorrentTable polling
-      refetchIntervalInBackground: false,
-      staleTime: 2000,
-      gcTime: 300000, // Match TorrentTable cache time
-      placeholderData: (previousData: TorrentResponse | undefined) => previousData,
-      retry: 1,
-      retryDelay: 1000,
-    })),
+function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
+  const syncStream = useSyncStreamManager()
+  const queryClient = useQueryClient()
+  const streamConnectionsRef = useRef(
+    new Map<
+      number,
+      {
+        key: string
+        disconnect: () => void
+        unsubscribe: () => void
+        cancelRef: { current: boolean }
+      }
+    >()
+  )
+  const baseStreamParams = useMemo(
+    () => ({
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }),
+    []
+  )
+  const [instanceData, setInstanceData] = useState<Record<number, InstanceStreamData>>({})
+  const latestDataRef = useRef<Record<number, InstanceStreamData>>({})
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fallbackQueries = useQueries({
+    queries: instances.map(instance => {
+      const streamState = instanceData[instance.id] ?? latestDataRef.current[instance.id]
+      const fallbackEnabled = !streamState || !streamState.streamConnected
+
+      return {
+        // Match first-page key used by torrent list so we can reuse query cache.
+        queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"] as const,
+        queryFn: () => api.getTorrents(instance.id, {
+          page: 0,
+          limit: 1,
+          sort: "added_on",
+          order: "desc",
+        }),
+        enabled: fallbackEnabled,
+        refetchInterval: fallbackEnabled ? 5000 : false,
+        refetchIntervalInBackground: false,
+        staleTime: 2000,
+        gcTime: 300000,
+        placeholderData: (previousData: TorrentResponse | undefined) => previousData,
+        retry: 1,
+        retryDelay: 1000,
+      }
+    }),
   })
 
+  const flushInstanceData = useCallback(
+    (force = false) => {
+      const snapshot = latestDataRef.current
+      setInstanceData(prev => {
+        if (!force && recordsShallowEqual(prev, snapshot)) {
+          return prev
+        }
+        return cloneInstanceDataRecord(snapshot)
+      })
+    },
+    []
+  )
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) {
+      return
+    }
+
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null
+      flushInstanceData()
+    }, STREAM_REFRESH_INTERVAL_MS)
+  }, [flushInstanceData])
+
+  const applyInstanceData = useCallback(
+    (instanceId: number, buildUpdate: (current: InstanceStreamData) => InstanceUpdateResult) => {
+      const currentRecord = latestDataRef.current
+      let current = currentRecord[instanceId]
+      if (!current) {
+        current = createDefaultInstanceStreamData()
+        currentRecord[instanceId] = current
+      }
+
+      const result = buildUpdate(current)
+      const { data: next, immediate } =
+        "data" in result ? result : { data: result }
+
+      if (next === current) {
+        return
+      }
+
+      currentRecord[instanceId] = next
+
+      if (immediate) {
+        flushInstanceData(true)
+      } else {
+        scheduleFlush()
+      }
+    },
+    [flushInstanceData, scheduleFlush]
+  )
+
+  useEffect(() => {
+    const nextRecord: Record<number, InstanceStreamData> = {}
+    instances.forEach(instance => {
+      nextRecord[instance.id] = latestDataRef.current[instance.id] ?? createDefaultInstanceStreamData()
+    })
+    latestDataRef.current = nextRecord
+    flushInstanceData(true)
+  }, [instances, flushInstanceData])
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    const flushIfVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return
+      }
+
+      if (flushTimerRef.current) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(flushTimerRef.current)
+        } else {
+          clearTimeout(flushTimerRef.current)
+        }
+        flushTimerRef.current = null
+      }
+
+      flushInstanceData(true)
+    }
+
+    document.addEventListener("visibilitychange", flushIfVisible)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", flushIfVisible)
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", flushIfVisible)
+
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", flushIfVisible)
+      }
+    }
+  }, [flushInstanceData])
+
+  useEffect(() => {
+    const activeInstanceIds = new Set<number>()
+
+    instances.forEach(instance => {
+      const params = {
+        ...baseStreamParams,
+        instanceId: instance.id,
+      }
+      const streamKey = createStreamKey(params)
+      activeInstanceIds.add(instance.id)
+
+      const existing = streamConnectionsRef.current.get(instance.id)
+      if (existing && existing.key === streamKey && !existing.cancelRef.current) {
+        return
+      }
+
+      if (existing) {
+        existing.cancelRef.current = true
+        existing.disconnect()
+        existing.unsubscribe()
+      }
+
+      const cancelRef = { current: false }
+
+      const disconnect = syncStream.connect(params, (payload: TorrentStreamPayload) => {
+        if (cancelRef.current || !payload) {
+          return
+        }
+
+        if (payload.type === "stream-error") {
+          applyInstanceData(instance.id, current => {
+            return {
+              data: {
+                ...current,
+                isLoading: false,
+                error: payload.error ?? current.error,
+                streamError: payload.error ?? current.streamError,
+                streamConnected: false,
+                instanceMeta: null,
+              },
+              immediate: true,
+            }
+          })
+          return
+        }
+
+        if (!payload.data) {
+          return
+        }
+
+        const data = payload.data
+        if (data.appInfo) {
+          queryClient.setQueryData(["qbittorrent-app-info", instance.id], data.appInfo)
+        }
+
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            stats: data.stats ?? null,
+            serverState: data.serverState ?? null,
+            torrentCounts: data.counts,
+            appInfo: data.appInfo ?? current.appInfo,
+            altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+            isLoading: false,
+            error: null,
+            streamConnected: true,
+            streamError: null,
+            cacheMetadata: data.cacheMetadata ?? null,
+            instanceMeta: data.instanceMeta ?? current.instanceMeta,
+          }
+
+          return {
+            data: next,
+            immediate: current.isLoading && !next.isLoading,
+          }
+        })
+      })
+
+      const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
+        if (cancelRef.current) {
+          return
+        }
+
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            ...current,
+            streamConnected: snapshot.connected,
+            streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
+          }
+
+          if (snapshot.error) {
+            next.error = snapshot.error
+            next.isLoading = false
+          } else if (snapshot.connected && !current.isLoading) {
+            next.error = null
+          }
+
+          if (!snapshot.connected || snapshot.error) {
+            next.instanceMeta = null
+          }
+
+          return next
+        })
+      })
+
+      const initialSnapshot = syncStream.getState(streamKey)
+      if (initialSnapshot) {
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            ...current,
+            streamConnected: initialSnapshot.connected,
+            streamError: initialSnapshot.error ?? current.streamError,
+          }
+
+          if (initialSnapshot.error) {
+            next.error = initialSnapshot.error
+            next.isLoading = false
+          }
+
+          if (!initialSnapshot.connected || initialSnapshot.error) {
+            next.instanceMeta = null
+          }
+
+          return next
+        })
+      }
+
+      streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe, cancelRef })
+    })
+
+    streamConnectionsRef.current.forEach((entry, instanceId) => {
+      if (!activeInstanceIds.has(instanceId)) {
+        entry.cancelRef.current = true
+        entry.disconnect()
+        entry.unsubscribe()
+        streamConnectionsRef.current.delete(instanceId)
+      }
+    })
+  }, [instances, syncStream, baseStreamParams, queryClient, applyInstanceData])
+
+  useEffect(() => {
+    return () => {
+      streamConnectionsRef.current.forEach(entry => {
+        entry.cancelRef.current = true
+        entry.disconnect()
+        entry.unsubscribe()
+      })
+      streamConnectionsRef.current.clear()
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
+    }
+  }, [])
+
   return instances.map<DashboardInstanceStats>((instance, index) => {
-    const query = dashboardQueries[index]
-    const data = query.data as TorrentResponse | undefined
+    const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
+    const fallbackQuery = fallbackQueries[index]
+    const fallbackData = fallbackQuery?.data as TorrentResponse | undefined
+    const isFallbackActive = !state.streamConnected
+
+    const stats = isFallbackActive ? (fallbackData?.stats ?? state.stats) : state.stats
+    const serverState = isFallbackActive ? (fallbackData?.serverState ?? state.serverState) : state.serverState
+    const torrentCounts = isFallbackActive ? (fallbackData?.counts ?? state.torrentCounts) : state.torrentCounts
+    const appInfo = isFallbackActive ? (fallbackData?.appInfo ?? state.appInfo) : state.appInfo
+    const cacheMetadata = isFallbackActive ? (fallbackData?.cacheMetadata ?? state.cacheMetadata) : state.cacheMetadata
+
+    const hasHydratedData = Boolean(stats || serverState || torrentCounts)
+    const isLoading = isFallbackActive
+      ? (!hasHydratedData && (state.isLoading || fallbackQuery?.isLoading || fallbackQuery?.isFetching))
+      : state.isLoading
+    const error = (() => {
+      if (!isFallbackActive) {
+        return state.error
+      }
+      if (fallbackQuery?.error) {
+        return fallbackQuery.error
+      }
+      if (fallbackData) {
+        return null
+      }
+      return state.error
+    })()
+
+    // Merge SSE instanceMeta into the instance object for real-time status updates
+    // This allows components to use SSE-based connection status instead of polled data
+    const mergedInstance: InstanceResponse = state.streamConnected && state.instanceMeta
+      ? {
+        ...instance,
+        connected: state.instanceMeta.connected,
+        hasDecryptionError: state.instanceMeta.hasDecryptionError,
+        recentErrors: state.instanceMeta.recentErrors,
+      }
+      : instance
 
     return {
-      instance,
-      // Return TorrentStats directly - no more backwards compatibility conversion
-      stats: data?.stats ?? null,
-      serverState: data?.serverState ?? null,
-      torrentCounts: data?.counts,
-      // Include alt speed status from server state to avoid separate API call
-      altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
-      // Include loading/error state for individual instances
-      isLoading: query.isLoading,
-      error: query.error,
+      instance: mergedInstance,
+      stats,
+      serverState,
+      torrentCounts,
+      appInfo,
+      altSpeedEnabled: serverState?.use_alt_speed_limits ?? state.altSpeedEnabled,
+      isLoading,
+      error,
+      streamConnected: state.streamConnected,
+      streamError: state.streamError,
+      cacheMetadata,
+      instanceMeta: state.instanceMeta,
     }
   })
 }
@@ -192,7 +595,16 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
-  const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
+  const {
+    instance,
+    stats,
+    serverState,
+    torrentCounts,
+    appInfo,
+    altSpeedEnabled,
+    isLoading,
+    error,
+  } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
   // Alternative speed limits toggle - no need to track state, just provide toggle function
@@ -211,7 +623,10 @@ function InstanceCard({
   const {
     data: qbittorrentAppInfo,
     versionInfo: qbittorrentVersionInfo,
-  } = useQBittorrentAppInfo(instance.id)
+  } = useQBittorrentAppInfo(instance.id, {
+    initialData: appInfo ?? undefined,
+    fetchIfMissing: !appInfo,
+  })
   const { preferences } = useInstancePreferences(instance.id, { enabled: instance.connected })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
@@ -232,18 +647,16 @@ function InstanceCard({
   const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
+
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
-  const connectionStatusIconClass = (() => {
-    if (!hasConnectionStatus) return ""
-    if (isConnectable) return "text-green-500"
-    if (isFirewalled) return "text-amber-500"
-    return "text-destructive"
-  })()
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : ""
 
   const listenPort = preferences?.listen_port
-  const connectionStatusTooltip = connectionStatusDisplay? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`: ""
+  const connectionStatusTooltip = connectionStatusDisplay
+    ? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`
+    : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -273,7 +686,7 @@ function InstanceCard({
               </CardTitle>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-1.5 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
+            <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
               {instance.reannounceSettings?.enabled && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -287,48 +700,32 @@ function InstanceCard({
               {instance.connected && !isFirstLoad && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span
-                      role="button"
-                      tabIndex={0}
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        if (!isToggling) setShowSpeedLimitDialog(true)
+                        setShowSpeedLimitDialog(true)
                       }}
-                      onKeyDown={(e) => {
-                        if ((e.key === "Enter" || e.key === " ") && !isToggling) {
-                          e.preventDefault()
-                          setShowSpeedLimitDialog(true)
-                        }
-                      }}
-                      className={`cursor-pointer ${isToggling ? "opacity-50" : ""}`}
+                      disabled={isToggling}
+                      className="h-8 w-8 p-0 shrink-0"
                     >
                       {altSpeedEnabled ? (
                         <Turtle className="h-4 w-4 text-orange-600" />
                       ) : (
                         <Rabbit className="h-4 w-4 text-green-600" />
                       )}
-                    </span>
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
                   </TooltipContent>
                 </Tooltip>
               )}
-              {instance.hasLocalFilesystemAccess && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HardDrive className="h-4 w-4 text-primary" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Local file access enabled
-                  </TooltipContent>
-                </Tooltip>
-              )}
               <InstanceSettingsButton
                 instanceId={instance.id}
                 instanceName={instance.name}
-                instance={instance}
                 showButton={showSettingsButton}
               />
             </div>
@@ -341,7 +738,8 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
+                  {altSpeedEnabled ? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.` : `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                  }
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -627,8 +1025,9 @@ function InstanceCard({
   )
 }
 
-function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
+function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
+  const globalStats = useGlobalStats(statsData)
 
   return (
     <Card className="sm:hidden">
@@ -682,10 +1081,9 @@ function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   )
 }
 
-type GlobalStats = ReturnType<typeof useGlobalStats>
-
-function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
+function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
+  const globalStats = useGlobalStats(statsData)
 
   return (
     <>
@@ -820,7 +1218,9 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                 {globalStats.totalPeers > 0 && (
                   <div>
                     <span className="text-xs text-muted-foreground">Peers: </span>
-                    <span className="font-semibold">{globalStats.totalPeers}</span>
+                    <span className="font-semibold tabular-nums inline-block min-w-[3rem] text-right">
+                      {globalStats.totalPeers}
+                    </span>
                   </div>
                 )}
               </div>
@@ -855,7 +1255,9 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
               {globalStats.totalPeers > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Peers:</span>
-                  <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
+                  <span className="text-lg font-semibold tabular-nums inline-block min-w-[3rem] text-right">
+                    {globalStats.totalPeers}
+                  </span>
                 </div>
               )}
             </div>
@@ -929,7 +1331,9 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortCo
   if (sortColumn !== column) {
     return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
   }
-  return sortDirection === "asc"? <ArrowUp className="h-3 w-3" />: <ArrowDown className="h-3 w-3" />
+  return sortDirection === "asc"
+    ? <ArrowUp className="h-3 w-3" />
+    : <ArrowDown className="h-3 w-3" />
 }
 
 // Extended tracker stats with customization support
@@ -967,7 +1371,6 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   // Selection state for merging/renaming
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set())
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [showCustomizeDialog, setShowCustomizeDialog] = useState(false)
   const [customizeDisplayName, setCustomizeDisplayName] = useState("")
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[]; includedInStats: string[] } | null>(null)
@@ -1053,47 +1456,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             existing.downloaded += stats.downloaded
             existing.totalSize += stats.totalSize
             existing.count += stats.count
-            continue
           }
-
-          processed.set(customization.displayName, {
-            ...stats,
-            domain: customization.domains[0] ?? domain,
-            displayName: customization.displayName,
-            originalDomains: customization.domains,
-            customizationId: customization.id,
-          })
         }
       }
-    }
-
-    // Pass 3: Ensure merged groups remain visible even if the primary domain has no torrents.
-    // If no primary/included domain produced a group entry, fall back to whichever domain in the group
-    // currently has stats (pick the one with the highest torrent count to avoid double-counting).
-    const fallbackByDisplayName = new Map<string, { customization: TrackerCustomization; stats: TrackerTransferStats; domain: string }>()
-    for (const [domain, stats] of aggregated) {
-      const customization = domainToCustomization.get(domain.toLowerCase())
-      if (!customization) continue
-      if (processed.has(customization.displayName)) continue
-
-      const existing = fallbackByDisplayName.get(customization.displayName)
-      if (
-        !existing ||
-        stats.count > existing.stats.count ||
-        (stats.count === existing.stats.count && stats.uploaded > existing.stats.uploaded)
-      ) {
-        fallbackByDisplayName.set(customization.displayName, { customization, stats, domain })
-      }
-    }
-
-    for (const { customization, stats, domain } of fallbackByDisplayName.values()) {
-      processed.set(customization.displayName, {
-        ...stats,
-        domain: customization.domains[0] ?? domain,
-        displayName: customization.displayName,
-        originalDomains: customization.domains,
-        customizationId: customization.id,
-      })
     }
 
     return Array.from(processed.values())
@@ -1155,52 +1520,24 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     })
   }
 
-  const toggleGroupSelection = (customizationId: number) => {
-    setSelectedGroupId(prev => prev === customizationId ? null : customizationId)
-  }
-
   const clearSelection = () => {
     setSelectedDomains(new Set())
-    setSelectedGroupId(null)
-  }
-
-  // Merge into a group
-  const handleMergeIntoGroup = (targetGroupId: number, domain?: string) => {
-    const group = customizations?.find(c => c.id === targetGroupId)
-    if (!group) return
-
-    const domainsSet = new Set(selectedDomains)
-    if (domain) domainsSet.add(domain) // no-op if already present
-    const domainsToMerge = Array.from(domainsSet)
-
-    if (domainsToMerge.length === 0) return
-
-    // Merge into selected group
-    const mergedDomains = [...new Set([...group.domains, ...domainsToMerge])]
-    updateCustomization.mutate({
-      id: targetGroupId,
-      data: {
-        displayName: group.displayName,
-        domains: mergedDomains,
-        includedInStats: group.includedInStats ?? [],
-      },
-    }, {
-      onSuccess: () => {
-        clearSelection()
-      },
-    })
   }
 
   // Save customization (create or update)
   const handleSaveCustomization = () => {
     if (!customizeDisplayName.trim()) return
 
-    const domains = editingCustomization? editingCustomization.domains: Array.from(selectedDomains)
+    const domains = editingCustomization
+      ? editingCustomization.domains
+      : Array.from(selectedDomains)
 
     if (domains.length === 0) return
 
     // Get included domains from state (secondary domains that contribute to stats)
-    const included = editingCustomization? editingCustomization.includedInStats: Array.from(includedInStats)
+    const included = editingCustomization
+      ? editingCustomization.includedInStats
+      : Array.from(includedInStats)
 
     if (editingCustomization) {
       // Update existing
@@ -1290,7 +1627,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setEditingCustomization({
       id: customizationId,
       domains,
-      includedInStats: fullCustomization?.includedInStats ?? [],
+      includedInStats: fullCustomization?.includedInStats ?? []
     })
     setCustomizeDisplayName(currentName)
     setShowCustomizeDialog(true)
@@ -1357,7 +1694,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   const handleToggleStatsInclusion = (domain: string, include: boolean) => {
     if (editingCustomization) {
       const domainLower = domain.toLowerCase()
-      const newIncluded = include? [...editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower), domain]: editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower)
+      const newIncluded = include
+        ? [...editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower), domain]
+        : editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower)
       setEditingCustomization({ ...editingCustomization, includedInStats: newIncluded })
     } else {
       const newIncluded = new Set(includedInStats)
@@ -1470,7 +1809,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           includedInStats: entry.includedInStats ?? [],
           index,
           conflict: existingCustomization,
-          isIdentical,
+          isIdentical
         }
       })
 
@@ -1664,7 +2003,12 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-1 justify-between">
                     <span className="flex items-center gap-2 text-xs">
-                      Sort: {sortColumn === "tracker" ? "Tracker" :sortColumn === "uploaded" ? "Uploaded" :sortColumn === "downloaded" ? "Downloaded" :sortColumn === "ratio" ? "Ratio" :sortColumn === "count" ? "Torrents" :sortColumn === "size" ? "Size" : "Seeded"}
+                      Sort: {sortColumn === "tracker" ? "Tracker" :
+                        sortColumn === "uploaded" ? "Uploaded" :
+                          sortColumn === "downloaded" ? "Downloaded" :
+                            sortColumn === "ratio" ? "Ratio" :
+                              sortColumn === "count" ? "Torrents" :
+                                sortColumn === "size" ? "Size" : "Seeded"}
                     </span>
                     {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                   </Button>
@@ -1702,25 +2046,15 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
                 const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
                 const isSelected = selectedDomains.has(domain)
-                const isGroupSelected = selectedGroupId === customizationId
                 const isMerged = originalDomains.length > 1
                 const hasCustomization = Boolean(customizationId)
 
                 return (
-                  <Card key={displayName} className={`overflow-hidden ${isSelected || isGroupSelected ? "ring-2 ring-primary" : ""}`}>
+                  <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {hasCustomization ? (
-                          // Show group checkbox if no group selected or the group selected
-                            (selectedGroupId === null || isGroupSelected) && (
-                              <Checkbox
-                                checked={isGroupSelected}
-                                onCheckedChange={() => toggleGroupSelection(customizationId!)}
-                                className="shrink-0"
-                              />
-                            )
-                          ) : (
+                          {!hasCustomization && (
                             <Checkbox
                               checked={isSelected}
                               onCheckedChange={() => toggleSelection(domain)}
@@ -1746,51 +2080,32 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         </div>
                         <div className="flex items-center gap-1">
                           {hasCustomization && customizationId ? (
-                          // Show group merge if domains selected and if no other group is selected
-                            selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
+                            <>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
+                                onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
                               >
-                                <Link2 className="h-3 w-3 text-primary" />
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
                               </Button>
-                            ) : (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                                >
-                                  <Pencil className="h-3 w-3 text-muted-foreground" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                                >
-                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
-                                </Button>
-                              </>
-                            )
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                              >
+                                <Trash2 className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            </>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (selectedGroupId) {
-                                  handleMergeIntoGroup(selectedGroupId, domain)
-                                } else {
-                                  openRenameDialog(domain)
-                                }
-                              }}
+                              onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
                             >
-                              {selectedGroupId || selectedDomains.size > 0 ? (
+                              {selectedDomains.size > 0 ? (
                                 <Link2 className="h-3 w-3 text-primary" />
                               ) : (
                                 <Pencil className="h-3 w-3 text-muted-foreground" />
@@ -1951,7 +2266,6 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
                   const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
                   const isSelected = selectedDomains.has(domain)
-                  const isGroupSelected = selectedGroupId === customizationId
                   const isMerged = originalDomains.length > 1
                   const hasCustomization = Boolean(customizationId)
                   const buffer = uploaded - downloaded
@@ -1960,19 +2274,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   return (
                     <TableRow
                       key={displayName}
-                      className={`group ${isSelected || isGroupSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
+                      className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
                     >
                       <TableCell className="w-8 pl-4">
-                        {hasCustomization ? (
-                        // Show group checkbox if no group selected or the group selected
-                          (selectedGroupId === null || isGroupSelected) && (
-                            <Checkbox
-                              checked={isGroupSelected}
-                              onCheckedChange={() => toggleGroupSelection(customizationId!)}
-                              className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
-                            />
-                          )
-                        ) : (
+                        {!hasCustomization && (
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => toggleSelection(domain)}
@@ -2000,41 +2305,24 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                           {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
                           <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
                             {hasCustomization && customizationId ? (
-                            // Show group merge if domains selected and if no other group is selected
-                              selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 w-6 p-0"
-                                      onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
-                                    >
-                                      <Link2 className="h-3 w-3 text-primary" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Merge selected trackers into this group</TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                                  >
-                                    <Pencil className="h-3 w-3 text-muted-foreground" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                                  >
-                                    <Trash2 className="h-3 w-3 text-muted-foreground" />
-                                  </Button>
-                                </>
-                              )
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
+                                >
+                                  <Pencil className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </>
                             ) : (
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -2042,16 +2330,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                     variant="ghost"
                                     size="sm"
                                     className="h-6 w-6 p-0"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (selectedGroupId) {
-                                        handleMergeIntoGroup(selectedGroupId, domain)
-                                      } else {
-                                        openRenameDialog(domain)
-                                      }
-                                    }}
+                                    onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
                                   >
-                                    {selectedGroupId || selectedDomains.size > 0 ? (
+                                    {selectedDomains.size > 0 ? (
                                       <Link2 className="h-3 w-3 text-primary" />
                                     ) : (
                                       <Pencil className="h-3 w-3 text-muted-foreground" />
@@ -2059,7 +2340,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  {selectedGroupId ? "Merge into group" : selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                                  {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -2131,13 +2412,21 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
-        <DialogContent className="max-h-[90dvh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
+        <DialogContent className="max-h-[85vh] flex flex-col">
+          <DialogHeader>
             <DialogTitle>
-              {editingCustomization? "Edit Tracker Name": selectedDomains.size === 1? "Rename Tracker": "Merge Trackers"}
+              {editingCustomization
+                ? "Edit Tracker Name"
+                : selectedDomains.size === 1
+                  ? "Rename Tracker"
+                  : "Merge Trackers"}
             </DialogTitle>
             <DialogDescription>
-              {editingCustomization? "Update the display name for this tracker.": selectedDomains.size === 1? "Give this tracker a custom display name.": "Combine these trackers into a single entry with a custom name."}
+              {editingCustomization
+                ? "Update the display name for this tracker."
+                : selectedDomains.size === 1
+                  ? "Give this tracker a custom display name."
+                  : "Combine these trackers into a single entry with a custom name."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
@@ -2150,26 +2439,28 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 placeholder="e.g., TorrentLeech"
               />
             </div>
-            <div className="space-y-2 min-h-0 flex-1 flex flex-col overflow-hidden">
+            <div className="space-y-2 min-h-0 flex-1 flex flex-col">
               <Label>{editingCustomization ? "Domain(s)" : "Selected Tracker(s)"}</Label>
               {((editingCustomization && editingCustomization.domains.length > 1) || (!editingCustomization && selectedDomains.size > 1)) && (
                 <p className="text-xs text-muted-foreground">
                   Uncheck duplicate tracker URLs to avoid counting the same torrents twice.
                 </p>
               )}
-              <ScrollArea className="h-[300px]">
+              <ScrollArea className="max-h-64 flex-1">
                 <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
                   {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
                     const hasMultiple = arr.length > 1
                     const isPrimary = index === 0
                     // Get inclusion state from appropriate source
                     // Primary is always included; secondary domains only if in includedInStats
-                    const currentIncluded = editingCustomization? editingCustomization.includedInStats: Array.from(includedInStats)
+                    const currentIncluded = editingCustomization
+                      ? editingCustomization.includedInStats
+                      : Array.from(includedInStats)
                     const isInList = currentIncluded.some(d => d.toLowerCase() === domain.toLowerCase())
                     const isIncluded = isPrimary || isInList
 
                     return (
-                      <div key={domain} className={`grid items-center gap-2 ${hasMultiple ? "grid-cols-[auto_1fr_auto_auto]" : "grid-cols-[1fr]"}`}>
+                      <div key={domain} className="flex items-center gap-2">
                         {hasMultiple && (
                           <Checkbox
                             checked={isIncluded}
@@ -2178,11 +2469,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             className="h-4 w-4"
                           />
                         )}
-                        <span className={`truncate${isPrimary ? " font-medium" : ""}`} title={domain}>{domain}</span>
-                        {hasMultiple && (
-                          isPrimary ? (
-                            <Badge variant="secondary" className="text-[10px]">Primary</Badge>
-                          ) : <span />
+                        <span className={isPrimary ? "font-medium flex-1" : "flex-1"}>{domain}</span>
+                        {isPrimary && hasMultiple && (
+                          <Badge variant="secondary" className="text-[10px]">Primary</Badge>
                         )}
                         {hasMultiple && (
                           <button
@@ -2200,7 +2489,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               </ScrollArea>
             </div>
           </div>
-          <DialogFooter className="flex-shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={closeCustomizeDialog}>
               Cancel
             </Button>
@@ -2208,7 +2497,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               onClick={handleSaveCustomization}
               disabled={!customizeDisplayName.trim() || createCustomization.isPending || updateCustomization.isPending}
             >
-              {(createCustomization.isPending || updateCustomization.isPending)? "Saving...": editingCustomization? "Save": selectedDomains.size === 1? "Rename": "Merge"}
+              {(createCustomization.isPending || updateCustomization.isPending)
+                ? "Saving..."
+                : editingCustomization
+                  ? "Save"
+                  : selectedDomains.size === 1
+                    ? "Rename"
+                    : "Merge"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2216,21 +2511,21 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
             <DialogTitle>Import Tracker Customizations</DialogTitle>
             <DialogDescription>
               Paste JSON to import tracker customizations (renames and merges).
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4">
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="import-json">JSON Data</Label>
               <Textarea
                 id="import-json"
                 value={importJson}
                 onChange={(e) => setImportJson(e.target.value)}
-                placeholder={"{\n  \"trackerCustomizations\": [\n    { \"displayName\": \"Name\", \"domains\": [\"domain.com\"] }\n  ]\n}"}
+                placeholder={`{\n  "trackerCustomizations": [\n    { "displayName": "Name", "domains": ["domain.com"] }\n  ]\n}`}
                 className="font-mono text-xs h-32"
               />
             </div>
@@ -2309,7 +2604,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               </div>
             )}
           </div>
-          <DialogFooter className="flex-shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowImportDialog(false)}>
               Cancel
             </Button>
@@ -2367,13 +2662,17 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 
 export function Dashboard() {
   const { instances, isLoading } = useInstances()
-  const allInstances = instances || []
-  const activeInstances = allInstances.filter(instance => instance.isActive)
+  const allInstances = useMemo(
+    () => instances ?? [],
+    [instances]
+  )
+  const activeInstances = useMemo(
+    () => allInstances.filter(instance => instance.isActive),
+    [allInstances]
+  )
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
-  const { isHiddenDelayed } = useDelayedVisibility(3000)
-  const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   // Dashboard settings
   const { data: dashboardSettings } = useDashboardSettings()
@@ -2381,48 +2680,7 @@ export function Dashboard() {
   const settings = dashboardSettings || DEFAULT_DASHBOARD_SETTINGS
 
   // Use safe hook that always calls the same number of hooks
-  // Query handoff: when the dashboard is visible we run full stats; after the
-  // delayed hide, we stop heavy stats and only poll transfer info for title bar speeds.
-  const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
-  const globalStats = useGlobalStats(statsData)
-  const transferInfoQueries = useQueries({
-    queries: activeInstances.map(instance => ({
-      queryKey: ["transfer-info", instance.id],
-      queryFn: () => api.getTransferInfo(instance.id),
-      enabled: titleBarSpeedsEnabled && isHiddenDelayed && hasActiveInstances,
-      refetchInterval: 3000,
-      refetchIntervalInBackground: true,
-      staleTime: 0,
-    })),
-  })
-  const backgroundSpeedsState = transferInfoQueries.reduce(
-    (state, query) => {
-      const info = query.data
-      if (!info) {
-        return state
-      }
-      return {
-        hasData: true,
-        dl: state.dl + (info.dl_info_speed ?? 0),
-        up: state.up + (info.up_info_speed ?? 0),
-      }
-    },
-    { dl: 0, up: 0, hasData: false }
-  )
-  const backgroundSpeeds = backgroundSpeedsState.hasData
-    ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }
-    : undefined
-  useTitleBarSpeeds({
-    mode: "dashboard",
-    enabled: titleBarSpeedsEnabled && hasActiveInstances,
-    foregroundSpeeds: hasActiveInstances
-      ? {
-        dl: globalStats.totalDownload ?? 0,
-        up: globalStats.totalUpload ?? 0,
-      }
-      : undefined,
-    backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
-  })
+  const statsData = useAllInstanceStats(activeInstances)
 
   // Handler for TrackerBreakdownCard to update settings
   const handleTrackerSettingsChange = (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => {
@@ -2432,7 +2690,7 @@ export function Dashboard() {
   // Handler for section collapsed state changes
   const handleSectionCollapsedChange = (sectionId: string, collapsed: boolean) => {
     updateSettings.mutate({
-      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed },
+      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed }
     })
   }
 
@@ -2487,9 +2745,6 @@ export function Dashboard() {
       {/* Show banner if any instances have decryption errors */}
       <PasswordIssuesBanner instances={instances || []} />
 
-      {/* Show banner to register as magnet handler (Firefox support) */}
-      <MagnetHandlerBanner />
-
       {hasInstances ? (
         <div className="space-y-6">
           {hasActiveInstances ? (
@@ -2520,10 +2775,10 @@ export function Dashboard() {
                     return (
                       <div key={sectionId} className="space-y-4">
                         {/* Mobile: Single combined card */}
-                        <MobileGlobalStatsCard globalStats={globalStats} />
+                        <MobileGlobalStatsCard statsData={statsData} />
                         {/* Tablet/Desktop: Separate cards */}
                         <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                          <GlobalStatsCards globalStats={globalStats} />
+                          <GlobalStatsCards statsData={statsData} />
                         </div>
                       </div>
                     )
@@ -2531,7 +2786,7 @@ export function Dashboard() {
                     return (
                       <div key={sectionId}>
                         {/* Responsive layout so each instance mounts once */}
-                        <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                        <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                           {statsData.map(instanceData => (
                             <InstanceCard
                               key={instanceData.instance.id}

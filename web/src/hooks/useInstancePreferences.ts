@@ -3,70 +3,150 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
+import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import type { AppPreferences } from "@/types"
 
-type UseInstancePreferencesOptions = {
+interface UseInstancePreferencesOptions {
+  fetchIfMissing?: boolean
   enabled?: boolean
 }
 
-export function useInstancePreferences(instanceId: number | undefined, options: UseInstancePreferencesOptions = {}) {
+export function useInstancePreferences(
+  instanceId: number | undefined,
+  options: UseInstancePreferencesOptions = {}
+) {
+  const { fetchIfMissing = true, enabled: externalEnabled = true } = options
   const queryClient = useQueryClient()
-  const shouldEnable = options.enabled ?? true
-  const queryEnabled = shouldEnable && typeof instanceId === "number"
-  const queryKey = ["instance-preferences", instanceId] as const
+  const metadataQueryKey = useMemo(
+    () => ["instance-metadata", instanceId] as const,
+    [instanceId]
+  )
+  const preferencesQueryKey = useMemo(
+    () => ["instance-preferences", instanceId] as const,
+    [instanceId]
+  )
 
-  const { data: preferences, isLoading, error } = useQuery({
-    queryKey,
-    queryFn: () => api.getInstancePreferences(instanceId!),
+  const cachedMetadata = queryClient.getQueryData<InstanceMetadata | undefined>(metadataQueryKey)
+  const cachedPreferences =
+    queryClient.getQueryData<AppPreferences | undefined>(preferencesQueryKey) ??
+    cachedMetadata?.preferences
+
+  const queryEnabled =
+    Boolean(externalEnabled) && fetchIfMissing && typeof instanceId === "number" && !cachedPreferences
+
+  const { data: preferences, isLoading, error } = useQuery<AppPreferences | undefined>({
+    queryKey: preferencesQueryKey,
+    queryFn: async () => {
+      if (instanceId === undefined) {
+        return undefined
+      }
+
+      if (cachedMetadata?.preferences) {
+        return cachedMetadata.preferences
+      }
+
+      const fresh = await api.getInstancePreferences(instanceId)
+      queryClient.setQueryData(metadataQueryKey, (previous: InstanceMetadata | undefined) => {
+        if (!previous) {
+          return {
+            categories: {},
+            tags: [],
+            preferences: fresh,
+          }
+        }
+
+        return {
+          ...previous,
+          preferences: fresh,
+        }
+      })
+
+      return fresh
+    },
     enabled: queryEnabled,
-    staleTime: 5000, // 5 seconds
-    refetchInterval: 60000, // Refetch every minute
-    placeholderData: (previousData) => previousData,
+    staleTime: cachedPreferences ? Infinity : 60000,
+    gcTime: 1800000,
+    refetchInterval: false,
+    placeholderData: previousData => previousData,
+    initialData: () => cachedPreferences,
   })
 
-  const updateMutation = useMutation({
-    mutationFn: (updatedPreferences: Partial<AppPreferences>) => {
+  const resolvedPreferences = preferences ?? cachedPreferences
+
+  const updateMutation = useMutation<
+    AppPreferences,
+    Error,
+    Partial<AppPreferences>,
+    { previousPreferences?: AppPreferences; previousMetadata?: InstanceMetadata }
+  >({
+    mutationFn: (partialPreferences: Partial<AppPreferences>) => {
       if (instanceId === undefined) throw new Error("No instance ID")
-      return api.updateInstancePreferences(instanceId, updatedPreferences)
+      return api.updateInstancePreferences(instanceId, partialPreferences)
     },
     onMutate: async (newPreferences) => {
       if (instanceId === undefined) {
-        return { previousPreferences: undefined }
+        return { previousPreferences: undefined, previousMetadata: undefined }
       }
-      // Cancel outgoing refetches
+
       await queryClient.cancelQueries({
-        queryKey,
+        queryKey: preferencesQueryKey,
       })
 
-      // Snapshot previous value
-      const previousPreferences = queryClient.getQueryData<AppPreferences>(queryKey)
+      const previousPreferences = queryClient.getQueryData<AppPreferences | undefined>(
+        preferencesQueryKey
+      )
+      const previousMetadata = queryClient.getQueryData<InstanceMetadata | undefined>(
+        metadataQueryKey
+      )
 
-      // Optimistically update
-      if (previousPreferences) {
-        queryClient.setQueryData(
-          queryKey,
-          { ...previousPreferences, ...newPreferences }
-        )
+      const basePreferences =
+        previousPreferences ?? previousMetadata?.preferences
+
+      if (basePreferences) {
+        const optimistic = { ...basePreferences, ...newPreferences }
+        queryClient.setQueryData(preferencesQueryKey, optimistic)
+
+        if (previousMetadata) {
+          queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, {
+            ...previousMetadata,
+            preferences: optimistic,
+          })
+        }
       }
 
-      return { previousPreferences }
+      return { previousPreferences, previousMetadata }
     },
     onError: (_err, _newPreferences, context) => {
-      // Rollback on error
-      if (context?.previousPreferences) {
-        queryClient.setQueryData(
-          queryKey,
-          context.previousPreferences
-        )
+      const rollbackPreferences =
+        context?.previousPreferences ?? context?.previousMetadata?.preferences
+
+      if (rollbackPreferences) {
+        queryClient.setQueryData(preferencesQueryKey, rollbackPreferences)
+      }
+
+      if (context?.previousMetadata) {
+        queryClient.setQueryData(metadataQueryKey, context.previousMetadata)
       }
     },
-    onSuccess: () => {
-      // Invalidate and refetch
-      queryClient.invalidateQueries({
-        queryKey,
+    onSuccess: (updatedPreferences) => {
+      queryClient.setQueryData(preferencesQueryKey, updatedPreferences)
+      queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, previous => {
+        if (!previous) {
+          return {
+            categories: {},
+            tags: [],
+            preferences: updatedPreferences,
+          }
+        }
+
+        return {
+          ...previous,
+          preferences: updatedPreferences,
+        }
       })
     },
   })
@@ -74,8 +154,8 @@ export function useInstancePreferences(instanceId: number | undefined, options: 
   type UpdatePreferencesOptions = Parameters<typeof updateMutation.mutate>[1]
 
   return {
-    preferences,
-    isLoading,
+    preferences: resolvedPreferences,
+    isLoading: fetchIfMissing && externalEnabled ? (isLoading && !resolvedPreferences) : false,
     error,
     updatePreferences: (updatedPreferences: Partial<AppPreferences>, options?: UpdatePreferencesOptions) =>
       updateMutation.mutate(updatedPreferences, options),

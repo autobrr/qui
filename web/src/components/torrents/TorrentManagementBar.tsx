@@ -91,7 +91,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const safeInstanceId = typeof instanceId === "number" && instanceId > 0 ? instanceId : 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(safeInstanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(safeInstanceId, {
+    fallbackDelayMs: 1500,
+  })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   const preferences = metadata?.preferences

@@ -6,9 +6,8 @@
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { useIsMobile } from "@/hooks/useMediaQuery"
-import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useEffect } from "react"
-import type { SelectionInfo } from "./GlobalStatusBar"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
@@ -28,8 +27,6 @@ interface TorrentTableResponsiveProps {
     useSubcategories?: boolean
   ) => void
   onFilterChange?: (filters: TorrentFilters) => void
-  onServerStateUpdate?: (serverState: ServerState | null, listenPort?: number | null) => void
-  onSelectionInfoUpdate?: (info: SelectionInfo) => void
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {

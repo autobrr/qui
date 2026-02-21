@@ -788,6 +788,7 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
+      preferCached?: boolean
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -797,10 +798,38 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`
     )
+  }
+
+  getTorrentsStreamBatchUrl(
+    streams: Array<{
+      key: string
+      instanceId: number
+      page: number
+      limit: number
+      sort: string
+      order: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters | null
+    }>
+  ): string {
+    const normalized = streams.map(stream => ({
+      key: stream.key,
+      instanceId: stream.instanceId,
+      page: stream.page,
+      limit: stream.limit,
+      sort: stream.sort,
+      order: stream.order,
+      search: stream.search ?? "",
+      filters: stream.filters ?? null,
+    }))
+
+    const payload = encodeURIComponent(JSON.stringify(normalized))
+    return withBasePath(`/api/stream?streams=${payload}`)
   }
 
   async getTorrentField(

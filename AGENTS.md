@@ -132,3 +132,7 @@ web/src/                     React 19 + Vite + TypeScript + Tailwind v4
 2. Torrent state cached in-memory with delta updates
 3. Frontend fetches via REST API, real-time updates via SSE
 4. Cross-seed service listens for torrent completion events
+
+## Notes
+
+- SSE migration follow-up: `web/src/components/torrents/TorrentDetailsPanel.tsx` still uses polling for live torrent state/files/pieces; next step is stream-backed detail updates where practical.

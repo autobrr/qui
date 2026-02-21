@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -244,3 +245,88 @@ func TestClientPool_IsBanError(t *testing.T) {
 		})
 	}
 }
+
+func TestClientPoolSetSyncEventSinkUpdatesExistingClients(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	// Create clients manually and add them to the pool
+	// These clients don't have a sink yet
+	client1 := &Client{instanceID: 1}
+	client2 := &Client{instanceID: 2}
+
+	pool.mu.Lock()
+	pool.clients[1] = client1
+	pool.clients[2] = client2
+	pool.mu.Unlock()
+
+	// Verify clients have no sink initially
+	assert.Nil(t, client1.getSyncEventSink(), "client1 should have no sink initially")
+	assert.Nil(t, client2.getSyncEventSink(), "client2 should have no sink initially")
+
+	// Create a mock sink
+	sink := &mockPoolSyncEventSink{}
+
+	// Set the sink on the pool
+	pool.SetSyncEventSink(sink)
+
+	// Verify all existing clients were updated with the sink
+	assert.Equal(t, sink, client1.getSyncEventSink(), "client1 should have the sink after SetSyncEventSink")
+	assert.Equal(t, sink, client2.getSyncEventSink(), "client2 should have the sink after SetSyncEventSink")
+
+	// Verify the pool itself stored the sink
+	pool.mu.RLock()
+	poolSink := pool.syncEventSink
+	pool.mu.RUnlock()
+	assert.Equal(t, sink, poolSink, "pool should have stored the sink")
+}
+
+func TestClientPoolSetSyncEventSinkWithNoClients(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	// Verify pool starts with no clients
+	pool.mu.RLock()
+	clientCount := len(pool.clients)
+	pool.mu.RUnlock()
+	assert.Equal(t, 0, clientCount, "pool should start with no clients")
+
+	// Setting sink should not panic when there are no clients
+	sink := &mockPoolSyncEventSink{}
+	pool.SetSyncEventSink(sink)
+
+	// Verify the pool stored the sink
+	pool.mu.RLock()
+	poolSink := pool.syncEventSink
+	pool.mu.RUnlock()
+	assert.Equal(t, sink, poolSink, "pool should have stored the sink even with no clients")
+}
+
+func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	// Create a client and add to pool
+	client := &Client{instanceID: 1}
+	pool.mu.Lock()
+	pool.clients[1] = client
+	pool.mu.Unlock()
+
+	// Set first sink
+	sink1 := &mockPoolSyncEventSink{id: 1}
+	pool.SetSyncEventSink(sink1)
+	assert.Equal(t, sink1, client.getSyncEventSink(), "client should have sink1")
+
+	// Set second sink (replaces first)
+	sink2 := &mockPoolSyncEventSink{id: 2}
+	pool.SetSyncEventSink(sink2)
+	assert.Equal(t, sink2, client.getSyncEventSink(), "client should have sink2 after replacement")
+}
+
+// mockPoolSyncEventSink is a simple mock for testing pool sink propagation.
+type mockPoolSyncEventSink struct {
+	id int
+}
+
+func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
+func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}
