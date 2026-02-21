@@ -157,7 +157,7 @@ func deviceID(path string) string {
 	if !ok {
 		return "unknown"
 	}
-	return strconv.FormatUint(uint64(sys.Dev), 10)
+	return strconv.FormatUint(sys.Dev, 10)
 }
 
 func filesystemType(path string) string {
