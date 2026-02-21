@@ -4,7 +4,6 @@
  */
 
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
-import { GlobalStatusBar, type SelectionInfo } from "@/components/torrents/GlobalStatusBar"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
 import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
@@ -23,7 +22,7 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
+import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
@@ -44,32 +43,12 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
-  // Server state for global status bar
-  const [serverState, setServerState] = useState<ServerState | null>(null)
-  const [listenPort, setListenPort] = useState<number | null>(null)
-  const handleServerStateUpdate = useCallback((state: ServerState | null, port?: number | null) => {
-    setServerState(state)
-    setListenPort(port ?? null)
-  }, [])
-
   useTitleBarSpeeds({
     mode: "instance",
     enabled: titleBarSpeedsEnabled,
     instanceId,
     instanceName: instance?.name,
-    foregroundSpeeds: serverState
-      ? {
-        dl: serverState.dl_info_speed ?? 0,
-        up: serverState.up_info_speed ?? 0,
-      }
-      : undefined,
   })
-
-  // Selection info for global status bar
-  const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null)
-  const handleSelectionInfoUpdate = useCallback((info: SelectionInfo) => {
-    setSelectionInfo(info)
-  }, [])
 
   // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
   const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
@@ -443,8 +422,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                     onAddTorrentModalChange={handleAddTorrentModalChange}
                     onFilteredDataUpdate={handleFilteredDataUpdate}
                     onFilterChange={setFilters}
-                    onServerStateUpdate={handleServerStateUpdate}
-                    onSelectionInfoUpdate={handleSelectionInfoUpdate}
                   />
                 </div>
               </ResizablePanel>
@@ -489,14 +466,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                 </>
               )}
             </ResizablePanelGroup>
-            {/* Global status bar - at bottom of desktop layout */}
-            <GlobalStatusBar
-              instanceId={instanceId}
-              serverState={serverState}
-              instance={instance}
-              listenPort={listenPort}
-              selectionInfo={selectionInfo}
-            />
           </div>
         )}
 
