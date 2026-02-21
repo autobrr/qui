@@ -77,25 +77,24 @@ export function useTorrentsList(
         return
       }
 
-      const hasCategories = Object.prototype.hasOwnProperty.call(source, "categories")
-      const hasTags = Object.prototype.hasOwnProperty.call(source, "tags")
       const hasPreferences = Object.prototype.hasOwnProperty.call(source, "preferences")
+      const isCrossInstanceSource = source.isCrossInstance === true
 
-      if (!hasCategories && !hasTags && !hasPreferences) {
+      if (isCrossInstanceSource && !hasPreferences) {
         return
       }
 
       queryClient.setQueryData<InstanceMetadata | undefined>(
         metadataQueryKey,
         previous => {
-          const nextCategories =
-            hasCategories && source.categories !== undefined
-              ? source.categories ?? {}
-              : previous?.categories ?? {}
-          const nextTags =
-            hasTags && source.tags !== undefined
-              ? source.tags ?? []
-              : previous?.tags ?? []
+          // Treat omitted metadata arrays/maps as empty for regular instance responses.
+          // Backend omitempty omits empty tags/categories, and we must clear stale cache values.
+          const nextCategories = isCrossInstanceSource
+            ? (previous?.categories ?? {})
+            : (source.categories ?? {})
+          const nextTags = isCrossInstanceSource
+            ? (previous?.tags ?? [])
+            : (source.tags ?? [])
           const nextPreferences =
             hasPreferences && source.preferences !== undefined
               ? (source.preferences as AppPreferences | undefined) ?? previous?.preferences

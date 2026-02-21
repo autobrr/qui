@@ -49,12 +49,13 @@ import type {
   InstanceResponse,
   QBittorrentAppInfo,
   ServerState,
+  TorrentResponse,
   TorrentCounts,
   TorrentStats,
   TrackerCustomization,
   TrackerTransferStats
 } from "@/types"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -249,6 +250,31 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
   const [instanceData, setInstanceData] = useState<Record<number, InstanceStreamData>>({})
   const latestDataRef = useRef<Record<number, InstanceStreamData>>({})
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fallbackQueries = useQueries({
+    queries: instances.map(instance => {
+      const streamState = instanceData[instance.id] ?? latestDataRef.current[instance.id]
+      const fallbackEnabled = !streamState || !streamState.streamConnected
+
+      return {
+        // Match first-page key used by torrent list so we can reuse query cache.
+        queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"] as const,
+        queryFn: () => api.getTorrents(instance.id, {
+          page: 0,
+          limit: 1,
+          sort: "added_on",
+          order: "desc",
+        }),
+        enabled: fallbackEnabled,
+        refetchInterval: fallbackEnabled ? 5000 : false,
+        refetchIntervalInBackground: false,
+        staleTime: 2000,
+        gcTime: 300000,
+        placeholderData: (previousData: TorrentResponse | undefined) => previousData,
+        retry: 1,
+        retryDelay: 1000,
+      }
+    }),
+  })
 
   const flushInstanceData = useCallback(
     (force = false) => {
@@ -493,8 +519,34 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
     }
   }, [])
 
-  return instances.map<DashboardInstanceStats>((instance) => {
+  return instances.map<DashboardInstanceStats>((instance, index) => {
     const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
+    const fallbackQuery = fallbackQueries[index]
+    const fallbackData = fallbackQuery?.data as TorrentResponse | undefined
+    const isFallbackActive = !state.streamConnected
+
+    const stats = isFallbackActive ? (fallbackData?.stats ?? state.stats) : state.stats
+    const serverState = isFallbackActive ? (fallbackData?.serverState ?? state.serverState) : state.serverState
+    const torrentCounts = isFallbackActive ? (fallbackData?.counts ?? state.torrentCounts) : state.torrentCounts
+    const appInfo = isFallbackActive ? (fallbackData?.appInfo ?? state.appInfo) : state.appInfo
+    const cacheMetadata = isFallbackActive ? (fallbackData?.cacheMetadata ?? state.cacheMetadata) : state.cacheMetadata
+
+    const hasHydratedData = Boolean(stats || serverState || torrentCounts)
+    const isLoading = isFallbackActive
+      ? (!hasHydratedData && (state.isLoading || fallbackQuery?.isLoading || fallbackQuery?.isFetching))
+      : state.isLoading
+    const error = (() => {
+      if (!isFallbackActive) {
+        return state.error
+      }
+      if (fallbackQuery?.error) {
+        return fallbackQuery.error
+      }
+      if (fallbackData) {
+        return null
+      }
+      return state.error
+    })()
 
     // Merge SSE instanceMeta into the instance object for real-time status updates
     // This allows components to use SSE-based connection status instead of polled data
@@ -509,16 +561,16 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
 
     return {
       instance: mergedInstance,
-      stats: state.stats,
-      serverState: state.serverState,
-      torrentCounts: state.torrentCounts,
-      appInfo: state.appInfo,
-      altSpeedEnabled: state.altSpeedEnabled,
-      isLoading: state.isLoading,
-      error: state.error,
+      stats,
+      serverState,
+      torrentCounts,
+      appInfo,
+      altSpeedEnabled: serverState?.use_alt_speed_limits || state.altSpeedEnabled,
+      isLoading,
+      error,
       streamConnected: state.streamConnected,
       streamError: state.streamError,
-      cacheMetadata: state.cacheMetadata,
+      cacheMetadata,
       instanceMeta: state.instanceMeta,
     }
   })
