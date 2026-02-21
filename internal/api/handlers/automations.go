@@ -54,6 +54,12 @@ type AutomationPayload struct {
 	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
 }
 
+type AutomationDryRunResult struct {
+	Status      string                       `json:"status"`
+	ActivityIDs []int                        `json:"activityIds,omitempty"`
+	Activities  []*models.AutomationActivity `json:"activities,omitempty"`
+}
+
 // toModel converts the payload to an Automation model.
 // If TrackerDomains is non-empty after normalization, it takes precedence over
 // TrackerPattern and the raw TrackerPattern input is ignored.
@@ -241,6 +247,55 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
 }
 
+func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	var payload AutomationPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode dry-run payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+		RespondError(w, status, msg)
+		return
+	}
+
+	automation := payload.toModel(instanceID, 0)
+	automation.Enabled = true
+	automation.DryRun = true
+
+	activities, err := h.service.ApplyRuleDryRun(r.Context(), instanceID, automation)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual dry-run failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to run dry-run")
+		return
+	}
+
+	activityIDs := make([]int, 0, len(activities))
+	for _, activity := range activities {
+		if activity == nil || activity.ID <= 0 {
+			continue
+		}
+		activityIDs = append(activityIDs, activity.ID)
+	}
+
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      "dry-run-completed",
+		ActivityIDs: activityIDs,
+		Activities:  activities,
+	})
+}
+
 func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 	instanceIDStr := chi.URLParam(r, "instanceID")
 	instanceID, err := strconv.Atoi(instanceIDStr)
@@ -271,6 +326,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
 		return http.StatusBadRequest, "At least one action must be configured", errors.New("conditions required")
 	}
+	payload.Conditions.Normalize()
 
 	// Validate category action has a category name
 	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
@@ -283,12 +339,16 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if payload.Conditions.Delete.Condition == nil {
 			return http.StatusBadRequest, "Delete action requires at least one condition", errors.New("delete condition required")
 		}
-	hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
-		(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
-		(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
-		(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
-		(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
-		(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
+		hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
+			(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
+			(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
+			(payload.Conditions.Resume != nil && payload.Conditions.Resume.Enabled) ||
+			(payload.Conditions.Recheck != nil && payload.Conditions.Recheck.Enabled) ||
+			(payload.Conditions.Reannounce != nil && payload.Conditions.Reannounce.Enabled) ||
+			(len(payload.Conditions.TagActions()) > 0) ||
+			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
+			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
+			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
@@ -331,6 +391,18 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	// would match all eligible torrents indefinitely (foot-gun).
 	if deleteUsesKeepFilesWithFreeSpace(payload.Conditions) {
 		return http.StatusBadRequest, "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed.", errors.New("invalid delete mode for free space condition")
+	}
+
+	if deleteUsesGroupIDOutsideKeepFiles(payload.Conditions) {
+		return http.StatusBadRequest, "delete.groupId is only supported when delete mode is 'Keep files'", errors.New("invalid delete mode for delete.groupId")
+	}
+
+	if msg, err := validateTagDeleteFromClientConfig(payload.Conditions); err != nil {
+		return http.StatusBadRequest, msg, err
+	}
+
+	if msg, err := validateConditionGroupingConfig(payload.Conditions); err != nil {
+		return http.StatusBadRequest, msg, err
 	}
 
 	// Validate includeHardlinks option
@@ -393,10 +465,23 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 	return (c.SpeedLimits != nil && check(c.SpeedLimits.Enabled, c.SpeedLimits.Condition)) ||
 		(c.ShareLimits != nil && check(c.ShareLimits.Enabled, c.ShareLimits.Condition)) ||
 		(c.Pause != nil && check(c.Pause.Enabled, c.Pause.Condition)) ||
+		(c.Resume != nil && check(c.Resume.Enabled, c.Resume.Condition)) ||
+		(c.Recheck != nil && check(c.Recheck.Enabled, c.Recheck.Condition)) ||
+		(c.Reannounce != nil && check(c.Reannounce.Enabled, c.Reannounce.Condition)) ||
 		(c.Delete != nil && check(c.Delete.Enabled, c.Delete.Condition)) ||
-		(c.Tag != nil && check(c.Tag.Enabled, c.Tag.Condition)) ||
+		anyEnabledTagActionUsesField(c.TagActions(), field) ||
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
+		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
 		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
+}
+
+func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations.ConditionField) bool {
+	for _, action := range actions {
+		if action != nil && action.Enabled && automations.ConditionUsesField(action.Condition, field) {
+			return true
+		}
+	}
+	return false
 }
 
 // conditionsRequireLocalAccess checks if any enabled action condition uses fields
@@ -422,6 +507,139 @@ func deleteUsesKeepFilesWithFreeSpace(conditions *models.ActionConditions) bool 
 	// Check if mode is keep-files (or empty, which defaults to keep-files)
 	mode := conditions.Delete.Mode
 	return mode == "" || mode == models.DeleteModeKeepFiles
+}
+
+func deleteUsesGroupIDOutsideKeepFiles(conditions *models.ActionConditions) bool {
+	if conditions == nil || conditions.Delete == nil || !conditions.Delete.Enabled {
+		return false
+	}
+
+	if strings.TrimSpace(conditions.Delete.GroupID) == "" {
+		return false
+	}
+
+	mode := strings.TrimSpace(conditions.Delete.Mode)
+	return mode != "" && mode != models.DeleteModeKeepFiles
+}
+
+func validateTagDeleteFromClientConfig(conditions *models.ActionConditions) (string, error) {
+	if conditions == nil {
+		return "", nil
+	}
+	for index, tagAction := range conditions.TagActions() {
+		if tagAction == nil || !tagAction.Enabled || !tagAction.DeleteFromClient {
+			continue
+		}
+		if tagAction.UseTrackerAsTag {
+			return fmt.Sprintf("tags[%d].deleteFromClient requires explicit tags; 'Use tracker name as tag' is not supported with deleteFromClient", index), errors.New("invalid tag deleteFromClient configuration")
+		}
+		if len(models.SanitizeCommaSeparatedStringSlice(tagAction.Tags)) == 0 {
+			return fmt.Sprintf("tags[%d].deleteFromClient requires at least one explicit tag", index), errors.New("invalid tag deleteFromClient configuration")
+		}
+	}
+
+	return "", nil
+}
+
+func validateConditionGroupingConfig(conditions *models.ActionConditions) (string, error) {
+	if conditions == nil {
+		return "", nil
+	}
+
+	knownGroupIDs := map[string]struct{}{
+		strings.ToLower(automations.GroupCrossSeedContentPath):     {},
+		strings.ToLower(automations.GroupCrossSeedContentSavePath): {},
+		strings.ToLower(automations.GroupReleaseItem):              {},
+		strings.ToLower(automations.GroupTrackerReleaseItem):       {},
+		strings.ToLower(automations.GroupHardlinkSignature):        {},
+	}
+
+	if conditions.Grouping != nil {
+		for _, group := range conditions.Grouping.Groups {
+			groupID := strings.ToLower(strings.TrimSpace(group.ID))
+			if groupID == "" {
+				continue
+			}
+			knownGroupIDs[groupID] = struct{}{}
+		}
+	}
+
+	for _, cond := range conditionTreesForValidation(conditions) {
+		if cond == nil {
+			continue
+		}
+		if msg, err := validateConditionTreeGroupIDs(cond, knownGroupIDs); err != nil {
+			return msg, err
+		}
+	}
+
+	return "", nil
+}
+
+func conditionTreesForValidation(conditions *models.ActionConditions) []*models.RuleCondition {
+	if conditions == nil {
+		return nil
+	}
+	var trees []*models.RuleCondition
+	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
+		trees = append(trees, conditions.SpeedLimits.Condition)
+	}
+	if conditions.ShareLimits != nil && conditions.ShareLimits.Enabled {
+		trees = append(trees, conditions.ShareLimits.Condition)
+	}
+	if conditions.Pause != nil && conditions.Pause.Enabled {
+		trees = append(trees, conditions.Pause.Condition)
+	}
+	if conditions.Resume != nil && conditions.Resume.Enabled {
+		trees = append(trees, conditions.Resume.Condition)
+	}
+	if conditions.Recheck != nil && conditions.Recheck.Enabled {
+		trees = append(trees, conditions.Recheck.Condition)
+	}
+	if conditions.Reannounce != nil && conditions.Reannounce.Enabled {
+		trees = append(trees, conditions.Reannounce.Condition)
+	}
+	if conditions.Delete != nil && conditions.Delete.Enabled {
+		trees = append(trees, conditions.Delete.Condition)
+	}
+	for _, action := range conditions.TagActions() {
+		if action != nil && action.Enabled {
+			trees = append(trees, action.Condition)
+		}
+	}
+	if conditions.Category != nil && conditions.Category.Enabled {
+		trees = append(trees, conditions.Category.Condition)
+	}
+	if conditions.Move != nil && conditions.Move.Enabled {
+		trees = append(trees, conditions.Move.Condition)
+	}
+	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled {
+		trees = append(trees, conditions.ExternalProgram.Condition)
+	}
+	return trees
+}
+
+func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map[string]struct{}) (string, error) {
+	if cond == nil {
+		return "", nil
+	}
+
+	if cond.Field == models.FieldGroupSize || cond.Field == models.FieldIsGrouped {
+		groupID := strings.TrimSpace(cond.GroupID)
+		if groupID != "" {
+			if _, ok := knownGroupIDs[strings.ToLower(groupID)]; !ok {
+				return fmt.Sprintf("Unknown grouping ID '%s' in grouped condition", groupID), errors.New("unknown grouped condition groupId")
+			}
+		}
+	}
+
+	for _, child := range cond.Conditions {
+		if msg, err := validateConditionTreeGroupIDs(child, knownGroupIDs); err != nil {
+			return msg, err
+		}
+	}
+
+	return "", nil
 }
 
 const (
@@ -779,14 +997,26 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	if conditions.Pause != nil {
 		validateConditionRegex(conditions.Pause.Condition, "/conditions/pause/condition", &result)
 	}
+	if conditions.Resume != nil {
+		validateConditionRegex(conditions.Resume.Condition, "/conditions/resume/condition", &result)
+	}
+	if conditions.Recheck != nil {
+		validateConditionRegex(conditions.Recheck.Condition, "/conditions/recheck/condition", &result)
+	}
+	if conditions.Reannounce != nil {
+		validateConditionRegex(conditions.Reannounce.Condition, "/conditions/reannounce/condition", &result)
+	}
 	if conditions.Delete != nil {
 		validateConditionRegex(conditions.Delete.Condition, "/conditions/delete/condition", &result)
 	}
-	if conditions.Tag != nil {
-		validateConditionRegex(conditions.Tag.Condition, "/conditions/tag/condition", &result)
+	for idx, action := range conditions.TagActions() {
+		validateConditionRegex(action.Condition, fmt.Sprintf("/conditions/tags/%d/condition", idx), &result)
 	}
 	if conditions.Category != nil {
 		validateConditionRegex(conditions.Category.Condition, "/conditions/category/condition", &result)
+	}
+	if conditions.Move != nil {
+		validateConditionRegex(conditions.Move.Condition, "/conditions/move/condition", &result)
 	}
 	if conditions.ExternalProgram != nil {
 		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
