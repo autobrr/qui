@@ -803,6 +803,7 @@ export interface TorrentResponse {
   crossInstanceTorrents?: CrossInstanceTorrent[]
   cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
   total: number
+  activeTaskCount?: number
   stats?: TorrentStats
   counts?: TorrentCounts
   categories?: Record<string, Category>

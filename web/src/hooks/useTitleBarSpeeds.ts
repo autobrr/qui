@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useRouteTitle } from "@/hooks/useRouteTitle"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import type { TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 const DEFAULT_DOCUMENT_TITLE = "qui"
 
@@ -63,18 +65,57 @@ export function useTitleBarSpeeds({
   const baseTitle = useRouteTitle()
   const lastSpeedTitleRef = useRef<string | null>(null)
   const lastBackgroundSpeedsRef = useRef<{ dl: number; up: number } | null>(null)
+  const [streamSpeeds, setStreamSpeeds] = useState<{ dl: number; up: number } | undefined>(undefined)
   const lastHiddenAtRef = useRef(0)
   const lastForegroundUpdateAtRef = useRef(0)
   const wasHiddenRef = useRef(false)
   const { isHidden, isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
 
+  const streamParams = useMemo(() => {
+    if (!enabled || typeof instanceId !== "number") {
+      return null
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }
+  }, [enabled, instanceId])
+
+  const handleStreamMessage = useCallback((payload: TorrentStreamPayload) => {
+    const serverState = payload.data?.serverState
+    if (!serverState) {
+      return
+    }
+
+    setStreamSpeeds({
+      dl: serverState.dl_info_speed ?? 0,
+      up: serverState.up_info_speed ?? 0,
+    })
+  }, [])
+
+  const streamState = useSyncStream(streamParams, {
+    enabled: Boolean(streamParams),
+    onMessage: handleStreamMessage,
+  })
+
+  useEffect(() => {
+    setStreamSpeeds(undefined)
+  }, [instanceId])
+
   const isForegroundStale = !isHidden && lastHiddenAtRef.current > lastForegroundUpdateAtRef.current
   const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds || isForegroundStale)
+  const shouldUseFallbackPolling = shouldPollBackground &&
+    !backgroundSpeedsOverride &&
+    (!streamState.connected || !!streamState.error || !streamSpeeds)
   const backgroundSpeedsQuery = useServerStateSpeeds(
     instanceId,
-    shouldPollBackground && !backgroundSpeedsOverride
+    shouldUseFallbackPolling
   )
-  const backgroundSpeeds = backgroundSpeedsOverride ?? backgroundSpeedsQuery
+  const backgroundSpeeds = backgroundSpeedsOverride ?? streamSpeeds ?? backgroundSpeedsQuery
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
   const effectiveSpeeds = isHiddenDelayed
     ? (backgroundSpeeds ?? cachedBackgroundSpeeds)

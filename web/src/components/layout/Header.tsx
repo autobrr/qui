@@ -26,6 +26,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
@@ -36,7 +37,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { InstanceCapabilities } from "@/types"
+import type { InstanceCapabilities, TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
@@ -142,15 +143,56 @@ export function Header({
   )
   const { theme } = useTheme()
   const { viewMode } = usePersistedCompactViewState("normal")
+  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
 
-  // Query active task count for badge (lightweight endpoint, only for instance routes)
-  const { data: activeTaskCount = 0 } = useQuery({
+  useEffect(() => {
+    setStreamActiveTaskCount(null)
+  }, [selectedInstanceId])
+
+  const activeTaskStreamParams = useMemo(() => {
+    if (!shouldShowInstanceControls || selectedInstanceId === null) {
+      return null
+    }
+
+    return {
+      instanceId: selectedInstanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }
+  }, [selectedInstanceId, shouldShowInstanceControls])
+
+  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
+    const value = payload.data?.activeTaskCount
+    if (typeof value === "number") {
+      setStreamActiveTaskCount(value)
+    }
+  }, [])
+
+  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
+    enabled: Boolean(activeTaskStreamParams),
+    onMessage: handleActiveTaskStreamMessage,
+  })
+
+  const shouldUseActiveTaskFallback =
+    shouldShowInstanceControls &&
+    selectedInstanceId !== null &&
+    (
+      !activeTaskStreamState.connected ||
+      !!activeTaskStreamState.error ||
+      streamActiveTaskCount === null
+    )
+
+  // Active task count is streamed via SSE; REST polling only runs as fallback.
+  const { data: polledActiveTaskCount = 0 } = useQuery({
     queryKey: ["active-task-count", selectedInstanceId],
     queryFn: () => selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
-    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    enabled: shouldUseActiveTaskFallback,
+    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false,
     refetchIntervalInBackground: true,
   })
+  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
 
   // Query for available updates
   const { data: updateInfo } = useQuery({

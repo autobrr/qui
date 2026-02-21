@@ -3,18 +3,61 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import type { TorrentStreamPayload } from "@/types"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 export function useAlternativeSpeedLimits(instanceId: number | undefined) {
   const queryClient = useQueryClient()
+  const [streamEnabled, setStreamEnabled] = useState<boolean | undefined>(undefined)
 
-  const { data, isLoading, error } = useQuery({
+  const streamParams = useMemo(() => {
+    if (!instanceId) {
+      return null
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }
+  }, [instanceId])
+
+  const handleStreamMessage = useCallback((payload: TorrentStreamPayload) => {
+    if (!instanceId) {
+      return
+    }
+
+    const value = payload.data?.serverState?.use_alt_speed_limits
+    if (typeof value !== "boolean") {
+      return
+    }
+
+    setStreamEnabled(value)
+    queryClient.setQueryData(["alternative-speed-limits", instanceId], { enabled: value })
+  }, [instanceId, queryClient])
+
+  const streamState = useSyncStream(streamParams, {
+    enabled: Boolean(streamParams),
+    onMessage: handleStreamMessage,
+  })
+
+  useEffect(() => {
+    setStreamEnabled(undefined)
+  }, [instanceId])
+
+  const shouldUseFallbackQuery = Boolean(instanceId) && (!streamState.connected || !!streamState.error)
+
+  const { data, isLoading: isFallbackLoading, error } = useQuery({
     queryKey: ["alternative-speed-limits", instanceId],
     queryFn: () => instanceId ? api.getAlternativeSpeedLimitsMode(instanceId) : null,
-    enabled: !!instanceId,
+    enabled: shouldUseFallbackQuery,
     staleTime: 5000, // 5 seconds
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: shouldUseFallbackQuery ? 30000 : false,
     placeholderData: (previousData) => previousData,
   })
 
@@ -62,8 +105,8 @@ export function useAlternativeSpeedLimits(instanceId: number | undefined) {
   })
 
   return {
-    enabled: data?.enabled ?? false,
-    isLoading,
+    enabled: streamEnabled ?? data?.enabled ?? false,
+    isLoading: streamEnabled === undefined && isFallbackLoading,
     error,
     toggle: toggleMutation.mutate,
     isToggling: toggleMutation.isPending,

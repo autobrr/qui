@@ -128,6 +128,7 @@ type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
 	Total                  int                        `json:"total"`
+	ActiveTaskCount        int                        `json:"activeTaskCount"`
 	Stats                  *TorrentStats              `json:"stats,omitempty"`
 	Counts                 *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
 	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
@@ -1302,6 +1303,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	response := &TorrentResponse{
 		Torrents:               paginatedViews,
 		Total:                  len(filteredTorrents),
+		ActiveTaskCount:        sm.GetActiveTaskCount(ctx, instanceID),
 		Stats:                  stats,
 		Counts:                 counts,      // Include counts for sidebar
 		Categories:             categories,  // Include categories for sidebar
