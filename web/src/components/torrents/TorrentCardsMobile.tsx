@@ -1677,10 +1677,19 @@ export function TorrentCardsMobile({
   }, [triggerSelectionAction])
 
   const handleDeleteWrapper = useCallback(async () => {
+    const deleteActionTargets = torrentToDelete
+      ? buildTorrentActionTargets([torrentToDelete], instanceId)
+      : (isAllSelected ? undefined : selectedActionTargets)
+
+    const crossSeedTagHashesToBlock = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(deleteTorrents, "cross-seed")
-      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+      const blocklistTargets = [
+        ...(deleteActionTargets ?? []),
+        ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
+      ]
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedTagHashesToBlock], blocklistTargets)
     }
 
     let hashes: string[]
@@ -1693,8 +1702,8 @@ export function TorrentCardsMobile({
     }
 
     // Include cross-seed hashes if user opted to delete them
-    const crossSeedHashes = deleteCrossSeeds ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
-    const hashesToDelete = [...hashes, ...crossSeedHashes]
+    const crossSeedHashesToDelete = deleteCrossSeeds ? crossSeedWarning.affectedTorrents.map((t) => t.hash) : []
+    const hashesToDelete = [...hashes, ...crossSeedHashesToDelete]
 
     let visibleHashes: string[]
     if (torrentToDelete) {
@@ -1708,7 +1717,7 @@ export function TorrentCardsMobile({
     }
 
     // Include cross-seeds in visible hashes for optimistic updates
-    const visibleHashesToDelete = [...visibleHashes, ...crossSeedHashes]
+    const visibleHashesToDelete = [...visibleHashes, ...crossSeedHashesToDelete]
 
     let totalSelected: number
     if (torrentToDelete) {
@@ -1720,10 +1729,7 @@ export function TorrentCardsMobile({
     }
 
     // Add cross-seed count
-    const totalToDelete = totalSelected + crossSeedHashes.length
-    const deleteActionTargets = torrentToDelete
-      ? buildTorrentActionTargets([torrentToDelete], instanceId)
-      : (isAllSelected ? undefined : selectedActionTargets)
+    const totalToDelete = totalSelected + crossSeedHashesToDelete.length
 
     await handleDelete(
       hashesToDelete,

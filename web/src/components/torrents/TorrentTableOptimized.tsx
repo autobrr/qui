@@ -2098,10 +2098,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   ])
 
   const handleDeleteWrapper = useCallback(async () => {
+    const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
-      const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+      const blocklistTargets = [
+        ...(contextClientMeta.actionTargets ?? []),
+        ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
+      ]
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], blocklistTargets)
     }
 
     // Include cross-seed hashes if user opted to delete them
@@ -2129,6 +2134,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     selectAllExcludeHashes,
     filters,
     handleDelete,
+    instanceId,
     isAllSelected,
     selectAllFilters,
     shouldBlockCrossSeeds,

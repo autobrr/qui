@@ -96,6 +96,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const actionInstanceId = hasActionScope ? instanceId : -1
   const metadataInstanceId = actionInstanceId > 0 ? actionInstanceId : 0
   const supportsCrossSeedDeleteTools = actionInstanceId > 0
+  const supportsCrossSeedBlocklist = actionInstanceId >= 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(metadataInstanceId)
@@ -220,9 +221,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   )
 
   const hasCrossSeedTag = useMemo(
-    () => supportsCrossSeedDeleteTools
+    () => supportsCrossSeedBlocklist
       && (anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedAffectedTorrents, "cross-seed")),
-    [supportsCrossSeedDeleteTools, selectedTorrents, crossSeedAffectedTorrents]
+    [supportsCrossSeedBlocklist, selectedTorrents, crossSeedAffectedTorrents]
   )
   const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
   const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(actionInstanceId)
@@ -276,7 +277,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
       const crossSeedHashes = supportsCrossSeedDeleteTools && deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedAffectedTorrents, "cross-seed") : []
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes])
+      const blocklistTargets = [
+        ...actionTargets,
+        ...buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId),
+      ]
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], blocklistTargets)
     }
 
     // Include cross-seed hashes if user opted to delete them
@@ -294,6 +299,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       deleteClientMeta
     )
   }, [
+    actionInstanceId,
+    actionTargets,
     blockCrossSeedHashes,
     clientMeta,
     crossSeedAffectedTorrents,
