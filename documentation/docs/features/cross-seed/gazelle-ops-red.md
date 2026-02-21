@@ -9,7 +9,7 @@ description: Cross-seed using Orpheus/Redacted Gazelle APIs, optionally alongsid
 qui can cross-seed between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs.
 
 :::tip TL;DR
-- Want the best OPS <-> RED cross-seed coverage: enable Gazelle and set **both** API keys.
+- Want the best OPS/RED cross-seed coverage: enable Gazelle and set **both** API keys.
 - If you set **only one** key, Gazelle matching still works, but coverage is **partial**:
   - OPS-sourced torrents need the **RED** key (because qui queries the opposite site)
   - RED-sourced torrents need the **OPS** key (because qui queries the opposite site)
@@ -84,7 +84,7 @@ Fix:
 - Enable Gazelle
 - Set at least one API key
 - If you changed `session_secret`, re-enter the key(s) (old encrypted values cannot be decrypted)
-- For best OPS <-> RED coverage, set **both** keys
+- For best OPS/RED coverage, set **both** keys
 
 ### Only One Key Set
 
