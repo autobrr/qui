@@ -140,6 +140,7 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
   return {
     data: instanceId ? metadata : undefined,
     isLoading,
+    isError: error !== null,
     error,
     refreshMetadata: refetchMetadata,
   }
