@@ -847,25 +847,67 @@ function InstanceCard({
               <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
                 {/* Issue rows - only shown when there are problems */}
                 {(torrentCounts?.status?.unregistered || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["unregistered"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
+                    }}
+                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
+                  >
                     <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                     <span className="text-destructive">Unregistered torrents</span>
                     <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.unregistered}</span>
-                  </div>
+                  </Link>
                 )}
                 {(torrentCounts?.status?.tracker_down || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["tracker_down"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
+                    }}
+                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
+                  >
                     <AlertCircle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
                     <span className="text-yellow-500">Tracker Down</span>
                     <span className="ml-auto font-medium text-yellow-500">{torrentCounts?.status?.tracker_down}</span>
-                  </div>
+                  </Link>
                 )}
                 {(torrentCounts?.status?.errored || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["errored"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
+                    }}
+                    className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
+                  >
                     <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                     <span className="text-destructive">Errors</span>
                     <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.errored}</span>
-                  </div>
+                  </Link>
                 )}
 
                 <div className="flex items-center gap-2 text-xs">
