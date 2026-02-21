@@ -47,7 +47,7 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 	payload := decodeStreamPayload(t, messages[0])
 	require.Equal(t, streamEventError, payload.Type)
 	require.Equal(t, sub.options.InstanceID, payload.Meta.InstanceID)
-	require.Greater(t, payload.Meta.RetryInSeconds, 0, "expected retry interval to be populated")
+	require.Positive(t, payload.Meta.RetryInSeconds, "expected retry interval to be populated")
 	require.Contains(t, payload.Err, "sync failed")
 }
 
@@ -191,7 +191,12 @@ func (p *recordingProvider) allMessages() []*sse.Message {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	var result []*sse.Message
+	total := 0
+	for _, msgs := range p.messages {
+		total += len(msgs)
+	}
+
+	result := make([]*sse.Message, 0, total)
 	for _, msgs := range p.messages {
 		result = append(result, msgs...)
 	}
@@ -344,11 +349,11 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 	wg.Add(numGoroutines)
 
 	// Run concurrent subscribe/unsubscribe operations
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(workerID int) {
 			defer wg.Done()
 
-			for j := 0; j < numIterations; j++ {
+			for j := range numIterations {
 				instanceID := (workerID % 5) + 1 // Use 5 different instances
 				subID := "sub-" + string(rune('A'+workerID)) + "-" + string(rune('0'+j%10))
 
@@ -417,7 +422,7 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 	// Goroutine 1: Publishing events
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			if manager.closing.Load() {
 				return
 			}
@@ -429,7 +434,7 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		time.Sleep(10 * time.Millisecond)
-		manager.Shutdown(context.Background())
+		_ = manager.Shutdown(context.Background())
 	}()
 
 	wg.Wait()
@@ -815,7 +820,8 @@ func TestShutdown_WithNilContext(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 
 	// Shutdown with nil context should not panic
-	err := manager.Shutdown(nil)
+	var shutdownCtx context.Context
+	err := manager.Shutdown(shutdownCtx)
 	require.NoError(t, err)
 	require.True(t, manager.closing.Load())
 }

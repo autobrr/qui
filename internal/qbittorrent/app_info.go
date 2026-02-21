@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -67,22 +68,22 @@ func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, appInfoRequestTimeout)
 	defer cancel()
 
-	version, err := c.Client.GetAppVersionCtx(requestCtx)
+	version, err := c.GetAppVersionCtx(requestCtx)
 	if err != nil {
 		return nil, fmt.Errorf("get app version: %w", err)
 	}
 
-	webAPIVersion, err := c.Client.GetWebAPIVersionCtx(requestCtx)
+	webAPIVersion, err := c.GetWebAPIVersionCtx(requestCtx)
 	if err != nil {
 		return nil, fmt.Errorf("get web API version: %w", err)
 	}
 
 	webAPIVersion = strings.TrimSpace(webAPIVersion)
 	if webAPIVersion == "" {
-		return nil, fmt.Errorf("web API version is empty")
+		return nil, errors.New("web API version is empty")
 	}
 
-	buildInfo, err := c.Client.GetBuildInfoCtx(requestCtx)
+	buildInfo, err := c.GetBuildInfoCtx(requestCtx)
 	if err != nil {
 		return nil, fmt.Errorf("get build info: %w", err)
 	}

@@ -243,11 +243,12 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if response.CacheMetadata != nil && response.CacheMetadata.Source != "" {
+	switch {
+	case response.CacheMetadata != nil && response.CacheMetadata.Source != "":
 		w.Header().Set("X-Data-Source", response.CacheMetadata.Source)
-	} else if preferCached {
+	case preferCached:
 		w.Header().Set("X-Data-Source", "cache")
-	} else {
+	default:
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 

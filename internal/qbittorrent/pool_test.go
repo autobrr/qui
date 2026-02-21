@@ -328,5 +328,5 @@ type mockPoolSyncEventSink struct {
 	id int
 }
 
-func (m *mockPoolSyncEventSink) HandleMainData(instanceID int, data *qbt.MainData) {}
-func (m *mockPoolSyncEventSink) HandleSyncError(instanceID int, err error)         {}
+func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
+func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}

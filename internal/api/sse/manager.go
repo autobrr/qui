@@ -107,7 +107,7 @@ type StreamManager struct {
 	heartbeatLoops map[int]*heartbeatLoopState
 	syncBackoff    map[int]*backoffState
 
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // lifecycle root context used only for coordinated shutdown
 	cancel context.CancelFunc
 }
 
@@ -206,7 +206,7 @@ func (m *StreamManager) Server() http.Handler {
 // PrepareBatch registers one or more subscribers and returns a context that carries their session ids.
 func (m *StreamManager) PrepareBatch(ctx context.Context, requests []streamRequest) (context.Context, []string, error) {
 	if m.closing.Load() {
-		return ctx, nil, fmt.Errorf("stream manager shutting down")
+		return ctx, nil, errors.New("stream manager shutting down")
 	}
 
 	if len(requests) == 0 {
@@ -239,7 +239,7 @@ func (m *StreamManager) PrepareBatch(ctx context.Context, requests []streamReque
 
 func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey string) (string, error) {
 	if m.closing.Load() {
-		return "", fmt.Errorf("stream manager shutting down")
+		return "", errors.New("stream manager shutting down")
 	}
 
 	id := fmt.Sprintf("qui-session-%d", m.counter.Add(1))
@@ -878,16 +878,10 @@ func (m *StreamManager) markSyncFailure(instanceID int) time.Duration {
 	state.attempt++
 
 	exponent := state.attempt
-	if exponent > 4 {
-		exponent = 4
-	}
+	exponent = min(exponent, 4)
 	interval := defaultSyncInterval * time.Duration(1<<exponent)
-	if interval > maxSyncInterval {
-		interval = maxSyncInterval
-	}
-	if interval < defaultSyncInterval {
-		interval = defaultSyncInterval
-	}
+	interval = min(interval, maxSyncInterval)
+	interval = max(interval, defaultSyncInterval)
 
 	state.interval = interval
 	m.restartSyncLoopLocked(instanceID, interval)
@@ -1065,12 +1059,12 @@ func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
 	query := r.URL.Query()
 	raw := query.Get("streams")
 	if raw == "" {
-		return nil, fmt.Errorf("missing streams parameter")
+		return nil, errors.New("missing streams parameter")
 	}
 
 	var payloads []streamRequestPayload
 	if err := json.Unmarshal([]byte(raw), &payloads); err != nil {
-		return nil, fmt.Errorf("invalid streams payload")
+		return nil, errors.New("invalid streams payload")
 	}
 
 	if len(payloads) == 0 {
@@ -1102,12 +1096,12 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 	if limit <= 0 {
 		limit = defaultLimit
 	} else if limit > maxLimit {
-		return StreamOptions{}, fmt.Errorf("invalid limit value")
+		return StreamOptions{}, errors.New("invalid limit value")
 	}
 
 	page := p.Page
 	if page < 0 {
-		return StreamOptions{}, fmt.Errorf("invalid page value")
+		return StreamOptions{}, errors.New("invalid page value")
 	}
 
 	sort := p.Sort

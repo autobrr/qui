@@ -44,7 +44,7 @@ func (c *Client) refreshAppPreferences(ctx context.Context) (*qbt.AppPreferences
 	requestCtx, cancel := context.WithTimeout(ctx, appPreferencesRequestTimeout)
 	defer cancel()
 
-	prefs, err := c.Client.GetAppPreferencesCtx(requestCtx)
+	prefs, err := c.GetAppPreferencesCtx(requestCtx)
 	if err != nil {
 		return nil, fmt.Errorf("get app preferences: %w", err)
 	}
