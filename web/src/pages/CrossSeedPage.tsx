@@ -1,11 +1,23 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
+import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
+import { DirScanTab } from "@/components/cross-seed/DirScanTab"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,15 +28,16 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
@@ -72,9 +85,16 @@ interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
-  useCrossCategorySuffix: boolean
+  useCrossCategoryAffix: boolean
+  categoryAffixMode: "prefix" | "suffix"
+  categoryAffix: string
+  useCustomCategory: boolean
+  customCategory: string
   runExternalProgramId?: number | null
-  ignorePatterns: string
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -96,10 +116,14 @@ interface GlobalCrossSeedSettings {
   // Note: Hardlink mode settings have been moved to per-instance configuration
 }
 
+// Category mode type for type-safe radio group
+type CategoryMode = "reuse" | "affix" | "indexer" | "custom"
+
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
 const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
+const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
 
 // RSS Automation defaults
@@ -118,9 +142,15 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
-  useCrossCategorySuffix: true,
+  useCrossCategoryAffix: true,
+  categoryAffixMode: "suffix",
+  categoryAffix: ".cross",
+  useCustomCategory: false,
+  customCategory: "",
   runExternalProgramId: null,
-  ignorePatterns: "",
+  gazelleEnabled: false,
+  redactedApiKey: "",
+  orpheusApiKey: "",
   // Source-specific tagging defaults
   rssAutomationTags: ["cross-seed"],
   seededSearchTags: ["cross-seed"],
@@ -142,13 +172,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
-function parseList(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
 function normalizeStringList(values: string[]): string[] {
   return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
 }
@@ -161,21 +184,9 @@ function normalizeNumberList(values: Array<string | number>): number[] {
   ))
 }
 
-function normalizeIgnorePatterns(patterns: string): string[] {
-  return parseList(patterns.replace(/\r/g, ""))
-}
-
-function validateIgnorePatterns(raw: string): string {
-  const text = raw.replace(/\r/g, "")
-  const parts = text.split(/\n|,/)
-  for (const part of parts) {
-    const pattern = part.trim()
-    if (!pattern) continue
-    if (pattern.length > 256) {
-      return "Ignore patterns must be shorter than 256 characters"
-    }
-  }
-  return ""
+function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
+  const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
+  return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
@@ -218,8 +229,79 @@ function aggregateInstanceMetadata(
 }
 
 interface CrossSeedPageProps {
-  activeTab: "auto" | "scan" | "rules"
-  onTabChange: (tab: "auto" | "scan" | "rules") => void
+  activeTab: "auto" | "scan" | "dir-scan" | "rules" | "blocklist"
+  onTabChange: (tab: "auto" | "scan" | "dir-scan" | "rules" | "blocklist") => void
+}
+
+interface RSSRunItemProps {
+  run: CrossSeedRun
+  formatDateValue: (date: string | undefined) => string
+}
+
+/** Single RSS run item - used for scheduled, manual, and other run lists */
+function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
+  const hasResults = run.results && run.results.length > 0
+  const successResults = run.results?.filter(r => r.success) ?? []
+  const failedResults = run.results?.filter(r => !r.success && r.message) ?? []
+
+  return (
+    <Collapsible>
+      <CollapsibleTrigger asChild disabled={!hasResults}>
+        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+            {run.torrentsFailed > 0 && (
+              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+            )}
+            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+          </div>
+        </div>
+      </CollapsibleTrigger>
+      {hasResults && (
+        <CollapsibleContent>
+          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+            {successResults.map((result, i) => (
+              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                {result.indexerName && (
+                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                )}
+                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+              </div>
+            ))}
+            {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+              <span className="text-xs text-muted-foreground">No results with details</span>
+            )}
+            {failedResults.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
+                {failedResults.map((result, i) => (
+                  <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                      {result.indexerName && (
+                        <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground pl-1">{result.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  )
 }
 
 /** Per-instance hardlink/reflink mode settings component */
@@ -227,12 +309,14 @@ function HardlinkModeSettings() {
   const { instances, updateInstance, isUpdating } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dirtyMap, setDirtyMap] = useState<Record<number, boolean>>({})
-  const [formMap, setFormMap] = useState<Record<number, {
+  type InstanceFormState = {
     useHardlinks: boolean
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
-  }>>({})
+    fallbackToRegularMode: boolean
+  }
+  const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
 
   const activeInstances = useMemo(
@@ -254,118 +338,15 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
 
-  const handleToggleHardlink = (instance: Instance, enabled: boolean) => {
-    if (!instance.hasLocalFilesystemAccess && enabled) {
-      toast.error("Cannot enable hardlink mode", {
-        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
-      })
-      return
-    }
-
-    const form = getForm(instance)
-
-    // Block enabling with empty base directory
-    if (enabled && !form.hardlinkBaseDir.trim()) {
-      toast.error("Cannot enable hardlink mode", {
-        description: "Base directory must be set first.",
-      })
-      return
-    }
-
-    // Mutual exclusivity: disable reflink when enabling hardlink
-    const newReflinks = enabled ? false : form.useReflinks
-
-    updateInstance({
-      id: instance.id,
-      data: {
-        name: instance.name,
-        host: instance.host,
-        username: instance.username,
-        useHardlinks: enabled,
-        useReflinks: newReflinks,
-        hardlinkBaseDir: form.hardlinkBaseDir,
-        hardlinkDirPreset: form.hardlinkDirPreset,
-      },
-    }, {
-      onSuccess: () => {
-        toast.success(`Hardlink mode ${enabled ? "enabled" : "disabled"}`, {
-          description: instance.name,
-        })
-        // Sync formMap with server state to prevent visual snap-back
-        setFormMap((prev) => ({
-          ...prev,
-          [instance.id]: { ...form, useHardlinks: enabled, useReflinks: newReflinks },
-        }))
-        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
-      },
-      onError: (error) => {
-        toast.error("Failed to update settings", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        })
-      },
-    })
-  }
-
-  const handleToggleReflink = (instance: Instance, enabled: boolean) => {
-    if (!instance.hasLocalFilesystemAccess && enabled) {
-      toast.error("Cannot enable reflink mode", {
-        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
-      })
-      return
-    }
-
-    const form = getForm(instance)
-
-    // Block enabling with empty base directory
-    if (enabled && !form.hardlinkBaseDir.trim()) {
-      toast.error("Cannot enable reflink mode", {
-        description: "Base directory must be set first.",
-      })
-      return
-    }
-
-    // Mutual exclusivity: disable hardlink when enabling reflink
-    const newHardlinks = enabled ? false : form.useHardlinks
-
-    updateInstance({
-      id: instance.id,
-      data: {
-        name: instance.name,
-        host: instance.host,
-        username: instance.username,
-        useHardlinks: newHardlinks,
-        useReflinks: enabled,
-        hardlinkBaseDir: form.hardlinkBaseDir,
-        hardlinkDirPreset: form.hardlinkDirPreset,
-      },
-    }, {
-      onSuccess: () => {
-        toast.success(`Reflink mode ${enabled ? "enabled" : "disabled"}`, {
-          description: instance.name,
-        })
-        // Sync formMap with server state to prevent visual snap-back
-        setFormMap((prev) => ({
-          ...prev,
-          [instance.id]: { ...form, useHardlinks: newHardlinks, useReflinks: enabled },
-        }))
-        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
-      },
-      onError: (error) => {
-        toast.error("Failed to update settings", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        })
-      },
-    })
-  }
-
-  const handleFormChange = (
+  const handleFormChange = <K extends keyof InstanceFormState>(
     instanceId: number,
-    field: "hardlinkBaseDir" | "hardlinkDirPreset",
-    value: string,
-    currentForm: { useHardlinks: boolean; useReflinks: boolean; hardlinkBaseDir: string; hardlinkDirPreset: "flat" | "by-tracker" | "by-instance" }
+    field: K,
+    value: InstanceFormState[K],
+    currentForm: InstanceFormState
   ) => {
     setFormMap((prev) => ({
       ...prev,
@@ -377,8 +358,42 @@ function HardlinkModeSettings() {
     setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
   }
 
+  const handleModeChange = (
+    instanceId: number,
+    mode: "regular" | "hardlink" | "reflink",
+    currentForm: InstanceFormState
+  ) => {
+    setFormMap((prev) => ({
+      ...prev,
+      [instanceId]: {
+        ...currentForm,
+        useHardlinks: mode === "hardlink",
+        useReflinks: mode === "reflink",
+      },
+    }))
+    setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
+  }
+
   const handleSave = (instance: Instance) => {
     const form = getForm(instance)
+
+    // Validate before saving
+    if ((form.useHardlinks || form.useReflinks) && !instance.hasLocalFilesystemAccess) {
+      const mode = form.useReflinks ? "reflink" : "hardlink"
+      toast.error(`Cannot enable ${mode} mode`, {
+        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
+      })
+      return
+    }
+
+    if ((form.useHardlinks || form.useReflinks) && !form.hardlinkBaseDir.trim()) {
+      const mode = form.useReflinks ? "reflink" : "hardlink"
+      toast.error(`Cannot enable ${mode} mode`, {
+        description: "Base directory must be set first.",
+      })
+      return
+    }
+
     updateInstance({
       id: instance.id,
       data: {
@@ -389,6 +404,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
       onSuccess: () => {
@@ -475,96 +491,121 @@ function HardlinkModeSettings() {
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
                     <div className="space-y-4 pt-2">
-                      {/* Hardlink mode toggle */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium">Hardlink mode</Label>
+                      {/* Link mode selection */}
+                      <div className="space-y-2">
+                        <Label className="font-medium">Cross-seed mode</Label>
+                        {!canEnableModes && (
                           <p className="text-xs text-muted-foreground">
-                            {canEnableModes
-                              ? "Create hardlinked file trees (strict piece-boundary check)"
-                              : "Enable \"Local filesystem access\" in Instance Settings first"}
+                            Enable "Local filesystem access" in Instance Settings to use hardlink or reflink modes.
                           </p>
-                        </div>
-                        <Switch
-                          checked={form.useHardlinks}
-                          onCheckedChange={(value) => handleToggleHardlink(instance, !!value)}
-                          disabled={!canEnableModes || isUpdating}
-                        />
+                        )}
+                        <RadioGroup
+                          value={form.useReflinks ? "reflink" : form.useHardlinks ? "hardlink" : "regular"}
+                          onValueChange={(value) => handleModeChange(instance.id, value as "regular" | "hardlink" | "reflink", form)}
+                          disabled={isUpdating}
+                          className="space-y-2"
+                        >
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem value="regular" id={`mode-regular-${instance.id}`} className="mt-0.5" />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-regular-${instance.id}`} className="font-medium cursor-pointer">Regular</Label>
+                              <p className="text-xs text-muted-foreground">Reuse existing files in place. Fast, no extra disk space.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem
+                              value="hardlink"
+                              id={`mode-hardlink-${instance.id}`}
+                              className="mt-0.5"
+                              disabled={!canEnableModes}
+                            />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-hardlink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>Hardlink</Label>
+                              <p className="text-xs text-muted-foreground">Create hardlinked file trees. No extra disk space, strict piece-boundary check.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem
+                              value="reflink"
+                              id={`mode-reflink-${instance.id}`}
+                              className="mt-0.5"
+                              disabled={!canEnableModes}
+                            />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>Reflink (copy-on-write)</Label>
+                              <p className="text-xs text-muted-foreground">Create reflinked clones. Safer for extra/missing files, mitigates corruption best.</p>
+                            </div>
+                          </div>
+                        </RadioGroup>
                       </div>
 
-                      {/* Reflink mode toggle */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium">Reflink mode (copy-on-write)</Label>
-                          <p className="text-xs text-muted-foreground">
-                            {canEnableModes
-                              ? "Create reflinked clones. Safer for extra/missing files. Mitigates corruption best. Rechecks when needed"
-                              : "Enable \"Local filesystem access\" in Instance Settings first"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={form.useReflinks}
-                          onCheckedChange={(value) => handleToggleReflink(instance, !!value)}
-                          disabled={!canEnableModes || isUpdating}
-                        />
-                      </div>
+                      {(form.useHardlinks || form.useReflinks) && (
+                        <>
+                          <Separator />
 
-                      {form.useReflinks && (
-                        <Alert className="bg-blue-500/5 border-blue-500/30">
-                          <Info className="h-4 w-4 text-blue-500" />
-                          <AlertDescription className="text-xs">
-                            Reflink mode triggers recheck when extra files are present so qBittorrent can download
-                            missing pieces. If completion is below threshold, the torrent remains paused for manual
-                            review. Disk usage starts near-zero but grows as blocks are modified.
-                          </AlertDescription>
-                        </Alert>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Base directories</Label>
+                              <Input
+                                placeholder="/path/to/crossseed-data, /other/path/to/crossseed-data"
+                                value={form.hardlinkBaseDir}
+                                onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Comma-separated paths. The first directory on the same filesystem as the source will be used.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label>Directory organization</Label>
+                              <Select
+                                value={form.hardlinkDirPreset}
+                                onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
+                                  handleFormChange(instance.id, "hardlinkDirPreset", value, form)
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="flat">Flat (all in base directory)</SelectItem>
+                                  <SelectItem value="by-tracker">By Tracker</SelectItem>
+                                  <SelectItem value="by-instance">By Instance</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`fallback-${instance.id}`}
+                                checked={form.fallbackToRegularMode}
+                                onCheckedChange={(checked) =>
+                                  handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
+                                }
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                  Fallback to regular mode on error
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode using existing files.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
                       )}
 
-                      <Separator />
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Base directory</Label>
-                          <Input
-                            placeholder="/path/to/crossseed-data"
-                            value={form.hardlinkBaseDir}
-                            onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Must be on the same filesystem as download paths. Used by both hardlink and reflink modes.
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Directory organization</Label>
-                          <Select
-                            value={form.hardlinkDirPreset}
-                            onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
-                              handleFormChange(instance.id, "hardlinkDirPreset", value, form)
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="flat">Flat (all in base directory)</SelectItem>
-                              <SelectItem value="by-tracker">By Tracker</SelectItem>
-                              <SelectItem value="by-instance">By Instance</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {isDirty && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleSave(instance)}
-                            disabled={isUpdating}
-                          >
-                            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Changes
-                          </Button>
-                        )}
-                      </div>
+                      {isDirty && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleSave(instance)}
+                          disabled={isUpdating}
+                        >
+                          {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save Changes
+                        </Button>
+                      )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -594,6 +635,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const [searchCategories, setSearchCategories] = useState<string[]>([])
   const [searchTags, setSearchTags] = useState<string[]>([])
   const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>([])
+  const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(true)
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
   const [searchSettingsInitialized, setSearchSettingsInitialized] = useState(false)
@@ -633,7 +675,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const { data: runs, refetch: refetchRuns } = useQuery({
     queryKey: ["cross-seed", "runs"],
-    queryFn: () => api.listCrossSeedRuns({ limit: 20 }),
+    queryFn: () => api.listCrossSeedRuns({ limit: 10 }),
   })
 
   const { data: instances } = useQuery({
@@ -685,6 +727,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
     refetchInterval: 5_000,
+  })
+
+  const { data: searchRuns, refetch: refetchSearchRuns } = useQuery({
+    queryKey: ["cross-seed", "search-runs", searchInstanceId],
+    queryFn: () => searchInstanceId ? api.listCrossSeedSearchRuns(searchInstanceId, { limit: 10 }) : Promise.resolve([]),
+    enabled: !!searchInstanceId,
   })
 
   const { data: searchMetadata } = useQuery({
@@ -775,15 +823,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   useEffect(() => {
     if (settings && !globalSettingsInitialized) {
+      // Normalize category flags: ensure exactly one mode is active (priority: custom > indexer > affix > reuse)
+      const useCustomCategory = settings.useCustomCategory ?? false
+      const useCategoryFromIndexer = !useCustomCategory && (settings.useCategoryFromIndexer ?? false)
+      const useCrossCategoryAffix = !useCustomCategory && !useCategoryFromIndexer && (settings.useCrossCategoryAffix ?? true)
+
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
-        useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCategoryFromIndexer,
+        useCrossCategoryAffix,
+        categoryAffixMode: settings.categoryAffixMode ?? "suffix",
+        categoryAffix: settings.categoryAffix ?? ".cross",
+        useCustomCategory,
+        customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: Array.isArray(settings.ignorePatterns)
-          ? settings.ignorePatterns.join("\n")
-          : "",
+        gazelleEnabled: settings.gazelleEnabled ?? false,
+        redactedApiKey: settings.redactedApiKey ?? "",
+        orpheusApiKey: settings.orpheusApiKey ?? "",
         // Source-specific tagging
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
@@ -821,21 +878,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     setSearchSettingsInitialized(true)
   }, [searchSettings, searchSettingsInitialized])
 
-  const ignorePatternError = useMemo(
-    () => validateIgnorePatterns(globalSettings.ignorePatterns),
-    [globalSettings.ignorePatterns]
-  )
-
-  useEffect(() => {
-    setValidationErrors(prev => {
-      const current = prev.ignorePatterns ?? ""
-      if (current === ignorePatternError) {
-        return prev
-      }
-      return { ...prev, ignorePatterns: ignorePatternError }
-    })
-  }, [ignorePatternError])
-
   useEffect(() => {
     if (!searchInstanceId && instances && instances.length > 0) {
       setSearchInstanceId(instances[0].id)
@@ -845,18 +887,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildAutomationPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const automationSource = formInitialized
-      ? automationForm
-      : {
-        enabled: settings.enabled,
-        runIntervalMinutes: settings.runIntervalMinutes,
-        targetInstanceIds: settings.targetInstanceIds,
-        targetIndexerIds: settings.targetIndexerIds,
-        rssSourceCategories: settings.rssSourceCategories ?? [],
-        rssSourceTags: settings.rssSourceTags ?? [],
-        rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
-        rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
-      }
+    const automationSource = formInitialized? automationForm: {
+      enabled: settings.enabled,
+      runIntervalMinutes: settings.runIntervalMinutes,
+      targetInstanceIds: settings.targetInstanceIds,
+      targetIndexerIds: settings.targetIndexerIds,
+      rssSourceCategories: settings.rssSourceCategories ?? [],
+      rssSourceTags: settings.rssSourceTags ?? [],
+      rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
+      rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
+    }
 
     return {
       enabled: automationSource.enabled,
@@ -873,42 +913,55 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const ignorePatterns = Array.isArray(settings.ignorePatterns) ? settings.ignorePatterns : []
+    // Normalize category flags for fallback path (same priority as init: custom > indexer > affix > reuse)
+    const fallbackCustom = settings.useCustomCategory ?? false
+    const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
+    const fallbackAffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategoryAffix ?? true)
 
-    const globalSource = globalSettingsInitialized
-      ? globalSettings
-      : {
-        findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-        useCategoryFromIndexer: settings.useCategoryFromIndexer,
-        useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
-        runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
-        rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
-        seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
-        completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
-        webhookTags: settings.webhookTags ?? ["cross-seed"],
-        inheritSourceTags: settings.inheritSourceTags ?? false,
-        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
-        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
-        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
-        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
-        skipRecheck: settings.skipRecheck ?? false,
-        skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
-        webhookSourceCategories: settings.webhookSourceCategories ?? [],
-        webhookSourceTags: settings.webhookSourceTags ?? [],
-        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
-        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
-        // Note: Hardlink mode is now per-instance
-      }
+    const globalSource = globalSettingsInitialized ? globalSettings : {
+      findIndividualEpisodes: settings.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: fallbackIndexer,
+      useCrossCategoryAffix: fallbackAffix,
+      categoryAffixMode: settings.categoryAffixMode ?? "suffix",
+      categoryAffix: settings.categoryAffix ?? ".cross",
+      useCustomCategory: fallbackCustom,
+      customCategory: settings.customCategory ?? "",
+      runExternalProgramId: settings.runExternalProgramId ?? null,
+      gazelleEnabled: settings.gazelleEnabled ?? false,
+      redactedApiKey: settings.redactedApiKey ?? "",
+      orpheusApiKey: settings.orpheusApiKey ?? "",
+      rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
+      seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
+      completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
+      webhookTags: settings.webhookTags ?? ["cross-seed"],
+      inheritSourceTags: settings.inheritSourceTags ?? false,
+      skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+      skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+      skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+      skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+      skipRecheck: settings.skipRecheck ?? false,
+      skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+      webhookSourceCategories: settings.webhookSourceCategories ?? [],
+      webhookSourceTags: settings.webhookSourceTags ?? [],
+      webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+      webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+      // Note: Hardlink mode is now per-instance
+    }
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
-      useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
+      useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
+      categoryAffixMode: globalSource.categoryAffixMode,
+      categoryAffix: globalSource.categoryAffix,
+      useCustomCategory: globalSource.useCustomCategory,
+      customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
-      ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
+      gazelleEnabled: globalSource.gazelleEnabled,
+      redactedApiKey: globalSource.redactedApiKey,
+      orpheusApiKey: globalSource.orpheusApiKey,
       // Source-specific tagging
       rssAutomationTags: globalSource.rssAutomationTags,
       seededSearchTags: globalSource.seededSearchTags,
@@ -953,9 +1006,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     onSuccess: () => {
       toast.success("Search run started")
       refetchSearchStatus()
+      refetchSearchRuns()
     },
     onError: (error: Error) => {
-      if (handleIndexerError(error, "Seeded Torrent Search cannot run without Torznab indexers.")) {
+      if (handleIndexerError(error, "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle).")) {
         return
       }
       toast.error(error.message)
@@ -967,6 +1021,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     onSuccess: () => {
       toast.success("Search run canceled")
       refetchSearchStatus()
+      refetchSearchRuns()
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -988,6 +1043,20 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     },
   })
 
+  const cancelAutomationRunMutation = useMutation({
+    mutationFn: () => api.cancelCrossSeedAutomationRun(),
+    onSuccess: () => {
+      toast.success("RSS automation run canceled")
+      refetchStatus()
+      refetchRuns()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const [showCancelAutomationDialog, setShowCancelAutomationDialog] = useState(false)
+
   const handleSaveAutomation = () => {
     setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "", targetInstanceIds: "" }))
 
@@ -1008,13 +1077,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
-    if (ignorePatternError) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
-      return
-    }
+    // Clear prior validation errors
+    setValidationErrors(prev => ({ ...prev, customCategory: "" }))
 
-    if (validationErrors.ignorePatterns) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
+    // Validate custom category mode has a category specified
+    if (globalSettings.useCustomCategory && !globalSettings.customCategory.trim()) {
+      setValidationErrors(prev => ({ ...prev, customCategory: "Custom category mode requires a category name" }))
+      return
     }
 
     const payload = buildGlobalPatch()
@@ -1026,13 +1095,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const automationStatus: CrossSeedAutomationStatus | undefined = status
   const latestRun: CrossSeedRun | null | undefined = automationStatus?.lastRun
   const automationRunning = automationStatus?.running ?? false
-  const effectiveRunIntervalMinutes = formInitialized
-    ? automationForm.runIntervalMinutes
-    : settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES
+  const effectiveRunIntervalMinutes = formInitialized? automationForm.runIntervalMinutes: settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES
   const enforcedRunIntervalMinutes = Math.max(effectiveRunIntervalMinutes, MIN_RSS_INTERVAL_MINUTES)
-  const automationTargetInstanceCount = formInitialized
-    ? automationForm.targetInstanceIds.length
-    : settings?.targetInstanceIds?.length ?? 0
+  const automationTargetInstanceCount = formInitialized? automationForm.targetInstanceIds.length: settings?.targetInstanceIds?.length ?? 0
   const hasAutomationTargets = automationTargetInstanceCount > 0
 
   const nextManualRunAt = useMemo(() => {
@@ -1100,19 +1165,60 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const searchRunning = searchStatus?.running ?? false
   const activeSearchRun = searchStatus?.run
-  const recentSearchResults = searchStatus?.recentResults ?? []
-  const recentAddedResults = useMemo(
-    () => recentSearchResults.filter(result => result.added),
-    [recentSearchResults]
-  )
 
-  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || !hasEnabledIndexers
+  const gazelleSavedEnabled = settings?.gazelleEnabled ?? false
+  const gazelleSavedHasOpsKey = Boolean((settings?.orpheusApiKey ?? "").trim())
+  const gazelleSavedHasRedKey = Boolean((settings?.redactedApiKey ?? "").trim())
+  const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
+  const gazelleSavedFullyConfigured = gazelleSavedEnabled && gazelleSavedHasOpsKey && gazelleSavedHasRedKey
+
+  const seededSearchForceGazelleOnly = useMemo(() => {
+    if (!seededSearchTorznabEnabled) {
+      return false
+    }
+    if (!gazelleSavedFullyConfigured) {
+      return false
+    }
+    if (searchIndexerIds.length === 0) {
+      return false
+    }
+
+    const selected = new Set(searchIndexerIds)
+    let hasSelection = false
+    for (const idx of enabledIndexers) {
+      if (!selected.has(idx.id)) {
+        continue
+      }
+      hasSelection = true
+      if (!isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
+        return false
+      }
+    }
+    return hasSelection
+  }, [enabledIndexers, gazelleSavedFullyConfigured, searchIndexerIds, seededSearchTorznabEnabled])
+
+  const seededSearchTorznabEffectiveEnabled = seededSearchTorznabEnabled && !seededSearchForceGazelleOnly
+
+  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEffectiveEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
-    if (!hasEnabledIndexers) {
-      return "Configure at least one Torznab indexer before running Seeded Torrent Search."
+    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
+      return "Enable Gazelle (OPS/RED) before running Seeded Torrent Search with Torznab disabled."
+    }
+    if (!hasEnabledIndexers && !gazelleSavedConfigured) {
+      return "Configure at least one Torznab indexer, or enable Gazelle (OPS/RED), before running Seeded Torrent Search."
     }
     return undefined
-  }, [hasEnabledIndexers])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled])
+  const seededSearchIntervalMinimum = useMemo(() => {
+    if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
+      return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
+    }
+    return MIN_SEEDED_SEARCH_INTERVAL_SECONDS
+  }, [gazelleSavedConfigured, seededSearchTorznabEffectiveEnabled])
+
+  useEffect(() => {
+    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
+  }, [seededSearchIntervalMinimum])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1136,6 +1242,139 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     () => enabledIndexers.map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
     [enabledIndexers]
   )
+
+  const seededSearchIndexerExclusions = useMemo(() => {
+    const disallowedIDs = new Set<number>()
+    if (!gazelleSavedFullyConfigured) {
+      return disallowedIDs
+    }
+    for (const idx of enabledIndexers) {
+      if (isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
+        disallowedIDs.add(idx.id)
+      }
+    }
+    return disallowedIDs
+  }, [enabledIndexers, gazelleSavedFullyConfigured])
+
+  const seededSearchIndexerOptions = useMemo(
+    () => (gazelleSavedFullyConfigured ? enabledIndexers.filter(idx => !isGazelleOnlyTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) : enabledIndexers)
+      .map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
+    [enabledIndexers, gazelleSavedFullyConfigured]
+  )
+
+  const seededSearchHasOnlyGazelleIndexers = useMemo(() => (
+    enabledIndexers.length > 0 &&
+    seededSearchIndexerOptions.length === 0 &&
+    seededSearchIndexerExclusions.size > 0
+  ), [enabledIndexers.length, seededSearchIndexerOptions.length, seededSearchIndexerExclusions.size])
+
+  const seededSearchIndexerPlaceholder = useMemo(() => {
+    if (!seededSearchTorznabEffectiveEnabled) {
+      if (seededSearchForceGazelleOnly) {
+        return "Torznab skipped (Gazelle-only selection)"
+      }
+      return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
+    }
+    if (seededSearchIndexerOptions.length > 0) {
+      return gazelleSavedFullyConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
+    }
+    if (seededSearchHasOnlyGazelleIndexers) {
+      return "Only OPS/RED enabled (Gazelle)"
+    }
+    return "No Torznab indexers configured"
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+
+  const seededSearchEffectiveIndexerIds = useMemo(() => {
+    const allAllowed = enabledIndexers
+      .filter(idx => !seededSearchIndexerExclusions.has(idx.id))
+      .map(idx => idx.id)
+
+    if (searchIndexerIds.length === 0) {
+      if (seededSearchIndexerExclusions.size === 0) {
+        return []
+      }
+      // Backend treats [] as "all enabled"; when exclusions exist, send an explicit list.
+      return allAllowed
+    }
+    if (seededSearchIndexerExclusions.size === 0) {
+      return searchIndexerIds
+    }
+
+    const filtered = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
+    if (filtered.length === 0) {
+      // Keep empty selection so we can preserve user intent by running Gazelle-only.
+      return []
+    }
+    return filtered
+  }, [enabledIndexers, searchIndexerIds, seededSearchIndexerExclusions])
+
+  const seededSearchIndexerHelpText = useMemo(() => {
+    if (!seededSearchTorznabEffectiveEnabled) {
+      if (seededSearchForceGazelleOnly) {
+        return "Selected Torznab indexers are Gazelle-only (OPS/RED). This run will be Gazelle-only."
+      }
+      if (gazelleSavedConfigured) {
+        return "Torznab disabled. Gazelle will check RED/OPS for every source torrent."
+      }
+      return "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode."
+    }
+
+    if (seededSearchIndexerOptions.length === 0) {
+      if (seededSearchHasOnlyGazelleIndexers) {
+        return "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS."
+      }
+
+      if (gazelleSavedConfigured) {
+        return "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent."
+      }
+      return "No Torznab indexers configured."
+    }
+
+    if (seededSearchEffectiveIndexerIds.length === 0) {
+      if (gazelleSavedConfigured) {
+        return "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS."
+      }
+      return "All enabled Torznab indexers will be queried for matches."
+    }
+    if (gazelleSavedConfigured) {
+      return `Only ${seededSearchEffectiveIndexerIds.length} selected Torznab indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried. Gazelle still checks RED/OPS.`
+    }
+    return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+
+  const seededSearchGazelleStatus = useMemo(() => {
+    if (!settings) {
+      return "Gazelle: loading"
+    }
+    if (!settings.gazelleEnabled) {
+      return "Gazelle: disabled"
+    }
+    const ops = (settings.orpheusApiKey ?? "").trim() !== ""
+    const red = (settings.redactedApiKey ?? "").trim() !== ""
+    if (ops && red) return "Gazelle: enabled (OPS+RED keys set)"
+    if (ops) return "Gazelle: enabled (OPS key set, RED missing)"
+    if (red) return "Gazelle: enabled (RED key set, OPS missing)"
+    return "Gazelle: enabled (keys missing)"
+  }, [settings])
+
+  const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
+
+  const seededSearchIntervalPresets = useMemo(() => {
+    if (seededSearchGazelleOnlyMode) {
+      return [10, 30, 60]
+    }
+    return [60, 120, 300]
+  }, [seededSearchGazelleOnlyMode])
+
+  const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.") : "Without Gazelle, all matching relies on Torznab indexers."
+
+  const handleJumpToGazelleSettings = useCallback(() => {
+    onTabChange("rules")
+    if (typeof window === "undefined") return
+    window.setTimeout(() => {
+      document.getElementById("gazelle-settings")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 50)
+  }, [onTabChange])
 
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
@@ -1191,12 +1430,48 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     [webhookSourceTagNames, globalSettings.webhookSourceTags, globalSettings.webhookSourceExcludeTags]
   )
 
+  // Custom category select options (uses all active instance categories for suggestions)
+  const customCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.customCategory ? [globalSettings.customCategory] : []
+    ),
+    [globalSettings.customCategory, webhookSourceMetadata?.categories]
+  )
+
+  // Helper to get current category mode from boolean flags
+  const getCategoryMode = (): CategoryMode => {
+    if (globalSettings.useCustomCategory) return "custom"
+    if (globalSettings.useCategoryFromIndexer) return "indexer"
+    if (globalSettings.useCrossCategoryAffix) return "affix"
+    return "reuse"
+  }
+
+  // Helper to set category mode (updates all three boolean flags)
+  const setCategoryMode = (mode: CategoryMode) => {
+    setGlobalSettings(prev => ({
+      ...prev,
+      useCrossCategoryAffix: mode === "affix",
+      useCategoryFromIndexer: mode === "indexer",
+      useCustomCategory: mode === "custom",
+    }))
+  }
+
   const handleStartSearchRun = () => {
     // Clear previous validation errors
     setValidationErrors({})
 
-    if (!hasEnabledIndexers) {
-      notifyMissingIndexers("Seeded Torrent Search requires at least one Torznab indexer.")
+    if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
+      toast.error("Seeded Torrent Search needs Gazelle", {
+        description: "Enable Gazelle matching (OPS/RED) before running with Torznab disabled.",
+      })
+      return
+    }
+
+    if (!hasEnabledIndexers && !gazelleSavedConfigured) {
+      toast.error("Seeded Torrent Search needs Torznab or Gazelle", {
+        description: "Configure at least one Torznab indexer, or enable Gazelle matching for OPS/RED torrents.",
+      })
       return
     }
 
@@ -1207,8 +1482,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     // Validate search interval and cooldown
     const errors: Record<string, string> = {}
-    if (searchIntervalSeconds < MIN_SEEDED_SEARCH_INTERVAL_SECONDS) {
-      errors.searchIntervalSeconds = `Must be at least ${MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds`
+    if (searchIntervalSeconds < seededSearchIntervalMinimum) {
+      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} seconds`
     }
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
       errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
@@ -1224,7 +1499,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       categories: searchCategories,
       tags: searchTags,
       intervalSeconds: searchIntervalSeconds,
-      indexerIds: searchIndexerIds,
+      indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
+      disableTorznab: !seededSearchTorznabEffectiveEnabled,
       cooldownMinutes: searchCooldownMinutes,
     })
   }
@@ -1260,12 +1536,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       }
       return searchInstanceName
     },
-    [instances, searchInstanceId, searchRunning, activeSearchRun]
-  )
-
-  const ignorePatternCount = useMemo(
-    () => normalizeIgnorePatterns(globalSettings.ignorePatterns).length,
-    [globalSettings.ignorePatterns]
+    [instances, searchRunning, activeSearchRun, searchInstanceName]
   )
 
   const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
@@ -1312,6 +1583,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     }
   }, [runs])
 
+  const searchRunStats = useMemo(() => {
+    if (!searchRuns || searchRuns.length === 0) {
+      return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
+    }
+    return {
+      totalAdded: searchRuns.reduce((sum, run) => sum + run.torrentsAdded, 0),
+      totalFailed: searchRuns.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalRuns: searchRuns.length,
+    }
+  }, [searchRuns])
 
   return (
     <div className="space-y-6 p-4 lg:p-6 pb-16">
@@ -1332,9 +1613,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       {!hasEnabledIndexers && (
         <Alert className="border-border rounded-xl bg-card">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <AlertTitle>Torznab indexers required</AlertTitle>
+          <AlertTitle>Torznab indexers missing</AlertTitle>
           <AlertDescription className="space-y-1">
-            <p>Automation runs and Seeded Torrent Search need at least one enabled Torznab indexer.</p>
+            <p>RSS automation needs at least one enabled Torznab indexer. Seeded Torrent Search can still run OPS/RED matches via Gazelle if enabled.</p>
             <p>
               <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
                 Manage indexers in Settings
@@ -1360,11 +1641,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Next run</span>
               <span className="font-medium">
-                {automationEnabled
-                  ? automationStatus?.nextRunAt
-                    ? formatDateValue(automationStatus.nextRunAt)
-                    : "—"
-                  : "Disabled"}
+                {automationEnabled? automationStatus?.nextRunAt? formatDateValue(automationStatus.nextRunAt): "—": "Disabled"}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -1394,17 +1671,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <span className="font-medium truncate text-right max-w-[180px]">{currentSearchInstanceName}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Recent additions</span>
-              <span className="font-medium">{recentAddedResults.length}</span>
+              <span className="text-muted-foreground">Recent runs</span>
+              <span className="font-medium">{searchRuns?.length ?? 0} runs • +{searchRuns?.reduce((sum, run) => sum + run.torrentsAdded, 0) ?? 0}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Now</span>
               <span className="font-medium">
-                {searchRunning
-                  ? activeSearchRun
-                    ? `${activeSearchRun.processed}/${activeSearchRun.totalTorrents ?? "?"} scanned`
-                    : "Running..."
-                  : "Idle"}
+                {searchRunning? activeSearchRun? `${activeSearchRun.processed}/${activeSearchRun.totalTorrents ?? "?"} scanned`: "Running...": "Idle"}
               </span>
             </div>
           </CardContent>
@@ -1412,10 +1685,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
-          <TabsTrigger value="auto">Auto</TabsTrigger>
-          <TabsTrigger value="scan">Scan</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
+        <TabsList className="w-full md:w-auto flex gap-2 overflow-x-auto">
+          <TabsTrigger className="shrink-0" value="auto">Auto</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="scan">Scan</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="dir-scan">Dir Scan</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="rules">Rules</TabsTrigger>
+          <TabsTrigger className="shrink-0" value="blocklist">Blocklist</TabsTrigger>
         </TabsList>
 
         <TabsContent value="auto" className="space-y-6">
@@ -1507,11 +1782,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     disabled={!instanceOptions.length}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {instanceOptions.length === 0
-                      ? "No instances available."
-                      : automationForm.targetInstanceIds.length === 0
-                        ? "Pick at least one instance to receive cross-seeds."
-                        : `${automationForm.targetInstanceIds.length} instance${automationForm.targetInstanceIds.length === 1 ? "" : "s"} selected.`}
+                    {instanceOptions.length === 0? "No instances available.": automationForm.targetInstanceIds.length === 0? "Pick at least one instance to receive cross-seeds.": `${automationForm.targetInstanceIds.length} instance${automationForm.targetInstanceIds.length === 1 ? "" : "s"} selected.`}
                   </p>
                   {validationErrors.targetInstanceIds && (
                     <p className="text-sm text-destructive">{validationErrors.targetInstanceIds}</p>
@@ -1531,11 +1802,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     disabled={!indexerOptions.length}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {indexerOptions.length === 0
-                      ? "No Torznab indexers configured."
-                      : automationForm.targetIndexerIds.length === 0
-                        ? "All enabled Torznab indexers are eligible for RSS automation."
-                        : `Only ${automationForm.targetIndexerIds.length} selected indexer${automationForm.targetIndexerIds.length === 1 ? "" : "s"} will be polled.`}
+                    {indexerOptions.length === 0? "No Torznab indexers configured.": automationForm.targetIndexerIds.length === 0? "All enabled Torznab indexers are eligible for RSS automation.": `Only ${automationForm.targetIndexerIds.length} selected indexer${automationForm.targetIndexerIds.length === 1 ? "" : "s"} will be polled.`}
                   </p>
                 </div>
               </div>
@@ -1548,17 +1815,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceCategories}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceCategories: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? rssSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"
-                        : "Select target instances to load categories"
+                      automationForm.targetInstanceIds.length > 0? rssSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories": "Select target instances to load categories"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceCategories.length === 0
-                      ? "All categories will be included."
-                      : `Only ${automationForm.rssSourceCategories.length} selected categor${automationForm.rssSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                    {automationForm.rssSourceCategories.length === 0? "All categories will be included.": `Only ${automationForm.rssSourceCategories.length} selected categor${automationForm.rssSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
                   </p>
                 </div>
 
@@ -1569,17 +1832,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceTags}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceTags: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? rssSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"
-                        : "Select target instances to load tags"
+                      automationForm.targetInstanceIds.length > 0? rssSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags": "Select target instances to load tags"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceTags.length === 0
-                      ? "All tags will be included."
-                      : `Only ${automationForm.rssSourceTags.length} selected tag${automationForm.rssSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                    {automationForm.rssSourceTags.length === 0? "All tags will be included.": `Only ${automationForm.rssSourceTags.length} selected tag${automationForm.rssSourceTags.length === 1 ? "" : "s"} will be matched.`}
                   </p>
                 </div>
               </div>
@@ -1592,17 +1851,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceExcludeCategories}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeCategories: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? "None"
-                        : "Select target instances to load categories"
+                      automationForm.targetInstanceIds.length > 0? "None": "Select target instances to load categories"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceExcludeCategories.length === 0
-                      ? "No categories excluded."
-                      : `${automationForm.rssSourceExcludeCategories.length} categor${automationForm.rssSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                    {automationForm.rssSourceExcludeCategories.length === 0? "No categories excluded.": `${automationForm.rssSourceExcludeCategories.length} categor${automationForm.rssSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
                   </p>
                 </div>
 
@@ -1613,17 +1868,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={automationForm.rssSourceExcludeTags}
                     onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeTags: values }))}
                     placeholder={
-                      automationForm.targetInstanceIds.length > 0
-                        ? "None"
-                        : "Select target instances to load tags"
+                      automationForm.targetInstanceIds.length > 0? "None": "Select target instances to load tags"
                     }
                     creatable
                     disabled={automationForm.targetInstanceIds.length === 0}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {automationForm.rssSourceExcludeTags.length === 0
-                      ? "No tags excluded."
-                      : `${automationForm.rssSourceExcludeTags.length} tag${automationForm.rssSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                    {automationForm.rssSourceExcludeTags.length === 0? "No tags excluded.": `${automationForm.rssSourceExcludeTags.length} tag${automationForm.rssSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
                   </p>
                 </div>
               </div>
@@ -1661,52 +1912,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                 Scheduled ({groupedRuns.scheduled.length})
                               </div>
                               <div className="space-y-1">
-                                {groupedRuns.scheduled.map(run => {
-                                  const hasResults = run.results && run.results.length > 0
-                                  const successResults = run.results?.filter(r => r.success) ?? []
-                                  return (
-                                    <Collapsible key={run.id}>
-                                      <CollapsibleTrigger asChild disabled={!hasResults}>
-                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
-                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
-                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-                                            {run.torrentsFailed > 0 && (
-                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                                          </div>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      {hasResults && (
-                                        <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                            {successResults.map((result, i) => (
-                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
-                                                {result.indexerName && (
-                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
-                                                )}
-                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
-                                              </div>
-                                            ))}
-                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
-                                              <span className="text-xs text-muted-foreground">No successful additions</span>
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      )}
-                                    </Collapsible>
-                                  )
-                                })}
+                                {groupedRuns.scheduled.map(run => (
+                                  <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1719,52 +1927,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                 Manual ({groupedRuns.manual.length})
                               </div>
                               <div className="space-y-1">
-                                {groupedRuns.manual.map(run => {
-                                  const hasResults = run.results && run.results.length > 0
-                                  const successResults = run.results?.filter(r => r.success) ?? []
-                                  return (
-                                    <Collapsible key={run.id}>
-                                      <CollapsibleTrigger asChild disabled={!hasResults}>
-                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
-                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
-                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-                                            {run.torrentsFailed > 0 && (
-                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                                          </div>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      {hasResults && (
-                                        <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                            {successResults.map((result, i) => (
-                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
-                                                {result.indexerName && (
-                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
-                                                )}
-                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
-                                              </div>
-                                            ))}
-                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
-                                              <span className="text-xs text-muted-foreground">No successful additions</span>
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      )}
-                                    </Collapsible>
-                                  )
-                                })}
+                                {groupedRuns.manual.map(run => (
+                                  <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1777,52 +1942,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                 Other ({groupedRuns.other.length})
                               </div>
                               <div className="space-y-1">
-                                {groupedRuns.other.map(run => {
-                                  const hasResults = run.results && run.results.length > 0
-                                  const successResults = run.results?.filter(r => r.success) ?? []
-                                  return (
-                                    <Collapsible key={run.id}>
-                                      <CollapsibleTrigger asChild disabled={!hasResults}>
-                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
-                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
-                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-                                            {run.torrentsFailed > 0 && (
-                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                                          </div>
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      {hasResults && (
-                                        <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                            {successResults.map((result, i) => (
-                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
-                                                {result.indexerName && (
-                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
-                                                )}
-                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
-                                              </div>
-                                            ))}
-                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
-                                              <span className="text-xs text-muted-foreground">No successful additions</span>
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      )}
-                                    </Collapsible>
-                                  )
-                                })}
+                                {groupedRuns.other.map(run => (
+                                  <RSSRunItem key={run.id} run={run} formatDateValue={formatDateValue} />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1843,24 +1965,44 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <Label htmlFor="automation-dry-run">Dry run</Label>
               </div>
               <div className="flex flex-col gap-2 w-full md:w-auto md:flex-row">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      onClick={handleTriggerAutomationRun}
-                      disabled={runButtonDisabled}
-                      className="disabled:cursor-not-allowed disabled:pointer-events-auto"
-                    >
-                      {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                      Run now
-                    </Button>
-                  </TooltipTrigger>
-                  {runButtonDisabledReason && (
-                    <TooltipContent align="end" className="max-w-xs text-xs">
-                      {runButtonDisabledReason}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
+                {automationRunning ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCancelAutomationDialog(true)}
+                    disabled={cancelAutomationRunMutation.isPending}
+                  >
+                    {cancelAutomationRunMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Stopping...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Cancel
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        onClick={handleTriggerAutomationRun}
+                        disabled={runButtonDisabled}
+                        className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                      >
+                        {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                        Run now
+                      </Button>
+                    </TooltipTrigger>
+                    {runButtonDisabledReason && (
+                      <TooltipContent align="end" className="max-w-xs text-xs">
+                        {runButtonDisabledReason}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                )}
                 <Button
                   onClick={handleSaveAutomation}
                   disabled={patchSettingsMutation.isPending}
@@ -1900,9 +2042,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceCategories.length === 0
-                      ? "All categories will be included."
-                      : `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                    {globalSettings.webhookSourceCategories.length === 0? "All categories will be included.": `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
                   </p>
                 </div>
 
@@ -1916,9 +2056,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceTags.length === 0
-                      ? "All tags will be included."
-                      : `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                    {globalSettings.webhookSourceTags.length === 0? "All tags will be included.": `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
                   </p>
                 </div>
               </div>
@@ -1934,9 +2072,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceExcludeCategories.length === 0
-                      ? "No categories excluded."
-                      : `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                    {globalSettings.webhookSourceExcludeCategories.length === 0? "No categories excluded.": `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
                   </p>
                 </div>
 
@@ -1950,9 +2086,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     creatable
                   />
                   <p className="text-xs text-muted-foreground">
-                    {globalSettings.webhookSourceExcludeTags.length === 0
-                      ? "No tags excluded."
-                      : `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                    {globalSettings.webhookSourceExcludeTags.length === 0? "No tags excluded.": `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
                   </p>
                 </div>
               </div>
@@ -1978,7 +2112,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           <Card>
             <CardHeader>
               <CardTitle>Library Scan</CardTitle>
-              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
+              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab once per unique release. If Gazelle is enabled, RED/OPS API matching is also attempted.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <Alert className="border-destructive/20 bg-destructive/10 text-destructive mb-8">
@@ -1995,10 +2129,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <Input
                     id="search-interval"
                     type="number"
-                    min={MIN_SEEDED_SEARCH_INTERVAL_SECONDS}
+                    min={seededSearchIntervalMinimum}
                     value={searchIntervalSeconds}
                     onChange={event => {
-                      setSearchIntervalSeconds(Number(event.target.value) || MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+                      setSearchIntervalSeconds(Number(event.target.value) || seededSearchIntervalMinimum)
                       // Clear validation error when user changes the value
                       if (validationErrors.searchIntervalSeconds) {
                         setValidationErrors(prev => ({ ...prev, searchIntervalSeconds: "" }))
@@ -2009,7 +2143,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   {validationErrors.searchIntervalSeconds && (
                     <p className="text-sm text-destructive">{validationErrors.searchIntervalSeconds}</p>
                   )}
-                  <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {seededSearchIntervalPresets.map(seconds => (
+                      <Button
+                        key={seconds}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSearchIntervalSeconds(seconds)}
+                        disabled={seconds < seededSearchIntervalMinimum}
+                      >
+                        {seconds}s
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Wait time before scanning the next seeded torrent. Minimum {seededSearchIntervalMinimum} seconds.
+                    {seededSearchGazelleOnlyMode && " Recommended 10s+; this is per-torrent pacing, and each torrent can trigger multiple Gazelle API calls."}
+                  </p>
                 </div>
                 <div className="space-y-3">
                   <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
@@ -2042,20 +2193,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={searchCategories}
                     onChange={values => setSearchCategories(normalizeStringList(values))}
                     placeholder={
-                      searchInstanceId
-                        ? searchCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"
-                        : "Select an instance to load categories"
+                      searchInstanceId? searchCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories": "Select an instance to load categories"
                     }
                     creatable
                     onCreateOption={value => setSearchCategories(prev => normalizeStringList([...prev, value]))}
                     disabled={!searchInstanceId}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {searchInstanceId && searchCategorySelectOptions.length === 0
-                      ? "Categories load after selecting an instance; you can still type a category name."
-                      : searchCategories.length === 0
-                        ? "All categories will be included in the scan."
-                        : `Only ${searchCategories.length} selected categor${searchCategories.length === 1 ? "y" : "ies"} will be scanned.`}
+                    {searchInstanceId && searchCategorySelectOptions.length === 0? "Categories load after selecting an instance; you can still type a category name.": searchCategories.length === 0? "All categories will be included in the scan.": `Only ${searchCategories.length} selected categor${searchCategories.length === 1 ? "y" : "ies"} will be scanned.`}
                   </p>
                 </div>
 
@@ -2066,20 +2211,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     selected={searchTags}
                     onChange={values => setSearchTags(normalizeStringList(values))}
                     placeholder={
-                      searchInstanceId
-                        ? searchTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"
-                        : "Select an instance to load tags"
+                      searchInstanceId? searchTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags": "Select an instance to load tags"
                     }
                     creatable
                     onCreateOption={value => setSearchTags(prev => normalizeStringList([...prev, value]))}
                     disabled={!searchInstanceId}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {searchInstanceId && searchTagSelectOptions.length === 0
-                      ? "Tags load after selecting an instance; you can still type a tag."
-                      : searchTags.length === 0
-                        ? "All tags will be included in the scan."
-                        : `Only ${searchTags.length} selected tag${searchTags.length === 1 ? "" : "s"} will be scanned.`}
+                    {searchInstanceId && searchTagSelectOptions.length === 0? "Tags load after selecting an instance; you can still type a tag.": searchTags.length === 0? "All tags will be included in the scan.": `Only ${searchTags.length} selected tag${searchTags.length === 1 ? "" : "s"} will be scanned.`}
                   </p>
                 </div>
               </div>
@@ -2109,21 +2248,35 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  <Label>Indexers</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>
+                      Torznab indexers{gazelleSavedConfigured ? " (non-OPS/RED)" : ""}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Torznab</span>
+                      <Switch checked={seededSearchTorznabEnabled} onCheckedChange={value => setSeededSearchTorznabEnabled(!!value)} />
+                    </div>
+                  </div>
                   <MultiSelect
-                    options={indexerOptions}
-                    selected={searchIndexerIds.map(String)}
+                    options={seededSearchIndexerOptions}
+                    selected={seededSearchEffectiveIndexerIds.map(String)}
                     onChange={values => setSearchIndexerIds(normalizeNumberList(values))}
-                    placeholder={indexerOptions.length ? "All enabled indexers (leave empty for all)" : "No Torznab indexers configured"}
-                    disabled={!indexerOptions.length}
+                    placeholder={seededSearchIndexerPlaceholder}
+                    disabled={!seededSearchIndexerOptions.length || !seededSearchTorznabEnabled}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {indexerOptions.length === 0
-                      ? "No Torznab indexers configured."
-                      : searchIndexerIds.length === 0
-                        ? "All enabled Torznab indexers will be queried for matches."
-                        : `Only ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
+                    {seededSearchIndexerHelpText}
                   </p>
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>{seededSearchFlowSummary}</span>
+                    <button
+                      type="button"
+                      onClick={handleJumpToGazelleSettings}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      {seededSearchGazelleStatus}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2171,35 +2324,96 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               )}
 
-              <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md mb-4">
-                <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    Recent search additions
-                    <ChevronDown className={`h-4 w-4 transition-transform ${searchResultsOpen ? "" : "-rotate-90"}`} />
-                  </span>
-                  <Badge variant="outline">{recentAddedResults.length}</Badge>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="px-3 pb-3 space-y-2">
-                  {recentAddedResults.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No added cross-seed results recorded yet.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {recentAddedResults.map(result => (
-                        <li key={`${result.torrentHash}-${result.processedAt}`} className="flex items-start justify-between gap-3 rounded border px-3 py-3 bg-muted/40">
-                          <div className="space-y-1.5 max-w-[80%]">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
-                              <Badge variant="secondary" className="text-xs">{result.indexerName || "Indexer"}</Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{formatDateValue(result.processedAt)}</p>
-                          </div>
-                          <Badge variant="default">Added</Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-xs text-muted-foreground">Shows the last 10 additions during this run. List clears when the run stops.</p>
-                </CollapsibleContent>
+              <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen}>
+                <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Recent runs</span>
+                      {searchRunStats.totalRuns > 0 ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {searchRunStats.totalRuns} runs • +{searchRunStats.totalAdded}
+                          {searchRunStats.totalFailed > 0 && ` • ${searchRunStats.totalFailed} failed`}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No runs yet</span>
+                      )}
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${searchResultsOpen ? "rotate-180" : ""}`} />
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                    <div className="px-4 pb-3 space-y-2">
+                      {searchRuns && searchRuns.length > 0 ? (
+                        <div className="space-y-1">
+                          {searchRuns.map(run => {
+                            const successResults = run.results?.filter(r => r.added) ?? []
+                            const failedResults = run.results?.filter(r => !r.added) ?? []
+                            const hasResults = (run.results?.length ?? 0) > 0
+                            return (
+                              <Collapsible key={run.id}>
+                                <CollapsibleTrigger asChild disabled={!hasResults}>
+                                  <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                      {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                      {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                      {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                      <span className="text-xs text-muted-foreground">
+                                        {run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents} torrents
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                      {run.torrentsFailed > 0 && (
+                                        <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                      )}
+                                      <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                      {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                    </div>
+                                  </div>
+                                </CollapsibleTrigger>
+                                {hasResults && (
+                                  <CollapsibleContent>
+                                    <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+                                      {successResults.map((result, i) => (
+                                        <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
+                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                        </div>
+                                      ))}
+                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+                                        <span className="text-xs text-muted-foreground">No results with details</span>
+                                      )}
+                                      {failedResults.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                                          <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
+                                          {failedResults.map((result, i) => (
+                                            <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                                              <div className="flex items-center gap-2">
+                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                              </div>
+                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                )}
+                              </Collapsible>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-2 text-xs text-muted-foreground">
+                          No search runs recorded yet.
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </div>
               </Collapsible>
             </CardContent>
             <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2256,6 +2470,60 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <CardContent className="space-y-4">
               <HardlinkModeSettings />
 
+              {/* Gazelle (OPS/RED) */}
+              <div id="gazelle-settings" className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3 scroll-mt-24">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">Gazelle (OPS/RED)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="gazelle-enabled" className="font-medium">Enable Gazelle matching</Label>
+                    <p className="text-xs text-muted-foreground">Applies to all source torrents. If possible, qui also checks RED/OPS via Gazelle.</p>
+                  </div>
+                  <Switch
+                    id="gazelle-enabled"
+                    checked={globalSettings.gazelleEnabled}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, gazelleEnabled: !!value }))}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-border/50">
+                  <div className="space-y-2">
+                    <Label htmlFor="gazelle-red-api-key">Redacted API key</Label>
+                    <Input
+                      id="gazelle-red-api-key"
+                      type="password"
+                      value={globalSettings.redactedApiKey}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, redactedApiKey: event.target.value }))}
+                      placeholder={globalSettings.gazelleEnabled ? "Paste RED API key" : "Enable to configure"}
+                      disabled={!globalSettings.gazelleEnabled}
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground">Used for redacted.sh lookups. Paste to replace; clear to remove.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="gazelle-ops-api-key">Orpheus API key</Label>
+                    <Input
+                      id="gazelle-ops-api-key"
+                      type="password"
+                      value={globalSettings.orpheusApiKey}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, orpheusApiKey: event.target.value }))}
+                      placeholder={globalSettings.gazelleEnabled ? "Paste OPS API key" : "Enable to configure"}
+                      disabled={!globalSettings.gazelleEnabled}
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground">Used for orpheus.network lookups. Paste to replace; clear to remove.</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Matching behavior */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="space-y-1">
@@ -2273,53 +2541,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.sizeMismatchTolerancePercent}
                     onChange={event => setGlobalSettings(prev => ({
                       ...prev,
-                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0))
+                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
                     }))}
                   />
                   <p className="text-xs text-muted-foreground">
                     Maximum size difference for matching. Also sets auto-resume threshold (e.g., 5% = resume at ≥95%).
                   </p>
-                </div>
-                <div className="space-y-3 pt-3 border-t border-border/50">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="global-ignore-patterns">Allowed extra files</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="How allowed extra files work"
-                          >
-                            <Info className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Plain strings act as suffix matches (e.g., <code>.nfo</code> matches any path ending in <code>.nfo</code>). Globs treat <code>/</code> as a folder separator, so <code>*.nfo</code> only matches files in the top-level folder. To match sample folders use <code>*/*sample/*</code>. Separate entries with commas or new lines.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{ignorePatternCount} pattern{ignorePatternCount === 1 ? "" : "s"}</Badge>
-                  </div>
-                  <Textarea
-                    id="global-ignore-patterns"
-                    placeholder={".nfo, .srt, */*sample/*\nor one per line"}
-                    rows={4}
-                    value={globalSettings.ignorePatterns}
-                    onChange={event => {
-                      const value = event.target.value
-                      setGlobalSettings(prev => ({ ...prev, ignorePatterns: value }))
-                      const error = validateIgnorePatterns(value)
-                      setValidationErrors(prev => ({ ...prev, ignorePatterns: error }))
-                    }}
-                    className={validationErrors.ignorePatterns ? "border-destructive" : ""}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Files matching these patterns are excluded from comparison, allowing matches between torrents that differ only in these files. Adding patterns here increases matches.
-                  </p>
-                  {validationErrors.ignorePatterns && (
-                    <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>
-                  )}
                 </div>
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
@@ -2343,7 +2570,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">Skip recheck-required matches</Label>
-                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment or extra files</p>
+                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.</p>
                   </div>
                   <Switch
                     id="skip-recheck"
@@ -2360,9 +2587,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       {globalSettings.skipPieceBoundarySafetyCheck ? "Piece boundary safety check currently disabled" : "Piece boundary safety check enabled"}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      {globalSettings.skipPieceBoundarySafetyCheck
-                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs—consider reflink mode instead."
-                        : "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
+                      {globalSettings.skipPieceBoundarySafetyCheck? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead.": "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
                     </p>
                   </div>
                   <Switch
@@ -2379,54 +2604,136 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">Categories</p>
                   <p className="text-xs text-muted-foreground">Control how cross-seeds are categorized in qBittorrent.</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent align="start" className="max-w-xs text-xs">
-                          Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
-                        </TooltipContent>
-                      </Tooltip>
+                <RadioGroup
+                  value={getCategoryMode()}
+                  onValueChange={(value) => setCategoryMode(value as CategoryMode)}
+                  className="space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="reuse" id="category-reuse" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-reuse" className="font-medium cursor-pointer">Reuse matched torrent category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Reuse category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Cross-seeds use the exact same category as the matched torrent. If the matched torrent uses AutoTMM, cross-seeds will too; otherwise the save path is set to match the original.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keep the matched torrent's category unchanged (no .cross suffix).</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                   </div>
-                  <Switch
-                    id="global-use-cross-category-suffix"
-                    checked={globalSettings.useCrossCategorySuffix}
-                    disabled={globalSettings.useCategoryFromIndexer}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCrossCategorySuffix: !!value }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent align="start" className="max-w-xs text-xs">
-                          Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
-                        </TooltipContent>
-                      </Tooltip>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="affix" id="category-affix" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-affix" className="font-medium cursor-pointer">Category affix</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category affix help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates isolated categories (e.g., cross-seed/movie or tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
+                      {getCategoryMode() === "affix" && (
+                        <div className="flex flex-wrap items-center gap-3 mt-2">
+                          <div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+                            <button
+                              type="button"
+                              onClick={() => setGlobalSettings(prev => ({ ...prev, categoryAffixMode: "prefix" }))}
+                              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${globalSettings.categoryAffixMode === "prefix" ? "bg-background text-primary shadow-sm" : "hover:bg-background/50 hover:text-foreground"}`}
+                            >
+                              Prefix
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGlobalSettings(prev => ({ ...prev, categoryAffixMode: "suffix" }))}
+                              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${globalSettings.categoryAffixMode === "suffix" ? "bg-background text-primary shadow-sm" : "hover:bg-background/50 hover:text-foreground"}`}
+                            >
+                              Suffix
+                            </button>
+                          </div>
+                          <Input
+                            value={globalSettings.categoryAffix}
+                            onChange={e => setGlobalSettings(prev => ({ ...prev, categoryAffix: e.target.value }))}
+                            placeholder={globalSettings.categoryAffixMode === "prefix" ? "cross-seed/" : ".cross"}
+                            className="max-w-[140px] h-9"
+                          />
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">Set category to indexer name. Cannot be used with .cross suffix.</p>
                   </div>
-                  <Switch
-                    id="global-use-category-from-indexer"
-                    checked={globalSettings.useCategoryFromIndexer}
-                    disabled={globalSettings.useCrossCategorySuffix}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
-                  />
-                </div>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="indexer" id="category-indexer" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-indexer" className="font-medium cursor-pointer">Use indexer name as category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates a category named after the indexer. AutoTMM is disabled; save path is set to match the original torrent. Useful for tracking which indexer provided each cross-seed.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Set category to the indexer name (e.g., TorrentDB, BroadcasTheNet).</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="custom" id="category-custom" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-custom" className="font-medium cursor-pointer">Custom category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Custom category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            All cross-seeds will be placed in a single custom category. AutoTMM is disabled; save path is set to match the original torrent.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
+                      {globalSettings.useCustomCategory && (
+                        <>
+                          <MultiSelect
+                            options={customCategorySelectOptions}
+                            selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                            onChange={values => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                            placeholder="Select or type a category..."
+                            className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
+                            creatable
+                            onCreateOption={value => {
+                              setGlobalSettings(prev => ({ ...prev, customCategory: value }))
+                              setValidationErrors(prev => ({ ...prev, customCategory: "" }))
+                            }}
+                          />
+                          {validationErrors.customCategory && (
+                            <p className="text-sm text-destructive">{validationErrors.customCategory}</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
               </div>
 
               {/* Tagging */}
@@ -2526,53 +2833,53 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Auto-resume (when disabled, torrents remain paused for manual review)</p>
+                  <p className="text-xs font-medium text-muted-foreground">Auto-resume after injection (when off, torrents stay paused for review)</p>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-rss" className="font-medium">Skip for RSS</Label>
-                        <p className="text-xs text-muted-foreground">Keep RSS automation torrents paused</p>
+                        <Label htmlFor="auto-resume-rss" className="font-medium">RSS</Label>
+                        <p className="text-xs text-muted-foreground">Resume RSS automation torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-rss"
-                        checked={globalSettings.skipAutoResumeRss}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !!value }))}
+                        id="auto-resume-rss"
+                        checked={!globalSettings.skipAutoResumeRss}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-seeded" className="font-medium">Skip for Seeded Search</Label>
-                        <p className="text-xs text-muted-foreground">Keep seeded search & interactive dialog torrents paused</p>
+                        <Label htmlFor="auto-resume-seeded-search" className="font-medium">Seeded Search</Label>
+                        <p className="text-xs text-muted-foreground">Resume seeded search and dialog-injected torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-seeded"
-                        checked={globalSettings.skipAutoResumeSeededSearch}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !!value }))}
+                        id="auto-resume-seeded-search"
+                        checked={!globalSettings.skipAutoResumeSeededSearch}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-completion" className="font-medium">Skip for Completion</Label>
-                        <p className="text-xs text-muted-foreground">Keep completion-triggered torrents paused</p>
+                        <Label htmlFor="auto-resume-completion" className="font-medium">Completion</Label>
+                        <p className="text-xs text-muted-foreground">Resume completion-triggered torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-completion"
-                        checked={globalSettings.skipAutoResumeCompletion}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !!value }))}
+                        id="auto-resume-completion"
+                        checked={!globalSettings.skipAutoResumeCompletion}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !value }))}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
-                        <Label htmlFor="skip-auto-resume-webhook" className="font-medium">Skip for Webhook</Label>
-                        <p className="text-xs text-muted-foreground">Keep /apply webhook torrents paused</p>
+                        <Label htmlFor="auto-resume-webhook" className="font-medium">Webhook</Label>
+                        <p className="text-xs text-muted-foreground">Resume /apply webhook torrents automatically</p>
                       </div>
                       <Switch
-                        id="skip-auto-resume-webhook"
-                        checked={globalSettings.skipAutoResumeWebhook}
-                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !!value }))}
+                        id="auto-resume-webhook"
+                        checked={!globalSettings.skipAutoResumeWebhook}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !value }))}
                       />
                     </div>
                   </div>
@@ -2584,15 +2891,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.runExternalProgramId ? String(globalSettings.runExternalProgramId) : "none"}
                     onValueChange={(value) => setGlobalSettings(prev => ({
                       ...prev,
-                      runExternalProgramId: value === "none" ? null : Number(value)
+                      runExternalProgramId: value === "none" ? null : Number(value),
                     }))}
                     disabled={!enabledExternalPrograms.length}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder={
-                        !enabledExternalPrograms.length
-                          ? "No external programs available"
-                          : "Select external program (optional)"
+                        !enabledExternalPrograms.length? "No external programs available": "Select external program (optional)"
                       } />
                     </SelectTrigger>
                     <SelectContent>
@@ -2634,7 +2939,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button
                 onClick={handleSaveGlobal}
-                disabled={patchSettingsMutation.isPending || Boolean(ignorePatternError)}
+                disabled={patchSettingsMutation.isPending}
               >
                 {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save global cross-seed settings
@@ -2643,7 +2948,34 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           </Card>
 
         </TabsContent>
+
+        <TabsContent value="dir-scan" className="space-y-6">
+          <DirScanTab instances={instances ?? []} />
+        </TabsContent>
+        <TabsContent value="blocklist" className="space-y-6">
+          <BlocklistTab instances={instances ?? []} />
+        </TabsContent>
       </Tabs>
+
+      <AlertDialog open={showCancelAutomationDialog} onOpenChange={setShowCancelAutomationDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel RSS Automation Run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will stop the current RSS automation run. Any torrents already added will remain, but processing of new items will stop.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelAutomationRunMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Cancel Run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

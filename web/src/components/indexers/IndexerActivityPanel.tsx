@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -53,24 +53,24 @@ export function IndexerActivityPanel() {
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
         <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Scheduler Activity</span>
-              {loading ? (
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-              ) : hasActivity ? (
-                <Badge variant="secondary" className="text-xs">
-                  {workersInUse > 0 && `${workersInUse} running`}
-                  {workersInUse > 0 && queueLength > 0 && ", "}
-                  {queueLength > 0 && `${queueLength} queued`}
-                  {(workersInUse > 0 || queueLength > 0) && cooldownCount > 0 && ", "}
-                  {cooldownCount > 0 && `${cooldownCount} cooldown`}
-                </Badge>
-              ) : (
-                <span className="text-xs text-muted-foreground">{workersInUse}/{workerCount} workers</span>
-              )}
-            </div>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Scheduler Activity</span>
+            {loading ? (
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            ) : hasActivity ? (
+              <Badge variant="secondary" className="text-xs">
+                {workersInUse > 0 && `${workersInUse} running`}
+                {workersInUse > 0 && queueLength > 0 && ", "}
+                {queueLength > 0 && `${queueLength} queued`}
+                {(workersInUse > 0 || queueLength > 0) && cooldownCount > 0 && ", "}
+                {cooldownCount > 0 && `${cooldownCount} cooldown`}
+              </Badge>
+            ) : (
+              <span className="text-xs text-muted-foreground">{workersInUse}/{workerCount} workers</span>
+            )}
+          </div>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
         </CollapsibleTrigger>
 
         <CollapsibleContent>

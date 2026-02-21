@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package arr
@@ -27,12 +27,14 @@ type Client struct {
 	instanceType models.ArrInstanceType
 	baseURL      string
 	apiKey       string
+	basicUser    string
+	basicPass    string
 	httpClient   *http.Client
 	timeout      time.Duration
 }
 
 // NewClient creates a new ARR API client
-func NewClient(baseURL, apiKey string, instanceType models.ArrInstanceType, timeoutSeconds int) *Client {
+func NewClient(baseURL, apiKey string, basicUsername, basicPassword *string, instanceType models.ArrInstanceType, timeoutSeconds int) *Client {
 	timeout := defaultTimeout
 	if timeoutSeconds > 0 {
 		timeout = time.Duration(timeoutSeconds) * time.Second
@@ -42,6 +44,8 @@ func NewClient(baseURL, apiKey string, instanceType models.ArrInstanceType, time
 		instanceType: instanceType,
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		apiKey:       apiKey,
+		basicUser:    strings.TrimSpace(stringOrEmpty(basicUsername)),
+		basicPass:    strings.TrimSpace(stringOrEmpty(basicPassword)),
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -161,6 +165,9 @@ func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("X-Api-Key", c.apiKey)
 	req.Header.Set("User-Agent", defaultUserAgent)
 	req.Header.Set("Accept", "application/json")
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 }
 
 // InstanceType returns the ARR instance type this client is configured for
@@ -171,4 +178,11 @@ func (c *Client) InstanceType() models.ArrInstanceType {
 // BaseURL returns the base URL this client is configured for
 func (c *Client) BaseURL() string {
 	return c.baseURL
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

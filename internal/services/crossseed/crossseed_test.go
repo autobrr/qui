@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -1227,7 +1227,7 @@ func TestPartialInPackIntegration(t *testing.T) {
 
 	// Step 1: Verify matching produces partial-in-pack
 	// The episode's files should be found inside the season pack's files
-	matchType := svc.getMatchType(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles, nil)
+	matchType := svc.getMatchType(episodeRelease, seasonPackRelease, episodeFiles, seasonPackFiles)
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 
@@ -1275,7 +1275,7 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	collectionRelease := svc.releaseCache.Parse(collectionName)
 
 	// Step 1: Verify matching produces partial-in-pack
-	matchType := svc.getMatchType(movieRelease, collectionRelease, movieFiles, collectionFiles, nil)
+	matchType := svc.getMatchType(movieRelease, collectionRelease, movieFiles, collectionFiles)
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
 
@@ -1414,7 +1414,9 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				UseCategoryFromIndexer: true,
-				UseCrossCategorySuffix: true,
+				UseCrossCategoryAffix:  true,
+				CategoryAffixMode:      models.CategoryAffixModeSuffix,
+				CategoryAffix:          ".cross",
 			},
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "IndexerCat",
@@ -1467,6 +1469,126 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "movies.cross",
 			expectedCrossCategory: "movies.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode adds prefix to category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "cross/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode with nested category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies/1080p",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies/1080p",
+			expectedCrossCategory: "cross/movies/1080p",
+			expectedTags:          []string{},
+		},
+		{
+			name: "prefix mode with empty category stays empty",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "",
+			expectedCrossCategory: "",
+			expectedTags:          []string{},
+		},
+		{
+			name: "no double prefix for already prefixed category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "cross/movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModePrefix,
+				CategoryAffix:         "cross/",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross/movies",
+			expectedCrossCategory: "cross/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "suffix mode adds suffix to category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "tv",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: true,
+				CategoryAffixMode:     models.CategoryAffixModeSuffix,
+				CategoryAffix:         ".cross",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "tv",
+			expectedCrossCategory: "tv.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "affix disabled returns category unchanged",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCrossCategoryAffix: false,
+				CategoryAffixMode:     models.CategoryAffixModeSuffix,
+				CategoryAffix:         ".cross",
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "movies",
 			expectedTags:          []string{},
 		},
 	}
@@ -2386,11 +2508,10 @@ type fakeSyncManager struct {
 
 func buildCrossInstanceViews(instance *models.Instance, torrents []qbt.Torrent) []internalqb.CrossInstanceTorrentView {
 	views := make([]internalqb.CrossInstanceTorrentView, len(torrents))
-	for i, tor := range torrents {
+	for i := range torrents {
+		tor := &torrents[i]
 		views[i] = internalqb.CrossInstanceTorrentView{
-			TorrentView: internalqb.TorrentView{
-				Torrent: tor,
-			},
+			TorrentView:  &internalqb.TorrentView{Torrent: tor},
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -2450,6 +2571,10 @@ func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 		result[normalized] = copyFiles
 	}
 	return result, nil
+}
+
+func (f *fakeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
@@ -3014,6 +3139,10 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 	return nil
 }
 
+func (m *mockRecoverSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 // Simulate state progression after recheck
 func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgress float64, finalState qbt.TorrentState) {
 	if torrent, ok := m.torrents[hash]; ok {
@@ -3398,6 +3527,10 @@ func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instan
 	return result, nil
 }
 
+func (f *infohashTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
 	if result, ok := f.hashResults[instanceID]; ok {
 		return result.torrent, result.exists, result.err
@@ -3435,12 +3568,11 @@ func (f *infohashTestSyncManager) GetCachedInstanceTorrents(_ context.Context, i
 	// Build views from torrents
 	if list, ok := f.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
-		for i, t := range list {
+		for i := range list {
+			t := &list[i]
 			views[i] = internalqb.CrossInstanceTorrentView{
-				TorrentView: internalqb.TorrentView{
-					Torrent: t,
-				},
-				InstanceID: instanceID,
+				TorrentView: &internalqb.TorrentView{Torrent: t},
+				InstanceID:  instanceID,
 			}
 		}
 		return views, nil
@@ -3561,7 +3693,6 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
 
@@ -3662,7 +3793,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
 
@@ -3747,7 +3877,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3822,7 +3951,6 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3900,7 +4028,6 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3977,7 +4104,6 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -4777,7 +4903,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 		{
 			name: "RSS include categories passed through",
 			settings: &models.CrossSeedAutomationSettings{
-				TargetInstanceIDs:  []int{instanceID},
+				TargetInstanceIDs:   []int{instanceID},
 				RSSSourceCategories: []string{"movies-LTS", "tv-LTS"},
 			},
 			expectCategories:        []string{"movies-LTS", "tv-LTS"},
@@ -4810,7 +4936,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 		{
 			name: "RSS exclude tags passed through",
 			settings: &models.CrossSeedAutomationSettings{
-				TargetInstanceIDs:      []int{instanceID},
+				TargetInstanceIDs:    []int{instanceID},
 				RSSSourceExcludeTags: []string{"no-cross-seed", "temporary"},
 			},
 			expectCategories:        nil,
@@ -4941,6 +5067,10 @@ func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, insta
 	return result, nil
 }
 
+func (m *rssFilterTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (m *rssFilterTestSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
@@ -4974,12 +5104,11 @@ func (m *rssFilterTestSyncManager) SetTags(context.Context, int, []string, strin
 func (m *rssFilterTestSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
 	if list, ok := m.torrents[instanceID]; ok {
 		views := make([]internalqb.CrossInstanceTorrentView, len(list))
-		for i, t := range list {
+		for i := range list {
+			t := &list[i]
 			views[i] = internalqb.CrossInstanceTorrentView{
-				TorrentView: internalqb.TorrentView{
-					Torrent: t,
-				},
-				InstanceID: instanceID,
+				TorrentView: &internalqb.TorrentView{Torrent: t},
+				InstanceID:  instanceID,
 			}
 		}
 		return views, nil

@@ -1,15 +1,15 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { api } from "@/lib/api"
-import type { Instance, Torrent, TorrentFile } from "@/types"
-import { useQueries, useQuery } from "@tanstack/react-query"
+import type { LocalCrossSeedMatch, Torrent } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
 // Cross-seed matching utilities
-export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
+export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/]+/g, "/").replace(/\/$/, "") || ""
 
 /**
  * Check if a path is inside a base directory.
@@ -35,463 +35,24 @@ export const isHardlinkManaged = (
   const contentPath = normalizePath(match.content_path || "")
   return isInsideBase(savePath, base) || isInsideBase(contentPath, base)
 }
-export const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
-
-export const getBaseFileName = (path: string): string => {
-  const normalized = path.replace(/\\/g, '/').trim()
-  const parts = normalized.split('/')
-  return parts[parts.length - 1].toLowerCase()
-}
-
-export const normalizeFileName = (name: string): string => {
-  return name.toLowerCase()
-    .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '') // Remove extension
-    .replace(/[._\-\s]+/g, '') // Remove separators
-}
-
-/** Season and episode information parsed from a torrent name */
-export type SeasonEpisodeInfo = {
-  season: number | null
-  episodes: number[]
-  isSeasonPack: boolean
-}
-
-/**
- * Parse season and episode information from a torrent name.
- * Handles patterns like: S01, S01E24, S01E01E02, S01E01-E03
- */
-export const parseSeasonEpisodeInfo = (name: string): SeasonEpisodeInfo => {
-  const lower = name.toLowerCase()
-
-  // Extract season number (S01, S1, etc.) with word boundaries to avoid false matches
-  // Allow 'e' after digits (for S01E05) or non-alphanumeric/end of string
-  const seasonMatch = lower.match(/(?:^|[^a-z0-9])s(\d{1,2})(?:e|[^a-z0-9]|$)/)
-  if (!seasonMatch) {
-    return { season: null, episodes: [], isSeasonPack: false }
-  }
-
-  const season = parseInt(seasonMatch[1], 10)
-  const episodes: number[] = []
-
-  // Try range pattern first (S01E01-E03 or S01E01-03)
-  const rangeMatch = lower.match(/s\d{1,2}e(\d{1,3})-e?(\d{1,3})/)
-  if (rangeMatch) {
-    const start = parseInt(rangeMatch[1], 10)
-    const end = parseInt(rangeMatch[2], 10)
-    for (let i = start; i <= end; i++) {
-      episodes.push(i)
-    }
-  } else {
-    // Try multiple episode pattern (S01E01E02)
-    const multiMatch = lower.match(/s\d{1,2}((?:e\d{1,3})+)/)
-    if (multiMatch) {
-      const episodePart = multiMatch[1]
-      const epMatches = episodePart.matchAll(/e(\d{1,3})/g)
-      for (const m of epMatches) {
-        episodes.push(parseInt(m[1], 10))
-      }
-    }
-  }
-
-  return {
-    season,
-    episodes,
-    isSeasonPack: episodes.length === 0,
-  }
-}
-
-/**
- * Check if two torrents have compatible season/episode info for cross-seeding.
- * Returns false if they're incompatible (e.g., season pack vs single episode).
- */
-export const hasCompatibleSeasonEpisodes = (name1: string, name2: string): boolean => {
-  const a = parseSeasonEpisodeInfo(name1)
-  const b = parseSeasonEpisodeInfo(name2)
-
-  // If neither has season info, no TV filtering applies
-  if (a.season === null && b.season === null) {
-    return true
-  }
-
-  // If only one has season info, they're probably different content types
-  if (a.season === null || b.season === null) {
-    return true // Allow - could be movie vs other content
-  }
-
-  // Both have seasons - must match
-  if (a.season !== b.season) {
-    return false
-  }
-
-  // Same season - check episode compatibility
-  // If one is a season pack and the other has episodes, block
-  if (a.isSeasonPack !== b.isSeasonPack) {
-    return false
-  }
-
-  // Both are season packs or both have episodes
-  if (a.episodes.length > 0 && b.episodes.length > 0) {
-    // Both have episodes - require exact same episodes
-    if (a.episodes.length !== b.episodes.length) {
-      return false
-    }
-    const aSorted = [...a.episodes].sort((x, y) => x - y)
-    const bSorted = [...b.episodes].sort((x, y) => x - y)
-    for (let i = 0; i < aSorted.length; i++) {
-      if (aSorted[i] !== bSorted[i]) {
-        return false
-      }
-    }
-  }
-
-  return true
-}
-
-/** Release modifiers that indicate different versions of the same content */
-const RELEASE_MODIFIERS = ['repack', 'proper', 'rerip', 'real', 'readnfo', 'dirfix', 'nfofix', 'samplefix', 'prooffix'] as const
-
-/**
- * Extract release modifiers from a torrent name.
- * Returns a sorted array of modifiers found (e.g., ['proper', 'repack'])
- */
-export const extractReleaseModifiers = (name: string): string[] => {
-  const lowerName = name.toLowerCase()
-  return RELEASE_MODIFIERS.filter(mod => {
-    // Match modifier with word boundaries (surrounded by dots, dashes, spaces, or start/end)
-    const pattern = new RegExp(`(?:^|[.\\-_\\s])${mod}(?:[.\\-_\\s]|$)`)
-    return pattern.test(lowerName)
-  }).sort()
-}
-
-/**
- * Check if two torrents have matching release modifiers.
- * Returns true if they have the same modifiers (or both have none).
- */
-export const hasMatchingReleaseModifiers = (name1: string, name2: string): boolean => {
-  const mods1 = extractReleaseModifiers(name1)
-  const mods2 = extractReleaseModifiers(name2)
-
-  if (mods1.length !== mods2.length) return false
-  return mods1.every((mod, i) => mod === mods2[i])
-}
-
-export const calculateSimilarity = (str1: string, str2: string): number => {
-  if (str1 === str2) return 1.0
-  if (!str1 || !str2) return 0
-  
-  // Use the longer string as reference
-  const longer = str1.length >= str2.length ? str1 : str2
-  const shorter = str1.length < str2.length ? str1 : str2
-  
-  // If shorter string is contained in longer, high similarity
-  if (longer.includes(shorter)) {
-    return shorter.length / longer.length
-  }
-  
-  // Calculate Levenshtein distance
-  const matrix: number[][] = []
-  for (let i = 0; i <= longer.length; i++) {
-    matrix[i] = [i]
-  }
-  for (let j = 0; j <= shorter.length; j++) {
-    matrix[0][j] = j
-  }
-  
-  for (let i = 1; i <= longer.length; i++) {
-    for (let j = 1; j <= shorter.length; j++) {
-      if (longer[i - 1] === shorter[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1]
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        )
-      }
-    }
-  }
-  
-  const distance = matrix[longer.length][shorter.length]
-  return 1 - (distance / longer.length)
-}
 
 // Extended torrent type with cross-seed metadata
 export interface CrossSeedTorrent extends Torrent {
   instanceId: number
   instanceName: string
-  matchType: 'infohash' | 'content_path' | 'save_path' | 'name'
+  matchType: "content_path" | "name" | "release"
 }
 
-// Search for potential cross-seed matches
-export const searchCrossSeedMatches = async (
-  torrent: Torrent,
-  instance: Instance,
-  currentInstanceId: number,
-  currentFiles: TorrentFile[] = [],
-  resolvedInfohashV1?: string,
-  resolvedInfohashV2?: string
-): Promise<CrossSeedTorrent[]> => {
-  const executionId = Math.random().toString(36).substring(7)
-  
-  try {
-    // Strategy: Make multiple targeted searches to find matches efficiently
-    const allMatches: Torrent[] = []
-    
-    // Extract a distinctive search term from the torrent name
-    let searchName = torrent.name
-    const lastDot = torrent.name.lastIndexOf('.')
-    if (lastDot > 0 && lastDot > torrent.name.lastIndexOf('/')) {
-      // Has extension and it's not in a folder name
-      const extension = torrent.name.slice(lastDot + 1)
-      // Only strip if it looks like a real extension (2-5 chars, alphanumeric)
-      if (extension.length >= 2 && extension.length <= 5 && /^[a-z0-9]+$/i.test(extension)) {
-        searchName = torrent.name.slice(0, lastDot)
-      }
-    }
-    
-    // Remove metadata patterns to extract core content name
-    let cleanedName = searchName
-      .replace(/\(\d{4}\)/g, '') // Remove years like (2025)
-      .replace(/\[[^\]]+\]/g, '') // Remove brackets like [WEB FLAC]
-      .replace(/\{[^}]+\}/g, '') // Remove braces
-      .trim()
-    
-    // Strip everything from special characters onwards (: etc) to avoid search issues
-    cleanedName = cleanedName.split(/[꞉:]/)[0].trim()
-    
-    // Use the cleaned name for search (without metadata but with full artist/title)
-    const searchTerm = cleanedName || searchName
-    const nameSearchResponse = await api.getTorrents(instance.id, {
-      search: searchTerm,
-      limit: 2000,
-    })
-    
-    const nameTorrents = nameSearchResponse.torrents || []
-
-    // Add name search results
-    allMatches.push(...nameTorrents)
-    
-    // If we have info hashes, also search by them
-    if (resolvedInfohashV1 || resolvedInfohashV2) {
-      const hashToSearch = resolvedInfohashV1 || resolvedInfohashV2
-      const hashSearchResponse = await api.getTorrents(instance.id, {
-        search: hashToSearch,
-        limit: 2000,
-      })
-      
-      const hashTorrents = hashSearchResponse.torrents || []
-
-      // Merge results, avoiding duplicates
-      let newHashMatches = 0
-      for (const t of hashTorrents) {
-        if (!allMatches.some(m => m.hash === t.hash)) {
-          allMatches.push(t)
-          newHashMatches++
-        }
-      }
-    }
-
-    // Normalize strings for comparison
-    const normalizedContentPath = normalizePath(torrent.content_path || '')
-    const normalizedName = normalizeName(torrent.name)
-    
-    // Filter matching torrents with different matching strategies
-    const matches = allMatches.filter((t: Torrent) => {
-      // Exclude the exact current torrent (same instance AND same hash)
-      if (instance.id === currentInstanceId && t.hash === torrent.hash) {
-        return false
-      }
-      
-      // Strategy 1: Exact info hash match (cross-seeding same torrent)
-      if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) || 
-          (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2)) {
-        return true
-      }
-      
-      // Strategy 2: Same content path (same files, different torrent)
-      if (normalizedContentPath && t.content_path) {
-        const otherContentPath = normalizePath(t.content_path)
-        if (otherContentPath === normalizedContentPath) {
-          return true
-        }
-      }
-      
-      // Strategy 3: Same torrent name (likely same content)
-      if (normalizedName && t.name) {
-        const otherName = normalizeName(t.name)
-        if (otherName === normalizedName) {
-          return true
-        }
-      }
-      
-      // Strategy 4: Similar save path (for single-file torrents)
-      if (torrent.save_path && t.save_path) {
-        const normalizedCurrentSavePath = normalizePath(torrent.save_path)
-        const otherSavePath = normalizePath(t.save_path)
-        if (normalizedCurrentSavePath && otherSavePath === normalizedCurrentSavePath) {
-          // Also check if file names match for single files
-          const currentBaseName = normalizedName.split('/').pop() || ''
-          const otherBaseName = normalizeName(t.name).split('/').pop() || ''
-          if (currentBaseName === otherBaseName) {
-            return true
-          }
-        }
-      }
-      
-      // Strategy 5: Fuzzy file name matching with similarity threshold
-      // First check if release modifiers match - REPACK vs non-REPACK are different releases
-      if (!hasMatchingReleaseModifiers(torrent.name, t.name)) {
-        return false
-      }
-
-      // Check season/episode compatibility - don't match season packs with individual episodes
-      if (!hasCompatibleSeasonEpisodes(torrent.name, t.name)) {
-        return false
-      }
-
-      const currentBaseFile = getBaseFileName(torrent.name)
-      const otherBaseFile = getBaseFileName(t.name)
-
-      // Try base file comparison (handles folder/file.mkv scenarios)
-      if (currentBaseFile && otherBaseFile) {
-        const currentNormalized = normalizeFileName(currentBaseFile)
-        const otherNormalized = normalizeFileName(otherBaseFile)
-
-        const similarity = calculateSimilarity(currentNormalized, otherNormalized)
-
-        // If similarity is high (>= 90%), consider it a potential match
-        if (similarity >= 0.9 && currentNormalized.length > 0) {
-          return true
-        }
-      }
-
-      // Also try full name comparison with normalization
-      const currentFullNormalized = normalizeFileName(torrent.name)
-      const otherFullNormalized = normalizeFileName(t.name)
-      const fullSimilarity = calculateSimilarity(currentFullNormalized, otherFullNormalized)
-
-      if (fullSimilarity >= 0.9 && currentFullNormalized.length > 0) {
-        return true
-      }
-      return false
-    })
-
-    // Concurrency-limited approach to prevent spawning hundreds of simultaneous requests
-    const MAX_CONCURRENT_REQUESTS = 4
-    const deepMatchResults: { torrent: Torrent; isMatch: boolean; matchType: string }[] = []
-    
-    // Process matches in batches with concurrency control
-    for (let i = 0; i < matches.length; i += MAX_CONCURRENT_REQUESTS) {
-      const batch = matches.slice(i, i + MAX_CONCURRENT_REQUESTS)
-      const batchResults = await Promise.all(
-        batch.map(async (t: Torrent) => {
-          // Skip deep matching if we already have strong matches (info hash, content path, or torrent name)
-          const hasStrongMatch = 
-            (resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
-            (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2) ||
-            (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) ||
-            (normalizedName && normalizeName(t.name) === normalizedName)
-          
-          if (hasStrongMatch) {
-            return { torrent: t, isMatch: true, matchType: 'strong' }
-          }
-          
-          // If we have files, do deep comparison
-          if (currentFiles.length > 0) {
-            try {
-              const otherFiles = await api.getTorrentFiles(instance.id, t.hash)
-
-              // Compare file structures
-              const currentFileSet = new Set(
-                currentFiles.map(f => ({
-                  name: normalizeFileName(getBaseFileName(f.name)),
-                  size: f.size
-                })).map(f => `${f.name}:${f.size}`)
-              )
-              
-              const otherFileSet = new Set(
-                otherFiles.map(f => ({
-                  name: normalizeFileName(getBaseFileName(f.name)),
-                  size: f.size
-                })).map(f => `${f.name}:${f.size}`)
-              )
-              
-              // Check overlap - if significant overlap, it's a match
-              const intersection = new Set([...currentFileSet].filter(x => otherFileSet.has(x)))
-              const overlapPercent = intersection.size / Math.max(currentFileSet.size, otherFileSet.size)
-
-              if (overlapPercent > 0.8) { // 80% of files match
-                return { torrent: t, isMatch: true, matchType: 'file_content' }
-              } else {
-              }
-            } catch (err) {
-              console.log(`[CrossSeed] Deep match: "${t.name}" - ⚠️  Could not fetch files for deep matching:`, err)
-            }
-          }
-
-          // Keep weak matches (name, path) without deep verification
-          return { torrent: t, isMatch: true, matchType: 'weak' }
-        })
-      )
-      
-      deepMatchResults.push(...batchResults)
-    }
-
-    const finalMatches = deepMatchResults.filter(r => r.isMatch).map(r => r.torrent)
-    const enrichedMatches = finalMatches.map((t: Torrent): CrossSeedTorrent => {
-      // Determine match type for display
-      let matchType: CrossSeedTorrent['matchType'] = 'name'
-      if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
-          (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2)) {
-        matchType = 'infohash'
-      } else if (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) {
-        matchType = 'content_path'
-      } else if (
-        torrent.save_path &&
-        normalizePath(t.save_path) === normalizePath(torrent.save_path) &&
-        normalizeFileName(getBaseFileName(t.name)) === normalizeFileName(getBaseFileName(torrent.name))
-      ) {
-        // Only label as save_path when it's truly the same file (same path AND same base filename)
-        matchType = 'save_path'
-      }
-      
-      return { ...t, instanceId: instance.id, instanceName: instance.name, matchType }
-    })
-
-    return enrichedMatches
-  } catch (error) {
-    console.error(`[CrossSeed] ❌ ERROR in query [ID: ${executionId}] for instance ${instance.name}:`, error)
-    throw error
-  }
-}
-
-// Hook to find cross-seed matches for a torrent
-export const useCrossSeedMatches = (
+/**
+ * Hook to find cross-seed matches using the backend API.
+ * Uses proper release metadata parsing (rls library) instead of frontend fuzzy matching.
+ */
+export const useLocalCrossSeedMatches = (
   instanceId: number,
   torrent: Torrent | null,
   enabled: boolean = true
 ) => {
-  // Determine if torrent is disc content (skip file fetching for disc content)
-  const isDiscContent = useMemo(() => {
-    if (!torrent?.content_path) return false
-    const contentPath = torrent.content_path.toLowerCase()
-    return contentPath.includes('video_ts') || contentPath.includes('bdmv')
-  }, [torrent?.content_path])
-
-  // Get resolved info hashes
-  const resolvedInfohashV1 = torrent?.infohash_v1 || torrent?.hash
-  const resolvedInfohashV2 = torrent?.infohash_v2
-
-  // Fetch current torrent's files for deep matching (skip for disc content)
-  const { data: currentTorrentFiles, isLoading: isLoadingCurrentFiles } = useQuery({
-    queryKey: ["torrent-files-crossseed", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
-    enabled: enabled && !!torrent && !isDiscContent,
-    staleTime: 60000,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  // Fetch all instances for cross-seed matching
+  // Fetch all instances for the instance lookup map
   const { data: allInstances, isLoading: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
     queryFn: api.getInstances,
@@ -499,93 +60,93 @@ export const useCrossSeedMatches = (
     staleTime: 60000,
   })
 
-  // Create stable instance IDs and files key for dependencies
-  const instanceIds = useMemo(
-    () => allInstances?.map(i => i.id).sort().join(',') || '',
-    [allInstances]
-  )
-
-  const currentFilesKey = useMemo(
-    () => currentTorrentFiles?.map(f => `${f.name}:${f.size}`).sort().join('|') || '',
-    [currentTorrentFiles]
-  )
-
-  // Build cross-seed queries for all instances
-  const crossSeedQueries = useMemo(() => {
-    if (!allInstances || allInstances.length === 0 || !torrent || !enabled) {
-      return []
-    }
-    
-    // Wait for current files to finish loading if we're fetching them
-    if (isLoadingCurrentFiles) {
-      return []
-    }
-
-    const currentFiles = currentTorrentFiles || []
-
-    return allInstances.map((instance) => ({
-      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent.name, torrent.content_path, isDiscContent, currentFilesKey],
-      queryFn: () => searchCrossSeedMatches(
-        torrent,
-        instance,
-        instanceId,
-        currentFiles,
-        resolvedInfohashV1,
-        resolvedInfohashV2
-      ),
-      enabled,
-      staleTime: 60000,
-      gcTime: 5 * 60 * 1000,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      retry: false,
-    }))
-  }, [
-    instanceIds,
-    torrent?.hash,
-    resolvedInfohashV1,
-    resolvedInfohashV2,
-    isDiscContent,
-    enabled,
-    currentFilesKey,
-    allInstances,
-    instanceId,
-    currentTorrentFiles,
-    isLoadingCurrentFiles
-  ])
-
-  // Execute cross-seed queries
-  const matchingTorrentsQueries = useQueries({
-    queries: crossSeedQueries,
-    combine: (results) => {
-      return results
-    }
+  // Call the backend API to get local matches
+  const { data: matches, isLoading: isLoadingMatches } = useQuery({
+    queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
+    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash),
+    enabled: enabled && !!torrent && instanceId > 0,
+    staleTime: 60000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   })
 
-  // Process and sort results
-  const matchingTorrents = useMemo(() => {
-    return matchingTorrentsQueries
-      .filter((query: { isSuccess: boolean }) => query.isSuccess)
-      .flatMap((query: { data?: unknown }) => (query.data as CrossSeedTorrent[]) || [])
-      .sort((a, b) => {
-        // Prioritize: infohash > content_path > save_path > name
-        const priority = { infohash: 0, content_path: 1, save_path: 2, name: 3 }
-        return priority[a.matchType] - priority[b.matchType]
-      })
-  }, [matchingTorrentsQueries])
-  
-  // Compute pending query count for granular loading indicators
-  const pendingQueryCount = useMemo(() => {
-    return matchingTorrentsQueries.filter((query: { isLoading: boolean }) => query.isLoading).length
-  }, [matchingTorrentsQueries])
-  
-  const isLoadingMatches = isLoadingInstances || (matchingTorrents.length === 0 && pendingQueryCount > 0)
+  // Convert LocalCrossSeedMatch to CrossSeedTorrent format for compatibility
+  const matchingTorrents = useMemo((): CrossSeedTorrent[] => {
+    if (!matches) return []
+    return matches.map((m): CrossSeedTorrent => toCompatibleMatch(m))
+  }, [matches])
 
   return {
     matchingTorrents,
-    isLoadingMatches,
+    isLoadingMatches: isLoadingInstances || isLoadingMatches,
     isLoadingInstances,
-    pendingQueryCount,
+    pendingQueryCount: isLoadingMatches ? 1 : 0,
     allInstances: allInstances || [],
+  }
+}
+
+/**
+ * Convert LocalCrossSeedMatch to CrossSeedTorrent for backward compatibility.
+ */
+export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
+  return {
+    hash: m.hash,
+    name: m.name,
+    size: m.size,
+    progress: m.progress,
+    save_path: m.savePath,
+    content_path: m.contentPath,
+    category: m.category,
+    tags: m.tags,
+    state: m.state,
+    tracker: m.tracker,
+    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | undefined,
+    instanceId: m.instanceId,
+    instanceName: m.instanceName,
+    matchType: m.matchType,
+    // Default values for required Torrent fields
+    added_on: 0,
+    completion_on: 0,
+    dlspeed: 0,
+    downloaded: 0,
+    downloaded_session: 0,
+    eta: 0,
+    num_leechs: 0,
+    num_seeds: 0,
+    priority: 0,
+    seq_dl: false,
+    f_l_piece_prio: false,
+    super_seeding: false,
+    force_start: false,
+    auto_tmm: false,
+    seen_complete: 0,
+    time_active: 0,
+    num_complete: 0,
+    num_incomplete: 0,
+    amount_left: 0,
+    completed: 0,
+    last_activity: 0,
+    magnet_uri: "",
+    availability: 0,
+    dl_limit: 0,
+    download_path: "",
+    infohash_v1: "",
+    infohash_v2: "",
+    popularity: 0,
+    private: false,
+    max_ratio: 0,
+    max_seeding_time: 0,
+    seeding_time: 0,
+    ratio: 0,
+    ratio_limit: 0,
+    reannounce: 0,
+    seeding_time_limit: 0,
+    total_size: m.size,
+    trackers_count: 0,
+    up_limit: 0,
+    uploaded: 0,
+    uploaded_session: 0,
+    upspeed: 0,
   }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package metrics
@@ -13,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 type Server struct {
@@ -34,7 +36,7 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 			if len(parts) == 2 {
 				s.basicAuthUsers[parts[0]] = parts[1]
 			} else {
-				log.Warn().Msgf("Invalid metrics basic auth credentials: %s", cred)
+				log.Warn().Msgf("Invalid metrics basic auth credentials: %s", redact.BasicAuthUser(cred))
 			}
 		}
 	}

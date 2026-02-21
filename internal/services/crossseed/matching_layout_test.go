@@ -1,7 +1,11 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -28,13 +32,13 @@ func TestGetMatchType_EnforcesLayoutCompatibility(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
 	archiveFiles := qbt.TorrentFiles{{Name: "Example.part01.rar", Size: 2 << 30}, {Name: "Example.part02.r00", Size: 2 << 30}}
 
-	match := svc.getMatchType(&sourceRelease, &candidateRelease, sourceFiles, archiveFiles, nil)
+	match := svc.getMatchType(&sourceRelease, &candidateRelease, sourceFiles, archiveFiles)
 	require.Empty(t, match, "mkv torrent should not match rar-only candidate")
 
-	archiveMatch := svc.getMatchType(&sourceRelease, &candidateRelease, archiveFiles, archiveFiles, nil)
+	archiveMatch := svc.getMatchType(&sourceRelease, &candidateRelease, archiveFiles, archiveFiles)
 	require.NotEmpty(t, archiveMatch, "identical archive layouts should match")
 
-	fileMatch := svc.getMatchType(&sourceRelease, &candidateRelease, sourceFiles, sourceFiles, nil)
+	fileMatch := svc.getMatchType(&sourceRelease, &candidateRelease, sourceFiles, sourceFiles)
 	require.Equal(t, "exact", fileMatch, "identical file layouts should be exact matches")
 }
 
@@ -64,7 +68,7 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 	}
 
 	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
-	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, nil, filesByHash, 5.0)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
 	require.NotNil(t, bestTorrent)
 	require.Equal(t, "mkv", bestTorrent.Hash)
 	require.Equal(t, "exact", matchType)
@@ -100,13 +104,13 @@ func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
 	}
 
 	singleRelease := svc.releaseCache.Parse("Minimal.Payload")
-	singleMatch := svc.getMatchType(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"], nil)
-	folderMatch := svc.getMatchType(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], nil)
+	singleMatch := svc.getMatchType(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"])
+	folderMatch := svc.getMatchType(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"])
 	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
 	require.Equal(t, "size", singleMatch)
 
 	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
-	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, nil, filesByHash, 5.0)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
 	require.NotNil(t, bestTorrent)
 	require.Equal(t, "folder", bestTorrent.Hash, "top-level folder layout should win tie-breakers")
 	require.Equal(t, "size", matchType)
@@ -141,7 +145,7 @@ func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *test
 	}
 
 	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
-	bestTorrent, files, matchType, rejectReason := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil, filesByHash, 5.0)
+	bestTorrent, files, matchType, rejectReason := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, filesByHash, 5.0)
 	require.Nil(t, bestTorrent)
 	require.Nil(t, files)
 	require.Empty(t, matchType)
@@ -183,6 +187,10 @@ func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context
 		}
 	}
 	return result, nil
+}
+
+func (*candidateSelectionSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -250,7 +258,7 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 		{Name: "random_data_file.bin", Size: 1024},
 	}
 
-	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles, nil)
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "partial-in-pack", match, "fallback should treat matching titles as candidates when parsing fails")
 }
 
@@ -280,7 +288,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 		{Name: "Different.Movie.2012.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
 	}
 
-	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles, nil)
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
 	require.Empty(t, match, "non-episodic candidates with mismatched release keys should not match")
 }
 
@@ -308,7 +316,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 		{Name: "Another.Movie.2020.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
 	}
 
-	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles, nil)
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "partial-in-pack", match, "non-episodic candidates with matching release keys should match")
 }
 
@@ -345,7 +353,7 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 		{Name: "rune-oddsparks.nfo", Size: 4096},
 	}
 
-	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles, nil)
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "release-match", match, "game scene releases with RAR files should match when titles match")
 }
 
@@ -366,6 +374,6 @@ func TestGetMatchType_FileNameFallback(t *testing.T) {
 		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]/[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
 	}
 
-	match := svc.getMatchType(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles, nil)
+	match := svc.getMatchType(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles)
 	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
 }

@@ -1,76 +1,78 @@
-name: Claude Issue Triage
-description: Automatically triage GitHub issues using Claude Code
+name: Claude Discussion Triage
 on:
-  issues:
-    types: [opened]
+  discussion:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      discussion_number:
+        description: 'Discussion number to triage'
+        required: true
+        type: number
 
 jobs:
-  triage-issue:
+  # Workaround: claude-code-action doesn't support 'discussion' events directly.
+  # This job catches the discussion event and re-triggers via workflow_dispatch.
+  dispatch:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'discussion' &&
+      (github.event.discussion.category.slug == 'issue-triage' ||
+       github.event.discussion.category.slug == 'feature-requests-ideas')
+    permissions:
+      actions: write
+    steps:
+      - name: Re-dispatch as workflow_dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run triage.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.repository.default_branch }} \
+            -f discussion_number=${{ github.event.discussion.number }}
+
+  triage-discussion:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
-      issues: write
+      discussions: write
+      id-token: write
 
     steps:
+      - name: Check for duplicate label
+        id: check-duplicate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          DISCUSSION_NUMBER: ${{ inputs.discussion_number || github.event.discussion.number }}
+        run: |
+          # Check if discussion already has the duplicate label
+          LABELS=$(gh api graphql -f query='
+            query {
+              repository(owner: "'"$REPO_OWNER"'", name: "'"$REPO_NAME"'") {
+                discussion(number: '"$DISCUSSION_NUMBER"') {
+                  labels(first: 10) {
+                    nodes { name }
+                  }
+                }
+              }
+            }' --jq '.data.repository.discussion.labels.nodes[].name' 2>/dev/null || echo "")
+
+          if echo "$LABELS" | grep -qi "duplicate"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Discussion already has duplicate label, skipping triage"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: steps.check-duplicate.outputs.skip != 'true'
         uses: actions/checkout@v6
 
-      - name: Create triage prompt
-        run: |
-          mkdir -p /tmp/claude-prompts
-          cat > /tmp/claude-prompts/triage-prompt.txt << 'EOF'
-          You're an issue triage assistant for GitHub issues. Your task is to analyze the issue and select appropriate labels from the provided list.
-
-          IMPORTANT: Don't post any comments or messages to the issue. Your only action should be to apply labels.
-
-          Issue Information:
-          - REPO: ${{ github.repository }}
-          - ISSUE_NUMBER: ${{ github.event.issue.number }}
-
-          TASK OVERVIEW:
-
-          1. First, fetch the list of labels available in this repository by running: `gh label list`. Run exactly this command with nothing else.
-
-          2. Next, use the GitHub tools to get context about the issue:
-             - You have access to these tools:
-               - mcp__github__get_issue: Use this to retrieve the current issue's details including title, description, and existing labels
-               - mcp__github__get_issue_comments: Use this to read any discussion or additional context provided in the comments
-               - mcp__github__update_issue: Use this to apply labels to the issue (do not use this for commenting)
-               - mcp__github__search_issues: Use this to find similar issues that might provide context for proper categorization and to identify potential duplicate issues
-               - mcp__github__list_issues: Use this to understand patterns in how other issues are labeled
-             - Start by using mcp__github__get_issue to get the issue details
-
-          3. Analyze the issue content, considering:
-             - The issue title and description
-             - The type of issue (bug report, feature request, question, etc.)
-             - Technical areas mentioned
-             - Severity or priority indicators
-             - User impact
-             - Components affected
-
-          4. Select appropriate labels from the available labels list provided above:
-             - Choose labels that accurately reflect the issue's nature
-             - Be specific but comprehensive
-             - Select priority labels if you can determine urgency (high-priority, med-priority, or low-priority)
-             - Consider platform labels (android, ios) if applicable
-             - If you find similar issues using mcp__github__search_issues, consider using a "duplicate" label if appropriate. Only do so if the issue is a duplicate of another OPEN issue.
-
-          5. Apply the selected labels:
-             - Use mcp__github__update_issue to apply your selected labels
-             - DO NOT post any comments explaining your decision
-             - DO NOT communicate directly with users
-             - If no labels are clearly applicable, do not apply any labels
-
-          IMPORTANT GUIDELINES:
-          - Be thorough in your analysis
-          - Only select labels from the provided list above
-          - DO NOT post any comments to the issue
-          - Your ONLY action should be to apply labels using mcp__github__update_issue
-          - It's okay to not add any labels if none are clearly applicable
-          EOF
-
       - name: Setup GitHub MCP Server
+        if: steps.check-duplicate.outputs.skip != 'true'
         run: |
           mkdir -p /tmp/mcp-config
           cat > /tmp/mcp-config/mcp-servers.json << 'EOF'
@@ -84,7 +86,7 @@ jobs:
                   "--rm",
                   "-e",
                   "GITHUB_PERSONAL_ACCESS_TOKEN",
-                  "ghcr.io/github/github-mcp-server:sha-7aced2b"
+                  "ghcr.io/github/github-mcp-server:v0.26.3"
                 ],
                 "env": {
                   "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
@@ -94,13 +96,71 @@ jobs:
           }
           EOF
 
-      - name: Run Claude Code for Issue Triage
-        uses: anthropics/claude-code-base-action@beta
+      - name: Run Claude Code for Discussion Triage
+        if: steps.check-duplicate.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
         with:
-          prompt_file: /tmp/claude-prompts/triage-prompt.txt
-          allowed_tools: "Bash(gh label list),mcp__github__get_issue,mcp__github__get_issue_comments,mcp__github__update_issue,mcp__github__search_issues,mcp__github__list_issues"
-          timeout_minutes: "5"
+          prompt: |
+            You're a triage assistant for GitHub discussions. Your task is to analyze the discussion and select appropriate labels from the provided list.
+
+            IMPORTANT: Don't post any comments or messages to the discussion. Your only action should be to apply labels.
+
+            Discussion Information:
+            - REPO: ${{ github.repository }}
+            - DISCUSSION_NUMBER: ${{ inputs.discussion_number || github.event.discussion.number }}
+
+            TASK OVERVIEW:
+
+            1. First, fetch the list of labels available in this repository by running: `gh label list --json name,id --limit 100`. Run exactly this command with nothing else.
+
+            2. Next, use the GitHub tools to get context about the discussion:
+               - You have access to these tools:
+                 - mcp__github__get_discussion: Use this to retrieve the current discussion's details including title, body, and existing labels
+                 - mcp__github__get_discussion_comments: Use this to read any comments or additional context
+                 - mcp__github__list_discussions: Use this to find similar discussions for context
+               - Start by using mcp__github__get_discussion to get the discussion details
+
+            3. Analyze the discussion content, considering:
+               - The discussion title and body
+               - The type of request (bug report, feature request, question, etc.)
+               - Technical areas mentioned
+               - Severity or priority indicators
+               - User impact
+               - Components affected
+
+            4. Select appropriate labels from the available labels list:
+               - Choose labels that accurately reflect the discussion's nature
+               - Be specific but comprehensive
+               - Select priority labels if you can determine urgency (high-priority, med-priority, or low-priority)
+               - Consider platform labels if applicable
+               - Do NOT apply the "duplicate" label - that is handled by a separate workflow
+
+            5. Apply the selected labels using GraphQL:
+               - First, get the discussion's GraphQL node ID by running:
+                 gh api graphql -f query='query { repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") { discussion(number: ${{ inputs.discussion_number || github.event.discussion.number }}) { id } } }'
+               - Then add labels using the addLabelsToLabelable mutation. Example:
+                 gh api graphql -f query='mutation { addLabelsToLabelable(input: {labelIds: ["LABEL_ID_1", "LABEL_ID_2"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
+               - Replace LABEL_ID_1, LABEL_ID_2 with actual label IDs from step 1, and DISCUSSION_NODE_ID with the ID from the query above
+               - DO NOT post any comments explaining your decision
+               - DO NOT communicate directly with users
+               - If no labels are clearly applicable, do not apply any labels
+
+            6. After applying labels, remove the "needs-triage" label if present:
+               - Use the removeLabelsFromLabelable mutation:
+                 gh api graphql -f query='mutation { removeLabelsFromLabelable(input: {labelIds: ["NEEDS_TRIAGE_LABEL_ID"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
+               - Get the "needs-triage" label ID from the label list in step 1
+               - Only remove it if you successfully applied at least one label
+
+            IMPORTANT GUIDELINES:
+            - Be thorough in your analysis
+            - Only select labels from the repository's label list
+            - DO NOT post any comments to the discussion
+            - Your ONLY action should be to apply labels using the GraphQL mutation
+            - It's okay to not add any labels if none are clearly applicable
+          claude_args: |
+            --allowedTools "Bash(gh label list:*),Bash(gh api graphql:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
+            --max-turns 25
+            --mcp-config /tmp/mcp-config/mcp-servers.json
+          settings: |
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          mcp_config: /tmp/mcp-config/mcp-servers.json
-          claude_env: |
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

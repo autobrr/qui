@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package handlers
 
 import (
@@ -9,6 +12,7 @@ import (
 func ptrBool(v bool) *bool        { return &v }
 func ptrInt(v int) *int           { return &v }
 func ptrFloat(v float64) *float64 { return &v }
+func ptrString(v string) *string  { return &v }
 
 func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
@@ -20,7 +24,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SeededSearchTags:             []string{"old"},
 		CompletionSearchTags:         []string{"old"},
 		WebhookTags:                  []string{"old"},
-		IgnorePatterns:               []string{".nfo"},
 		TargetInstanceIDs:            []int{1},
 		TargetIndexerIDs:             []int{2},
 		MaxResultsPerRun:             10,
@@ -28,6 +31,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: 5.0,
 		UseCategoryFromIndexer:       false,
 		RunExternalProgramID:         ptrInt(42),
+		GazelleEnabled:               false,
+		RedactedAPIKey:               "",
+		OrpheusAPIKey:                "",
 	}
 
 	newCategory := " movies "
@@ -38,7 +44,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		Category:                     optionalString{Set: true, Value: &newCategory},
 		RSSAutomationTags:            &[]string{"new"},
 		SeededSearchTags:             &[]string{"new-seeded"},
-		IgnorePatterns:               &[]string{"*.srr"},
 		TargetInstanceIDs:            &[]int{3, 4},
 		TargetIndexerIDs:             &[]int{7},
 		MaxResultsPerRun:             ptrInt(25),
@@ -46,6 +51,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: ptrFloat(12.5),
 		UseCategoryFromIndexer:       ptrBool(true),
 		RunExternalProgramID:         optionalInt{Set: true, Value: nil},
+		GazelleEnabled:               ptrBool(true),
+		RedactedAPIKey:               ptrString("red-key"),
+		OrpheusAPIKey:                ptrString("ops-key"),
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -75,9 +83,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if len(existing.WebhookTags) != 1 || existing.WebhookTags[0] != "old" {
 		t.Fatalf("unexpected webhook tags: %#v", existing.WebhookTags)
 	}
-	if len(existing.IgnorePatterns) != 1 || existing.IgnorePatterns[0] != "*.srr" {
-		t.Fatalf("unexpected ignore patterns: %#v", existing.IgnorePatterns)
-	}
 	if len(existing.TargetInstanceIDs) != 2 || existing.TargetInstanceIDs[0] != 3 || existing.TargetInstanceIDs[1] != 4 {
 		t.Fatalf("unexpected target instance ids: %#v", existing.TargetInstanceIDs)
 	}
@@ -98,6 +103,15 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	}
 	if existing.RunExternalProgramID != nil {
 		t.Fatalf("expected runExternalProgramID to be nil")
+	}
+	if !existing.GazelleEnabled {
+		t.Fatalf("expected gazelleEnabled to be true")
+	}
+	if existing.RedactedAPIKey != "red-key" {
+		t.Fatalf("expected redacted api key to be set")
+	}
+	if existing.OrpheusAPIKey != "ops-key" {
+		t.Fatalf("expected orpheus api key to be set")
 	}
 }
 
@@ -140,3 +154,64 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 }
 
 func stringPtr(value string) *string { return &value }
+
+func TestApplyAutomationSettingsPatch_CategoryAffix(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategoryAffix:  true,
+		CategoryAffixMode:      models.CategoryAffixModeSuffix,
+		CategoryAffix:          ".cross",
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	newAffixMode := models.CategoryAffixModePrefix
+	newAffix := "cross/"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategoryAffix: ptrBool(true),
+		CategoryAffixMode:     &newAffixMode,
+		CategoryAffix:         &newAffix,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if !existing.UseCrossCategoryAffix {
+		t.Fatalf("expected useCrossCategoryAffix to be true")
+	}
+	if existing.CategoryAffixMode != models.CategoryAffixModePrefix {
+		t.Fatalf("expected categoryAffixMode to be 'prefix', got %q", existing.CategoryAffixMode)
+	}
+	if existing.CategoryAffix != "cross/" {
+		t.Fatalf("expected categoryAffix to be 'cross/', got %q", existing.CategoryAffix)
+	}
+}
+
+func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategoryAffix:  true,
+		CategoryAffixMode:      models.CategoryAffixModeSuffix,
+		CategoryAffix:          ".cross",
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	customCat := "cross-seed"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategoryAffix: ptrBool(false),
+		UseCustomCategory:     ptrBool(true),
+		CustomCategory:        &customCat,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if existing.UseCrossCategoryAffix {
+		t.Fatalf("expected useCrossCategoryAffix to be false")
+	}
+	if !existing.UseCustomCategory {
+		t.Fatalf("expected useCustomCategory to be true")
+	}
+	if existing.CustomCategory != "cross-seed" {
+		t.Fatalf("expected customCategory to be 'cross-seed', got %q", existing.CustomCategory)
+	}
+}

@@ -11,17 +11,19 @@ on:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/images/**"
       - "config.toml"
-      - "docker-compose.yml"
+      - "distrib/docker/docker-compose.yml"
       - "Makefile"
       - "**.md"
+      - "documentation/**"
   pull_request:
     paths-ignore:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/images/**"
       - "config.toml"
-      - "docker-compose.yml"
+      - "distrib/docker/docker-compose.yml"
       - "Makefile"
       - "**.md"
+      - "documentation/**"
 
 env:
   REGISTRY: ghcr.io
@@ -32,11 +34,12 @@ env:
 permissions:
   contents: write
   packages: write
+  actions: write
 
 jobs:
   web:
     name: Build web
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -101,7 +104,7 @@ jobs:
 
   test:
     name: Run tests
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [web]
     steps:
       - name: Checkout
@@ -145,7 +148,7 @@ jobs:
 
   goreleaserbuild:
     name: Build distribution binaries
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [test, web]
     steps:
       - name: Checkout
@@ -199,7 +202,7 @@ jobs:
 
   docker:
     name: Build Docker images
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [test, web]
     strategy:
       fail-fast: true
@@ -246,25 +249,26 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and publish image
         id: docker_build
-        uses: useblacksmith/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./ci.Dockerfile
+          file: ./distrib/docker/ci.Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && 'true' || 'false' }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
             BUILDER=${{ github.actor }}@github-actions
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            POLAR_ORG_ID=${{ secrets.POLAR_ORG_ID }}
+            POLAR_ORG_ID=${{ env.POLAR_ORG_ID }}
           provenance: false
 
       - name: Export image digest
@@ -286,7 +290,7 @@ jobs:
   docker-merge:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [docker]
     steps:
       - name: Download image digests
@@ -296,8 +300,8 @@ jobs:
           pattern: docker-digests-*
           merge-multiple: true
 
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3

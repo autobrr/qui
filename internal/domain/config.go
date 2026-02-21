@@ -1,7 +1,14 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package domain
+
+import (
+	"errors"
+	"fmt"
+	"net/netip"
+	"strings"
+)
 
 // Config represents the application configuration
 type Config struct {
@@ -25,6 +32,19 @@ type Config struct {
 
 	ExternalProgramAllowList []string `toml:"externalProgramAllowList" mapstructure:"externalProgramAllowList"`
 
+	// CrossSeedRecoverErroredTorrents enables recovery attempts for errored/missingFiles torrents
+	// in cross-seed automation. When enabled, qui will pause, recheck, and resume errored torrents
+	// before candidate selection. This can cause automation runs to take 25+ minutes per torrent.
+	// When disabled (default), errored torrents are simply excluded from candidate selection.
+	CrossSeedRecoverErroredTorrents bool `toml:"crossSeedRecoverErroredTorrents" mapstructure:"crossSeedRecoverErroredTorrents"`
+
+	// AuthDisabled disables all authentication when both QUI__AUTH_DISABLED=true and
+	// QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true are set. Intended for deployments behind
+	// a reverse proxy that handles authentication. Use IsAuthDisabled() to check.
+	AuthDisabled               bool     `toml:"authDisabled" mapstructure:"authDisabled"`
+	IAcknowledgeThisIsABadIdea bool     `toml:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA" mapstructure:"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA"`
+	AuthDisabledAllowedCIDRs   []string `toml:"authDisabledAllowedCIDRs" mapstructure:"authDisabledAllowedCIDRs"`
+
 	// OIDC Configuration
 	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`
 	OIDCIssuer              string `toml:"oidcIssuer" mapstructure:"oidcIssuer"`
@@ -32,4 +52,65 @@ type Config struct {
 	OIDCClientSecret        string `toml:"oidcClientSecret" mapstructure:"oidcClientSecret"`
 	OIDCRedirectURL         string `toml:"oidcRedirectUrl" mapstructure:"oidcRedirectUrl"`
 	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
+}
+
+// IsAuthDisabled returns true only when both AuthDisabled and
+// IAcknowledgeThisIsABadIdea are set, requiring the operator to explicitly
+// acknowledge the risks of running without authentication.
+func (c *Config) IsAuthDisabled() bool {
+	return c.AuthDisabled && c.IAcknowledgeThisIsABadIdea
+}
+
+// ParseAuthDisabledAllowedCIDRs parses configured auth-disabled IP ranges.
+// Entries can be either CIDR (for example 192.168.1.0/24) or a single IP
+// (for example 192.168.1.10, which is treated as /32 or /128).
+func (c *Config) ParseAuthDisabledAllowedCIDRs() ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(c.AuthDisabledAllowedCIDRs))
+
+	for _, raw := range c.AuthDisabledAllowedCIDRs {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+
+		if strings.Contains(entry, "/") {
+			prefix, err := netip.ParsePrefix(entry)
+			if err != nil {
+				return nil, fmt.Errorf("invalid authDisabledAllowedCIDRs entry %q: %w", entry, err)
+			}
+			if prefix != prefix.Masked() {
+				return nil, fmt.Errorf("invalid authDisabledAllowedCIDRs entry %q: host bits must be zero for CIDR entries", entry)
+			}
+			prefixes = append(prefixes, prefix)
+			continue
+		}
+
+		addr, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid authDisabledAllowedCIDRs entry %q: %w", entry, err)
+		}
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+
+	return prefixes, nil
+}
+
+// ValidateAuthDisabledConfig validates required settings for auth-disabled mode.
+func (c *Config) ValidateAuthDisabledConfig() error {
+	if !c.IsAuthDisabled() {
+		return nil
+	}
+	if c.OIDCEnabled {
+		return errors.New("OIDC cannot be enabled when authentication is disabled")
+	}
+
+	prefixes, err := c.ParseAuthDisabledAllowedCIDRs()
+	if err != nil {
+		return err
+	}
+	if len(prefixes) == 0 {
+		return errors.New("authDisabledAllowedCIDRs is required when authentication is disabled")
+	}
+
+	return nil
 }

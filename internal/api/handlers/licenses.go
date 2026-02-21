@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -12,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/license"
 )
 
@@ -65,6 +67,7 @@ type LicenseInfo struct {
 	LicenseKey  string    `json:"licenseKey"`
 	ProductName string    `json:"productName"`
 	Status      string    `json:"status"`
+	Provider    string    `json:"provider,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -97,8 +100,8 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	username := r.Context().Value("username")
-	if username == "" || username == nil {
+	username, ok := r.Context().Value(ctxkeys.Username).(string)
+	if !ok || username == "" {
 		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
@@ -107,7 +110,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Activate and store license
-	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey, username.(string))
+	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey, username)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -154,9 +157,9 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	username := r.Context().Value("username")
-	if username == "" || username == nil {
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+	username, ok := r.Context().Value(ctxkeys.Username).(string)
+	if !ok || username == "" {
+		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
 		})
@@ -164,14 +167,14 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Validate and store license
-	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey, username.(string))
+	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey, username)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 			Msg("Failed to validate license")
 
-		if errors.Is(err, license.ErrLicenseNotFound) {
+		if errors.Is(err, models.ErrLicenseNotFound) {
 			RespondJSON(w, http.StatusNotFound, ValidateLicenseResponse{
 				Valid: false,
 				Error: err.Error(),
@@ -233,6 +236,7 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 			LicenseKey:  lic.LicenseKey,
 			ProductName: lic.ProductName,
 			Status:      lic.Status,
+			Provider:    lic.Provider,
 			CreatedAt:   lic.CreatedAt,
 		})
 	}

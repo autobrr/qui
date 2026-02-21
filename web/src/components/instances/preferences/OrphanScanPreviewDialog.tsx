@@ -1,15 +1,17 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { TruncatedText } from "@/components/ui/truncated-text"
+import { PathCell } from "@/components/ui/path-cell"
 import { useConfirmOrphanScanDeletion, useOrphanScanRun } from "@/hooks/useOrphanScan"
+import { api } from "@/lib/api"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { formatBytes } from "@/lib/utils"
 import type { OrphanScanFile } from "@/types"
-import { Loader2, Trash2 } from "lucide-react"
+import { Download, Loader2, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -30,6 +32,7 @@ export function OrphanScanPreviewDialog({
 }: OrphanScanPreviewDialogProps) {
   const [offset, setOffset] = useState(0)
   const [files, setFiles] = useState<OrphanScanFile[]>([])
+  const [isExporting, setIsExporting] = useState(false)
 
   const runQuery = useOrphanScanRun(instanceId, runId, {
     limit: PAGE_SIZE,
@@ -87,6 +90,43 @@ export function OrphanScanPreviewDialog({
     })
   }
 
+  // CSV columns for orphan files export
+  const csvColumns: CsvColumn<OrphanScanFile>[] = [
+    { header: "Path", accessor: f => f.filePath },
+    { header: "Size", accessor: f => formatBytes(f.fileSize) },
+    { header: "Size (bytes)", accessor: f => f.fileSize },
+    { header: "Modified", accessor: f => f.modifiedAt ?? "" },
+  ]
+
+  const handleExport = async () => {
+    if (!run || totalFiles === 0) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: OrphanScanFile[] = []
+      let exportOffset = 0
+
+      while (allItems.length < totalFiles) {
+        const result = await api.getOrphanScanRun(instanceId, runId, {
+          limit: pageSize,
+          offset: exportOffset,
+        })
+        allItems.push(...result.files)
+        exportOffset += pageSize
+        if (result.files.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      downloadBlob(csv, `orphan_files_${runId}.csv`)
+      toast.success(`Exported ${allItems.length} files to CSV`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export files")
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[85dvh] flex flex-col">
@@ -112,13 +152,14 @@ export function OrphanScanPreviewDialog({
                   <th className="text-left p-2 font-medium bg-muted">Path</th>
                   <th className="text-right p-2 font-medium bg-muted">Size</th>
                   <th className="text-right p-2 font-medium bg-muted">Modified</th>
+                  <th className="text-left p-2 font-medium bg-muted">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {files.map((f) => (
                   <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="p-2 max-w-[520px]">
-                      <TruncatedText className="block">{f.filePath}</TruncatedText>
+                      <PathCell path={f.filePath} />
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                       {formatBytes(f.fileSize)}
@@ -126,11 +167,21 @@ export function OrphanScanPreviewDialog({
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                       {f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "-"}
                     </td>
+                    <td className="p-2">
+                      <div className="text-xs font-mono text-muted-foreground">
+                        {f.status}
+                        {f.errorMessage ? (
+                          <div className="mt-1 text-[11px] text-muted-foreground/80 whitespace-pre-wrap break-all">
+                            {f.errorMessage}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {runQuery.isLoading && files.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
                       Loading…
                     </td>
@@ -138,7 +189,7 @@ export function OrphanScanPreviewDialog({
                 )}
                 {!runQuery.isLoading && files.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
                       No files to display.
                     </td>
                   </tr>
@@ -162,22 +213,42 @@ export function OrphanScanPreviewDialog({
           )}
         </div>
 
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleConfirm}
-            disabled={confirmMutation.isPending || !run || run.status !== "preview_ready"}
-          >
-            {confirmMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4 mr-2" />
+        <DialogFooter className="mt-4 sm:justify-between">
+          <div>
+            {totalFiles > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Export CSV
+              </Button>
             )}
-            Delete Files
-          </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirm}
+              disabled={confirmMutation.isPending || !run || run.status !== "preview_ready"}
+            >
+              {confirmMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Files
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

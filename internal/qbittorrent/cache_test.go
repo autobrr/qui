@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -379,8 +379,8 @@ func createTestTorrentViews(count int) []TorrentView {
 
 func createTestTorrentViewsFromSlice(torrents []qbt.Torrent) []TorrentView {
 	views := make([]TorrentView, len(torrents))
-	for i, torrent := range torrents {
-		views[i] = TorrentView{Torrent: torrent}
+	for i := range torrents {
+		views[i] = TorrentView{Torrent: &torrents[i]}
 	}
 	return views
 }

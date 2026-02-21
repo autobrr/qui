@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -9,7 +14,7 @@ import type {
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
   Torrent,
-  TorznabIndexer,
+  TorznabIndexer
 } from "@/types"
 
 const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
@@ -78,13 +83,11 @@ export function useCrossSeedSearch(instanceId: number) {
       candidateIds = new Set(filteredIds)
     }
 
-    const excludedIdSet = excludedIds
-      ? new Set(
-          Object.keys(excludedIds)
-            .map(id => Number(id))
-            .filter(id => !Number.isNaN(id))
-        )
-      : null
+    const excludedIdSet = excludedIds? new Set(
+      Object.keys(excludedIds)
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id))
+    ): null
 
     return sortedEnabledIndexers
       .filter(indexer => (!candidateIds || candidateIds.has(indexer.id)) && (!excludedIdSet || !excludedIdSet.has(indexer.id)))
@@ -405,7 +408,48 @@ export function useCrossSeedSearch(instanceId: number) {
 
       setCrossSeedApplyResult(response)
 
-      toast.success(`Submitted ${selections.length} cross-seed${selections.length > 1 ? "s" : ""}`)
+      // Count successes and failures from instance results
+      let addedCount = 0
+      let failedCount = 0
+      let completedWithoutDetails = 0
+      for (const result of response.results) {
+        const instanceResults = result.instanceResults ?? []
+        if (instanceResults.length > 0) {
+          for (const ir of instanceResults) {
+            if (ir.status === "added" || ir.status === "added_hardlink" || ir.status === "added_reflink") {
+              addedCount++
+            } else if (!ir.success) {
+              failedCount++
+            }
+          }
+        } else if (result.success) {
+          completedWithoutDetails++
+        } else {
+          failedCount++
+        }
+      }
+
+      // Build toast message based on results
+      const hasAdded = addedCount > 0
+      const hasFailed = failedCount > 0
+      const hasCompleted = completedWithoutDetails > 0
+      const plural = addedCount > 1 ? "s" : ""
+
+      if (hasAdded && !hasFailed) {
+        const completedSuffix = hasCompleted ? ` (+${completedWithoutDetails} completed)` : ""
+        toast.success(`Added ${addedCount} cross-seed${plural}${completedSuffix}`)
+      } else if (hasAdded && hasFailed) {
+        const completedPart = hasCompleted ? `, ${completedWithoutDetails} completed` : ""
+        toast.warning(`Added ${addedCount}, ${failedCount} failed${completedPart} - check results for details`)
+      } else if (hasFailed) {
+        const completedPrefix = hasCompleted ? `${completedWithoutDetails} completed, ` : ""
+        toast.error(`${completedPrefix}${failedCount} failed - check results for details`)
+      } else if (hasCompleted) {
+        toast.success("Cross-seed request completed (details unavailable)")
+      } else {
+        toast.info("No cross-seeds were added")
+      }
+
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
       queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
     } catch (error) {

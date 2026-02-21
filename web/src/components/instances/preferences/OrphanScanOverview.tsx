@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -21,7 +21,7 @@ import {
 } from "@/hooks/useOrphanScan"
 import { cn, copyTextToClipboard, formatBytes, formatRelativeTime } from "@/lib/utils"
 import type { Instance, OrphanScanRunStatus } from "@/types"
-import { AlertTriangle, ChevronDown, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
+import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -60,9 +60,13 @@ function getStatusBadge(status: OrphanScanRunStatus, filesFound?: number) {
 function InstanceOrphanScanItem({
   instance,
   onConfigureInstance,
+  isExpanded,
+  onToggle,
 }: {
   instance: Instance
   onConfigureInstance?: (instanceId: number) => void
+  isExpanded: boolean
+  onToggle: () => void
 }) {
   const hasLocalAccess = instance.hasLocalFilesystemAccess
   const settingsQuery = useOrphanScanSettings(instance.id, { enabled: hasLocalAccess })
@@ -148,59 +152,69 @@ function InstanceOrphanScanItem({
   }
 
   return (
-    <AccordionItem value={String(instance.id)}>
-      <AccordionTrigger className="px-6 py-4 hover:no-underline group">
-        <div className="flex items-center justify-between w-full pr-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="font-medium truncate">{instance.name}</span>
-            {latestRunBadge && (
-              <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
-                {latestRunBadge.label}
-              </Badge>
-            )}
-            {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
-              <Badge variant="outline" className="text-xs">
-                {latestRun.filesFound} files ({formatBytes(latestRun.bytesReclaimed || 0)})
-              </Badge>
-            )}
-            {latestRun?.status === "completed" && latestRun.errorMessage && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Partial failure - check recent scans</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
+    <AccordionItem value={String(instance.id)} className="group/item">
+      <div className="grid grid-cols-[1fr_auto] items-center px-6">
+        <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="font-medium truncate">{instance.name}</span>
+              {latestRunBadge && (
+                <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
+                  {latestRunBadge.label}
+                </Badge>
+              )}
+              {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {latestRun.filesFound} files ({formatBytes(latestRun.bytesReclaimed || 0)})
+                </Badge>
+              )}
+              {latestRun?.status === "completed" && latestRun.errorMessage && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Partial failure - check recent scans</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
 
-          <div className="flex items-center gap-4">
             {latestRun?.completedAt && (
               <span className="text-xs text-muted-foreground hidden sm:block">
                 {formatRelativeTime(new Date(latestRun.completedAt))}
               </span>
             )}
-            <div
-              className="flex items-center gap-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <span className={cn(
-                "text-xs font-medium",
-                isEnabled ? "text-emerald-500" : "text-muted-foreground"
-              )}>
-                {isEnabled ? "On" : "Off"}
-              </span>
-              <Switch
-                checked={isEnabled}
-                onCheckedChange={handleToggleEnabled}
-                disabled={updateSettingsMutation.isPending}
-                className="scale-90"
-              />
-            </div>
           </div>
+        </AccordionTrigger>
+        <div className="flex items-center gap-4 py-4">
+          <div
+            className="flex items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className={cn(
+              "text-xs font-medium",
+              isEnabled ? "text-emerald-500" : "text-muted-foreground"
+            )}>
+              {isEnabled ? "On" : "Off"}
+            </span>
+            <Switch
+              checked={isEnabled}
+              onCheckedChange={handleToggleEnabled}
+              disabled={updateSettingsMutation.isPending}
+              className="scale-90"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+          </button>
         </div>
-      </AccordionTrigger>
+      </div>
 
       <AccordionContent className="px-6 pb-4">
         <div className="space-y-4">
@@ -212,11 +226,14 @@ function InstanceOrphanScanItem({
                   ? `Grace ${settings.gracePeriodMinutes}min · Interval ${settings.scanIntervalHours}h · Max ${settings.maxFilesPerRun} files`
                   : "Loading..."}
               </p>
-              {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
-                <p className="text-xs text-muted-foreground/70">
-                  {settings.ignorePaths.length} path{settings.ignorePaths.length !== 1 ? "s" : ""} ignored
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground/70">
+                {settings?.autoCleanupEnabled
+                  ? `Auto-cleanup enabled (≤${settings.autoCleanupMaxFiles} files)`
+                  : "Auto-cleanup disabled"}
+                {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
+                  <> · {settings.ignorePaths.length} path{settings.ignorePaths.length !== 1 ? "s" : ""} ignored</>
+                )}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -358,7 +375,7 @@ function InstanceOrphanScanItem({
                           <span>{formatRelativeTime(new Date(run.startedAt))}</span>
                         )}
                         {hasError && (
-                          <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                          <ChevronDownIcon className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                         )}
                       </div>
                     </div>
@@ -480,13 +497,24 @@ export function OrphanScanOverview({
           onValueChange={setExpandedInstances}
           className="border-t"
         >
-          {activeInstances.map((instance) => (
-            <InstanceOrphanScanItem
-              key={instance.id}
-              instance={instance}
-              onConfigureInstance={onConfigureInstance}
-            />
-          ))}
+          {activeInstances.map((instance) => {
+            const itemValue = String(instance.id)
+            return (
+              <InstanceOrphanScanItem
+                key={instance.id}
+                instance={instance}
+                onConfigureInstance={onConfigureInstance}
+                isExpanded={expandedInstances.includes(itemValue)}
+                onToggle={() => {
+                  if (expandedInstances.includes(itemValue)) {
+                    setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                  } else {
+                    setExpandedInstances([...expandedInstances, itemValue])
+                  }
+                }}
+              />
+            )
+          })}
         </Accordion>
       </CardContent>
     </Card>

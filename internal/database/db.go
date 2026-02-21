@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package database provides a SQLite database layer with string interning.
@@ -95,8 +95,6 @@ type DB struct {
 	cleanupCancel context.CancelFunc
 
 	closing atomic.Bool
-
-	lastBeginTxRecoveryStackLogUnixNano atomic.Int64
 
 	closeOnce sync.Once
 	closeErr  error
@@ -279,9 +277,7 @@ func (t *Tx) promoteStatementsToCache() {
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
-			// Log but don't fail - caching is an optimization
-			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
-			continue
+			continue // silently skip - caching is best-effort
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
@@ -604,15 +600,6 @@ func isSQLiteNestedTxErr(err error) bool {
 	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
 }
 
-func (db *DB) rollbackWriterConn(ctx context.Context) {
-	if db.writerConn == nil {
-		return
-	}
-	if _, err := db.writerConn.ExecContext(ctx, "ROLLBACK"); err != nil {
-		log.Warn().Err(err).Msg("failed to rollback SQLite writer connection during recovery")
-	}
-}
-
 const stmtClosedErrMsg = "statement is closed"
 
 type stmtExecutor[T any] interface {
@@ -883,33 +870,18 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
+		db.writerMu.Unlock()
 		if isSQLiteNestedTxErr(err) {
-			recordBeginTxRecovery()
-			// This error means the underlying SQLite connection believes it's still inside
-			// a transaction. We should not be holding an active write transaction while
-			// holding writerMu, so attempt to rollback and retry once to self-heal.
-			now := time.Now().UnixNano()
-			last := db.lastBeginTxRecoveryStackLogUnixNano.Load()
-			if last == 0 || now-last >= int64(time.Minute) {
-				db.lastBeginTxRecoveryStackLogUnixNano.Store(now)
-				log.Error().
-					Err(err).
-					Str("stack", string(debug.Stack())).
-					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry")
-			} else {
-				log.Error().
-					Err(err).
-					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry (stack suppressed)")
-			}
-			rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			db.rollbackWriterConn(rollbackCtx)
-			rollbackCancel()
-			tx, err = db.writerConn.BeginTx(ctx, opts)
+			// This indicates a bug: a previous transaction failed to rollback properly,
+			// leaving the connection wedged. Log with stack trace to help diagnose.
+			recordWedgedTransaction()
+			log.Error().
+				Err(err).
+				Str("stack", string(debug.Stack())).
+				Msg("SQLite writer connection is wedged in a transaction - this indicates a bug where a previous transaction failed to rollback properly")
+			return nil, fmt.Errorf("database connection wedged: %w", err)
 		}
-		if err != nil {
-			db.writerMu.Unlock() // Unlock on error
-			return nil, err
-		}
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
@@ -983,8 +955,15 @@ func (db *DB) migrate() error {
 			filename TEXT NOT NULL UNIQUE,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
-	`); err != nil {
+		`); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	// Handle historical migration file renames.
+	// If we ever rename an embedded migration file, we must update the filename
+	// stored in the migrations table so existing databases don't re-run it.
+	if err := db.normalizeMigrationFilenames(ctx); err != nil {
+		return fmt.Errorf("failed to normalize migration filenames: %w", err)
 	}
 
 	// Get all migration files
@@ -1016,6 +995,49 @@ func (db *DB) migrate() error {
 	// Apply all pending migrations in a single transaction
 	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
+	renames := []struct {
+		from string
+		to   string
+	}{
+		{
+			from: "061_add_notifications.sql",
+			to:   "062_add_notifications.sql",
+		},
+		{
+			from: "052_add_dir_scan.sql",
+			to:   "053_add_dir_scan.sql",
+		},
+		{
+			from: "055_add_license_provider_dodo.sql",
+			to:   "057_add_license_provider_dodo.sql",
+		},
+	}
+
+	for _, r := range renames {
+		// If both entries exist, keep the new name.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			DELETE FROM migrations
+			WHERE filename = ?
+			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+		}
+
+		// Rename old -> new if the new entry doesn't already exist.
+		if _, err := db.writerConn.ExecContext(ctx, `
+			UPDATE migrations
+			SET filename = ?
+			WHERE filename = ?
+			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+		`, r.to, r.from, r.to); err != nil {
+			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+		}
 	}
 
 	return nil
@@ -1243,11 +1265,19 @@ const referencedStringsInsertQuery = `
 	UNION ALL
 	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
 	UNION ALL
+	SELECT basic_username_id AS string_id FROM torznab_indexers WHERE basic_username_id IS NOT NULL
+	UNION ALL
 	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
 	UNION ALL
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
 	UNION ALL
 	SELECT error_message_id AS string_id FROM torznab_indexer_errors WHERE error_message_id IS NOT NULL
+	UNION ALL
+	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
+	UNION ALL
+	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT basic_username_id AS string_id FROM arr_instances WHERE basic_username_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
@@ -1301,7 +1331,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM string_pool 
+		DELETE FROM string_pool
 		WHERE NOT EXISTS (
 			SELECT 1 FROM temp_referenced_strings trs WHERE trs.string_id = string_pool.id
 		)

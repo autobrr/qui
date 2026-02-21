@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package filesmanager
@@ -748,9 +748,9 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 
 	// Delete files for torrents not in current hashes
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM torrent_files_cache 
+		DELETE FROM torrent_files_cache
 		WHERE instance_id = ? AND torrent_hash_id NOT IN (
-			SELECT id FROM strings WHERE value IN (SELECT hash FROM current_hashes)
+			SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
 		)
 	`, instanceID)
 	if err != nil {
@@ -759,9 +759,9 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 
 	// Delete sync info for torrents not in current hashes
 	_, err = tx.ExecContext(ctx, `
-		DELETE FROM torrent_files_sync 
+		DELETE FROM torrent_files_sync
 		WHERE instance_id = ? AND torrent_hash_id NOT IN (
-			SELECT id FROM strings WHERE value IN (SELECT hash FROM current_hashes)
+			SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
 		)
 	`, instanceID)
 	if err != nil {

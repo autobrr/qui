@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package releases
@@ -9,20 +9,26 @@ import (
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/moistari/rls"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 const defaultParserTTL = 5 * time.Minute
 
 // Parser caches rls parsing results so we do not repeatedly parse the same release names.
 type Parser struct {
-	cache *ttlcache.Cache[string, *rls.Release]
+	cache         *ttlcache.Cache[string, *rls.Release]
+	keyNormalizer *stringutils.Normalizer[string, string]
 }
 
 // NewParser returns a parser with the provided TTL for cached entries.
 func NewParser(ttl time.Duration) *Parser {
 	cache := ttlcache.New(ttlcache.Options[string, *rls.Release]{}.
 		SetDefaultTTL(ttl))
-	return &Parser{cache: cache}
+	return &Parser{
+		cache:         cache,
+		keyNormalizer: stringutils.NewNormalizer(ttl, strings.TrimSpace),
+	}
 }
 
 // NewDefaultParser returns a parser using the default TTL.
@@ -36,6 +42,9 @@ func (p *Parser) Parse(name string) *rls.Release {
 		return &rls.Release{}
 	}
 	key := strings.TrimSpace(name)
+	if p.keyNormalizer != nil {
+		key = p.keyNormalizer.Normalize(name)
+	}
 	if key == "" {
 		return &rls.Release{}
 	}
@@ -55,6 +64,9 @@ func (p *Parser) Clear(name string) {
 		return
 	}
 	key := strings.TrimSpace(name)
+	if p.keyNormalizer != nil {
+		key = p.keyNormalizer.Normalize(name)
+	}
 	if key == "" {
 		return
 	}

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/anacrolix/torrent/metainfo"
+	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 )
@@ -484,6 +485,14 @@ func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName stri
 	return &musicRelease
 }
 
+type TorrentMetadata struct {
+	Name   string
+	HashV1 string
+	HashV2 string
+	Files  qbt.TorrentFiles
+	Info   *metainfo.Info
+}
+
 // ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
 func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
 	name, hash, _, err = ParseTorrentMetadata(torrentBytes)
@@ -492,33 +501,48 @@ func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error)
 
 // ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
 func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	name, hash, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
-	return name, hash, files, err
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	return meta.Name, meta.HashV1, meta.Files, nil
 }
 
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
-func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hash string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
+func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
+		return TorrentMetadata{}, fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
 	infoVal, err := mi.UnmarshalInfo()
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
+		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name = infoVal.Name
-	hash = mi.HashInfoBytes().HexString()
+	name := infoVal.Name
+	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
+	var hashV2 string
+	if infoVal.HasV2() {
+		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
+		hashV2 = strings.ToLower(h.HexString())
+	}
 
 	if name == "" {
-		return "", "", nil, nil, errors.New("torrent has no name")
+		return TorrentMetadata{}, errors.New("torrent has no name")
 	}
 
-	files = BuildTorrentFilesFromInfo(name, infoVal)
+	files := BuildTorrentFilesFromInfo(name, infoVal)
 
-	return name, hash, files, &infoVal, nil
+	return TorrentMetadata{
+		Name:   name,
+		HashV1: hashV1,
+		HashV2: hashV2,
+		Files:  files,
+		Info:   &infoVal,
+	}, nil
 }
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info

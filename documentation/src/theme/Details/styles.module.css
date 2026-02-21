@@ -1,0 +1,12 @@
+.details {
+  --docusaurus-details-decoration-color: #d0d3d9;
+  --ifm-alert-background-color: #f3f4f6;
+  --ifm-alert-border-color: #d0d3d9;
+  border-radius: 0.5rem;
+}
+
+:global([data-theme='dark']) .details {
+  --docusaurus-details-decoration-color: #3b3f46;
+  --ifm-alert-background-color: #24272c;
+  --ifm-alert-border-color: #3b3f46;
+}

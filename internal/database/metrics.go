@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package database
@@ -9,21 +9,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var beginTxRecoveryTotal atomic.Uint64
+var wedgedTransactionTotal atomic.Uint64
 
-func recordBeginTxRecovery() {
-	beginTxRecoveryTotal.Add(1)
+func recordWedgedTransaction() {
+	wedgedTransactionTotal.Add(1)
 }
 
 type MetricsCollector struct {
-	beginTxRecoveryDesc *prometheus.Desc
+	wedgedTransactionDesc *prometheus.Desc
 }
 
 func NewMetricsCollector() *MetricsCollector {
 	return &MetricsCollector{
-		beginTxRecoveryDesc: prometheus.NewDesc(
-			"qui_db_begin_tx_recovery_total",
-			"Number of times BeginTx hit 'cannot start a transaction within a transaction' and attempted rollback+retry recovery",
+		wedgedTransactionDesc: prometheus.NewDesc(
+			"qui_db_wedged_transaction_total",
+			"Number of times BeginTx detected a wedged transaction (indicates a bug)",
 			nil,
 			nil,
 		),
@@ -31,13 +31,13 @@ func NewMetricsCollector() *MetricsCollector {
 }
 
 func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.beginTxRecoveryDesc
+	ch <- c.wedgedTransactionDesc
 }
 
 func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
-		c.beginTxRecoveryDesc,
+		c.wedgedTransactionDesc,
 		prometheus.CounterValue,
-		float64(beginTxRecoveryTotal.Load()),
+		float64(wedgedTransactionTotal.Load()),
 	)
 }

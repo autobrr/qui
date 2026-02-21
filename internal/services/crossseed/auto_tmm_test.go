@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -12,6 +15,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 		crossCategory          string
 		matchedAutoManaged     bool
 		useCategoryFromIndexer bool
+		useCustomCategory      bool
 		actualCategorySavePath string
 		matchedSavePath        string
 		wantEnabled            bool
@@ -22,6 +26,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "/downloads/tv",
 			matchedSavePath:        "/downloads/tv",
 			wantEnabled:            true,
@@ -32,6 +37,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "/downloads/tv",
 			matchedSavePath:        "/downloads/tv",
 			wantEnabled:            false,
@@ -42,6 +48,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     false,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "/downloads/tv",
 			matchedSavePath:        "/downloads/tv",
 			wantEnabled:            false,
@@ -52,6 +59,18 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: true,
+			useCustomCategory:      false,
+			actualCategorySavePath: "/downloads/tv",
+			matchedSavePath:        "/downloads/tv",
+			wantEnabled:            false,
+			wantPathsMatch:         true,
+		},
+		{
+			name:                   "using custom category - disabled",
+			crossCategory:          "cross-seed",
+			matchedAutoManaged:     true,
+			useCategoryFromIndexer: false,
+			useCustomCategory:      true,
 			actualCategorySavePath: "/downloads/tv",
 			matchedSavePath:        "/downloads/tv",
 			wantEnabled:            false,
@@ -62,6 +81,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "/downloads/tv",
 			matchedSavePath:        "/downloads/movies",
 			wantEnabled:            true,
@@ -72,6 +92,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "",
 			matchedSavePath:        "/downloads/tv",
 			wantEnabled:            true,
@@ -82,6 +103,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "/downloads/tv",
 			matchedSavePath:        "",
 			wantEnabled:            true,
@@ -92,6 +114,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "",
 			matchedSavePath:        "",
 			wantEnabled:            true,
@@ -102,6 +125,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "/downloads/tv/",
 			matchedSavePath:        "/downloads/tv",
 			wantEnabled:            true,
@@ -112,6 +136,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "tv.cross",
 			matchedAutoManaged:     true,
 			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
 			actualCategorySavePath: "C:\\downloads\\tv",
 			matchedSavePath:        "C:/downloads/tv",
 			wantEnabled:            true,
@@ -122,6 +147,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			crossCategory:          "",
 			matchedAutoManaged:     false,
 			useCategoryFromIndexer: true,
+			useCustomCategory:      false,
 			actualCategorySavePath: "",
 			matchedSavePath:        "",
 			wantEnabled:            false,
@@ -135,6 +161,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 				tt.crossCategory,
 				tt.matchedAutoManaged,
 				tt.useCategoryFromIndexer,
+				tt.useCustomCategory,
 				tt.actualCategorySavePath,
 				tt.matchedSavePath,
 			)

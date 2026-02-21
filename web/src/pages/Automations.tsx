@@ -1,23 +1,18 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
 import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
 import { OrphanScanSettingsDialog } from "@/components/instances/preferences/OrphanScanSettingsDialog"
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
-import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { ReannounceSettingsDialog } from "@/components/instances/preferences/ReannounceSettingsDialog"
+import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
 
-const REANNOUNCE_FORM_ID = "reannounce-settings-form"
-
 export function Automations() {
-  const { instances, isUpdating } = useInstances()
+  const { instances } = useInstances()
   const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
   const [configureOrphanScanId, setConfigureOrphanScanId] = useState<number | null>(null)
   const [expandedAccordion, setExpandedAccordion] = useState<string | null>(null)
@@ -39,19 +34,11 @@ export function Automations() {
     return prefix === cardPrefix ? [instanceId] : []
   }
 
-  const configureInstance = instances?.find((inst) => inst.id === configureInstanceId)
+  const configureReannounceInstance = instances?.find((inst) => inst.id === configureInstanceId)
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
 
-  const handleConfigureReannounce = (instanceId: number) => {
-    setConfigureInstanceId(instanceId)
-  }
-
-  const handleCloseSheet = () => {
-    setConfigureInstanceId(null)
-  }
-
   return (
-    <div className="container mx-auto px-6 space-y-6 py-6">
+    <div className="container mx-auto px-6 space-y-6 py-6 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1 space-y-2">
           <h1 className="text-2xl font-semibold">Automations</h1>
@@ -71,7 +58,7 @@ export function Automations() {
           <ReannounceOverview
             expandedInstances={getExpandedForCard('reannounce')}
             onExpandedInstancesChange={handleAccordionChange('reannounce')}
-            onConfigureInstance={handleConfigureReannounce}
+            onConfigureInstance={setConfigureInstanceId}
           />
           <OrphanScanOverview
             expandedInstances={getExpandedForCard('orphan')}
@@ -87,34 +74,12 @@ export function Automations() {
         </p>
       )}
 
-      {/* Reannounce Configuration Sheet */}
-      <Sheet open={configureInstanceId !== null} onOpenChange={(open) => !open && handleCloseSheet()}>
-        <SheetContent side="right" className="flex h-full max-h-[100dvh] w-full flex-col overflow-hidden p-0 sm:max-w-2xl">
-          <SheetHeader className="shrink-0 px-6 pt-6">
-            <SheetTitle>Configure Reannounce</SheetTitle>
-            <SheetDescription>
-              {configureInstance?.name ?? "Instance"}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full px-6 py-4">
-              <TrackerReannounceForm
-                instanceId={configureInstanceId!}
-                variant="embedded"
-                formId={REANNOUNCE_FORM_ID}
-                onSuccess={handleCloseSheet}
-              />
-            </ScrollArea>
-          </div>
-
-          <SheetFooter className="shrink-0 border-t bg-muted/30 px-6 py-4">
-            <Button type="submit" form={REANNOUNCE_FORM_ID} disabled={isUpdating}>
-              {isUpdating ? "Saving..." : "Save Changes"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <ReannounceSettingsDialog
+        open={configureInstanceId !== null}
+        onOpenChange={(open) => !open && setConfigureInstanceId(null)}
+        instanceId={configureInstanceId!}
+        instanceName={configureReannounceInstance?.name}
+      />
 
       <OrphanScanSettingsDialog
         open={configureOrphanScanId !== null}

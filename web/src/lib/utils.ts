@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { Automation } from "@/types"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { Automation } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -300,4 +300,25 @@ export function parseTrackerDomains(rule: Automation): string[] {
     .split(/[|,;]/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+/**
+ * Normalize tracker domain values to a flat list of domains.
+ * Accepts values that may already be individual domains or comma-separated groups (e.g. "a.com,b.net").
+ */
+export function normalizeTrackerDomains(values: string[]): string[] {
+  const result: string[] = []
+  const seen = new Set<string>()
+
+  for (const raw of values) {
+    for (const part of raw.split(",")) {
+      const normalized = part.trim().toLowerCase()
+      if (!normalized) continue
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
+      result.push(normalized)
+    }
+  }
+
+  return result
 }

@@ -1,10 +1,12 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -167,14 +169,14 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
 		},
 		{
-			name:           "by-instance with root folder - no isolation",
-			preset:         "by-instance",
-			baseDir:        "/hardlinks",
-			torrentHash:    "abcdef1234567890",
-			torrentName:    "My.Movie.2024",
-			instanceName:   "qbt-main",
-			candidateFiles: filesWithRoot,
-			wantContains:   []string{"/hardlinks/", "qbt-main"},
+			name:            "by-instance with root folder - no isolation",
+			preset:          "by-instance",
+			baseDir:         "/hardlinks",
+			torrentHash:     "abcdef1234567890",
+			torrentName:     "My.Movie.2024",
+			instanceName:    "qbt-main",
+			candidateFiles:  filesWithRoot,
+			wantContains:    []string{"/hardlinks/", "qbt-main"},
 			wantNotContains: []string{"abcdef12", "My.Movie.2024--"},
 		},
 		{
@@ -230,6 +232,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			result := s.buildHardlinkDestDir(
 				context.Background(),
 				instance,
+				tt.baseDir,
 				tt.torrentHash,
 				tt.torrentName,
 				candidate,
@@ -238,11 +241,13 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 				tt.candidateFiles,
 			)
 
+			normalized := filepath.ToSlash(result)
+
 			for _, substr := range tt.wantContains {
-				assert.Contains(t, result, substr, "result should contain %q", substr)
+				assert.Contains(t, normalized, substr, "result should contain %q", substr)
 			}
 			for _, substr := range tt.wantNotContains {
-				assert.NotContains(t, result, substr, "result should NOT contain %q", substr)
+				assert.NotContains(t, normalized, substr, "result should NOT contain %q", substr)
 			}
 		})
 	}
@@ -277,6 +282,7 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 	result := s.buildHardlinkDestDir(
 		context.Background(),
 		instance,
+		instance.HardlinkBaseDir,
 		"abcdef1234567890",
 		"Movie",
 		candidate,
@@ -292,6 +298,130 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 
 	// Should contain the sanitized name
 	assert.Contains(t, result, "TrackerName")
+}
+
+func TestFindMatchingBaseDir(t *testing.T) {
+	tests := []struct {
+		name        string
+		configured  string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "empty configured returns error",
+			configured:  "",
+			wantErr:     true,
+			errContains: "not configured",
+		},
+		{
+			name:        "whitespace only returns error",
+			configured:  "   ",
+			wantErr:     true,
+			errContains: "not configured",
+		},
+		{
+			name:        "nonexistent single path returns error",
+			configured:  "/nonexistent/path/that/does/not/exist",
+			wantErr:     true,
+			errContains: "no base directory",
+		},
+		{
+			name:        "multiple nonexistent paths returns error",
+			configured:  "/nonexistent/path1, /nonexistent/path2, /nonexistent/path3",
+			wantErr:     true,
+			errContains: "no base directory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := findMatchingBaseDir(tt.configured, "/some/source/path")
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			assert.NotEmpty(t, result)
+		})
+	}
+}
+
+func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
+	_, err := findMatchingBaseDir("/path1, /path2 , /path3", "/nonexistent")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no base directory")
+}
+
+func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+	}{
+		{
+			name:       "spaces around commas",
+			configured: "/path1 , /path2 , /path3",
+		},
+		{
+			name:       "tabs around commas",
+			configured: "/path1\t,\t/path2\t,\t/path3",
+		},
+		{
+			name:       "mixed whitespace",
+			configured: "  /path1  ,   /path2   ,  /path3  ",
+		},
+		{
+			name:       "no spaces",
+			configured: "/path1,/path2,/path3",
+		},
+		{
+			name:       "empty segments ignored",
+			configured: "/path1, , /path2, ,, /path3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := findMatchingBaseDir(tt.configured, "/nonexistent/source")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "no base directory")
+		})
+	}
+}
+
+func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	firstDir := filepath.Join(t.TempDir(), "first")
+	secondDir := filepath.Join(t.TempDir(), "second")
+
+	result, err := findMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, firstDir, result)
+	assert.DirExists(t, firstDir)
+}
+
+func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	invalidFilePath := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(invalidFilePath, []byte("file"), 0o600))
+
+	validDir := filepath.Join(t.TempDir(), "valid")
+
+	result, err := findMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, validDir, result)
+	assert.DirExists(t, validDir)
 }
 
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
@@ -316,6 +446,7 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{},
@@ -352,6 +483,7 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{},
@@ -412,6 +544,7 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/downloads/movie"},
@@ -456,6 +589,7 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
 		[]byte("torrent"),
 		"hash123",
+		"",
 		"TorrentName",
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/also/nonexistent/path"},
@@ -475,4 +609,286 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 	assert.True(t, strings.Contains(result.Result.Message, "directory") ||
 		strings.Contains(result.Result.Message, "filesystem"),
 		"error message should mention directory or filesystem issue, got: %s", result.Result.Message)
+}
+
+func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
+	// This test verifies that when incoming torrent has extra files (files not in candidate)
+	// and SkipRecheck is enabled, hardlink mode returns skipped_recheck before any plan building.
+
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          "/hardlinks",
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	// Source files have an extra file (sample.mkv) not in candidate
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/sample.mkv", Size: 100}, // Extra file
+	}
+
+	// Candidate files only have the main movie
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
+		&qbt.Torrent{ContentPath: "/downloads/Movie"},
+		"exact",
+		sourceFiles,
+		candidateFiles,
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// Should be Used=true because hardlink mode is enabled, but skipped due to recheck requirement
+	require.True(t, result.Used, "hardlink mode should be attempted")
+	assert.False(t, result.Success, "should not succeed - skipped")
+	assert.Equal(t, "skipped_recheck", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "requires recheck")
+	assert.Contains(t, result.Result.Message, "Skip recheck")
+}
+
+func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
+	// This test verifies that when incoming torrent has extra files (files not in candidate)
+	// and SkipRecheck is enabled, reflink mode returns skipped_recheck before any plan building.
+
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true, // Reflink mode enabled
+				HardlinkBaseDir:          "/reflinks",
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	// Source files have an extra file (sample.mkv) not in candidate
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/sample.mkv", Size: 100}, // Extra file
+	}
+
+	// Candidate files only have the main movie
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
+		&qbt.Torrent{ContentPath: "/downloads/Movie"},
+		"exact",
+		sourceFiles,
+		candidateFiles,
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// Should be Used=true because reflink mode is enabled, but skipped due to recheck requirement
+	require.True(t, result.Used, "reflink mode should be attempted")
+	assert.False(t, result.Success, "should not succeed - skipped")
+	assert.Equal(t, "skipped_recheck", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "requires recheck")
+	assert.Contains(t, result.Result.Message, "Skip recheck")
+}
+
+func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
+	// When FallbackToRegularMode is enabled, hardlink failures should return
+	// Used=false so that regular cross-seed mode can proceed.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				FallbackToRegularMode:    true, // Fallback enabled
+				HardlinkBaseDir:          "",   // Empty to force early failure
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback enabled, failure should return Used=false to allow regular mode
+	assert.False(t, result.Used, "hardlink mode should return Used=false when fallback is enabled and it fails")
+}
+
+func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
+	// When FallbackToRegularMode is disabled, hardlink failures should return
+	// Used=true with hardlink_error status.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				FallbackToRegularMode:    false, // Fallback disabled
+				HardlinkBaseDir:          "",    // Empty to force early failure
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback disabled, failure should return Used=true with error status
+	require.True(t, result.Used, "hardlink mode should return Used=true when fallback is disabled")
+	assert.False(t, result.Success, "result should indicate failure")
+	assert.Equal(t, "hardlink_error", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "base directory")
+}
+
+func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
+	// When FallbackToRegularMode is enabled, reflink failures should return
+	// Used=false so that regular cross-seed mode can proceed.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true,
+				FallbackToRegularMode:    true, // Fallback enabled
+				HardlinkBaseDir:          "",   // Empty to force early failure (reflink reuses this field)
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback enabled, failure should return Used=false to allow regular mode
+	assert.False(t, result.Used, "reflink mode should return Used=false when fallback is enabled and it fails")
+}
+
+func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
+	// When FallbackToRegularMode is disabled, reflink failures should return
+	// Used=true with reflink_error status.
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true,
+				FallbackToRegularMode:    false, // Fallback disabled
+				HardlinkBaseDir:          "",    // Empty to force early failure
+			},
+		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"category",
+		"category.cross",
+	)
+
+	// With fallback disabled, failure should return Used=true with error status
+	require.True(t, result.Used, "reflink mode should return Used=true when fallback is disabled")
+	assert.False(t, result.Success, "result should indicate failure")
+	assert.Equal(t, "reflink_error", result.Result.Status)
+	assert.Contains(t, result.Result.Message, "base directory")
 }

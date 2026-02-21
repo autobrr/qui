@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -309,4 +312,21 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	// Regression: different shows that share a common prefix should not match.
+	// Example: "FBI" vs "FBI Most Wanted".
+	fbi := rls.ParseString("FBI.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
+	fbiMostWanted := rls.ParseString("FBI.Most.Wanted.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
+	require.False(t, s.releasesMatch(&fbi, &fbiMostWanted, false))
+	require.False(t, s.releasesMatch(&fbiMostWanted, &fbi, false), "match should be symmetric")
+
+	// Another common case: main series vs spinoff where the spinoff embeds the parent title.
+	sao := rls.ParseString("Sword.Art.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
+	ggo := rls.ParseString("Sword.Art.Online.Alternative.Gun.Gale.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
+	require.False(t, s.releasesMatch(&sao, &ggo, false))
+	require.False(t, s.releasesMatch(&ggo, &sao, false), "match should be symmetric")
 }

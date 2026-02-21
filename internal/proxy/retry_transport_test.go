@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package proxy
@@ -51,14 +51,46 @@ func TestRetryTransport_Success(t *testing.T) {
 
 	transport := NewRetryTransport(mock)
 
-	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 	require.NoError(t, err)
 
 	resp, err := transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, 1, mock.attempts)
+}
+
+func TestRetryTransport_SelectorOverridesBase(t *testing.T) {
+	base := &mockRoundTripper{
+		response: &http.Response{
+			StatusCode: http.StatusTeapot,
+			Body:       io.NopCloser(strings.NewReader("base")),
+		},
+	}
+
+	selected := &mockRoundTripper{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("selected")),
+		},
+	}
+
+	transport := NewRetryTransportWithSelector(base, func(req *http.Request) http.RoundTripper {
+		return selected
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.com", http.NoBody)
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, 0, base.attempts)
+	assert.Equal(t, 1, selected.attempts)
 }
 
 func TestRetryTransport_RetryableError(t *testing.T) {
@@ -132,10 +164,13 @@ func TestRetryTransport_RetryableError(t *testing.T) {
 
 			transport := NewRetryTransport(mock)
 
-			req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 			require.NoError(t, err)
 
 			resp, err := transport.RoundTrip(req)
+			if resp != nil {
+				t.Cleanup(func() { _ = resp.Body.Close() })
+			}
 
 			if tt.expectRetry && tt.maxFailures < maxRetries {
 				require.NoError(t, err)
@@ -176,10 +211,13 @@ func TestRetryTransport_NonRetryableError(t *testing.T) {
 
 			transport := NewRetryTransport(mock)
 
-			req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 			require.NoError(t, err)
 
 			resp, err := transport.RoundTrip(req)
+			if resp != nil {
+				t.Cleanup(func() { _ = resp.Body.Close() })
+			}
 			require.Error(t, err)
 			assert.Nil(t, resp)
 			assert.Equal(t, 1, mock.attempts, "Should not retry non-retryable errors")
@@ -199,10 +237,13 @@ func TestRetryTransport_NonIdempotentMethod(t *testing.T) {
 
 			transport := NewRetryTransport(mock)
 
-			req, err := http.NewRequest(method, "http://example.com", nil)
+			req, err := http.NewRequestWithContext(context.Background(), method, "http://example.com", http.NoBody)
 			require.NoError(t, err)
 
 			resp, err := transport.RoundTrip(req)
+			if resp != nil {
+				t.Cleanup(func() { _ = resp.Body.Close() })
+			}
 			require.Error(t, err)
 			assert.Nil(t, resp)
 			assert.Equal(t, 1, mock.attempts, "Should not retry non-idempotent methods")
@@ -222,12 +263,13 @@ func TestRetryTransport_IdempotentMethods(t *testing.T) {
 
 			transport := NewRetryTransport(mock)
 
-			req, err := http.NewRequest(method, "http://example.com", nil)
+			req, err := http.NewRequestWithContext(context.Background(), method, "http://example.com", http.NoBody)
 			require.NoError(t, err)
 
 			resp, err := transport.RoundTrip(req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
+			t.Cleanup(func() { _ = resp.Body.Close() })
 			assert.Equal(t, 2, mock.attempts, "Should retry idempotent methods")
 		})
 	}
@@ -241,11 +283,14 @@ func TestRetryTransport_MaxRetries(t *testing.T) {
 
 	transport := NewRetryTransport(mock)
 
-	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 	require.NoError(t, err)
 
 	start := time.Now()
 	resp, err := transport.RoundTrip(req)
+	if resp != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	duration := time.Since(start)
 
 	require.Error(t, err)
@@ -267,7 +312,7 @@ func TestRetryTransport_ContextCancellation(t *testing.T) {
 	transport := NewRetryTransport(mock)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com", http.NoBody)
 	require.NoError(t, err)
 
 	// Cancel context after first failure
@@ -277,6 +322,9 @@ func TestRetryTransport_ContextCancellation(t *testing.T) {
 	}()
 
 	resp, err := transport.RoundTrip(req)
+	if resp != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	require.Error(t, err)
 	assert.Nil(t, resp)
 	assert.Less(t, mock.attempts, maxRetries+1, "Should stop on context cancellation")
@@ -460,12 +508,13 @@ func TestRetryTransport_ClosesIdleConnections(t *testing.T) {
 
 	transport := NewRetryTransport(mock)
 
-	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 	require.NoError(t, err)
 
 	resp, err := transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	// Should have called CloseIdleConnections once for the failed attempt
 	assert.Equal(t, 1, mock.closeIdleCalled, "Should close idle connections on network error")
@@ -482,12 +531,13 @@ func TestRetryTransport_ClosesIdleConnectionsMultipleTimes(t *testing.T) {
 
 	transport := NewRetryTransport(mock)
 
-	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 	require.NoError(t, err)
 
 	resp, err := transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	// Should have called CloseIdleConnections twice for the two failed attempts
 	assert.Equal(t, 2, mock.closeIdleCalled, "Should close idle connections for each network error")
@@ -504,10 +554,13 @@ func TestRetryTransport_DoesNotCloseOnNonRetryableError(t *testing.T) {
 
 	transport := NewRetryTransport(mock)
 
-	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", http.NoBody)
 	require.NoError(t, err)
 
-	_, err = transport.RoundTrip(req)
+	resp, err := transport.RoundTrip(req)
+	if resp != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	require.Error(t, err)
 
 	// Should not have called CloseIdleConnections for non-retryable error

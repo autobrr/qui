@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 
 import { api } from "@/lib/api"
-import { isInsideBase, normalizePath, searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import type { Torrent } from "@/types"
 
 interface UseCrossSeedWarningOptions {
@@ -78,65 +78,29 @@ export function useCrossSeedWarning({
     const allMatches: CrossSeedTorrent[] = []
     const seenHashes = new Set<string>()
 
-    // Get hardlink base directory for this instance (to exclude hardlink-mode torrents)
-    const hardlinkBase = normalizePath(instance.hardlinkBaseDir || "")
-
     try {
-      // Check each torrent for cross-seeds
+      // Check each torrent for cross-seeds using backend API
       for (let i = 0; i < torrents.length; i++) {
         const torrent = torrents[i]
 
-        // Normalize source torrent paths
-        const srcSave = normalizePath(torrent.save_path || "")
-        const srcContent = normalizePath(torrent.content_path || "")
+        // Use backend API for proper release matching (rls library)
+        // strict=true ensures we fail if overlap checks can't complete (delete safety)
+        const matches = await api.getLocalCrossSeedMatches(instanceId, torrent.hash, true)
 
-        // Skip source torrents inside hardlink base (they don't share files with originals)
-        if (isInsideBase(srcSave, hardlinkBase)) {
-          setCheckedCount(i + 1)
-          continue
-        }
-
-        // Fetch files for this torrent
-        let torrentFiles: Awaited<ReturnType<typeof api.getTorrentFiles>> = []
-        try {
-          torrentFiles = await api.getTorrentFiles(instanceId, torrent.hash)
-        } catch {
-          // Continue without files - will use weaker matching
-        }
-
-        // Search for cross-seeds
-        const matches = await searchCrossSeedMatches(
-          torrent,
-          instance,
-          instanceId,
-          torrentFiles,
-          torrent.infohash_v1 || torrent.hash,
-          torrent.infohash_v2
-        )
-
-        // Filter and dedupe matches - only include matches that share the same on-disk files
+        // Filter and dedupe matches - only include matches that share the same content_path
         for (const match of matches) {
-          // Skip torrents being deleted
-          if (hashesBeingDeleted.has(match.hash)) continue
           // Skip if not on this instance
           if (match.instanceId !== instanceId) continue
+          // Skip torrents being deleted
+          if (hashesBeingDeleted.has(match.hash)) continue
+          // Only include matches that share the same on-disk location
+          if (match.matchType !== "content_path") continue
           // Skip duplicates
           if (seenHashes.has(match.hash)) continue
 
-          // Normalize match paths
-          const mSave = normalizePath(match.save_path || "")
-          const mContent = normalizePath(match.content_path || "")
-
-          // Skip matches inside hardlink base directory (hardlink-mode cross-seeds)
-          if (isInsideBase(mSave, hardlinkBase)) continue
-
-          // Only include matches that share the SAME on-disk files:
-          // Both save_path AND content_path must match exactly
-          if (!srcSave || !srcContent || mSave !== srcSave || mContent !== srcContent) continue
-
           seenHashes.add(match.hash)
           allMatches.push({
-            ...match,
+            ...toCompatibleMatch(match),
             instanceName,
           })
         }

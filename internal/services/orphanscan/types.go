@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package orphanscan
@@ -67,15 +67,18 @@ type OrphanFile struct {
 
 // Settings represents orphan scan settings for an instance.
 type Settings struct {
-	ID                 int64
-	InstanceID         int
-	Enabled            bool
-	GracePeriodMinutes int
-	IgnorePaths        []string
-	ScanIntervalHours  int
-	MaxFilesPerRun     int
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                  int64
+	InstanceID          int
+	Enabled             bool
+	GracePeriodMinutes  int
+	IgnorePaths         []string
+	ScanIntervalHours   int
+	PreviewSort         string
+	MaxFilesPerRun      int
+	AutoCleanupEnabled  bool
+	AutoCleanupMaxFiles int
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // Run represents an orphan scan run.

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -107,7 +107,7 @@ func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
 			},
 		}
 
-		assert.True(t, sm.torrentIsUnregistered(torrent))
+		assert.True(t, sm.torrentIsUnregistered(&torrent))
 	})
 
 	t.Run("ignores when working tracker present", func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
 			},
 		}
 
-		assert.False(t, sm.torrentIsUnregistered(torrent))
+		assert.False(t, sm.torrentIsUnregistered(&torrent))
 	})
 }
 
@@ -133,7 +133,7 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 			},
 		}
 
-		assert.False(t, sm.torrentTrackerIsDown(torrent))
+		assert.False(t, sm.torrentTrackerIsDown(&torrent))
 	})
 
 	t.Run("marks tracker down when not working", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 			},
 		}
 
-		assert.True(t, sm.torrentTrackerIsDown(torrent))
+		assert.True(t, sm.torrentTrackerIsDown(&torrent))
 	})
 
 	t.Run("ignores when working tracker present", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 			},
 		}
 
-		assert.False(t, sm.torrentTrackerIsDown(torrent))
+		assert.False(t, sm.torrentTrackerIsDown(&torrent))
 	})
 }
 
@@ -938,12 +938,12 @@ func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
 
 	testCases := []struct {
 		name     string
-		torrent  qbt.Torrent
+		torrent  *qbt.Torrent
 		expected map[string]struct{}
 	}{
 		{
 			name: "Multiple trackers returns all domains",
-			torrent: qbt.Torrent{
+			torrent: &qbt.Torrent{
 				Hash: "hash1",
 				Trackers: []qbt.TorrentTracker{
 					{Url: "https://tracker1.example.com/announce"},
@@ -959,7 +959,7 @@ func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
 		},
 		{
 			name: "Single Tracker field (legacy) returns domain",
-			torrent: qbt.Torrent{
+			torrent: &qbt.Torrent{
 				Hash:    "hash2",
 				Tracker: "https://legacy.tracker.com/announce",
 			},
@@ -969,7 +969,7 @@ func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
 		},
 		{
 			name: "Trackers field takes precedence over Tracker field",
-			torrent: qbt.Torrent{
+			torrent: &qbt.Torrent{
 				Hash:    "hash3",
 				Tracker: "https://legacy.tracker.com/announce",
 				Trackers: []qbt.TorrentTracker{
@@ -982,7 +982,7 @@ func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
 		},
 		{
 			name: "Empty URL entries are filtered out",
-			torrent: qbt.Torrent{
+			torrent: &qbt.Torrent{
 				Hash: "hash4",
 				Trackers: []qbt.TorrentTracker{
 					{Url: "https://valid.tracker.com/announce"},
@@ -997,14 +997,14 @@ func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
 		},
 		{
 			name: "Empty torrent returns empty map",
-			torrent: qbt.Torrent{
+			torrent: &qbt.Torrent{
 				Hash: "hash5",
 			},
 			expected: map[string]struct{}{},
 		},
 		{
 			name: "Duplicate domains are deduplicated",
-			torrent: qbt.Torrent{
+			torrent: &qbt.Torrent{
 				Hash: "hash6",
 				Trackers: []qbt.TorrentTracker{
 					{Url: "https://tracker.example.com/announce"},
