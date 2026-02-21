@@ -441,7 +441,12 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 
 	l.Info().Str("path", dir.Path).Msg("dirscan: starting scan")
 
-	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, runID, &l)
+	settings, matcher, ok := s.loadSettingsAndMatcher(ctx, runID, dir.TargetInstanceID, &l)
+	if !ok {
+		return
+	}
+
+	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, settings, runID, &l)
 	if !ok {
 		return
 	}
@@ -454,11 +459,6 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	}
 
 	if s.handleCancellation(ctx, runID, &l, "before search phase") {
-		return
-	}
-
-	settings, matcher, ok := s.loadSettingsAndMatcher(ctx, runID, dir.TargetInstanceID, &l)
-	if !ok {
 		return
 	}
 
@@ -624,7 +624,7 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 
 // runScanPhase executes the directory scanning phase.
 // Returns the scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, settings *models.DirScanSettings, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
 	scanner := NewScanner()
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
@@ -644,6 +644,18 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		l.Error().Err(err).Msg("dirscan: failed to scan directory")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
 		return nil, nil, false
+	}
+
+	maxSearcheeAgeDays := maxSearcheeAgeDaysFromSettings(settings)
+	ageFilterStats := applyMaxSearcheeAgeFilter(scanResult, maxSearcheeAgeDays, time.Now(), fileIDIndex)
+	if ageFilterStats.ExcludedSearchees > 0 {
+		l.Info().
+			Int("maxSearcheeAgeDays", maxSearcheeAgeDays).
+			Time("cutoff", ageFilterStats.Cutoff).
+			Int("excludedSearchees", ageFilterStats.ExcludedSearchees).
+			Int("excludedFiles", ageFilterStats.ExcludedFiles).
+			Int64("excludedBytes", ageFilterStats.ExcludedBytes).
+			Msg("dirscan: excluded stale searchees by age filter")
 	}
 
 	// Update status to searching
@@ -666,6 +678,100 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		Msg("dirscan: scan phase complete")
 
 	return scanResult, fileIDIndex, true
+}
+
+type scanAgeFilterStats struct {
+	Cutoff            time.Time
+	ExcludedSearchees int
+	ExcludedFiles     int
+	ExcludedBytes     int64
+}
+
+func maxSearcheeAgeDaysFromSettings(settings *models.DirScanSettings) int {
+	if settings == nil || settings.MaxSearcheeAgeDays <= 0 {
+		return 0
+	}
+	return settings.MaxSearcheeAgeDays
+}
+
+func applyMaxSearcheeAgeFilter(scanResult *ScanResult, maxSearcheeAgeDays int, now time.Time, fileIDIndex map[string]string) scanAgeFilterStats {
+	stats := scanAgeFilterStats{}
+	if scanResult == nil || maxSearcheeAgeDays <= 0 {
+		return stats
+	}
+
+	stats.Cutoff = now.AddDate(0, 0, -maxSearcheeAgeDays)
+	kept := make([]*Searchee, 0, len(scanResult.Searchees))
+	for _, searchee := range scanResult.Searchees {
+		if searchee == nil {
+			continue
+		}
+		if searcheeNewestModTimeBeforeCutoff(searchee, stats.Cutoff) {
+			stats.ExcludedSearchees++
+			stats.ExcludedFiles += len(searchee.Files)
+			for _, f := range searchee.Files {
+				if f == nil {
+					continue
+				}
+				stats.ExcludedBytes += f.Size
+			}
+			continue
+		}
+		kept = append(kept, searchee)
+	}
+
+	scanResult.Searchees = kept
+	recomputeScanResultSummary(scanResult, fileIDIndex)
+	return stats
+}
+
+func searcheeNewestModTimeBeforeCutoff(searchee *Searchee, cutoff time.Time) bool {
+	if searchee == nil || len(searchee.Files) == 0 {
+		return false
+	}
+
+	var newest time.Time
+	for _, f := range searchee.Files {
+		if f == nil {
+			continue
+		}
+		if f.ModTime.After(newest) {
+			newest = f.ModTime
+		}
+	}
+	if newest.IsZero() {
+		return false
+	}
+	return newest.Before(cutoff)
+}
+
+func recomputeScanResultSummary(scanResult *ScanResult, fileIDIndex map[string]string) {
+	if scanResult == nil {
+		return
+	}
+
+	scanResult.TotalFiles = 0
+	scanResult.TotalSize = 0
+	scanResult.SkippedFiles = 0
+
+	for _, searchee := range scanResult.Searchees {
+		if searchee == nil || len(searchee.Files) == 0 {
+			continue
+		}
+
+		if isAlreadySeedingByFileID(searchee, fileIDIndex) {
+			scanResult.SkippedFiles += len(searchee.Files)
+			continue
+		}
+
+		for _, f := range searchee.Files {
+			if f == nil {
+				continue
+			}
+			scanResult.TotalFiles++
+			scanResult.TotalSize += f.Size
+		}
+	}
 }
 
 // runSearchAndInjectPhase searches indexers for each searchee and injects matches.
