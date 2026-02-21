@@ -991,7 +991,10 @@ func (m *StreamManager) forceSync(instanceID int) {
 
 	if err := syncMgr.Sync(ctx); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
-		m.HandleSyncError(instanceID, err)
+		// qBittorrent SyncManager calls OnError for sync failures, which already routes
+		// through the client sync event sink to this StreamManager.
+		// Avoid double-reporting the same failure and advancing backoff twice.
+		return
 	}
 }
 

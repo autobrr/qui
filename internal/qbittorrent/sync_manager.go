@@ -1891,9 +1891,6 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	var categories map[string]qbt.Category
 	if skipFreshData {
 		categories = syncManager.GetCategoriesUnchecked()
-		if categories == nil {
-			categories = syncManager.GetCategories()
-		}
 	} else {
 		categories = syncManager.GetCategories()
 	}
@@ -1915,9 +1912,6 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	var tags []string
 	if skipFreshData {
 		tags = syncManager.GetTagsUnchecked()
-		if tags == nil {
-			tags = syncManager.GetTags()
-		}
 	} else {
 		tags = syncManager.GetTags()
 	}
