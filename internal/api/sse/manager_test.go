@@ -150,6 +150,31 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
+func TestStreamManagerServeMissingInstanceStore(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	payload := []map[string]any{
+		{
+			"key":        "stream-1",
+			"instanceId": 1,
+			"page":       0,
+			"limit":      50,
+			"sort":       "added_on",
+			"order":      "desc",
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+
+	require.NotPanics(t, func() {
+		manager.Serve(recorder, request)
+	})
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+}
+
 // recordingProvider is a minimal sse.Provider that captures published messages for assertions.
 type recordingProvider struct {
 	mu       sync.Mutex

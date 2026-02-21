@@ -1040,6 +1040,10 @@ func (m *StreamManager) publishHeartbeat(instanceID int) {
 }
 
 func (m *StreamManager) instanceExists(ctx context.Context, instanceID int) (bool, error) {
+	if m.instanceDB == nil {
+		return false, errors.New("instance store unavailable")
+	}
+
 	_, err := m.instanceDB.Get(ctx, instanceID)
 	if err == nil {
 		return true, nil
