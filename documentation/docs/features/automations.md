@@ -172,6 +172,7 @@ The State field matches these status buckets:
 | `errored`      | Has errors                   |
 | `tracker_down` | Tracker unreachable          |
 | `checking`     | Verifying files              |
+| `checkingResumeData` | Checking resume data     |
 | `moving`       | Moving files                 |
 | `missingFiles` | Files not found              |
 | `unregistered` | Tracker reports unregistered |
@@ -287,6 +288,11 @@ You can also run dry-runs immediately without waiting for interval execution:
 
 Dry-run executes the current workflow config as a simulation only and writes results to automation activity.
 
+No-match behavior:
+
+- Manual dry-runs still log a `dry_run_no_match` summary row when nothing matches.
+- Scheduled dry-run rules do **not** log no-match rows (to avoid event noise).
+
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
@@ -395,6 +401,22 @@ Resume matching torrents. Only resumes if not already running.
 
 If a pause action is also present, last action wins.
 
+### Force Recheck
+
+Force recheck matching torrents.
+
+- Triggers qBittorrent recheck for matched torrents.
+- Can be combined with other actions.
+- Supports optional condition override (like other actions).
+
+### Force Reannounce
+
+Force reannounce matching torrents.
+
+- Triggers immediate tracker reannounce for matched torrents.
+- Can be combined with other actions.
+- Supports optional condition override (like other actions).
+
 ### Delete
 
 Remove torrents from qBittorrent. **Must be standalone** - cannot combine with other actions.
@@ -434,20 +456,21 @@ This is useful when you have hardlinked copies of content across different locat
 
 ### Tag
 
-Add or remove tags from torrents.
+Manage tags on torrents. You can add multiple Tag actions in one workflow.
 
 | Mode     | Description                                            |
 | -------- | ------------------------------------------------------ |
 | `full`   | Add to matches, remove from non-matches (smart toggle) |
 | `add`    | Only add to matches                                    |
-| `remove` | Only remove from non-matches                           |
+| `remove` | Only remove from matches                               |
 
 :::note
-Mode does not change the way torrents are flagged, meaning, even with `mode: remove`, tags will be removed if the torrent does **NOT** match the conditions. `mode: remove` simply means that tags will not be added to torrents that do match.
+`mode: remove` removes tags from torrents that match the tag action condition. It does not remove from non-matches.
 :::
 
 Options:
 
+- **Managed / Replace in Client** - `Managed` (default) keeps tag set in sync without hard-resetting client tags. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
 - **Use Tracker as Tag** - Derive tag from tracker domain
 - **Use Display Name** - Use tracker customization display name instead of raw domain
 
