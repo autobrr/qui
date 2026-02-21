@@ -1249,11 +1249,14 @@ export function TorrentCardsMobile({
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const supportsSubcategories = isAllInstancesView
+    ? Boolean(subcategoriesFromData)
+    : (capabilities?.supportsSubcategories ?? false)
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
-  const allowSubcategories =
-    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  const allowSubcategories = isAllInstancesView
+    ? Boolean(subcategoriesFromData)
+    : (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
 
   const getSelectionIdentity = useCallback((torrent: Torrent): string => {
     if (!isAllInstancesView) {
