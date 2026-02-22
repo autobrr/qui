@@ -2709,6 +2709,13 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 		return ""
 	}
 
+	// qBittorrent may emit pseudo tracker labels (e.g. "[DHT]", "[PeX]", "[LSD]").
+	// These are peer-discovery mechanisms, not real tracker domains.
+	if isPseudoTrackerLabel(urlStr) {
+		urlCache.Set(urlStr, "", ttlcache.DefaultTTL)
+		return ""
+	}
+
 	// Check cache first
 	if cachedDomain, found := urlCache.Get(urlStr); found {
 		return cachedDomain
@@ -2767,6 +2774,9 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
+		if isPseudoTrackerLabel(domain) {
+			domain = ""
+		}
 	} else {
 		domain = unknown
 	}
@@ -2774,6 +2784,24 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	// Cache the result
 	urlCache.Set(urlStr, domain, ttlcache.DefaultTTL)
 	return domain
+}
+
+func isPseudoTrackerLabel(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.Trim(normalized, "*")
+	normalized = strings.TrimSpace(normalized)
+	if strings.HasPrefix(normalized, "[") && strings.HasSuffix(normalized, "]") {
+		normalized = strings.TrimPrefix(normalized, "[")
+		normalized = strings.TrimSuffix(normalized, "]")
+		normalized = strings.TrimSpace(normalized)
+	}
+
+	switch normalized {
+	case "dht", "pex", "lsd":
+		return true
+	default:
+		return false
+	}
 }
 
 // torrentBelongsToTrackerDomain checks if a torrent currently has a tracker in the given domain.
