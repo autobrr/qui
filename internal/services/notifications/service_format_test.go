@@ -5,6 +5,7 @@ package notifications
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -139,7 +140,7 @@ func TestFormatEventTorrentCompletedNotifiarrAPIMetricsStayRaw(t *testing.T) {
 	require.Contains(t, message, "Leechs: 2")
 }
 
-func TestFormatEventAutomationsActionsAppliedDedupesSamplesOutsideNotifiarrAPI(t *testing.T) {
+func TestFormatEventAutomationsActionsAppliedMergesSamplesOutsideNotifiarrAPI(t *testing.T) {
 	t.Parallel()
 
 	svc := &Service{}
@@ -148,13 +149,14 @@ func TestFormatEventAutomationsActionsAppliedDedupesSamplesOutsideNotifiarrAPI(t
 		Message: "Applied: 1\n" +
 			"Top actions: Tags updated=1\n" +
 			"Tags: +no_hl=1\n" +
-			"Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT\n" +
-			"Samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT",
+			"Tag samples: Godzilla.Minus.One.2023.Hybrid.1080p.BluRay.DUAL.DDP7.1.x264-ZoroSenpai.mkv; Mercy.2026.720p.AMZN.WEB-DL.DDP5.1.Atmos.H.264-BYNDR\n" +
+			"Samples: Hamnet.2025.Hybrid.1080p.BluRay.DDP7.1.x264-ZoroSenpai.mkv",
 	}, true)
 
 	require.Equal(t, "Automations actions applied", title)
-	require.Contains(t, message, "Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
-	require.NotContains(t, message, "\nSamples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
+	require.NotContains(t, message, "Tag samples:")
+	require.Contains(t, message, "Samples: Godzilla.Minus.One.2023.Hybrid.1080p.BluRay.DUAL.DDP7.1.x264-ZoroSenpai.mkv; Mercy.2026.720p.AMZN.WEB-DL.DDP5.1.Atmos.H.264-BYNDR; Hamnet.2025.Hybrid.1080p.BluRay.DDP7.1.x264-ZoroSenpai.mkv")
+	require.Equal(t, 1, strings.Count(message, "Samples:"))
 }
 
 func TestFormatEventAutomationsActionsAppliedKeepsSamplesForNotifiarrAPI(t *testing.T) {

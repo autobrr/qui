@@ -610,13 +610,13 @@ func formatAutomationsEvent(instanceLabel, defaultTitle, overrideTitle, message 
 
 	lines := splitMessageLines(message)
 	if dedupeSampleLines {
-		lines = dedupeTagAndGeneralSampleLines(lines)
+		lines = mergeAutomationSampleLines(lines)
 	}
 
 	return title, buildMessage(instanceLabel, lines)
 }
 
-func dedupeTagAndGeneralSampleLines(lines []string) []string {
+func mergeAutomationSampleLines(lines []string) []string {
 	if len(lines) == 0 {
 		return lines
 	}
@@ -638,45 +638,48 @@ func dedupeTagAndGeneralSampleLines(lines []string) []string {
 		}
 	}
 
-	if tagLineIndex < 0 || sampleLineIndex < 0 {
+	if tagLineIndex < 0 {
 		return lines
 	}
 
 	tagSamples := parseSampleListLine(lines[tagLineIndex], tagPrefix)
-	samples := parseSampleListLine(lines[sampleLineIndex], samplePrefix)
-	if len(tagSamples) == 0 || len(samples) == 0 {
-		return lines
+	samples := []string(nil)
+	if sampleLineIndex >= 0 {
+		samples = parseSampleListLine(lines[sampleLineIndex], samplePrefix)
 	}
 
-	tagSet := make(map[string]struct{}, len(tagSamples))
+	merged := make([]string, 0, len(tagSamples)+len(samples))
+	seen := make(map[string]struct{}, len(tagSamples)+len(samples))
 	for _, sample := range tagSamples {
-		tagSet[sample] = struct{}{}
-	}
-
-	extraSamples := make([]string, 0, len(samples))
-	for _, sample := range samples {
-		if _, exists := tagSet[sample]; exists {
+		if _, exists := seen[sample]; exists {
 			continue
 		}
-		extraSamples = append(extraSamples, sample)
+		seen[sample] = struct{}{}
+		merged = append(merged, sample)
 	}
-
-	if len(extraSamples) == len(samples) {
-		return lines
-	}
-	if len(extraSamples) == 0 {
-		out := make([]string, 0, len(lines)-1)
-		for i, line := range lines {
-			if i == sampleLineIndex {
-				continue
-			}
-			out = append(out, line)
+	for _, sample := range samples {
+		if _, exists := seen[sample]; exists {
+			continue
 		}
-		return out
+		seen[sample] = struct{}{}
+		merged = append(merged, sample)
 	}
 
-	out := append([]string(nil), lines...)
-	out[sampleLineIndex] = samplePrefix + " " + strings.Join(extraSamples, "; ")
+	out := make([]string, 0, len(lines))
+	insertIndex := tagLineIndex
+	if sampleLineIndex >= 0 && sampleLineIndex < insertIndex {
+		insertIndex = sampleLineIndex
+	}
+
+	for i, line := range lines {
+		if i == insertIndex && len(merged) > 0 {
+			out = append(out, samplePrefix+" "+strings.Join(merged, "; "))
+		}
+		if i == tagLineIndex || i == sampleLineIndex {
+			continue
+		}
+		out = append(out, line)
+	}
 
 	return out
 }
