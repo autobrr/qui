@@ -148,6 +148,7 @@ export function MobileFooterNav() {
   )
   const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
   const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
+  const hasMultipleActiveInstances = activeInstances.length > 1
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
@@ -167,9 +168,7 @@ export function MobileFooterNav() {
   }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
     const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
-    const nextIds = currentlySelected
-      ? effectiveUnifiedInstanceIds.filter(id => id !== instanceId)
-      : [...effectiveUnifiedInstanceIds, instanceId]
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
 
     if (nextIds.length === 0) {
       return
@@ -181,9 +180,7 @@ export function MobileFooterNav() {
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = isOnAllInstancesPage
-    ? "Unified"
-    : (currentInstance && currentInstance.isActive ? currentInstance.name : null)
+  const currentInstanceLabel = isOnAllInstancesPage? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance && currentInstance.isActive ? currentInstance.name : null)
   const activeInstancesSummary = `${activeInstances.length} active instance${activeInstances.length === 1 ? "" : "s"}`
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
@@ -292,26 +289,26 @@ export function MobileFooterNav() {
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
               <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/instances"
-                  search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
-                  className="flex items-center gap-2 min-w-0"
-                >
-                  <HardDrive className="h-4 w-4" />
-                  <span className="flex-1 min-w-0 truncate font-medium">Unified</span>
-                  <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                    {activeInstancesSummary}
-                  </span>
-                  {hasCustomUnifiedScope && (
-                    <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
-                      {unifiedScopeSummary}
-                    </span>
-                  )}
-                </Link>
-              </DropdownMenuItem>
-              {activeInstances.length > 1 && (
+              {hasMultipleActiveInstances && (
                 <>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      className="flex items-center gap-2 min-w-0"
+                    >
+                      <HardDrive className="h-4 w-4" />
+                      <span className="flex-1 min-w-0 truncate font-medium">Unified</span>
+                      <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {activeInstancesSummary}
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">
                     Unified Scope
@@ -350,9 +347,9 @@ export function MobileFooterNav() {
                       </DropdownMenuCheckboxItem>
                     )
                   })}
+                  <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuSeparator />
               {activeInstances.length > 0 ? (
                 activeInstances.map((instance) => {
                   const csState = crossSeedInstanceState[instance.id]
@@ -730,9 +727,7 @@ export function MobileFooterNav() {
                                       }}
                                       className={cn(
                                         "w-8 h-8 rounded-full transition-all cursor-pointer",
-                                        isSelected
-                                          ? "ring-2 ring-black dark:ring-white"
-                                          : "ring-1 ring-black/10 dark:ring-white/10"
+                                        isSelected? "ring-2 ring-black dark:ring-white": "ring-1 ring-black/10 dark:ring-white/10"
                                       )}
                                       style={{
                                         backgroundColor: variation.color,

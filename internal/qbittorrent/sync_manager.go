@@ -1473,70 +1473,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 	// Apply sorting if specified - always use deterministic secondary sort
 	if sort != "" {
-		switch sort {
-		case "name":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := strings.Compare(a.Name, b.Name)
-				if result == 0 {
-					// Secondary sort by hash for deterministic ordering
-					result = strings.Compare(a.Hash, b.Hash)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "size":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.Size, b.Size)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "progress":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.Progress, b.Progress)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "added_on":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.AddedOn, b.AddedOn)
-				if result == 0 {
-					// Secondary sort by hash for deterministic ordering
-					result = strings.Compare(a.Hash, b.Hash)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "instance":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := strings.Compare(a.InstanceName, b.InstanceName)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "tracker":
-			sm.sortCrossInstanceTorrentsByTracker(allTorrents, order == "desc")
-		}
+		sm.sortCrossInstanceTorrents(allTorrents, sort, order == "desc")
 	} else {
 		// Default sort by name if no sort specified for consistent ordering
 		slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
@@ -2709,6 +2646,13 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 		return ""
 	}
 
+	// qBittorrent may emit pseudo tracker labels (e.g. "[DHT]", "[PeX]", "[LSD]").
+	// These are peer-discovery mechanisms, not real tracker domains.
+	if isPseudoTrackerLabel(urlStr) {
+		urlCache.Set(urlStr, "", ttlcache.DefaultTTL)
+		return ""
+	}
+
 	// Check cache first
 	if cachedDomain, found := urlCache.Get(urlStr); found {
 		return cachedDomain
@@ -2767,6 +2711,9 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
+		if isPseudoTrackerLabel(domain) {
+			domain = ""
+		}
 	} else {
 		domain = unknown
 	}
@@ -2774,6 +2721,24 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	// Cache the result
 	urlCache.Set(urlStr, domain, ttlcache.DefaultTTL)
 	return domain
+}
+
+func isPseudoTrackerLabel(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.Trim(normalized, "*")
+	normalized = strings.TrimSpace(normalized)
+	if strings.HasPrefix(normalized, "[") && strings.HasSuffix(normalized, "]") {
+		normalized = strings.TrimPrefix(normalized, "[")
+		normalized = strings.TrimSuffix(normalized, "]")
+		normalized = strings.TrimSpace(normalized)
+	}
+
+	switch normalized {
+	case "dht", "pex", "lsd":
+		return true
+	default:
+		return false
+	}
 }
 
 // torrentBelongsToTrackerDomain checks if a torrent currently has a tracker in the given domain.
@@ -4653,6 +4618,241 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			targets[i], targets[j] = targets[j], targets[i]
 		}
 	}
+}
+
+// sortCrossInstanceTorrents sorts unified torrents with parity to single-instance sort options.
+func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, sort string, desc bool) {
+	if len(torrents) <= 1 {
+		return
+	}
+
+	if sort == "tracker" {
+		sm.sortCrossInstanceTorrentsByTracker(torrents, desc)
+		return
+	}
+
+	applyDirection := func(result int) int {
+		if desc {
+			return -result
+		}
+		return result
+	}
+
+	boolAsInt := func(value bool) int {
+		if value {
+			return 1
+		}
+		return 0
+	}
+
+	compareIdentity := func(a, b CrossInstanceTorrentView) int {
+		return cmp.Or(
+			strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+			strings.Compare(strings.ToLower(a.Hash), strings.ToLower(b.Hash)),
+			strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+			cmp.Compare(a.InstanceID, b.InstanceID),
+		)
+	}
+
+	compareTimestamp := func(a, b CrossInstanceTorrentView, getTimestamp func(CrossInstanceTorrentView) int64) int {
+		tsA := getTimestamp(a)
+		tsB := getTimestamp(b)
+		if tsA != tsB {
+			return applyDirection(cmp.Compare(tsA, tsB))
+		}
+
+		return compareIdentity(a, b)
+	}
+
+	slices.SortFunc(torrents, func(a, b CrossInstanceTorrentView) int {
+		switch sort {
+		case "name":
+			result := cmp.Or(
+				strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+				strings.Compare(a.Name, b.Name),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "size":
+			if result := cmp.Compare(a.Size, b.Size); result != 0 {
+				return applyDirection(result)
+			}
+		case "progress":
+			if result := cmp.Compare(a.Progress, b.Progress); result != 0 {
+				return applyDirection(result)
+			}
+		case "added_on":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.AddedOn })
+		case "completion_on":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.CompletionOn })
+		case "seen_complete":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.SeenComplete })
+		case "last_activity":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.LastActivity / 60 })
+		case "instance":
+			result := cmp.Or(
+				strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+				cmp.Compare(a.InstanceID, b.InstanceID),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "state":
+			result := cmp.Or(
+				cmp.Compare(stateSortPriority(a.State), stateSortPriority(b.State)),
+				strings.Compare(strings.ToLower(string(a.State)), strings.ToLower(string(b.State))),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "priority":
+			// Keep non-queued torrents (priority=0) at the end regardless of order.
+			if a.Priority == 0 && b.Priority == 0 {
+				break
+			}
+			if a.Priority == 0 {
+				return 1
+			}
+			if b.Priority == 0 {
+				return -1
+			}
+			if desc {
+				if result := cmp.Compare(a.Priority, b.Priority); result != 0 {
+					return result
+				}
+			} else {
+				if result := cmp.Compare(b.Priority, a.Priority); result != 0 {
+					return result
+				}
+			}
+		case "eta":
+			const infinityETA int64 = 8640000
+			aInfinity := a.ETA == infinityETA
+			bInfinity := b.ETA == infinityETA
+			if aInfinity != bInfinity {
+				if aInfinity {
+					return 1
+				}
+				return -1
+			}
+			if !aInfinity {
+				if result := cmp.Compare(a.ETA, b.ETA); result != 0 {
+					return applyDirection(result)
+				}
+			}
+		case "num_complete":
+			if result := cmp.Compare(a.NumComplete, b.NumComplete); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_incomplete":
+			if result := cmp.Compare(a.NumIncomplete, b.NumIncomplete); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_seeds":
+			if result := cmp.Compare(a.NumSeeds, b.NumSeeds); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_leechs":
+			if result := cmp.Compare(a.NumLeechs, b.NumLeechs); result != 0 {
+				return applyDirection(result)
+			}
+		case "dlspeed":
+			if result := cmp.Compare(a.DlSpeed, b.DlSpeed); result != 0 {
+				return applyDirection(result)
+			}
+		case "upspeed":
+			if result := cmp.Compare(a.UpSpeed, b.UpSpeed); result != 0 {
+				return applyDirection(result)
+			}
+		case "ratio":
+			if result := cmp.Compare(a.Ratio, b.Ratio); result != 0 {
+				return applyDirection(result)
+			}
+		case "popularity":
+			if result := cmp.Compare(a.Popularity, b.Popularity); result != 0 {
+				return applyDirection(result)
+			}
+		case "category":
+			if result := strings.Compare(strings.ToLower(a.Category), strings.ToLower(b.Category)); result != 0 {
+				return applyDirection(result)
+			}
+		case "tags":
+			if result := strings.Compare(strings.ToLower(a.Tags), strings.ToLower(b.Tags)); result != 0 {
+				return applyDirection(result)
+			}
+		case "dl_limit":
+			if result := cmp.Compare(a.DlLimit, b.DlLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "up_limit":
+			if result := cmp.Compare(a.UpLimit, b.UpLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "downloaded":
+			if result := cmp.Compare(a.Downloaded, b.Downloaded); result != 0 {
+				return applyDirection(result)
+			}
+		case "uploaded":
+			if result := cmp.Compare(a.Uploaded, b.Uploaded); result != 0 {
+				return applyDirection(result)
+			}
+		case "downloaded_session":
+			if result := cmp.Compare(a.DownloadedSession, b.DownloadedSession); result != 0 {
+				return applyDirection(result)
+			}
+		case "uploaded_session":
+			if result := cmp.Compare(a.UploadedSession, b.UploadedSession); result != 0 {
+				return applyDirection(result)
+			}
+		case "amount_left":
+			if result := cmp.Compare(a.AmountLeft, b.AmountLeft); result != 0 {
+				return applyDirection(result)
+			}
+		case "time_active":
+			if result := cmp.Compare(a.TimeActive, b.TimeActive); result != 0 {
+				return applyDirection(result)
+			}
+		case "seeding_time":
+			if result := cmp.Compare(a.SeedingTime, b.SeedingTime); result != 0 {
+				return applyDirection(result)
+			}
+		case "save_path":
+			if result := strings.Compare(strings.ToLower(a.SavePath), strings.ToLower(b.SavePath)); result != 0 {
+				return applyDirection(result)
+			}
+		case "completed":
+			if result := cmp.Compare(a.Completed, b.Completed); result != 0 {
+				return applyDirection(result)
+			}
+		case "ratio_limit":
+			if result := cmp.Compare(a.RatioLimit, b.RatioLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "availability":
+			if result := cmp.Compare(a.Availability, b.Availability); result != 0 {
+				return applyDirection(result)
+			}
+		case "infohash_v1":
+			if result := strings.Compare(strings.ToLower(a.InfohashV1), strings.ToLower(b.InfohashV1)); result != 0 {
+				return applyDirection(result)
+			}
+		case "infohash_v2":
+			if result := strings.Compare(strings.ToLower(a.InfohashV2), strings.ToLower(b.InfohashV2)); result != 0 {
+				return applyDirection(result)
+			}
+		case "reannounce":
+			if result := cmp.Compare(a.Reannounce, b.Reannounce); result != 0 {
+				return applyDirection(result)
+			}
+		case "private":
+			if result := cmp.Compare(boolAsInt(a.Private), boolAsInt(b.Private)); result != 0 {
+				return applyDirection(result)
+			}
+		}
+
+		return compareIdentity(a, b)
+	})
 }
 
 // sortCrossInstanceTorrentsByTracker sorts cross-instance torrents by tracker display name.
