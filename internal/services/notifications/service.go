@@ -304,6 +304,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 		if eta := formatETA(event.TorrentETASeconds); eta != "" {
 			lines = append(lines, formatLine("ETA", eta))
 		}
+		lines = append(lines, formatTorrentMetricLines(event)...)
 		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
 			lines = append(lines, formatLine("Tracker", tracker))
 		}
@@ -321,6 +322,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 		lines := []string{
 			formatLine("Torrent", fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash))),
 		}
+		lines = append(lines, formatTorrentMetricLines(event)...)
 		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
 			lines = append(lines, formatLine("Tracker", tracker))
 		}
@@ -454,6 +456,25 @@ func formatETA(seconds int64) string {
 		return ""
 	}
 	return (time.Duration(seconds) * time.Second).Round(time.Second).String()
+}
+
+func formatTorrentMetricLines(event Event) []string {
+	lines := make([]string, 0, 10)
+
+	if state := strings.TrimSpace(event.TorrentState); state != "" {
+		lines = append(lines, formatLine("State", state))
+	}
+	lines = append(lines, formatLine("Progress", strconv.FormatFloat(event.TorrentProgress, 'f', 4, 64)))
+	lines = append(lines, formatLine("Ratio", strconv.FormatFloat(event.TorrentRatio, 'f', 4, 64)))
+	lines = append(lines, formatLine("Total size bytes", strconv.FormatInt(event.TorrentTotalSizeBytes, 10)))
+	lines = append(lines, formatLine("Downloaded bytes", strconv.FormatInt(event.TorrentDownloadedBytes, 10)))
+	lines = append(lines, formatLine("Amount left bytes", strconv.FormatInt(event.TorrentAmountLeftBytes, 10)))
+	lines = append(lines, formatLine("DL speed bps", strconv.FormatInt(event.TorrentDlSpeedBps, 10)))
+	lines = append(lines, formatLine("UP speed bps", strconv.FormatInt(event.TorrentUpSpeedBps, 10)))
+	lines = append(lines, formatLine("Seeds", strconv.FormatInt(event.TorrentNumSeeds, 10)))
+	lines = append(lines, formatLine("Leechs", strconv.FormatInt(event.TorrentNumLeechs, 10)))
+
+	return lines
 }
 
 func formatLine(label, value string) string {
