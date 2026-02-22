@@ -502,19 +502,18 @@ func formatTransferSpeed(value int64) string {
 		value = 0
 	}
 
-	units := []string{"B/s", "KB/s", "MB/s", "GB/s", "TB/s"}
-	speed := float64(value)
-	unit := units[0]
-	for i := 1; i < len(units) && speed >= 1000; i++ {
-		speed /= 1000
-		unit = units[i]
+	switch {
+	case value < 1_000:
+		return fmt.Sprintf("%d B/s", value)
+	case value < 1_000_000:
+		return fmt.Sprintf("%.2f KB/s", float64(value)/1_000.0)
+	case value < 1_000_000_000:
+		return fmt.Sprintf("%.2f MB/s", float64(value)/1_000_000.0)
+	case value < 1_000_000_000_000:
+		return fmt.Sprintf("%.2f GB/s", float64(value)/1_000_000_000.0)
+	default:
+		return fmt.Sprintf("%.2f TB/s", float64(value)/1_000_000_000_000.0)
 	}
-
-	if unit == "B/s" {
-		return fmt.Sprintf("%d %s", value, unit)
-	}
-
-	return fmt.Sprintf("%.2f %s", speed, unit)
 }
 
 func formatLine(label, value string) string {
