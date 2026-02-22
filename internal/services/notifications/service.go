@@ -322,7 +322,9 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		lines := []string{
 			formatLine("Torrent", fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash))),
 		}
-		lines = append(lines, formatTorrentMetricLines(event, humanReadableMetrics)...)
+		if !humanReadableMetrics {
+			lines = append(lines, formatTorrentMetricLines(event, humanReadableMetrics)...)
+		}
 		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
 			lines = append(lines, formatLine("Tracker", tracker))
 		}

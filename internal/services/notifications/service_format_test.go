@@ -41,7 +41,7 @@ func TestFormatEventTorrentAddedIncludesMetricLines(t *testing.T) {
 	require.Contains(t, message, "Leechs: 0")
 }
 
-func TestFormatEventTorrentCompletedIncludesMetricLines(t *testing.T) {
+func TestFormatEventTorrentCompletedOmitsMetricLinesOutsideNotifiarrAPI(t *testing.T) {
 	t.Parallel()
 
 	svc := &Service{}
@@ -50,6 +50,9 @@ func TestFormatEventTorrentCompletedIncludesMetricLines(t *testing.T) {
 		InstanceID:             1,
 		TorrentName:            "Done.Release",
 		TorrentHash:            "fedcba9876543210",
+		TrackerDomain:          "tracker.example",
+		Category:               "movies",
+		Tags:                   []string{"tag-b", "tag-a"},
 		TorrentProgress:        1,
 		TorrentRatio:           1.5,
 		TorrentTotalSizeBytes:  123,
@@ -62,12 +65,19 @@ func TestFormatEventTorrentCompletedIncludesMetricLines(t *testing.T) {
 	}, true)
 
 	require.Equal(t, "Torrent completed", title)
-	require.Contains(t, message, "Progress: 1.00")
-	require.Contains(t, message, "Ratio: 1.5000")
-	require.Contains(t, message, "Total size: 0.00 GB")
-	require.Contains(t, message, "UP speed: 42 B/s")
-	require.Contains(t, message, "Seeds: 7")
-	require.Contains(t, message, "Leechs: 2")
+	require.Contains(t, message, "Torrent: Done.Release [fedcba98]")
+	require.Contains(t, message, "Tracker: tracker.example")
+	require.Contains(t, message, "Category: movies")
+	require.Contains(t, message, "Tags: tag-a, tag-b")
+	require.NotContains(t, message, "Progress:")
+	require.NotContains(t, message, "Ratio:")
+	require.NotContains(t, message, "Total size")
+	require.NotContains(t, message, "Downloaded")
+	require.NotContains(t, message, "Amount left")
+	require.NotContains(t, message, "DL speed")
+	require.NotContains(t, message, "UP speed")
+	require.NotContains(t, message, "Seeds:")
+	require.NotContains(t, message, "Leechs:")
 }
 
 func TestFormatEventTorrentAddedNotifiarrAPIMetricsStayRaw(t *testing.T) {
@@ -95,6 +105,38 @@ func TestFormatEventTorrentAddedNotifiarrAPIMetricsStayRaw(t *testing.T) {
 	require.Contains(t, message, "Total size bytes: 7926201054")
 	require.Contains(t, message, "DL speed bps: 29308908")
 	require.Contains(t, message, "UP speed bps: 0")
+}
+
+func TestFormatEventTorrentCompletedNotifiarrAPIMetricsStayRaw(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	title, message := svc.formatEvent(context.Background(), Event{
+		Type:                   EventTorrentCompleted,
+		InstanceID:             1,
+		TorrentName:            "Done.Release",
+		TorrentHash:            "fedcba9876543210",
+		TorrentProgress:        1,
+		TorrentRatio:           1.5,
+		TorrentTotalSizeBytes:  123,
+		TorrentDownloadedBytes: 123,
+		TorrentAmountLeftBytes: 0,
+		TorrentDlSpeedBps:      0,
+		TorrentUpSpeedBps:      42,
+		TorrentNumSeeds:        7,
+		TorrentNumLeechs:       2,
+	}, false)
+
+	require.Equal(t, "Torrent completed", title)
+	require.Contains(t, message, "Progress: 1.0000")
+	require.Contains(t, message, "Ratio: 1.5000")
+	require.Contains(t, message, "Total size bytes: 123")
+	require.Contains(t, message, "Downloaded bytes: 123")
+	require.Contains(t, message, "Amount left bytes: 0")
+	require.Contains(t, message, "DL speed bps: 0")
+	require.Contains(t, message, "UP speed bps: 42")
+	require.Contains(t, message, "Seeds: 7")
+	require.Contains(t, message, "Leechs: 2")
 }
 
 func TestFormatEventAutomationsActionsAppliedDedupesSamplesOutsideNotifiarrAPI(t *testing.T) {
