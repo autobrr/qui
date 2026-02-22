@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryBuilder } from "@/components/query-builder"
+import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
+  CATEGORY_UNCATEGORIZED_VALUE,
   CAPABILITY_REASONS,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
@@ -56,16 +57,19 @@ import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { buildCategorySelectOptions } from "@/lib/category-utils"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
+  AutomationActivity,
   AutomationInput,
   AutomationPreviewResult,
   AutomationPreviewTorrent,
+  GroupDefinition,
+  GroupingConfig,
   PreviewView,
   RegexValidationError,
   RuleCondition
@@ -75,6 +79,7 @@ import { Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { toast } from "sonner"
+import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
 interface WorkflowDialogProps {
@@ -92,21 +97,112 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
   shareLimits: "Share limits",
   pause: "Pause",
-  delete: "Delete",
   resume: "Resume",
+  recheck: "Force recheck",
+  reannounce: "Force reannounce",
+  delete: "Delete",
   tag: "Tag",
   category: "Category",
   move: "Move",
   externalProgram: "Run external program",
+}
+
+const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
+  deleted_ratio: "Delete (ratio)",
+  deleted_seeding: "Delete (seeding)",
+  deleted_unregistered: "Delete (unregistered)",
+  deleted_condition: "Delete (condition)",
+  delete_failed: "Delete failed",
+  limit_failed: "Limit failed",
+  tags_changed: "Tag",
+  category_changed: "Category",
+  speed_limits_changed: "Speed limits",
+  share_limits_changed: "Share limits",
+  paused: "Pause",
+  resumed: "Resume",
+  rechecked: "Recheck",
+  reannounced: "Reannounce",
+  moved: "Move",
+  external_program: "External program",
+  dry_run_no_match: "No matches",
+}
+
+function sumDetailsRecord(values: Record<string, number> | undefined): number {
+  return Object.values(values ?? {}).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+}
+
+function getDryRunImpactCount(event: AutomationActivity): number {
+  const details = event.details
+  switch (event.action) {
+    case "tags_changed":
+      return sumDetailsRecord(details?.added) + sumDetailsRecord(details?.removed)
+    case "category_changed":
+      return sumDetailsRecord(details?.categories)
+    case "speed_limits_changed":
+    case "share_limits_changed":
+      return sumDetailsRecord(details?.limits)
+    case "moved":
+      return sumDetailsRecord(details?.paths)
+    case "dry_run_no_match":
+      return 0
+    default:
+      return typeof details?.count === "number" ? details.count : 0
+  }
+}
+
+function formatDryRunEventSummary(event: AutomationActivity): string {
+  const details = event.details
+  switch (event.action) {
+    case "tags_changed": {
+      const added = sumDetailsRecord(details?.added)
+      const removed = sumDetailsRecord(details?.removed)
+      if (added > 0 && removed > 0) return `${added} would be tagged, ${removed} would be untagged`
+      if (added > 0) return `${added} would be tagged`
+      if (removed > 0) return `${removed} would be untagged`
+      return "No tag changes"
+    }
+    case "category_changed": {
+      const moved = sumDetailsRecord(details?.categories)
+      return `${moved} torrent${moved === 1 ? "" : "s"} would change category`
+    }
+    case "speed_limits_changed":
+    case "share_limits_changed": {
+      const limited = sumDetailsRecord(details?.limits)
+      return `${limited} torrent${limited === 1 ? "" : "s"} would be updated`
+    }
+    case "moved": {
+      const moved = sumDetailsRecord(details?.paths)
+      return `${moved} torrent${moved === 1 ? "" : "s"} would be moved`
+    }
+    case "dry_run_no_match":
+      return "No torrents matched this dry-run"
+    case "paused":
+    case "resumed":
+    case "rechecked":
+    case "reannounced":
+    case "external_program":
+    case "deleted_ratio":
+    case "deleted_seeding":
+    case "deleted_unregistered":
+    case "deleted_condition": {
+      const count = typeof details?.count === "number" ? details.count : 0
+      return `${count} torrent${count === 1 ? "" : "s"} impacted`
+    }
+    default:
+      return "Dry-run completed"
+  }
 }
 
 function getDisabledFields(capabilities: Capabilities): DisabledField[] {
@@ -134,8 +230,78 @@ function conditionUsesField(condition: RuleCondition | null | undefined, field: 
   return false
 }
 
+/**
+ * Available keys for custom group definitions
+ */
+const AVAILABLE_GROUP_KEYS = [
+  "contentPath",
+  "savePath",
+  "effectiveName",
+  "contentType",
+  "tracker",
+  "rlsSource",
+  "rlsResolution",
+  "rlsCodec",
+  "rlsHDR",
+  "rlsAudio",
+  "rlsChannels",
+  "rlsGroup",
+  "hardlinkSignature",
+] as const
+
+/**
+ * Built-in group IDs with descriptions
+ */
+const BUILTIN_GROUPS = [
+  {
+    id: "cross_seed_content_path",
+    label: "Cross-seed (content path)",
+    description: "Group torrents with the same content path",
+  },
+  {
+    id: "cross_seed_content_save_path",
+    label: "Cross-seed (content + save path)",
+    description: "Group torrents with the same content path and save path",
+  },
+  {
+    id: "release_item",
+    label: "Release item",
+    description: "Group torrents with the same content type and effective name",
+  },
+  {
+    id: "tracker_release_item",
+    label: "Tracker release item",
+    description: "Group torrents from the same tracker with the same content type and effective name",
+  },
+  {
+    id: "hardlink_signature",
+    label: "Hardlink signature",
+    description: "Group torrents that share the same physical files via hardlinks (requires local filesystem access)",
+  },
+] as const
+
+const AMBIGUOUS_POLICY_NONE_VALUE = "__none__"
+
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
+
+type TagActionForm = {
+  tags: string[]
+  mode: "full" | "add" | "remove"
+  deleteFromClient: boolean
+  useTrackerAsTag: boolean
+  useDisplayName: boolean
+}
+
+function createDefaultTagAction(): TagActionForm {
+  return {
+    tags: [],
+    mode: "full",
+    deleteFromClient: false,
+    useTrackerAsTag: false,
+    useDisplayName: false,
+  }
+}
 
 type FormState = {
   name: string
@@ -148,11 +314,15 @@ type FormState = {
   intervalSeconds: number | null // null = use global default (15m)
   // Shared condition for all actions
   actionCondition: RuleCondition | null
+  // Grouping settings (advanced)
+  exprGrouping?: GroupingConfig
   // Multi-action enabled flags
   speedLimitsEnabled: boolean
   shareLimitsEnabled: boolean
   pauseEnabled: boolean
   resumeEnabled: boolean
+  recheckEnabled: boolean
+  reannounceEnabled: boolean
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -171,21 +341,23 @@ type FormState = {
   // Delete settings
   exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
+  exprDeleteGroupId: string
+  exprDeleteAtomic: "all" | ""
   // Free space source settings (for FREE_SPACE conditions)
   exprFreeSpaceSourceType: "qbittorrent" | "path"
   exprFreeSpaceSourcePath: string
   // Tag action settings
-  exprTags: string[]
-  exprTagMode: "full" | "add" | "remove"
-  exprUseTrackerAsTag: boolean
-  exprUseDisplayName: boolean
+  exprTagActions: TagActionForm[]
   // Category action settings
   exprCategory: string
   exprIncludeCrossSeeds: boolean
+  exprCategoryGroupId: string
   exprBlockIfCrossSeedInCategories: string[]
   // Move action settings
   exprMovePath: string
   exprMoveBlockIfCrossSeed: boolean
+  exprMoveGroupId: string
+  exprMoveAtomic: "all" | ""
   // External program action settings
   exprExternalProgramId: number | null
 }
@@ -199,11 +371,14 @@ const emptyFormState: FormState = {
   dryRun: false,
   intervalSeconds: null,
   actionCondition: null,
+  exprGrouping: undefined,
   speedLimitsEnabled: false,
   shareLimitsEnabled: false,
   pauseEnabled: false,
-  deleteEnabled: false,
   resumeEnabled: false,
+  recheckEnabled: false,
+  reannounceEnabled: false,
+  deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
   moveEnabled: false,
@@ -218,17 +393,19 @@ const emptyFormState: FormState = {
   exprSeedingTimeValue: undefined,
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
   exprIncludeHardlinks: false,
+  exprDeleteGroupId: "",
+  exprDeleteAtomic: "",
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
-  exprTags: [],
-  exprTagMode: "full",
-  exprUseTrackerAsTag: false,
-  exprUseDisplayName: false,
+  exprTagActions: [createDefaultTagAction()],
   exprCategory: "",
   exprIncludeCrossSeeds: false,
+  exprCategoryGroupId: "",
   exprBlockIfCrossSeedInCategories: [],
   exprMovePath: "",
   exprMoveBlockIfCrossSeed: false,
+  exprMoveGroupId: "",
+  exprMoveAtomic: "",
   exprExternalProgramId: null,
 }
 
@@ -238,8 +415,10 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.speedLimitsEnabled) actions.push("speedLimits")
   if (state.shareLimitsEnabled) actions.push("shareLimits")
   if (state.pauseEnabled) actions.push("pause")
-  if (state.deleteEnabled) actions.push("delete")
   if (state.resumeEnabled) actions.push("resume")
+  if (state.recheckEnabled) actions.push("recheck")
+  if (state.reannounceEnabled) actions.push("reannounce")
+  if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
@@ -251,6 +430,21 @@ function getEnabledActions(state: FormState): ActionType[] {
 function setActionEnabled(action: ActionType, enabled: boolean): Partial<FormState> {
   const key = `${action}Enabled` as keyof FormState
   return { [key]: enabled }
+}
+
+function validateTagActions(actions: TagActionForm[]): string | null {
+  if (actions.length === 0) {
+    return "Add at least one tag action"
+  }
+  for (const action of actions) {
+    if (action.deleteFromClient && action.useTrackerAsTag) {
+      return "Replace mode requires explicit tags (disable 'Use tracker name as tag')"
+    }
+    if (!action.useTrackerAsTag && action.tags.length === 0) {
+      return "Specify at least one tag or enable 'Use tracker name'"
+    }
+  }
+  return null
 }
 
 // Hydration helpers for converting stored values to form state
@@ -291,10 +485,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
+  const [livePreviewResult, setLivePreviewResult] = useState<AutomationPreviewResult | null>(null)
+  const [isLivePreviewLoading, setIsLivePreviewLoading] = useState(false)
+  const [livePreviewError, setLivePreviewError] = useState<string | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
   const [showDryRunPrompt, setShowDryRunPrompt] = useState(false)
   const [dryRunPromptedForNew, setDryRunPromptedForNew] = useState(false)
+  const [latestDryRunEvents, setLatestDryRunEvents] = useState<AutomationActivity[]>([])
+  const [latestDryRunError, setLatestDryRunError] = useState<string | null>(null)
+  const [latestDryRunStartedAt, setLatestDryRunStartedAt] = useState<string | null>(null)
+  const [activityRunDialog, setActivityRunDialog] = useState<AutomationActivity | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -304,8 +505,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const [regexErrors, setRegexErrors] = useState<RegexValidationError[]>([])
   const [freeSpaceSourcePathError, setFreeSpaceSourcePathError] = useState<string | null>(null)
+  const [showAddCustomGroup, setShowAddCustomGroup] = useState(false)
+  const [newGroupId, setNewGroupId] = useState("")
+  const [newGroupKeys, setNewGroupKeys] = useState<string[]>([])
+  const [newGroupAmbiguousPolicy, setNewGroupAmbiguousPolicy] = useState<"verify_overlap" | "skip" | "">("")
+  const [newGroupMinOverlap, setNewGroupMinOverlap] = useState("90")
   const previewPageSize = 25
-  const tagsInputRef = useRef<HTMLInputElement>(null)
+  const livePreviewPageSize = 5
+  const livePreviewRequestRef = useRef(0)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
   const isHydrating = useRef(true)
   const dryRunPromptKey = rule?.id ? `workflow-dry-run-prompted:${rule.id}` : null
@@ -325,14 +532,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       window.localStorage.setItem(dryRunPromptKey, "1")
     }
   }, [dryRunPromptKey, rule?.id])
-
-  const commitPendingTags = () => {
-    if (tagsInputRef.current) {
-      const tags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
-      setFormState(prev => ({ ...prev, exprTags: tags }))
-      tagsInputRef.current.value = tags.join(", ")
-    }
-  }
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -413,6 +612,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return buildCategorySelectOptions(metadata.categories, selected)
   }, [metadata?.categories, formState.exprCategory, formState.exprBlockIfCrossSeedInCategories])
 
+  const categoryActionOptions = useMemo(() => {
+    const filtered = categoryOptions.filter((opt) => opt.value !== "")
+    return [
+      { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+      ...filtered,
+    ]
+  }, [categoryOptions])
+
+  const tagOptions = useMemo(() => {
+    const selected = formState.exprTagActions.flatMap(action => action.tags)
+    return buildTagSelectOptions(metadata?.tags ?? [], selected)
+  }, [formState.exprTagActions, metadata?.tags])
+
   const trackerCustomizationMaps = useMemo(
     () => buildTrackerCustomizationMaps(trackerCustomizations),
     [trackerCustomizations]
@@ -422,9 +634,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Also includes trackers from the current workflow being edited, so they remain
   // visible even if no torrents currently use them
   const trackerOptions: Option[] = useMemo(() => {
+    type TrackerOption = Option & { isCustom: boolean }
     const { domainToCustomization } = trackerCustomizationMaps
     const trackers = trackersQuery.data ? Object.keys(trackersQuery.data) : []
-    const processed: Option[] = []
+    const processed: TrackerOption[] = []
     const seenDisplayNames = new Set<string>()
     const seenValues = new Set<string>()
 
@@ -443,9 +656,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
-          label: customization.displayName,
+          label: `${customization.displayName} (Custom)`,
           value: mergedValue,
           icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
+          isCustom: true,
         })
       } else {
         if (seenDisplayNames.has(lowerTracker) || seenValues.has(tracker)) return
@@ -456,6 +670,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           label: tracker,
           value: tracker,
           icon: <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />,
+          isCustom: false,
         })
       }
     }
@@ -473,9 +688,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
-    processed.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+    processed.sort((a, b) => {
+      if (a.isCustom !== b.isCustom) {
+        return a.isCustom ? -1 : 1
+      }
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
+    })
 
-    return processed
+    return processed.map((option) => ({
+      label: option.label,
+      value: option.value,
+      icon: option.icon,
+    }))
   }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons, rule])
 
   // Map individual domains to merged option values
@@ -508,6 +732,29 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [trackerCustomizationMaps])
 
+  const groupedConditionOptions = useMemo<GroupOption[]>(() => {
+    const options: GroupOption[] = BUILTIN_GROUPS.map((group) => ({
+      id: group.id,
+      label: group.label,
+      description: group.description,
+    }))
+    const seen = new Set(options.map((option) => option.id.toLowerCase()))
+    for (const group of (formState.exprGrouping?.groups || [])) {
+      const id = group.id?.trim()
+      if (!id) continue
+      if (seen.has(id.toLowerCase())) continue
+      seen.add(id.toLowerCase())
+      options.push({
+        id,
+        label: `${id} (custom)`,
+        description: group.keys.length > 0
+          ? `Custom keys: ${group.keys.join(", ")}`
+          : "Custom group",
+      })
+    }
+    return options
+  }, [formState.exprGrouping?.groups])
+
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
     let cancelled = false
@@ -525,6 +772,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let shareLimitsEnabled = false
         let pauseEnabled = false
         let resumeEnabled = false
+        let recheckEnabled = false
+        let reannounceEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
@@ -542,16 +791,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprIncludeHardlinks = false
         let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
         let exprFreeSpaceSourcePath = ""
-        let exprTags: string[] = []
-        let exprTagMode: FormState["exprTagMode"] = "full"
-        let exprUseTrackerAsTag = false
-        let exprUseDisplayName = false
+        let exprTagActions: TagActionForm[] = [createDefaultTagAction()]
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
         let exprExternalProgramId: number | null = null
+        let exprGrouping: GroupingConfig | undefined
+        let exprDeleteGroupId = ""
+        let exprDeleteAtomic: FormState["exprDeleteAtomic"] = ""
+        let exprCategoryGroupId = ""
+        let exprMoveGroupId = ""
+        let exprMoveAtomic: FormState["exprMoveAtomic"] = ""
 
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
@@ -562,12 +814,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         }
 
         if (conditions) {
+          exprGrouping = conditions.grouping
           // Get condition from any enabled action (they should all be the same)
           actionCondition = conditions.speedLimits?.condition
             ?? conditions.shareLimits?.condition
             ?? conditions.pause?.condition
             ?? conditions.resume?.condition
+            ?? conditions.recheck?.condition
+            ?? conditions.reannounce?.condition
             ?? conditions.delete?.condition
+            ?? conditions.tags?.[0]?.condition
             ?? conditions.tag?.condition
             ?? conditions.category?.condition
             ?? conditions.move?.condition
@@ -602,28 +858,46 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           if (conditions.resume?.enabled) {
             resumeEnabled = true
           }
+          if (conditions.recheck?.enabled) {
+            recheckEnabled = true
+          }
+          if (conditions.reannounce?.enabled) {
+            reannounceEnabled = true
+          }
           if (conditions.delete?.enabled) {
             deleteEnabled = true
             exprDeleteMode = conditions.delete.mode ?? "deleteWithFilesPreserveCrossSeeds"
             exprIncludeHardlinks = conditions.delete.includeHardlinks ?? false
+            exprDeleteGroupId = conditions.delete.groupId ?? ""
+            exprDeleteAtomic = conditions.delete.atomic ?? ""
           }
-          if (conditions.tag?.enabled) {
+          const resolvedTagActions = (conditions.tags && conditions.tags.length > 0
+            ? conditions.tags
+            : conditions.tag ? [conditions.tag] : [])
+            .filter((action) => action && action.enabled)
+          if (resolvedTagActions.length > 0) {
             tagEnabled = true
-            exprTags = conditions.tag.tags ?? []
-            exprTagMode = conditions.tag.mode ?? "full"
-            exprUseTrackerAsTag = conditions.tag.useTrackerAsTag ?? false
-            exprUseDisplayName = conditions.tag.useDisplayName ?? false
+            exprTagActions = resolvedTagActions.map((action) => ({
+              tags: action.tags ?? [],
+              mode: action.mode ?? "full",
+              deleteFromClient: action.deleteFromClient ?? false,
+              useTrackerAsTag: action.useTrackerAsTag ?? false,
+              useDisplayName: action.useDisplayName ?? false,
+            }))
           }
           if (conditions.category?.enabled) {
             categoryEnabled = true
             exprCategory = conditions.category.category ?? ""
             exprIncludeCrossSeeds = conditions.category.includeCrossSeeds ?? false
+            exprCategoryGroupId = conditions.category.groupId ?? ""
             exprBlockIfCrossSeedInCategories = conditions.category.blockIfCrossSeedInCategories ?? []
           }
           if (conditions.move?.enabled) {
             moveEnabled = true
             exprMovePath = conditions.move.path ?? ""
             exprMoveBlockIfCrossSeed = conditions.move.blockIfCrossSeed ?? false
+            exprMoveGroupId = conditions.move.groupId ?? ""
+            exprMoveAtomic = conditions.move.atomic ?? ""
           }
           if (conditions.externalProgram?.enabled) {
             externalProgramEnabled = true
@@ -641,10 +915,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           sortOrder: rule.sortOrder,
           intervalSeconds: rule.intervalSeconds ?? null,
           actionCondition,
+          exprGrouping,
           speedLimitsEnabled,
           shareLimitsEnabled,
           pauseEnabled,
           resumeEnabled,
+          recheckEnabled,
+          reannounceEnabled,
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -660,17 +937,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprSeedingTimeValue,
           exprDeleteMode,
           exprIncludeHardlinks,
+          exprDeleteGroupId,
+          exprDeleteAtomic,
           exprFreeSpaceSourceType,
           exprFreeSpaceSourcePath,
-          exprTags,
-          exprTagMode,
-          exprUseTrackerAsTag,
-          exprUseDisplayName,
+          exprTagActions,
           exprCategory,
           exprMovePath,
           exprMoveBlockIfCrossSeed,
           exprIncludeCrossSeeds,
+          exprCategoryGroupId,
           exprBlockIfCrossSeedInCategories,
+          exprMoveGroupId,
+          exprMoveAtomic,
           exprExternalProgramId,
         }
         setFormState(newState)
@@ -695,6 +974,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   useEffect(() => {
     if (!open) {
       setShowDryRunPrompt(false)
+      setLatestDryRunEvents([])
+      setLatestDryRunError(null)
+      setLatestDryRunStartedAt(null)
+      setActivityRunDialog(null)
       return
     }
     if (!rule) {
@@ -750,7 +1033,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType])
 
-  const validateFreeSpaceSource = (state: FormState): boolean => {
+  const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
       setFreeSpaceSourcePathError(null)
@@ -778,11 +1061,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }
+  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
+
+  const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
+    const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
+    if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
+      return true
+    }
+    if (!supportsFreeSpacePathSource || !hasLocalFilesystemAccess) {
+      return false
+    }
+    return state.exprFreeSpaceSourcePath.trim() !== ""
+  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
 
   // Build payload from form state (shared by preview and save)
-  const buildPayload = (input: FormState): AutomationInput => {
+  const buildPayload = useCallback((input: FormState): AutomationInput => {
     const conditions: ActionConditions = { schemaVersion: "1" }
+    if (input.exprGrouping) {
+      conditions.grouping = input.exprGrouping
+    }
 
     // Add all enabled actions
     if (input.speedLimitsEnabled) {
@@ -856,23 +1153,46 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.recheckEnabled) {
+      conditions.recheck = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
+    if (input.reannounceEnabled) {
+      conditions.reannounce = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.deleteEnabled) {
       conditions.delete = {
         enabled: true,
         mode: input.exprDeleteMode,
         // Only include includeHardlinks when using include cross-seeds mode
         includeHardlinks: input.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" ? input.exprIncludeHardlinks : undefined,
+        groupId: input.exprDeleteGroupId || undefined,
+        atomic: input.exprDeleteAtomic || undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
     if (input.tagEnabled) {
-      conditions.tag = {
-        enabled: true,
-        tags: input.exprTags,
-        mode: input.exprTagMode,
-        useTrackerAsTag: input.exprUseTrackerAsTag,
-        useDisplayName: input.exprUseDisplayName,
-        condition: input.actionCondition ?? undefined,
+      const tagActions = input.exprTagActions
+        .filter((action) => action.useTrackerAsTag || action.tags.length > 0)
+        .map((action) => ({
+          enabled: true,
+          tags: action.tags,
+          mode: action.mode,
+          deleteFromClient: action.deleteFromClient,
+          useTrackerAsTag: action.useTrackerAsTag,
+          useDisplayName: action.useDisplayName,
+          condition: input.actionCondition ?? undefined,
+        }))
+
+      if (tagActions.length > 0) {
+        conditions.tags = tagActions
+        // Keep legacy single-tag payload for backward compatibility.
+        conditions.tag = tagActions[0]
       }
     }
     if (input.categoryEnabled) {
@@ -880,6 +1200,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         enabled: true,
         category: input.exprCategory,
         includeCrossSeeds: input.exprIncludeCrossSeeds,
+        groupId: input.exprCategoryGroupId || undefined,
         blockIfCrossSeedInCategories: input.exprBlockIfCrossSeedInCategories,
         condition: input.actionCondition ?? undefined,
       }
@@ -890,6 +1211,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         enabled: true,
         path: trimmedMovePath,
         blockIfCrossSeed: input.exprMoveBlockIfCrossSeed,
+        groupId: input.exprMoveGroupId || undefined,
+        atomic: input.exprMoveAtomic || undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -925,7 +1248,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       conditions,
       freeSpaceSource,
     }
-  }
+  }, [])
 
   // Check if current form state represents a delete or category rule (both need previews)
   const isDeleteRule = formState.deleteEnabled
@@ -945,12 +1268,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.shareLimitsEnabled,
     formState.pauseEnabled,
     formState.resumeEnabled,
+    formState.recheckEnabled,
+    formState.reannounceEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
     formState.moveEnabled,
     formState.externalProgramEnabled,
   ].filter(Boolean).length
+
+  const latestDryRunOperationCount = useMemo(
+    () => latestDryRunEvents.reduce((sum, event) => sum + getDryRunImpactCount(event), 0),
+    [latestDryRunEvents]
+  )
 
   const previewMutation = useMutation({
     mutationFn: async ({ input, view }: { input: FormState; view: PreviewView }) => {
@@ -1009,6 +1339,163 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     loadMorePreview.mutate()
+  }
+
+  const dryRunNowMutation = useMutation({
+    mutationFn: async (input: FormState) => {
+      const payload = buildPayload(input)
+      return api.dryRunAutomation(instanceId, {
+        ...payload,
+        enabled: true,
+        dryRun: true,
+      })
+    },
+    onSuccess: async (result) => {
+      toast.success("Dry-run completed")
+      void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
+
+      if (result.activities && result.activities.length > 0) {
+        const events = [...result.activities].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        setLatestDryRunEvents(events)
+        setLatestDryRunError(null)
+        return
+      }
+
+      if (result.activityIds && result.activityIds.length > 0) {
+        try {
+          const activities = await api.getAutomationActivity(instanceId, 1000)
+          const activityIDSet = new Set(result.activityIds)
+          const events = activities
+            .filter((activity) => activityIDSet.has(activity.id))
+            .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+          setLatestDryRunEvents(events)
+          setLatestDryRunError(events.length === 0 ? "Dry-run completed, but activity details are not available yet." : null)
+          return
+        } catch (error) {
+          setLatestDryRunEvents([])
+          setLatestDryRunError(error instanceof Error ? error.message : "Failed to load dry-run summary")
+          return
+        }
+      }
+
+      setLatestDryRunEvents([])
+      setLatestDryRunError("Dry-run completed, but no activity IDs were returned.")
+    },
+    onError: (error) => {
+      setLatestDryRunEvents([])
+      setLatestDryRunError(null)
+      setLatestDryRunStartedAt(null)
+      toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
+    },
+  })
+
+  const showLatestDryRunPanel = dryRunNowMutation.isPending ||
+    latestDryRunEvents.length > 0 ||
+    latestDryRunError !== null ||
+    latestDryRunStartedAt !== null
+
+  const livePreviewPayload = useMemo(() => {
+    if (!open) return null
+    if (!(isDeleteRule || isCategoryRule)) return null
+    if (isDeleteRule && !formState.actionCondition) return null
+    if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
+    if (!hasValidFreeSpaceSourceForLivePreview(formState)) return null
+
+    return {
+      ...buildPayload(formState),
+      previewLimit: livePreviewPageSize,
+      previewOffset: 0,
+      previewView: "needed" as PreviewView,
+    }
+  }, [
+    buildPayload,
+    formState,
+    hasValidFreeSpaceSourceForLivePreview,
+    isCategoryRule,
+    isDeleteRule,
+    livePreviewPageSize,
+    open,
+  ])
+
+  const livePreviewPayloadKey = useMemo(
+    () => livePreviewPayload ? JSON.stringify(livePreviewPayload) : "",
+    [livePreviewPayload]
+  )
+
+  useEffect(() => {
+    if (!livePreviewPayload) {
+      livePreviewRequestRef.current += 1
+      setLivePreviewResult(null)
+      setLivePreviewError(null)
+      setIsLivePreviewLoading(false)
+      return
+    }
+
+    const requestID = livePreviewRequestRef.current + 1
+    livePreviewRequestRef.current = requestID
+    setIsLivePreviewLoading(true)
+    setLivePreviewError(null)
+
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await api.previewAutomation(instanceId, livePreviewPayload)
+        if (livePreviewRequestRef.current !== requestID) return
+        setLivePreviewResult(result)
+      } catch (error) {
+        if (livePreviewRequestRef.current !== requestID) return
+        setLivePreviewResult(null)
+        setLivePreviewError(error instanceof Error ? error.message : "Failed to load live preview")
+      } finally {
+        if (livePreviewRequestRef.current === requestID) {
+          setIsLivePreviewLoading(false)
+        }
+      }
+    }, 400)
+
+    return () => clearTimeout(timeout)
+  }, [instanceId, livePreviewPayload, livePreviewPayloadKey])
+
+  const handleRunDryRunNow = () => {
+    const dryRunInput: FormState = { ...formState }
+
+    if (!validateFreeSpaceSource(dryRunInput)) return
+    if (!dryRunInput.name.trim()) {
+      toast.error("Name is required")
+      return
+    }
+    if (!dryRunInput.applyToAllTrackers && normalizeTrackerDomains(dryRunInput.trackerDomains).length === 0) {
+      toast.error("Select at least one tracker")
+      return
+    }
+    if (enabledActionsCount === 0) {
+      toast.error("Enable at least one action")
+      return
+    }
+    if (dryRunInput.deleteEnabled && !dryRunInput.actionCondition) {
+      toast.error("Delete requires at least one condition")
+      return
+    }
+    if (dryRunInput.moveEnabled && !dryRunInput.exprMovePath.trim()) {
+      toast.error("Move requires a path")
+      return
+    }
+    if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
+      toast.error("Select an external program")
+      return
+    }
+    if (dryRunInput.tagEnabled) {
+      const validationError = validateTagActions(dryRunInput.exprTagActions)
+      if (validationError) {
+        toast.error(validationError)
+        return
+      }
+    }
+
+    setLatestDryRunStartedAt(new Date().toISOString())
+    setLatestDryRunEvents([])
+    setLatestDryRunError(null)
+    setActivityRunDialog(null)
+    dryRunNowMutation.mutate(dryRunInput)
   }
 
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
@@ -1150,27 +1637,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     event.preventDefault()
     setRegexErrors([]) // Clear previous errors
 
-    // Parse tags from input ref synchronously to avoid relying on async setFormState
-    let parsedTags: string[] = []
-    if (!formState.exprUseTrackerAsTag && tagsInputRef.current) {
-      parsedTags = tagsInputRef.current.value.split(",").map(t => t.trim()).filter(Boolean)
-    }
-
-    // Build submitState with parsed tags for validation and mutation
-    const submitState: FormState = {
-      ...formState,
-      exprTags: formState.exprUseTrackerAsTag ? [] : parsedTags,
-    }
+    const submitState: FormState = { ...formState }
 
     if (!validateFreeSpaceSource(submitState)) {
       return
     }
-
-    // Sync the input display and formState (for UI consistency after save)
-    if (tagsInputRef.current) {
-      tagsInputRef.current.value = parsedTags.join(", ")
-    }
-    setFormState(submitState)
 
     if (!submitState.name) {
       toast.error("Name is required")
@@ -1221,8 +1692,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
     if (submitState.tagEnabled) {
-      if (!submitState.exprUseTrackerAsTag && submitState.exprTags.length === 0) {
-        toast.error("Specify at least one tag or enable 'Use tracker name'")
+      const validationError = validateTagActions(submitState.exprTagActions)
+      if (validationError) {
+        toast.error(validationError)
         return
       }
     }
@@ -1361,6 +1833,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     categoryOptions={categoryOptions}
                     disabledFields={getDisabledFields(fieldCapabilities)}
                     disabledStateValues={getDisabledStateValues(fieldCapabilities)}
+                    groupOptions={groupedConditionOptions}
                   />
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
@@ -1380,7 +1853,145 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </p>
                     </div>
                   )}
+
+                  {(isDeleteRule || isCategoryRule) && (
+                    <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium">Live impact preview</p>
+                        {isLivePreviewLoading && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Updating...
+                          </span>
+                        )}
+                      </div>
+                      {livePreviewError ? (
+                        <p className="text-xs text-destructive">{livePreviewError}</p>
+                      ) : !livePreviewResult ? (
+                        <p className="text-xs text-muted-foreground">
+                          Add conditions to preview impacted torrents.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            {isCategoryRule
+                              ? `${livePreviewResult.totalMatches} torrents impacted (${(livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0)} direct + ${livePreviewResult.crossSeedCount ?? 0} cross-seeds).`
+                              : `${livePreviewResult.totalMatches} torrents impacted.`}
+                          </p>
+                          {livePreviewResult.examples.length > 0 ? (
+                            <div className="space-y-1">
+                              {livePreviewResult.examples.map((example) => (
+                                <div key={example.hash} className="text-xs text-foreground/90 truncate">
+                                  {example.name}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No current matches.</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                {/* Grouping Configuration - shown when GROUP_SIZE or IS_GROUPED is used */}
+                {(conditionUsesField(formState.actionCondition, "GROUP_SIZE") || conditionUsesField(formState.actionCondition, "IS_GROUPED")) && (
+                  <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium">Grouped condition groups</Label>
+                      <TooltipProvider delayDuration={150}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                              aria-label="About grouping configuration"
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[340px]">
+                            <p>
+                              GROUP_SIZE and IS_GROUPED now select a grouping per condition row.
+                              Define optional custom groups here for those selectors.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Choose the group directly on each GROUP_SIZE / IS_GROUPED condition row.
+                      Built-ins are always available; custom groups below are optional.
+                    </p>
+
+                    <div className="rounded-sm border border-border/50 bg-background p-2 text-xs space-y-1.5">
+                      <p className="font-medium text-foreground">Built-in groups</p>
+                      <div className="space-y-1">
+                        {BUILTIN_GROUPS.map((group) => (
+                          <div key={group.id}>
+                            <p className="font-medium">{group.label}</p>
+                            <p className="text-muted-foreground">{group.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom groups editor */}
+                    {(formState.exprGrouping?.groups || []).length > 0 && (
+                      <div className="space-y-2 border-t pt-3">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Custom groups (available in grouped condition selectors and action group IDs)
+                        </p>
+                        {(formState.exprGrouping?.groups || []).map((group, idx) => (
+                          <div key={group.id} className="border rounded-sm p-2 space-y-1.5 text-xs bg-background">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-mono font-medium truncate">{group.id}</p>
+                                <p className="text-muted-foreground">Keys: {group.keys.join(", ")}</p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => {
+                                  setFormState(prev => ({
+                                    ...prev,
+                                    exprGrouping: {
+                                      ...prev.exprGrouping,
+                                      groups: (prev.exprGrouping?.groups || []).filter((_, i) => i !== idx),
+                                      defaultGroupId: prev.exprGrouping?.defaultGroupId === group.id
+                                        ? undefined
+                                        : prev.exprGrouping?.defaultGroupId,
+                                    },
+                                  }))
+                                }}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add custom group button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs h-7"
+                      onClick={() => {
+                        setShowAddCustomGroup(true)
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add custom group
+                    </Button>
+                  </div>
+                )}
 
                 {/* Actions section */}
                 <div className="space-y-3">
@@ -1395,7 +2006,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <Select
                           value=""
                           onValueChange={(action: ActionType) => {
-                            setFormState(prev => ({ ...prev, ...setActionEnabled(action, true) }))
+                            setFormState(prev => {
+                              const next = { ...prev, ...setActionEnabled(action, true) }
+                              if (action === "tag" && next.exprTagActions.length === 0) {
+                                next.exprTagActions = [createDefaultTagAction()]
+                              }
+                              return next
+                            })
                           }}
                         >
                           <SelectTrigger className="w-fit h-7 text-xs">
@@ -1425,6 +2042,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             shareLimitsEnabled: false,
                             pauseEnabled: false,
                             resumeEnabled: false,
+                            recheckEnabled: false,
+                            reannounceEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
@@ -1434,7 +2053,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             enabled: !rule ? false : prev.enabled,
                           }))
                         } else {
-                          setFormState(prev => ({ ...prev, ...setActionEnabled(action, true) }))
+                          setFormState(prev => {
+                            const next = { ...prev, ...setActionEnabled(action, true) }
+                            if (action === "tag" && next.exprTagActions.length === 0) {
+                              next.exprTagActions = [createDefaultTagAction()]
+                            }
+                            return next
+                          })
                         }
                       }}
                     >
@@ -1446,6 +2071,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="shareLimits">Share limits</SelectItem>
                         <SelectItem value="pause">Pause</SelectItem>
                         <SelectItem value="resume">Resume</SelectItem>
+                        <SelectItem value="recheck">Force recheck</SelectItem>
+                        <SelectItem value="reannounce">Force reannounce</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
@@ -1762,11 +2389,45 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                       </div>
                     )}
+                    {/* Recheck */}
+                    {formState.recheckEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Force recheck</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, recheckEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {/* Reannounce */}
+                    {formState.reannounceEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Force reannounce</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, reannounceEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {/* Tag */}
                     {formState.tagEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Tag</Label>
+                          <Label className="text-sm font-medium">Tag actions</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -1777,88 +2438,188 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                          {formState.exprUseTrackerAsTag ? (
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
-                              <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
-                                Torrents will be tagged with their tracker name
+                        <div className="space-y-3">
+                          {formState.exprTagActions.map((tagAction, index) => (
+                            <div key={`tag-action-${index}`} className="rounded-md border bg-muted/20 p-3 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs font-medium">Tag action {index + 1}</Label>
+                                {formState.exprTagActions.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => setFormState(prev => ({
+                                      ...prev,
+                                      exprTagActions: prev.exprTagActions.filter((_, i) => i !== index),
+                                    }))}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-start">
+                                {tagAction.useTrackerAsTag ? (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
+                                    <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
+                                      Torrents will be tagged with their tracker name
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Tags</Label>
+                                    <MultiSelect
+                                      options={tagOptions}
+                                      selected={tagAction.tags}
+                                      onChange={(next) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, tags: next } : item),
+                                      }))}
+                                      placeholder="Select tags..."
+                                      creatable
+                                      onCreateOption={(value) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, tags: [...item.tags, value] } : item),
+                                      }))}
+                                    />
+                                  </div>
+                                )}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Action mode</Label>
+                                  <Select
+                                    value={tagAction.mode}
+                                    onValueChange={(value: TagActionForm["mode"]) => setFormState(prev => ({
+                                      ...prev,
+                                      exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, mode: value } : item),
+                                    }))}
+                                  >
+                                    <SelectTrigger className="w-[120px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="full">Full sync</SelectItem>
+                                      <SelectItem value="add">Add only</SelectItem>
+                                      <SelectItem value="remove">Remove only</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Tag strategy</Label>
+                                  <Select
+                                    value={tagAction.deleteFromClient ? "replace" : "managed"}
+                                    onValueChange={(value: "managed" | "replace") => {
+                                      const replace = value === "replace"
+                                      setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => {
+                                          if (i !== index) return item
+                                          return {
+                                            ...item,
+                                            deleteFromClient: replace,
+                                            useTrackerAsTag: replace ? false : item.useTrackerAsTag,
+                                            useDisplayName: replace ? false : item.useDisplayName,
+                                          }
+                                        }),
+                                      }))
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-[170px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="managed">Managed (default)</SelectItem>
+                                      <SelectItem value="replace">Replace in client</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              {tagAction.deleteFromClient ? (
+                                <div className="text-xs text-muted-foreground">
+                                  Replace mode forces a full client-wide reset of these tags before applying this rule.
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground">
+                                  Managed mode keeps tags accurate with diff-based updates; Full sync adds tags to matches and removes them from non-matches.
+                                </div>
+                              )}
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    id={`use-tracker-tag-${index}`}
+                                    checked={tagAction.useTrackerAsTag}
+                                    disabled={tagAction.deleteFromClient}
+                                    onCheckedChange={(checked) => setFormState(prev => ({
+                                      ...prev,
+                                      exprTagActions: prev.exprTagActions.map((item, i) => {
+                                        if (i !== index) return item
+                                        return {
+                                          ...item,
+                                          useTrackerAsTag: checked,
+                                          useDisplayName: checked ? item.useDisplayName : false,
+                                          tags: checked ? [] : item.tags,
+                                        }
+                                      }),
+                                    }))}
+                                  />
+                                  <Label
+                                    htmlFor={`use-tracker-tag-${index}`}
+                                    className={`text-sm cursor-pointer whitespace-nowrap ${tagAction.deleteFromClient ? "text-muted-foreground" : ""}`}
+                                  >
+                                    Use tracker name as tag
+                                  </Label>
+                                </div>
+                                {tagAction.useTrackerAsTag && (
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      id={`use-display-name-${index}`}
+                                      checked={tagAction.useDisplayName}
+                                      onCheckedChange={(checked) => setFormState(prev => ({
+                                        ...prev,
+                                        exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, useDisplayName: checked } : item),
+                                      }))}
+                                    />
+                                    <Label htmlFor={`use-display-name-${index}`} className="text-sm cursor-pointer whitespace-nowrap">
+                                      Use display name
+                                    </Label>
+                                    <TooltipProvider delayDuration={150}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                            aria-label="About display names"
+                                          >
+                                            <Info className="h-3.5 w-3.5" />
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-[280px]">
+                                          <p>Uses friendly names from Tracker Customizations instead of raw domains (e.g., "MyTracker" instead of "tracker.example.com").</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <Label className="text-xs">Tags</Label>
-                              <Input
-                                ref={tagsInputRef}
-                                type="text"
-                                defaultValue={formState.exprTags.join(", ")}
-                                onBlur={commitPendingTags}
-                                placeholder="tag1, tag2, ..."
-                              />
-                            </div>
-                          )}
-                          <div className="space-y-1">
-                            <Label className="text-xs">Mode</Label>
-                            <Select
-                              value={formState.exprTagMode}
-                              onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
-                            >
-                              <SelectTrigger className="w-[120px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="full">Full sync</SelectItem>
-                                <SelectItem value="add">Add only</SelectItem>
-                                <SelectItem value="remove">Remove only</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-fit"
+                            onClick={() => setFormState(prev => ({
+                              ...prev,
+                              exprTagActions: [...prev.exprTagActions, createDefaultTagAction()],
+                            }))}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Add tag action
+                          </Button>
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              id="use-tracker-tag"
-                              checked={formState.exprUseTrackerAsTag}
-                              onCheckedChange={(checked) => setFormState(prev => ({
-                                ...prev,
-                                exprUseTrackerAsTag: checked,
-                                exprUseDisplayName: checked ? prev.exprUseDisplayName : false,
-                                exprTags: checked ? [] : prev.exprTags,
-                              }))}
-                            />
-                            <Label htmlFor="use-tracker-tag" className="text-sm cursor-pointer whitespace-nowrap">
-                              Use tracker name as tag
-                            </Label>
-                          </div>
-                          {formState.exprUseTrackerAsTag && (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                id="use-display-name"
-                                checked={formState.exprUseDisplayName}
-                                onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprUseDisplayName: checked }))}
-                              />
-                              <Label htmlFor="use-display-name" className="text-sm cursor-pointer whitespace-nowrap">
-                                Use display name
-                              </Label>
-                              <TooltipProvider delayDuration={150}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                                      aria-label="About display names"
-                                    >
-                                      <Info className="h-3.5 w-3.5" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[280px]">
-                                    <p>Uses friendly names from Tracker Customizations instead of raw domains (e.g., "MyTracker" instead of "tracker.example.com").</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                          )}
-                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Use multiple tag actions when you need different modes (for example add one tag and remove another in the same workflow).
+                        </p>
                       </div>
                     )}
 
@@ -1881,16 +2642,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <div className="space-y-1">
                             <Label className="text-xs">Move to category</Label>
                             <Select
-                              value={formState.exprCategory}
-                              onValueChange={(value) => setFormState(prev => ({ ...prev, exprCategory: value }))}
+                              value={formState.exprCategory === "" ? CATEGORY_UNCATEGORIZED_VALUE : formState.exprCategory}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprCategory: value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value,
+                              }))}
                             >
                               <SelectTrigger className="w-fit min-w-[160px]">
                                 <Folder className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
                                 <SelectValue placeholder="Select category" />
                               </SelectTrigger>
                               <SelectContent>
-                                {categoryOptions.map(opt => (
-                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                {categoryActionOptions.map(opt => (
+                                  <SelectItem key={`${opt.value}-${opt.label}`} value={opt.value}>
+                                    {opt.value === CATEGORY_UNCATEGORIZED_VALUE ? (
+                                      <span className="italic text-muted-foreground">{opt.label}</span>
+                                    ) : (
+                                      opt.label
+                                    )}
+                                  </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -2296,6 +3066,76 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               </div>
             </div>
 
+            {showLatestDryRunPanel && (
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-2 mt-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Dry-run results</p>
+                    <p className="text-xs text-muted-foreground">Latest run from this editor. No need to leave this dialog.</p>
+                  </div>
+                  {!dryRunNowMutation.isPending && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        setLatestDryRunEvents([])
+                        setLatestDryRunError(null)
+                        setLatestDryRunStartedAt(null)
+                        setActivityRunDialog(null)
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
+
+                {dryRunNowMutation.isPending ? (
+                  <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Running dry-run...
+                  </div>
+                ) : latestDryRunError ? (
+                  <p className="text-xs text-destructive">{latestDryRunError}</p>
+                ) : latestDryRunEvents.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No dry-run activity rows available yet.</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {latestDryRunEvents.length} action summar{latestDryRunEvents.length === 1 ? "y" : "ies"}.
+                      {" "}
+                      {latestDryRunOperationCount} planned operation{latestDryRunOperationCount === 1 ? "" : "s"}.
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                      {latestDryRunEvents.map((event) => (
+                        <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{DRY_RUN_ACTION_LABELS[event.action] ?? event.action}</p>
+                            <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event)}</p>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <span className="text-[11px] text-muted-foreground">{getDryRunImpactCount(event)}</span>
+                            {event.action !== "dry_run_no_match" && getDryRunImpactCount(event) > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setActivityRunDialog(event)}
+                              >
+                                View items
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t mt-3">
               <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -2373,6 +3213,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" onClick={() => onOpenChange(false)}>
                   Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 sm:flex-initial h-10 sm:h-8"
+                  onClick={handleRunDryRunNow}
+                  disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending}
+                >
+                  {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Dry-run now
                 </Button>
                 <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -2458,6 +3309,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isInitialLoading={isInitialLoading}
       />
 
+      {activityRunDialog && (
+        <AutomationActivityRunDialog
+          open={Boolean(activityRunDialog)}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setActivityRunDialog(null)
+            }
+          }}
+          instanceId={instanceId}
+          activity={activityRunDialog}
+        />
+      )}
+
       <AlertDialog open={showDryRunPrompt} onOpenChange={setShowDryRunPrompt}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
@@ -2488,6 +3352,147 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             >
               Enable with dry run
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showAddCustomGroup} onOpenChange={setShowAddCustomGroup}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add custom group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Combine multiple fields to create a custom grouping strategy
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="group-id" className="text-sm">Group ID</Label>
+              <Input
+                id="group-id"
+                value={newGroupId}
+                onChange={(e) => setNewGroupId(e.target.value)}
+                placeholder="e.g., my_custom_group"
+                className="h-8 text-xs"
+              />
+              <p className="text-xs text-muted-foreground">Unique identifier for this group (alphanumeric, underscores)</p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-sm">Keys (select at least one)</Label>
+              <div className="grid grid-cols-2 gap-1">
+                {AVAILABLE_GROUP_KEYS.map(key => (
+                  <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newGroupKeys.includes(key)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewGroupKeys([...newGroupKeys, key])
+                        } else {
+                          setNewGroupKeys(newGroupKeys.filter(k => k !== key))
+                        }
+                      }}
+                      className="h-3 w-3 rounded border-border"
+                    />
+                    <span className="font-mono">{key}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Torrents with the same combination of these fields will be grouped together
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-sm">Ambiguous policy (advanced)</Label>
+              <Select
+                value={newGroupAmbiguousPolicy || AMBIGUOUS_POLICY_NONE_VALUE}
+                onValueChange={(value) => setNewGroupAmbiguousPolicy(
+                  value === AMBIGUOUS_POLICY_NONE_VALUE ? "" : value as "verify_overlap" | "skip"
+                )}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AMBIGUOUS_POLICY_NONE_VALUE}>None (default)</SelectItem>
+                  <SelectItem value="verify_overlap">Verify overlap</SelectItem>
+                  <SelectItem value="skip">Skip</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                When content path equals save path, how to handle ambiguous cases
+              </p>
+            </div>
+
+            {newGroupAmbiguousPolicy === "verify_overlap" && (
+              <div className="space-y-1">
+                <Label htmlFor="min-overlap" className="text-sm">Min file overlap %</Label>
+                <Input
+                  id="min-overlap"
+                  type="number"
+                  value={newGroupMinOverlap}
+                  onChange={(e) => setNewGroupMinOverlap(e.target.value)}
+                  min="0"
+                  max="100"
+                  className="h-8 text-xs"
+                />
+                <p className="text-xs text-muted-foreground">Default 90%</p>
+              </div>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              onClick={() => {
+                // Validate
+                if (!newGroupId.trim()) {
+                  toast.error("Group ID cannot be empty")
+                  return
+                }
+                if (!/^[a-zA-Z0-9_]+$/.test(newGroupId)) {
+                  toast.error("Group ID must contain only alphanumeric characters and underscores")
+                  return
+                }
+                if (newGroupKeys.length === 0) {
+                  toast.error("Select at least one key")
+                  return
+                }
+                // Check for duplicates
+                if ((formState.exprGrouping?.groups || []).some(g => g.id === newGroupId)) {
+                  toast.error("A group with this ID already exists")
+                  return
+                }
+
+                // Add the group
+                const groupDef: GroupDefinition = {
+                  id: newGroupId,
+                  keys: newGroupKeys as string[],
+                  ambiguousPolicy: newGroupAmbiguousPolicy || undefined,
+                  minFileOverlapPercent: newGroupAmbiguousPolicy === "verify_overlap" ? parseInt(newGroupMinOverlap, 10) : undefined,
+                }
+
+                setFormState(prev => ({
+                  ...prev,
+                  exprGrouping: {
+                    ...prev.exprGrouping,
+                    groups: [...(prev.exprGrouping?.groups || []), groupDef],
+                  },
+                }))
+
+                // Reset form
+                setShowAddCustomGroup(false)
+                setNewGroupId("")
+                setNewGroupKeys([])
+                setNewGroupAmbiguousPolicy("")
+                setNewGroupMinOverlap("90")
+                toast.success("Custom group added")
+              }}
+            >
+              Add group
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

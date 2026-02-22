@@ -10,7 +10,7 @@ require (
 	github.com/anacrolix/torrent v1.60.0
 	github.com/andybalholm/brotli v1.2.0
 	github.com/autobrr/autobrr v1.72.1
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20260121130753-8741290569bc
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20260221205148-5cc22ac80d42
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -45,7 +45,7 @@ require (
 	modernc.org/sqlite v1.44.3
 )
 
-replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20260101090144-934fa1613435
+replace github.com/moistari/rls => github.com/autobrr/rls v0.8.0
 
 require (
 	code.gitea.io/sdk/gitea v0.22.1 // indirect
@@ -95,7 +95,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/time v0.14.0 // indirect
+	golang.org/x/time v0.14.0
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/blake3 v1.1.6 // indirect
 	modernc.org/libc v1.67.6 // indirect

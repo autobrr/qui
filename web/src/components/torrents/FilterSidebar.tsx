@@ -109,6 +109,7 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 
 interface FilterSidebarProps {
   instanceId: number
+  readOnly?: boolean
   selectedFilters: TorrentFilters
   onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
@@ -176,6 +177,7 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
 
 const FilterSidebarComponent = ({
   instanceId,
+  readOnly = false,
   selectedFilters,
   onFilterChange,
   torrentCounts,
@@ -189,9 +191,11 @@ const FilterSidebarComponent = ({
   isLoading = false,
   isMobile = false,
 }: FilterSidebarProps) => {
+  const isReadOnly = readOnly || instanceId <= 0
+  const isConcreteInstanceScope = instanceId > 0
   const { instances } = useInstances()
   const instanceMeta = instances?.find(instance => instance.id === instanceId)
-  const isInstanceActive = instanceMeta?.isActive ?? true
+  const isInstanceActive = !isConcreteInstanceScope || (instanceMeta?.isActive ?? true)
 
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
@@ -199,19 +203,21 @@ const FilterSidebarComponent = ({
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: capabilities } = useInstanceCapabilities(
     instanceId,
-    { enabled: isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
-  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
+  const supportsSubcategories = isConcreteInstanceScope
+    ? (capabilities?.supportsSubcategories ?? false)
+    : Boolean(useSubcategories)
   const { preferences } = useInstancePreferences(
     instanceId,
-    { enabled: isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = Boolean(
-    supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
-  )
+  const subcategoriesEnabled = isConcreteInstanceScope
+    ? Boolean(supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false))
+    : Boolean(useSubcategories)
 
   // View mode syncs with the torrent list (table on desktop, cards on mobile).
   // Desktop supports all modes including "dense" (compact table rows).
@@ -1728,12 +1734,12 @@ const FilterSidebarComponent = ({
   }
 
   const handleCreateSubcategory = useCallback((categoryName: string) => {
-    if (!subcategoriesEnabled) {
+    if (isReadOnly || !subcategoriesEnabled) {
       return
     }
     setParentCategoryForNew(categoryName)
     setShowCreateCategoryDialog(true)
-  }, [subcategoriesEnabled])
+  }, [isReadOnly, subcategoriesEnabled])
 
   const handleToggleCollapse = useCallback((categoryName: string) => {
     setCollapsedCategories((prev) => {
@@ -1748,22 +1754,31 @@ const FilterSidebarComponent = ({
   }, [setCollapsedCategories])
 
   const handleEditCategoryByName = useCallback((categoryName: string) => {
+    if (isReadOnly) {
+      return
+    }
     const category = categories[categoryName]
     if (!category) {
       return
     }
     setCategoryToEdit(category)
     setShowEditCategoryDialog(true)
-  }, [categories, setCategoryToEdit, setShowEditCategoryDialog])
+  }, [categories, isReadOnly, setCategoryToEdit, setShowEditCategoryDialog])
 
   const handleDeleteCategoryByName = useCallback((categoryName: string) => {
+    if (isReadOnly) {
+      return
+    }
     setCategoryToDelete(categoryName)
     setShowDeleteCategoryDialog(true)
-  }, [setCategoryToDelete, setShowDeleteCategoryDialog])
+  }, [isReadOnly, setCategoryToDelete, setShowDeleteCategoryDialog])
 
   const handleRemoveEmptyCategories = useCallback(() => {
+    if (isReadOnly) {
+      return
+    }
     setShowDeleteEmptyCategoriesDialog(true)
-  }, [setShowDeleteEmptyCategoriesDialog])
+  }, [isReadOnly, setShowDeleteEmptyCategoriesDialog])
 
   // Track previous subcategories state to detect transitions
   const prevAllowSubcategories = useRef<boolean | null>(null)
@@ -1811,7 +1826,7 @@ const FilterSidebarComponent = ({
     selectedFilters.excludeTrackers.length > 0 ||
     Boolean(selectedFilters.expr)
 
-  if (!isInstanceActive) {
+  if (isConcreteInstanceScope && !isInstanceActive) {
     return (
       <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
         This instance is disabled. Enable it from Settings → Instances to use filters.
@@ -2033,8 +2048,13 @@ const FilterSidebarComponent = ({
                   {/* Add new category button and show/hide empty toggle */}
                   <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
-                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                      className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
+                      disabled={isReadOnly}
+                      title={isReadOnly ? "Unavailable in unified view" : undefined}
                       onClick={() => {
+                        if (isReadOnly) {
+                          return
+                        }
                         setParentCategoryForNew(undefined)
                         setShowCreateCategoryDialog(true)
                       }}
@@ -2155,6 +2175,7 @@ const FilterSidebarComponent = ({
                     <CategoryTree
                       categories={categoriesForTree}
                       counts={torrentCounts ?? {}}
+                      readOnly={isReadOnly}
                       useSubcategories={allowSubcategories}
                       collapsedCategories={collapsedCategories}
                       onToggleCollapse={handleToggleCollapse}
@@ -2253,7 +2274,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   {allowSubcategories && (
                                     <>
-                                      <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                      <ContextMenuItem
+                                        disabled={isReadOnly}
+                                        onClick={() => handleCreateSubcategory(name)}
+                                      >
                                         <FolderPlus className="mr-2 h-4 w-4" />
                                         Create Subcategory
                                       </ContextMenuItem>
@@ -2261,9 +2285,9 @@ const FilterSidebarComponent = ({
                                     </>
                                   )}
                                   <ContextMenuItem
-                                    disabled={isSynthetic}
+                                    disabled={isSynthetic || isReadOnly}
                                     onClick={() => {
-                                      if (isSynthetic) {
+                                      if (isSynthetic || isReadOnly) {
                                         return
                                       }
                                       setCategoryToEdit(category)
@@ -2275,9 +2299,9 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
-                                    disabled={isSynthetic}
+                                    disabled={isSynthetic || isReadOnly}
                                     onClick={() => {
-                                      if (isSynthetic) {
+                                      if (isSynthetic || isReadOnly) {
                                         return
                                       }
                                       setCategoryToDelete(name)
@@ -2290,7 +2314,7 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuItem
                                     onClick={handleRemoveEmptyCategories}
-                                    disabled={!hasEmptyCategories}
+                                    disabled={isReadOnly || !hasEmptyCategories}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2362,7 +2386,10 @@ const FilterSidebarComponent = ({
                           <ContextMenuContent>
                             {allowSubcategories && (
                               <>
-                                <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                <ContextMenuItem
+                                  disabled={isReadOnly}
+                                  onClick={() => handleCreateSubcategory(name)}
+                                >
                                   <FolderPlus className="mr-2 h-4 w-4" />
                                   Create Subcategory
                                 </ContextMenuItem>
@@ -2370,9 +2397,9 @@ const FilterSidebarComponent = ({
                               </>
                             )}
                             <ContextMenuItem
-                              disabled={isSynthetic}
+                              disabled={isSynthetic || isReadOnly}
                               onClick={() => {
-                                if (isSynthetic) {
+                                if (isSynthetic || isReadOnly) {
                                   return
                                 }
                                 setCategoryToEdit(category)
@@ -2384,9 +2411,9 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
-                              disabled={isSynthetic}
+                              disabled={isSynthetic || isReadOnly}
                               onClick={() => {
-                                if (isSynthetic) {
+                                if (isSynthetic || isReadOnly) {
                                   return
                                 }
                                 setCategoryToDelete(name)
@@ -2399,7 +2426,7 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuItem
                               onClick={handleRemoveEmptyCategories}
-                              disabled={!hasEmptyCategories}
+                              disabled={isReadOnly || !hasEmptyCategories}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2432,8 +2459,15 @@ const FilterSidebarComponent = ({
                   {/* Add new tag button and show/hide empty toggle */}
                   <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
-                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                      onClick={() => setShowCreateTagDialog(true)}
+                      className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
+                      disabled={isReadOnly}
+                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      onClick={() => {
+                        if (isReadOnly) {
+                          return
+                        }
+                        setShowCreateTagDialog(true)
+                      }}
                     >
                       <Plus className="h-3 w-3" />
                       <span>Add tag</span>
@@ -2617,9 +2651,13 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   <ContextMenuItem
                                     onClick={() => {
+                                      if (isReadOnly) {
+                                        return
+                                      }
                                       setTagToDelete(tag)
                                       setShowDeleteTagDialog(true)
                                     }}
+                                    disabled={isReadOnly}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2627,7 +2665,13 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
-                                    onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                                    onClick={() => {
+                                      if (isReadOnly) {
+                                        return
+                                      }
+                                      setShowDeleteUnusedTagsDialog(true)
+                                    }}
+                                    disabled={isReadOnly}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2690,9 +2734,13 @@ const FilterSidebarComponent = ({
                           <ContextMenuContent>
                             <ContextMenuItem
                               onClick={() => {
+                                if (isReadOnly) {
+                                  return
+                                }
                                 setTagToDelete(tag)
                                 setShowDeleteTagDialog(true)
                               }}
+                              disabled={isReadOnly}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2700,7 +2748,13 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
-                              onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                              onClick={() => {
+                                if (isReadOnly) {
+                                  return
+                                }
+                                setShowDeleteUnusedTagsDialog(true)
+                              }}
+                              disabled={isReadOnly}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2993,20 +3047,20 @@ const FilterSidebarComponent = ({
 
       {/* Dialogs */}
       <CreateTagDialog
-        open={showCreateTagDialog}
+        open={!isReadOnly && showCreateTagDialog}
         onOpenChange={setShowCreateTagDialog}
         instanceId={instanceId}
       />
 
       <DeleteTagDialog
-        open={showDeleteTagDialog}
+        open={!isReadOnly && showDeleteTagDialog}
         onOpenChange={setShowDeleteTagDialog}
         instanceId={instanceId}
         tag={tagToDelete}
       />
 
       <CreateCategoryDialog
-        open={showCreateCategoryDialog}
+        open={!isReadOnly && showCreateCategoryDialog}
         onOpenChange={(open) => {
           setShowCreateCategoryDialog(open)
           if (!open) {
@@ -3019,7 +3073,7 @@ const FilterSidebarComponent = ({
 
       {categoryToEdit && (
         <EditCategoryDialog
-          open={showEditCategoryDialog}
+          open={!isReadOnly && showEditCategoryDialog}
           onOpenChange={setShowEditCategoryDialog}
           instanceId={instanceId}
           category={categoryToEdit}
@@ -3027,14 +3081,14 @@ const FilterSidebarComponent = ({
       )}
 
       <DeleteCategoryDialog
-        open={showDeleteCategoryDialog}
+        open={!isReadOnly && showDeleteCategoryDialog}
         onOpenChange={setShowDeleteCategoryDialog}
         instanceId={instanceId}
         categoryName={categoryToDelete}
       />
 
       <DeleteEmptyCategoriesDialog
-        open={showDeleteEmptyCategoriesDialog}
+        open={!isReadOnly && showDeleteEmptyCategoriesDialog}
         onOpenChange={setShowDeleteEmptyCategoriesDialog}
         instanceId={instanceId}
         categories={categories}
@@ -3042,7 +3096,7 @@ const FilterSidebarComponent = ({
       />
 
       <DeleteUnusedTagsDialog
-        open={showDeleteUnusedTagsDialog}
+        open={!isReadOnly && showDeleteUnusedTagsDialog}
         onOpenChange={setShowDeleteUnusedTagsDialog}
         instanceId={instanceId}
         tags={tags}
@@ -3050,7 +3104,7 @@ const FilterSidebarComponent = ({
       />
 
       <EditTrackerDialog
-        open={showEditTrackerDialog}
+        open={!isReadOnly && showEditTrackerDialog}
         onOpenChange={(open) => {
           setShowEditTrackerDialog(open)
           if (!open) {
@@ -3078,6 +3132,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isStaleData !== nextProps.isStaleData) return false
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
+  if ((prevProps.readOnly ?? false) !== (nextProps.readOnly ?? false)) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 

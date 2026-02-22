@@ -5,6 +5,7 @@
 
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
+import { isAllInstancesScope } from "@/lib/instances"
 import type { Torrent, TorrentFilters, TorrentResponse } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
@@ -17,6 +18,7 @@ interface UseTorrentsListOptions {
   filters?: TorrentFilters
   sort?: string
   order?: "asc" | "desc"
+  instanceIds?: number[]
 }
 
 // Hook that manages paginated torrent loading with stale-while-revalidate pattern
@@ -33,8 +35,10 @@ export function useTorrentsList(
     filters,
     sort = "added_on",
     order = "desc",
+    instanceIds,
   } = options
   const shouldEnableQuery = enabled
+  const isAllInstancesView = isAllInstancesScope(instanceId)
 
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
@@ -49,6 +53,10 @@ export function useTorrentsList(
   // Use JSON.stringify to avoid resetting on every object reference change during polling
   const filterKey = JSON.stringify(filters)
   const searchKey = search || ""
+  const instanceIdsKey = useMemo(
+    () => (instanceIds && instanceIds.length > 0 ? [...instanceIds].sort((left, right) => left - right).join(",") : ""),
+    [instanceIds]
+  )
 
   useEffect(() => {
     setCurrentPage(0)
@@ -56,18 +64,19 @@ export function useTorrentsList(
     setHasLoadedAll(false)
     setLastKnownTotal(0)
     setLastProcessedPage(-1)
-  }, [instanceId, filterKey, searchKey, sort, order])
+  }, [instanceId, filterKey, searchKey, sort, order, instanceIdsKey])
 
   // Detect if this is cross-seed filtering based on expression content
   const isCrossSeedFiltering = useMemo(() => {
     return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
   }, [filters?.expr])
+  const useCrossInstanceEndpoint = isAllInstancesView || isCrossSeedFiltering
 
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order, isCrossSeedFiltering],
+    queryKey: ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering],
     queryFn: () => {
-      if (isCrossSeedFiltering) {
+      if (useCrossInstanceEndpoint) {
         return api.getCrossInstanceTorrents({
           page: currentPage,
           limit: pageSize,
@@ -75,9 +84,10 @@ export function useTorrentsList(
           order,
           search,
           filters,
+          instanceIds,
         })
       }
-      
+
       return api.getTorrents(instanceId, {
         page: currentPage,
         limit: pageSize,
@@ -95,14 +105,14 @@ export function useTorrentsList(
     // Only poll the first page to get fresh data - don't poll pagination pages
     // Reduce polling frequency for cross-instance calls since they're more expensive
     refetchInterval: currentPage === 0
-      ? (pollingEnabled ? (isCrossSeedFiltering ? 10000 : 3000) : false)
+      ? (pollingEnabled ? (useCrossInstanceEndpoint ? 10000 : 3000) : false)
       : false,
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: currentPage === 0,
     enabled: shouldEnableQuery,
   })
 
-  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: shouldEnableQuery })
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: shouldEnableQuery && !isAllInstancesView })
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -136,10 +146,10 @@ export function useTorrentsList(
     }
 
     // Handle both regular torrents and cross-instance torrents
-    const torrentsData = data.isCrossInstance 
+    const torrentsData = data.isCrossInstance
       ? (data.crossInstanceTorrents || data.cross_instance_torrents)
       : data.torrents
-    
+
     if (!torrentsData) {
       setIsLoadingMore(false)
       return
@@ -238,7 +248,10 @@ export function useTorrentsList(
   // Use lastKnownTotal when loading more pages to prevent flickering
   const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
 
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const responseUseSubcategories = data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false
+  const supportsSubcategories = isAllInstancesView
+    ? responseUseSubcategories
+    : (capabilities?.supportsSubcategories ?? false)
 
   return {
     torrents: allTorrents,
@@ -247,20 +260,22 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
-    supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
-    capabilities,
+    supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
+    capabilities: isAllInstancesView ? undefined : capabilities,
     serverState: data?.serverState ?? null,
-    useSubcategories: supportsSubcategories
-      ? (data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false)
-      : false,
+    useSubcategories: isAllInstancesView
+      ? responseUseSubcategories
+      : (supportsSubcategories ? responseUseSubcategories : false),
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,
     hasLoadedAll,
     loadMore,
     // Cross-instance information
-    isCrossInstance: data?.isCrossInstance ?? false,
+    isCrossInstance: data?.isCrossInstance ?? useCrossInstanceEndpoint,
     isCrossSeedFiltering,
+    isAllInstancesView,
+    isCrossInstanceEndpoint: useCrossInstanceEndpoint,
     // Metadata about data freshness
     isFreshData: !isCachedData || !isStaleData,
     isCachedData,
@@ -268,4 +283,3 @@ export function useTorrentsList(
     cacheAge: data?.cacheMetadata?.age,
   }
 }
-

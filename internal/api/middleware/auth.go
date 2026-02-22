@@ -46,7 +46,9 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 
 			// Check session using SCS
 			if !sessionManager.GetBool(r.Context(), "authenticated") {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				// Use 403 to avoid Chromium resetting upstream Basic Auth creds when
+				// qui is behind a reverse proxy (e.g. Swizzin nginx auth_basic).
+				http.Error(w, "Unauthorized", http.StatusForbidden)
 				return
 			}
 

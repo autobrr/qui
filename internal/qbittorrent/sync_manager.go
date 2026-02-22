@@ -1385,13 +1385,22 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	return views, nil
 }
 
-// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from all instances
-func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
+// When instanceIDs is non-empty, only the provided active instance IDs are included.
+func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions, instanceIDs []int) (*TorrentResponse, error) {
 	// Get all instances
 	instances, err := sm.clientPool.instanceStore.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
+
+	selectedInstanceIDs := make(map[int]struct{}, len(instanceIDs))
+	for _, instanceID := range instanceIDs {
+		if instanceID > 0 {
+			selectedInstanceIDs[instanceID] = struct{}{}
+		}
+	}
+	hasScopedInstanceSelection := len(selectedInstanceIDs) > 0
 
 	// Sort instances by ID for deterministic processing order
 	slices.SortFunc(instances, func(a, b *models.Instance) int {
@@ -1401,9 +1410,24 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var allTorrents []CrossInstanceTorrentView
 	var totalCount int
 	var partialResults bool
+	var aggregatedStats *TorrentStats
+	var aggregatedCounts *TorrentCounts
+	var useSubcategories bool
+	aggregatedCategories := make(map[string]qbt.Category)
+	aggregatedTagSet := make(map[string]struct{})
 
 	// Iterate through all instances and collect matching torrents
 	for _, instance := range instances {
+		// Disabled instances are intentionally excluded from unified views.
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+		if hasScopedInstanceSelection {
+			if _, selected := selectedInstanceIDs[instance.ID]; !selected {
+				continue
+			}
+		}
+
 		// Check for context cancellation before each network call
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -1434,75 +1458,19 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 			allTorrents = append(allTorrents, crossInstanceTorrent)
 		}
+
+		aggregatedStats = mergeTorrentStats(aggregatedStats, instanceResponse.Stats)
+		aggregatedCounts = mergeTorrentCounts(aggregatedCounts, instanceResponse.Counts)
+		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
+		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
+		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
+
 		totalCount += len(instanceResponse.Torrents)
 	}
 
 	// Apply sorting if specified - always use deterministic secondary sort
 	if sort != "" {
-		switch sort {
-		case "name":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := strings.Compare(a.Name, b.Name)
-				if result == 0 {
-					// Secondary sort by hash for deterministic ordering
-					result = strings.Compare(a.Hash, b.Hash)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "size":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.Size, b.Size)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "progress":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.Progress, b.Progress)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "added_on":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.AddedOn, b.AddedOn)
-				if result == 0 {
-					// Secondary sort by hash for deterministic ordering
-					result = strings.Compare(a.Hash, b.Hash)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "instance":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := strings.Compare(a.InstanceName, b.InstanceName)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "tracker":
-			sm.sortCrossInstanceTorrentsByTracker(allTorrents, order == "desc")
-		}
+		sm.sortCrossInstanceTorrents(allTorrents, sort, order == "desc")
 	} else {
 		// Default sort by name if no sort specified for consistent ordering
 		slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
@@ -1534,9 +1502,19 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	paginatedTorrents := allTorrents[start:end]
 	hasMore := end < len(allTorrents)
 
+	var categories map[string]qbt.Category
+	if len(aggregatedCategories) > 0 {
+		categories = aggregatedCategories
+	}
+
 	response := &TorrentResponse{
 		CrossInstanceTorrents:  paginatedTorrents,
 		Total:                  totalCount,
+		Stats:                  aggregatedStats,
+		Counts:                 aggregatedCounts,
+		Categories:             categories,
+		Tags:                   sortedTagKeys(aggregatedTagSet),
+		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
 		IsCrossInstance:        true,
@@ -1544,6 +1522,138 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	}
 
 	return response, nil
+}
+
+func mergeTorrentStats(base *TorrentStats, next *TorrentStats) *TorrentStats {
+	if next == nil {
+		return base
+	}
+
+	if base == nil {
+		copyStats := *next
+		return &copyStats
+	}
+
+	base.Total += next.Total
+	base.Downloading += next.Downloading
+	base.Seeding += next.Seeding
+	base.Paused += next.Paused
+	base.Error += next.Error
+	base.Checking += next.Checking
+	base.TotalDownloadSpeed += next.TotalDownloadSpeed
+	base.TotalUploadSpeed += next.TotalUploadSpeed
+	base.TotalSize += next.TotalSize
+	base.TotalRemainingSize += next.TotalRemainingSize
+	base.TotalSeedingSize += next.TotalSeedingSize
+
+	return base
+}
+
+func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts {
+	if next == nil {
+		return base
+	}
+
+	if base == nil {
+		base = &TorrentCounts{
+			Status:           make(map[string]int, len(next.Status)),
+			Categories:       make(map[string]int, len(next.Categories)),
+			CategorySizes:    make(map[string]int64, len(next.CategorySizes)),
+			Tags:             make(map[string]int, len(next.Tags)),
+			TagSizes:         make(map[string]int64, len(next.TagSizes)),
+			Trackers:         make(map[string]int, len(next.Trackers)),
+			TrackerTransfers: make(map[string]TrackerTransferStats, len(next.TrackerTransfers)),
+		}
+	}
+
+	if base.Status == nil {
+		base.Status = make(map[string]int, len(next.Status))
+	}
+	if base.Categories == nil {
+		base.Categories = make(map[string]int, len(next.Categories))
+	}
+	if base.CategorySizes == nil {
+		base.CategorySizes = make(map[string]int64, len(next.CategorySizes))
+	}
+	if base.Tags == nil {
+		base.Tags = make(map[string]int, len(next.Tags))
+	}
+	if base.TagSizes == nil {
+		base.TagSizes = make(map[string]int64, len(next.TagSizes))
+	}
+	if base.Trackers == nil {
+		base.Trackers = make(map[string]int, len(next.Trackers))
+	}
+	if base.TrackerTransfers == nil {
+		base.TrackerTransfers = make(map[string]TrackerTransferStats, len(next.TrackerTransfers))
+	}
+
+	for key, value := range next.Status {
+		base.Status[key] += value
+	}
+	for key, value := range next.Categories {
+		base.Categories[key] += value
+	}
+	for key, value := range next.CategorySizes {
+		base.CategorySizes[key] += value
+	}
+	for key, value := range next.Tags {
+		base.Tags[key] += value
+	}
+	for key, value := range next.TagSizes {
+		base.TagSizes[key] += value
+	}
+	for key, value := range next.Trackers {
+		base.Trackers[key] += value
+	}
+	for key, value := range next.TrackerTransfers {
+		current := base.TrackerTransfers[key]
+		base.TrackerTransfers[key] = TrackerTransferStats{
+			Uploaded:   current.Uploaded + value.Uploaded,
+			Downloaded: current.Downloaded + value.Downloaded,
+			TotalSize:  current.TotalSize + value.TotalSize,
+			Count:      current.Count + value.Count,
+		}
+	}
+
+	base.Total += next.Total
+
+	return base
+}
+
+func mergeTorrentCategories(base map[string]qbt.Category, next map[string]qbt.Category) {
+	if len(next) == 0 {
+		return
+	}
+
+	for name, category := range next {
+		existing, ok := base[name]
+		if !ok || (existing.SavePath == "" && category.SavePath != "") {
+			base[name] = category
+		}
+	}
+}
+
+func mergeTorrentTags(base map[string]struct{}, next []string) {
+	for _, tag := range next {
+		base[tag] = struct{}{}
+	}
+}
+
+func sortedTagKeys(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	slices.SortFunc(result, func(a, b string) int {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	})
+
+	return result
 }
 
 // GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance
@@ -2515,6 +2625,13 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 		return ""
 	}
 
+	// qBittorrent may emit pseudo tracker labels (e.g. "[DHT]", "[PeX]", "[LSD]").
+	// These are peer-discovery mechanisms, not real tracker domains.
+	if isPseudoTrackerLabel(urlStr) {
+		urlCache.Set(urlStr, "", ttlcache.DefaultTTL)
+		return ""
+	}
+
 	// Check cache first
 	if cachedDomain, found := urlCache.Get(urlStr); found {
 		return cachedDomain
@@ -2573,6 +2690,9 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
+		if isPseudoTrackerLabel(domain) {
+			domain = ""
+		}
 	} else {
 		domain = unknown
 	}
@@ -2580,6 +2700,24 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	// Cache the result
 	urlCache.Set(urlStr, domain, ttlcache.DefaultTTL)
 	return domain
+}
+
+func isPseudoTrackerLabel(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.Trim(normalized, "*")
+	normalized = strings.TrimSpace(normalized)
+	if strings.HasPrefix(normalized, "[") && strings.HasSuffix(normalized, "]") {
+		normalized = strings.TrimPrefix(normalized, "[")
+		normalized = strings.TrimSuffix(normalized, "]")
+		normalized = strings.TrimSpace(normalized)
+	}
+
+	switch normalized {
+	case "dht", "pex", "lsd":
+		return true
+	default:
+		return false
+	}
 }
 
 // torrentBelongsToTrackerDomain checks if a torrent currently has a tracker in the given domain.
@@ -4461,6 +4599,241 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 	}
 }
 
+// sortCrossInstanceTorrents sorts unified torrents with parity to single-instance sort options.
+func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, sort string, desc bool) {
+	if len(torrents) <= 1 {
+		return
+	}
+
+	if sort == "tracker" {
+		sm.sortCrossInstanceTorrentsByTracker(torrents, desc)
+		return
+	}
+
+	applyDirection := func(result int) int {
+		if desc {
+			return -result
+		}
+		return result
+	}
+
+	boolAsInt := func(value bool) int {
+		if value {
+			return 1
+		}
+		return 0
+	}
+
+	compareIdentity := func(a, b CrossInstanceTorrentView) int {
+		return cmp.Or(
+			strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+			strings.Compare(strings.ToLower(a.Hash), strings.ToLower(b.Hash)),
+			strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+			cmp.Compare(a.InstanceID, b.InstanceID),
+		)
+	}
+
+	compareTimestamp := func(a, b CrossInstanceTorrentView, getTimestamp func(CrossInstanceTorrentView) int64) int {
+		tsA := getTimestamp(a)
+		tsB := getTimestamp(b)
+		if tsA != tsB {
+			return applyDirection(cmp.Compare(tsA, tsB))
+		}
+
+		return compareIdentity(a, b)
+	}
+
+	slices.SortFunc(torrents, func(a, b CrossInstanceTorrentView) int {
+		switch sort {
+		case "name":
+			result := cmp.Or(
+				strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+				strings.Compare(a.Name, b.Name),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "size":
+			if result := cmp.Compare(a.Size, b.Size); result != 0 {
+				return applyDirection(result)
+			}
+		case "progress":
+			if result := cmp.Compare(a.Progress, b.Progress); result != 0 {
+				return applyDirection(result)
+			}
+		case "added_on":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.AddedOn })
+		case "completion_on":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.CompletionOn })
+		case "seen_complete":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.SeenComplete })
+		case "last_activity":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.LastActivity / 60 })
+		case "instance":
+			result := cmp.Or(
+				strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+				cmp.Compare(a.InstanceID, b.InstanceID),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "state":
+			result := cmp.Or(
+				cmp.Compare(stateSortPriority(a.State), stateSortPriority(b.State)),
+				strings.Compare(strings.ToLower(string(a.State)), strings.ToLower(string(b.State))),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "priority":
+			// Keep non-queued torrents (priority=0) at the end regardless of order.
+			if a.Priority == 0 && b.Priority == 0 {
+				break
+			}
+			if a.Priority == 0 {
+				return 1
+			}
+			if b.Priority == 0 {
+				return -1
+			}
+			if desc {
+				if result := cmp.Compare(a.Priority, b.Priority); result != 0 {
+					return result
+				}
+			} else {
+				if result := cmp.Compare(b.Priority, a.Priority); result != 0 {
+					return result
+				}
+			}
+		case "eta":
+			const infinityETA int64 = 8640000
+			aInfinity := a.ETA == infinityETA
+			bInfinity := b.ETA == infinityETA
+			if aInfinity != bInfinity {
+				if aInfinity {
+					return 1
+				}
+				return -1
+			}
+			if !aInfinity {
+				if result := cmp.Compare(a.ETA, b.ETA); result != 0 {
+					return applyDirection(result)
+				}
+			}
+		case "num_complete":
+			if result := cmp.Compare(a.NumComplete, b.NumComplete); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_incomplete":
+			if result := cmp.Compare(a.NumIncomplete, b.NumIncomplete); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_seeds":
+			if result := cmp.Compare(a.NumSeeds, b.NumSeeds); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_leechs":
+			if result := cmp.Compare(a.NumLeechs, b.NumLeechs); result != 0 {
+				return applyDirection(result)
+			}
+		case "dlspeed":
+			if result := cmp.Compare(a.DlSpeed, b.DlSpeed); result != 0 {
+				return applyDirection(result)
+			}
+		case "upspeed":
+			if result := cmp.Compare(a.UpSpeed, b.UpSpeed); result != 0 {
+				return applyDirection(result)
+			}
+		case "ratio":
+			if result := cmp.Compare(a.Ratio, b.Ratio); result != 0 {
+				return applyDirection(result)
+			}
+		case "popularity":
+			if result := cmp.Compare(a.Popularity, b.Popularity); result != 0 {
+				return applyDirection(result)
+			}
+		case "category":
+			if result := strings.Compare(strings.ToLower(a.Category), strings.ToLower(b.Category)); result != 0 {
+				return applyDirection(result)
+			}
+		case "tags":
+			if result := strings.Compare(strings.ToLower(a.Tags), strings.ToLower(b.Tags)); result != 0 {
+				return applyDirection(result)
+			}
+		case "dl_limit":
+			if result := cmp.Compare(a.DlLimit, b.DlLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "up_limit":
+			if result := cmp.Compare(a.UpLimit, b.UpLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "downloaded":
+			if result := cmp.Compare(a.Downloaded, b.Downloaded); result != 0 {
+				return applyDirection(result)
+			}
+		case "uploaded":
+			if result := cmp.Compare(a.Uploaded, b.Uploaded); result != 0 {
+				return applyDirection(result)
+			}
+		case "downloaded_session":
+			if result := cmp.Compare(a.DownloadedSession, b.DownloadedSession); result != 0 {
+				return applyDirection(result)
+			}
+		case "uploaded_session":
+			if result := cmp.Compare(a.UploadedSession, b.UploadedSession); result != 0 {
+				return applyDirection(result)
+			}
+		case "amount_left":
+			if result := cmp.Compare(a.AmountLeft, b.AmountLeft); result != 0 {
+				return applyDirection(result)
+			}
+		case "time_active":
+			if result := cmp.Compare(a.TimeActive, b.TimeActive); result != 0 {
+				return applyDirection(result)
+			}
+		case "seeding_time":
+			if result := cmp.Compare(a.SeedingTime, b.SeedingTime); result != 0 {
+				return applyDirection(result)
+			}
+		case "save_path":
+			if result := strings.Compare(strings.ToLower(a.SavePath), strings.ToLower(b.SavePath)); result != 0 {
+				return applyDirection(result)
+			}
+		case "completed":
+			if result := cmp.Compare(a.Completed, b.Completed); result != 0 {
+				return applyDirection(result)
+			}
+		case "ratio_limit":
+			if result := cmp.Compare(a.RatioLimit, b.RatioLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "availability":
+			if result := cmp.Compare(a.Availability, b.Availability); result != 0 {
+				return applyDirection(result)
+			}
+		case "infohash_v1":
+			if result := strings.Compare(strings.ToLower(a.InfohashV1), strings.ToLower(b.InfohashV1)); result != 0 {
+				return applyDirection(result)
+			}
+		case "infohash_v2":
+			if result := strings.Compare(strings.ToLower(a.InfohashV2), strings.ToLower(b.InfohashV2)); result != 0 {
+				return applyDirection(result)
+			}
+		case "reannounce":
+			if result := cmp.Compare(a.Reannounce, b.Reannounce); result != 0 {
+				return applyDirection(result)
+			}
+		case "private":
+			if result := cmp.Compare(boolAsInt(a.Private), boolAsInt(b.Private)); result != 0 {
+				return applyDirection(result)
+			}
+		}
+
+		return compareIdentity(a, b)
+	})
+}
+
 // sortCrossInstanceTorrentsByTracker sorts cross-instance torrents by tracker display name.
 // Uses the same hasDomain semantics as per-instance sorting: torrents without valid trackers
 // always go to the end, regardless of sort direction.
@@ -5107,7 +5480,7 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 
 // GetActiveTrackers returns all active tracker domains with their URLs and counts
 func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (map[string]string, error) {
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -5119,7 +5492,6 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 
 	// Map of domain -> example tracker URL
 	trackerMap := make(map[string]string)
-	trackerExclusions := client.getTrackerExclusionsCopy()
 
 	for trackerURL, hashes := range mainData.Trackers {
 		domain := sm.ExtractDomainFromURL(trackerURL)
@@ -5127,23 +5499,14 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 			continue
 		}
 
-		// Skip if all hashes are excluded
-		hasValidHash := false
-		for _, hash := range hashes {
-			if hashesToSkip, ok := trackerExclusions[domain]; ok {
-				if _, skip := hashesToSkip[hash]; skip {
-					continue
-				}
-			}
-			hasValidHash = true
-			break
+		if len(hashes) == 0 {
+			continue
 		}
 
-		if hasValidHash {
-			// Store the first valid tracker URL we find for this domain
-			if _, exists := trackerMap[domain]; !exists {
-				trackerMap[domain] = trackerURL
-			}
+		// Store the first tracker URL we find for this domain.
+		// Keep selector options complete, even when some hashes are excluded elsewhere.
+		if _, exists := trackerMap[domain]; !exists {
+			trackerMap[domain] = trackerURL
 		}
 	}
 

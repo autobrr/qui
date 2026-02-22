@@ -1014,12 +1014,49 @@ func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
 				"tracker.example.com": {},
 			},
 		},
+		{
+			name: "Pseudo trackers are filtered out",
+			torrent: &qbt.Torrent{
+				Hash: "hash7",
+				Trackers: []qbt.TorrentTracker{
+					{Url: "** [DHT] **"},
+					{Url: "[PeX]"},
+					{Url: " [LSD] "},
+					{Url: "https://valid.tracker.com/announce"},
+				},
+			},
+			expected: map[string]struct{}{
+				"valid.tracker.com": {},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := sm.getDomainsForTorrent(tc.torrent)
 			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestSyncManager_ExtractDomainFromURL_IgnoresPseudoTrackers(t *testing.T) {
+	sm := &SyncManager{}
+
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{input: "[DHT]", expected: ""},
+		{input: "** [dht] **", expected: ""},
+		{input: "[PeX]", expected: ""},
+		{input: " [LSD] ", expected: ""},
+		{input: "dht://", expected: ""},
+		{input: "https://tracker.example.com/announce", expected: "tracker.example.com"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.expected, sm.ExtractDomainFromURL(tc.input))
 		})
 	}
 }
