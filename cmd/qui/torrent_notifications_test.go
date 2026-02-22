@@ -59,52 +59,6 @@ func TestParseTorrentTags(t *testing.T) {
 	require.Equal(t, []string{"alpha", "beta", "gamma"}, got)
 }
 
-func TestBuildTorrentCompletedEventIncludesTorrentMetrics(t *testing.T) {
-	t.Parallel()
-
-	syncStub := &stubTorrentNotificationSync{extractDomain: "tracker.example"}
-	torrent := qbt.Torrent{
-		Name:       "Done.Release",
-		Hash:       "AAAA1111",
-		Tracker:    "https://tracker.example/announce",
-		AddedOn:    123,
-		ETA:        0,
-		State:      qbt.TorrentStateUploading,
-		Progress:   1,
-		Ratio:      2.5,
-		TotalSize:  9_000,
-		Downloaded: 9_000,
-		AmountLeft: 0,
-		DlSpeed:    0,
-		UpSpeed:    321,
-		NumSeeds:   12,
-		NumLeechs:  4,
-		Category:   "tv",
-		Tags:       "cross-seed, completed",
-	}
-
-	event := buildTorrentCompletedEvent(syncStub, 3, torrent)
-	require.Equal(t, notifications.EventTorrentCompleted, event.Type)
-	require.Equal(t, 3, event.InstanceID)
-	require.Equal(t, "Done.Release", event.TorrentName)
-	require.Equal(t, "AAAA1111", event.TorrentHash)
-	require.Equal(t, int64(123), event.TorrentAddedOn)
-	require.Equal(t, int64(0), event.TorrentETASeconds)
-	require.Equal(t, string(qbt.TorrentStateUploading), event.TorrentState)
-	require.InDelta(t, 1, event.TorrentProgress, 1e-9)
-	require.InDelta(t, 2.5, event.TorrentRatio, 1e-9)
-	require.Equal(t, int64(9_000), event.TorrentTotalSizeBytes)
-	require.Equal(t, int64(9_000), event.TorrentDownloadedBytes)
-	require.Equal(t, int64(0), event.TorrentAmountLeftBytes)
-	require.Equal(t, int64(0), event.TorrentDlSpeedBps)
-	require.Equal(t, int64(321), event.TorrentUpSpeedBps)
-	require.Equal(t, int64(12), event.TorrentNumSeeds)
-	require.Equal(t, int64(4), event.TorrentNumLeechs)
-	require.Equal(t, "tracker.example", event.TrackerDomain)
-	require.Equal(t, "tv", event.Category)
-	require.Equal(t, []string{"cross-seed", "completed"}, event.Tags)
-}
-
 func TestNotifyTorrentAddedWithDelayAfterRefreshesSnapshot(t *testing.T) {
 	t.Parallel()
 

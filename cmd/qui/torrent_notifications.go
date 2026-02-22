@@ -26,25 +26,13 @@ type torrentNotificationSync interface {
 
 func buildTorrentCompletedEvent(syncManager torrentNotificationSync, instanceID int, torrent qbt.Torrent) notifications.Event {
 	return notifications.Event{
-		Type:                   notifications.EventTorrentCompleted,
-		InstanceID:             instanceID,
-		TorrentName:            torrent.Name,
-		TorrentHash:            torrent.Hash,
-		TorrentAddedOn:         torrent.AddedOn,
-		TorrentETASeconds:      torrent.ETA,
-		TorrentState:           string(torrent.State),
-		TorrentProgress:        torrent.Progress,
-		TorrentRatio:           torrent.Ratio,
-		TorrentTotalSizeBytes:  torrent.TotalSize,
-		TorrentDownloadedBytes: torrent.Downloaded,
-		TorrentAmountLeftBytes: torrent.AmountLeft,
-		TorrentDlSpeedBps:      torrent.DlSpeed,
-		TorrentUpSpeedBps:      torrent.UpSpeed,
-		TorrentNumSeeds:        torrent.NumSeeds,
-		TorrentNumLeechs:       torrent.NumLeechs,
-		TrackerDomain:          trackerDomainForTorrent(syncManager, torrent),
-		Category:               torrent.Category,
-		Tags:                   parseTorrentTags(torrent.Tags),
+		Type:          notifications.EventTorrentCompleted,
+		InstanceID:    instanceID,
+		TorrentName:   torrent.Name,
+		TorrentHash:   torrent.Hash,
+		TrackerDomain: trackerDomainForTorrent(syncManager, torrent),
+		Category:      torrent.Category,
+		Tags:          parseTorrentTags(torrent.Tags),
 	}
 }
 
