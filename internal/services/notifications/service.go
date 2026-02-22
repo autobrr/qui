@@ -170,13 +170,13 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 		return
 	}
 
-	title, message := s.formatEvent(ctx, event)
-	if strings.TrimSpace(message) == "" {
-		return
-	}
-
 	for _, target := range targets {
 		if !allowsEvent(target.EventTypes, event.Type) {
+			continue
+		}
+
+		title, message := s.formatEvent(ctx, event, targetScheme(target.URL) != "notifiarrapi")
+		if strings.TrimSpace(message) == "" {
 			continue
 		}
 
@@ -291,7 +291,7 @@ func (s *Service) sendNotifiarr(rawURL string, _ Event, title, message string) e
 	return errors.Join(errs...)
 }
 
-func (s *Service) formatEvent(ctx context.Context, event Event) (string, string) {
+func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMetrics bool) (string, string) {
 	instanceLabel := s.resolveInstanceLabel(ctx, event)
 	customMessage := strings.TrimSpace(event.Message)
 
@@ -304,7 +304,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 		if eta := formatETA(event.TorrentETASeconds); eta != "" {
 			lines = append(lines, formatLine("ETA", eta))
 		}
-		lines = append(lines, formatTorrentMetricLines(event)...)
+		lines = append(lines, formatTorrentMetricLines(event, humanReadableMetrics)...)
 		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
 			lines = append(lines, formatLine("Tracker", tracker))
 		}
@@ -322,7 +322,7 @@ func (s *Service) formatEvent(ctx context.Context, event Event) (string, string)
 		lines := []string{
 			formatLine("Torrent", fmt.Sprintf("%s%s", event.TorrentName, formatHashSuffix(event.TorrentHash))),
 		}
-		lines = append(lines, formatTorrentMetricLines(event)...)
+		lines = append(lines, formatTorrentMetricLines(event, humanReadableMetrics)...)
 		if tracker := strings.TrimSpace(event.TrackerDomain); tracker != "" {
 			lines = append(lines, formatLine("Tracker", tracker))
 		}
@@ -458,23 +458,63 @@ func formatETA(seconds int64) string {
 	return (time.Duration(seconds) * time.Second).Round(time.Second).String()
 }
 
-func formatTorrentMetricLines(event Event) []string {
+func formatTorrentMetricLines(event Event, humanReadable bool) []string {
 	lines := make([]string, 0, 10)
 
 	if state := strings.TrimSpace(event.TorrentState); state != "" {
 		lines = append(lines, formatLine("State", state))
 	}
-	lines = append(lines, formatLine("Progress", strconv.FormatFloat(event.TorrentProgress, 'f', 4, 64)))
+	progressPrecision := 4
+	if humanReadable {
+		progressPrecision = 2
+	}
+	lines = append(lines, formatLine("Progress", strconv.FormatFloat(event.TorrentProgress, 'f', progressPrecision, 64)))
 	lines = append(lines, formatLine("Ratio", strconv.FormatFloat(event.TorrentRatio, 'f', 4, 64)))
-	lines = append(lines, formatLine("Total size bytes", strconv.FormatInt(event.TorrentTotalSizeBytes, 10)))
-	lines = append(lines, formatLine("Downloaded bytes", strconv.FormatInt(event.TorrentDownloadedBytes, 10)))
-	lines = append(lines, formatLine("Amount left bytes", strconv.FormatInt(event.TorrentAmountLeftBytes, 10)))
-	lines = append(lines, formatLine("DL speed bps", strconv.FormatInt(event.TorrentDlSpeedBps, 10)))
-	lines = append(lines, formatLine("UP speed bps", strconv.FormatInt(event.TorrentUpSpeedBps, 10)))
+	if humanReadable {
+		lines = append(lines, formatLine("Total size", formatGigabytes(event.TorrentTotalSizeBytes)))
+		lines = append(lines, formatLine("Downloaded", formatGigabytes(event.TorrentDownloadedBytes)))
+		lines = append(lines, formatLine("Amount left", formatGigabytes(event.TorrentAmountLeftBytes)))
+		lines = append(lines, formatLine("DL speed", formatTransferSpeed(event.TorrentDlSpeedBps)))
+		lines = append(lines, formatLine("UP speed", formatTransferSpeed(event.TorrentUpSpeedBps)))
+	} else {
+		lines = append(lines, formatLine("Total size bytes", strconv.FormatInt(event.TorrentTotalSizeBytes, 10)))
+		lines = append(lines, formatLine("Downloaded bytes", strconv.FormatInt(event.TorrentDownloadedBytes, 10)))
+		lines = append(lines, formatLine("Amount left bytes", strconv.FormatInt(event.TorrentAmountLeftBytes, 10)))
+		lines = append(lines, formatLine("DL speed bps", strconv.FormatInt(event.TorrentDlSpeedBps, 10)))
+		lines = append(lines, formatLine("UP speed bps", strconv.FormatInt(event.TorrentUpSpeedBps, 10)))
+	}
 	lines = append(lines, formatLine("Seeds", strconv.FormatInt(event.TorrentNumSeeds, 10)))
 	lines = append(lines, formatLine("Leechs", strconv.FormatInt(event.TorrentNumLeechs, 10)))
 
 	return lines
+}
+
+func formatGigabytes(value int64) string {
+	const gb = 1_000_000_000.0
+	if value < 0 {
+		value = 0
+	}
+	return fmt.Sprintf("%.2f GB", float64(value)/gb)
+}
+
+func formatTransferSpeed(value int64) string {
+	if value < 0 {
+		value = 0
+	}
+
+	units := []string{"B/s", "KB/s", "MB/s", "GB/s", "TB/s"}
+	speed := float64(value)
+	unit := units[0]
+	for i := 1; i < len(units) && speed >= 1000; i++ {
+		speed /= 1000
+		unit = units[i]
+	}
+
+	if unit == "B/s" {
+		return fmt.Sprintf("%d %s", value, unit)
+	}
+
+	return fmt.Sprintf("%.2f %s", speed, unit)
 }
 
 func formatLine(label, value string) string {
