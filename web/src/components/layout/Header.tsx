@@ -786,63 +786,66 @@ export function Header({
                 </>
               )}
               {activeInstances.length > 0 ? (
-                activeInstances.map((instance) => {
-                  const csState = crossSeedInstanceState[instance.id]
-                  const hasRss = csState?.rssEnabled || csState?.rssRunning
-                  const hasSearch = csState?.searchRunning
+                <>
+                  {!hasMultipleActiveInstances && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Instances
+                  </DropdownMenuLabel>
+                  {activeInstances.map((instance) => {
+                    const csState = crossSeedInstanceState[instance.id]
+                    const hasRss = csState?.rssEnabled || csState?.rssRunning
+                    const hasSearch = csState?.searchRunning
 
-                  return (
-                    <DropdownMenuItem key={instance.id} asChild>
-                      <Link
-                        to="/instances/$instanceId"
-                        params={{ instanceId: instance.id.toString() }}
-                        className={cn(
-                          "flex cursor-pointer",
-                          hasMultipleActiveInstances && "pl-6"
-                        )}
-                      >
-                        <HardDrive className="mr-2 h-4 w-4" />
-                        <span className="truncate">{instance.name}</span>
-                        <span className="ml-auto flex items-center gap-1.5">
-                          {hasRss && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center">
-                                  {csState?.rssRunning ? (
-                                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                                  ) : (
-                                    <Rss className="h-3 w-3 text-muted-foreground" />
-                                  )}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="left" className="text-xs">
-                                RSS {csState?.rssRunning ? "running" : "enabled"}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          {hasSearch && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center">
-                                  <SearchCode className="h-3 w-3 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="left" className="text-xs">
-                                Scan running
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              instance.connected ? "bg-green-500" : "bg-red-500"
+                    return (
+                      <DropdownMenuItem key={instance.id} asChild>
+                        <Link
+                          to="/instances/$instanceId"
+                          params={{ instanceId: instance.id.toString() }}
+                          className="flex cursor-pointer pl-6"
+                        >
+                          <HardDrive className="mr-2 h-4 w-4" />
+                          <span className="truncate">{instance.name}</span>
+                          <span className="ml-auto flex items-center gap-1.5">
+                            {hasRss && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    {csState?.rssRunning ? (
+                                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                    ) : (
+                                      <Rss className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                </TooltipContent>
+                              </Tooltip>
                             )}
-                          />
-                        </span>
-                      </Link>
-                    </DropdownMenuItem>
-                  )
-                })
+                            {hasSearch && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    <SearchCode className="h-3 w-3 text-muted-foreground" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  Scan running
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full flex-shrink-0",
+                                instance.connected ? "bg-green-500" : "bg-red-500"
+                              )}
+                            />
+                          </span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                   No active instances
