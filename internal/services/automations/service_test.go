@@ -459,7 +459,7 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 	}
 
 	got := collectManagedTagsForClientReset(rules)
-	require.Equal(t, []string{"managed", "stale"}, got)
+	require.Equal(t, []string{"managed"}, got)
 }
 
 // -----------------------------------------------------------------------------
