@@ -5219,7 +5219,7 @@ func collectManagedTagsForClientReset(rules []*models.Automation) []string {
 
 	unique := make(map[string]struct{})
 	for _, rule := range rules {
-		if rule == nil || rule.Conditions == nil {
+		if rule == nil || !rule.Enabled || rule.Conditions == nil {
 			continue
 		}
 		for _, action := range rule.Conditions.TagActions() {

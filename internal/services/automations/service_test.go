@@ -411,6 +411,7 @@ func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
 func TestCollectManagedTagsForClientReset(t *testing.T) {
 	rules := []*models.Automation{
 		{
+			Enabled: true,
 			Conditions: &models.ActionConditions{
 				Tag: &models.TagAction{
 					Enabled: true,
@@ -420,6 +421,7 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 			},
 		},
 		{
+			Enabled: true,
 			Conditions: &models.ActionConditions{
 				Tag: &models.TagAction{
 					Enabled:          true,
@@ -430,6 +432,7 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 			},
 		},
 		{
+			Enabled: true,
 			Conditions: &models.ActionConditions{
 				Tag: &models.TagAction{
 					Enabled:          false,
@@ -439,6 +442,7 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 			},
 		},
 		{
+			Enabled: true,
 			Conditions: &models.ActionConditions{
 				Tag: &models.TagAction{
 					Enabled: true,
@@ -448,11 +452,22 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 			},
 		},
 		{
+			Enabled: true,
 			Conditions: &models.ActionConditions{
 				Tag: &models.TagAction{
 					Enabled:          true,
 					DeleteFromClient: true,
 					Tags:             []string{"managed"},
+				},
+			},
+		},
+		{
+			Enabled: false,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"disabled-rule"},
 				},
 			},
 		},
