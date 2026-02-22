@@ -8,15 +8,23 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	databaseTestsTemplateOnce sync.Once
+	databaseTestsTemplatePath string
+	errDatabaseTestsTemplate  error
 )
 
 func TestMigrationNumbering(t *testing.T) {
@@ -313,13 +321,90 @@ func listMigrationFiles(t *testing.T) []string {
 
 func openTestDatabase(t *testing.T) *DB {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	dbPath := testDBPathFromTemplate(t)
 	db, err := New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
 	})
 	return db
+}
+
+func testDBPathFromTemplate(t *testing.T) string {
+	t.Helper()
+
+	databaseTestsTemplateOnce.Do(func() {
+		databaseTestsTemplatePath, errDatabaseTestsTemplate = createDatabaseTemplate()
+	})
+	require.NoError(t, errDatabaseTestsTemplate)
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	require.NoError(t, copyDatabaseFiles(databaseTestsTemplatePath, dbPath))
+	return dbPath
+}
+
+func createDatabaseTemplate() (string, error) {
+	templateDir, err := os.MkdirTemp("", "qui-database-tests-template-")
+	if err != nil {
+		return "", err
+	}
+
+	templatePath := filepath.Join(templateDir, "template.db")
+	db, err := New(templatePath)
+	if err != nil {
+		return "", err
+	}
+	if err := db.Close(); err != nil {
+		return "", err
+	}
+
+	return templatePath, nil
+}
+
+func copyDatabaseFiles(srcMain, dstMain string) error {
+	if err := copyFile(srcMain, dstMain); err != nil {
+		return err
+	}
+
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := copyOptionalFile(srcMain+suffix, dstMain+suffix); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		_ = dstFile.Close()
+		return err
+	}
+
+	return dstFile.Close()
+}
+
+func copyOptionalFile(src, dst string) error {
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	return copyFile(src, dst)
 }
 
 type pragmaQuerier interface {

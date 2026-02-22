@@ -139,10 +139,15 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             TEST_COUNT=1
           fi
-          go test -v -race -count="${TEST_COUNT}" -coverprofile=coverage.out ./...
-          go tool cover -html=coverage.out -o coverage.html
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go test -v -race -count="${TEST_COUNT}" ./...
+          else
+            go test -v -race -count="${TEST_COUNT}" -coverprofile=coverage.out ./...
+            go tool cover -html=coverage.out -o coverage.html
+          fi
 
       - name: Upload coverage reports
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v6
         with:
           name: coverage-report

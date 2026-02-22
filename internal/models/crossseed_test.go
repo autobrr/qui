@@ -5,7 +5,6 @@ package models_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,12 +13,13 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 func setupCrossSeedTestDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "crossseed.db")
+	dbPath := testdb.PathFromTemplate(t, "models", "crossseed.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -88,8 +88,8 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 		RSSAutomationTags:    []string{"cross-seed", "automation"},
 		SeededSearchTags:     []string{"seeded"},
 		CompletionSearchTags: []string{"completion"},
-		WebhookTags:       []string{"webhook"},
-		TargetInstanceIDs: []int{1, 2},
+		WebhookTags:          []string{"webhook"},
+		TargetInstanceIDs:    []int{1, 2},
 		TargetIndexerIDs:     []int{11, 42},
 		MaxResultsPerRun:     25,
 	})
