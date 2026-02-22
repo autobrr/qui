@@ -2479,7 +2479,7 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 		},
 		{
 			name:     "seen complete timestamp evaluated as age duration",
-			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorBetween, MinValue: float64Ptr(3600), MaxValue: float64Ptr(7200)},
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorBetween, MinValue: new(float64(3600)), MaxValue: new(float64(7200))},
 			torrent:  qbt.Torrent{SeenComplete: nowUnix - 5400},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
