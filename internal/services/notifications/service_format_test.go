@@ -96,3 +96,39 @@ func TestFormatEventTorrentAddedNotifiarrAPIMetricsStayRaw(t *testing.T) {
 	require.Contains(t, message, "DL speed bps: 29308908")
 	require.Contains(t, message, "UP speed bps: 0")
 }
+
+func TestFormatEventAutomationsActionsAppliedDedupesSamplesOutsideNotifiarrAPI(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	title, message := svc.formatEvent(context.Background(), Event{
+		Type: EventAutomationsActionsApplied,
+		Message: "Applied: 1\n" +
+			"Top actions: Tags updated=1\n" +
+			"Tags: +no_hl=1\n" +
+			"Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT\n" +
+			"Samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT",
+	}, true)
+
+	require.Equal(t, "Automations actions applied", title)
+	require.Contains(t, message, "Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
+	require.NotContains(t, message, "\nSamples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
+}
+
+func TestFormatEventAutomationsActionsAppliedKeepsSamplesForNotifiarrAPI(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	title, message := svc.formatEvent(context.Background(), Event{
+		Type: EventAutomationsActionsApplied,
+		Message: "Applied: 1\n" +
+			"Top actions: Tags updated=1\n" +
+			"Tags: +no_hl=1\n" +
+			"Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT\n" +
+			"Samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT",
+	}, false)
+
+	require.Equal(t, "Automations actions applied", title)
+	require.Contains(t, message, "Tag samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
+	require.Contains(t, message, "Samples: Hamnet.2025.720p.Blu-ray.DD5.1.x264-TRT")
+}

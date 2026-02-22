@@ -407,10 +407,10 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventAutomationsActionsApplied:
 		title := "Automations actions applied"
-		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+		return formatAutomationsEvent(instanceLabel, title, event.Title, customMessage, humanReadableMetrics)
 	case EventAutomationsRunFailed:
 		title := "Automations run failed"
-		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
+		return formatAutomationsEvent(instanceLabel, title, event.Title, customMessage, humanReadableMetrics)
 	default:
 		return "", ""
 	}
@@ -595,6 +595,112 @@ func formatCustomEvent(instanceLabel, defaultTitle, overrideTitle, message strin
 		return title, ""
 	}
 	return title, buildMessage(instanceLabel, splitMessageLines(message))
+}
+
+func formatAutomationsEvent(instanceLabel, defaultTitle, overrideTitle, message string, dedupeSampleLines bool) (string, string) {
+	title := defaultTitle
+	if strings.TrimSpace(overrideTitle) != "" {
+		title = strings.TrimSpace(overrideTitle)
+	}
+	if strings.TrimSpace(message) == "" {
+		return title, ""
+	}
+
+	lines := splitMessageLines(message)
+	if dedupeSampleLines {
+		lines = dedupeTagAndGeneralSampleLines(lines)
+	}
+
+	return title, buildMessage(instanceLabel, lines)
+}
+
+func dedupeTagAndGeneralSampleLines(lines []string) []string {
+	if len(lines) == 0 {
+		return lines
+	}
+
+	const (
+		tagPrefix    = "Tag samples:"
+		samplePrefix = "Samples:"
+	)
+
+	tagLineIndex := -1
+	sampleLineIndex := -1
+
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, tagPrefix):
+			tagLineIndex = i
+		case strings.HasPrefix(line, samplePrefix):
+			sampleLineIndex = i
+		}
+	}
+
+	if tagLineIndex < 0 || sampleLineIndex < 0 {
+		return lines
+	}
+
+	tagSamples := parseSampleListLine(lines[tagLineIndex], tagPrefix)
+	samples := parseSampleListLine(lines[sampleLineIndex], samplePrefix)
+	if len(tagSamples) == 0 || len(samples) == 0 {
+		return lines
+	}
+
+	tagSet := make(map[string]struct{}, len(tagSamples))
+	for _, sample := range tagSamples {
+		tagSet[sample] = struct{}{}
+	}
+
+	extraSamples := make([]string, 0, len(samples))
+	for _, sample := range samples {
+		if _, exists := tagSet[sample]; exists {
+			continue
+		}
+		extraSamples = append(extraSamples, sample)
+	}
+
+	if len(extraSamples) == len(samples) {
+		return lines
+	}
+	if len(extraSamples) == 0 {
+		out := make([]string, 0, len(lines)-1)
+		for i, line := range lines {
+			if i == sampleLineIndex {
+				continue
+			}
+			out = append(out, line)
+		}
+		return out
+	}
+
+	out := append([]string(nil), lines...)
+	out[sampleLineIndex] = samplePrefix + " " + strings.Join(extraSamples, "; ")
+
+	return out
+}
+
+func parseSampleListLine(line, prefix string) []string {
+	content := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	if content == "" {
+		return nil
+	}
+
+	parts := strings.Split(content, ";")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+
+	return out
 }
 
 const (
