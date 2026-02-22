@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,12 +17,13 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 func TestSetupForbiddenWhenOIDCEnabled(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
+	dbPath := testdb.PathFromTemplate(t, "api-handlers", "test.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {

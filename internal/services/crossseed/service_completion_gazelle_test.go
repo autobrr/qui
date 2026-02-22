@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 // testQuerier wraps sql.DB to implement dbinterface.Querier for store tests.
@@ -244,7 +244,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
 	t.Parallel()
 
-	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-search.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "completion-gazelle-search.db")
 	db, err := database.New(dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -336,7 +336,7 @@ func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUnd
 	t.Parallel()
 
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-undecryptable.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "completion-gazelle-undecryptable.db")
 	db, err := database.New(dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)

@@ -135,7 +135,11 @@ jobs:
 
       - name: Run tests
         run: |
-          go test -v -race -coverprofile=coverage.out ./...
+          TEST_COUNT=3
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TEST_COUNT=1
+          fi
+          go test -v -race -count="${TEST_COUNT}" -coverprofile=coverage.out ./...
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports

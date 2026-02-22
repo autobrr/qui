@@ -6,7 +6,6 @@ package handlers
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,12 +13,13 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 func TestAddBlocklistEntryReturnsNotFoundWhenInstanceMissing(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
+	dbPath := testdb.PathFromTemplate(t, "api-handlers", "test.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {

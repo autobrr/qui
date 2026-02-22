@@ -19,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 type mockContentResolver struct {
@@ -51,7 +52,7 @@ func (m *mockContentResolver) GetTorrents(_ context.Context, _ int, _ qbt.Torren
 func createInstanceStoreWithInstance(t *testing.T, hasLocalAccess bool) (*models.InstanceStore, int) {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
+	dbPath := testdb.PathFromTemplate(t, "api-handlers", "test.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
