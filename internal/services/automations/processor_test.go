@@ -1059,7 +1059,8 @@ func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	_ = SortTorrents(torrents, nil, evalCtx)
+	err := SortTorrents(torrents, nil, evalCtx)
+	require.NoError(t, err)
 
 	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
@@ -1178,7 +1179,8 @@ func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	_ = SortTorrents(torrents, nil, evalCtx)
+	err := SortTorrents(torrents, nil, evalCtx)
+	require.NoError(t, err)
 
 	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
@@ -1224,7 +1226,8 @@ func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
 		FilesToClear: make(map[crossSeedKey]struct{}),
 	}
 
-	_ = SortTorrents(torrents, nil, evalCtx)
+	err := SortTorrents(torrents, nil, evalCtx)
+	require.NoError(t, err)
 
 	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
 
@@ -1534,7 +1537,8 @@ func TestSortTorrents_Score(t *testing.T) {
 		sorted := make([]qbt.Torrent, len(torrents))
 		copy(sorted, torrents)
 
-		_ = SortTorrents(sorted, &descConfig, nil)
+		err := SortTorrents(sorted, &descConfig, nil)
+		require.NoError(t, err)
 
 		require.Equal(t, "b", sorted[0].Hash)
 		require.Equal(t, "c", sorted[1].Hash)
@@ -1548,7 +1552,8 @@ func TestSortTorrents_Score(t *testing.T) {
 		sorted := make([]qbt.Torrent, len(torrents))
 		copy(sorted, torrents)
 
-		_ = SortTorrents(sorted, &ascConfig, nil)
+		err := SortTorrents(sorted, &ascConfig, nil)
+		require.NoError(t, err)
 
 		require.Equal(t, "a", sorted[0].Hash)
 		require.Equal(t, "c", sorted[1].Hash)
