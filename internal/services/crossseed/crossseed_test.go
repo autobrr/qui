@@ -1332,7 +1332,8 @@ func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
 
 	require.NotNil(t, matchedTorrent,
 		"single-file source should match candidate pack containing same episode with extra files")
-	require.NotEmpty(t, matchType)
+	require.Equal(t, "partial-contains", matchType,
+		"single-file source matched against pack with extras should produce partial-contains match")
 }
 
 func TestCrossSeed_TorrentCreationAndParsing(t *testing.T) {
