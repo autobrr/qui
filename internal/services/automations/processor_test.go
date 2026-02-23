@@ -1532,17 +1532,17 @@ func TestSortTorrents_Score(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		Direction models.SortDirection
+		direction models.SortDirection
 		expected  []string
 	}{
 		{
 			name:      "Score DESC",
-			Direction: models.SortDirectionDESC,
+			direction: models.SortDirectionDESC,
 			expected:  []string{"b", "c", "a"},
 		},
 		{
 			name:      "Score ASC",
-			Direction: models.SortDirectionASC,
+			direction: models.SortDirectionASC,
 			expected:  []string{"a", "c", "b"},
 		},
 	}
@@ -1550,7 +1550,7 @@ func TestSortTorrents_Score(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			testConfig := config
-			testConfig.Direction = tc.Direction
+			testConfig.Direction = tc.direction
 			sorted := make([]qbt.Torrent, len(torrents))
 			copy(sorted, torrents)
 
