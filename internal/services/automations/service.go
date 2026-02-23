@@ -1130,7 +1130,13 @@ func (s *Service) previewDeleteStandard(
 			}
 			_, isDirect := directMatchSet[torrent.Hash]
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
-			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false))
+
+			var score float64
+			if rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
+				score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
+			}
+
+			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false, score))
 		}
 
 		result.TotalMatches = matchIndex
