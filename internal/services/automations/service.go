@@ -742,22 +742,22 @@ type PreviewTorrent struct {
 	IsHardlinkCopy bool    `json:"isHardlinkCopy,omitempty"` // Included via hardlink expansion (not ContentPath match)
 
 	// Additional fields for dynamic columns based on filter conditions
-	NumSeeds      int64   `json:"numSeeds"`                // Active seeders (connected to)
-	NumComplete   int64   `json:"numComplete"`             // Total seeders in swarm
-	NumLeechs     int64   `json:"numLeechs"`               // Active leechers (connected to)
-	NumIncomplete int64   `json:"numIncomplete"`           // Total leechers in swarm
-	Progress      float64 `json:"progress"`                // Download progress (0-1)
-	Availability  float64 `json:"availability"`            // Distributed copies
-	TimeActive    int64   `json:"timeActive"`              // Total active time (seconds)
-	LastActivity  int64   `json:"lastActivity"`            // Last activity timestamp
-	CompletionOn  int64   `json:"completionOn"`            // Completion timestamp
-	TotalSize     int64   `json:"totalSize"`               // Total torrent size
-	HardlinkScope string  `json:"hardlinkScope,omitempty"` // none, torrents_only, outside_qbittorrent
-	Score         float64 `json:"score,omitempty"`
+	NumSeeds      int64    `json:"numSeeds"`                // Active seeders (connected to)
+	NumComplete   int64    `json:"numComplete"`             // Total seeders in swarm
+	NumLeechs     int64    `json:"numLeechs"`               // Active leechers (connected to)
+	NumIncomplete int64    `json:"numIncomplete"`           // Total leechers in swarm
+	Progress      float64  `json:"progress"`                // Download progress (0-1)
+	Availability  float64  `json:"availability"`            // Distributed copies
+	TimeActive    int64    `json:"timeActive"`              // Total active time (seconds)
+	LastActivity  int64    `json:"lastActivity"`            // Last activity timestamp
+	CompletionOn  int64    `json:"completionOn"`            // Completion timestamp
+	TotalSize     int64    `json:"totalSize"`               // Total torrent size
+	HardlinkScope string   `json:"hardlinkScope,omitempty"` // none, torrents_only, outside_qbittorrent
+	Score         *float64 `json:"score,omitempty"`         // Sorting score
 }
 
 // buildPreviewTorrent creates a PreviewTorrent from a qbt.Torrent with optional context flags.
-func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed, isHardlinkCopy bool, score float64) PreviewTorrent {
+func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed, isHardlinkCopy bool, score *float64) PreviewTorrent {
 	pt := PreviewTorrent{
 		Name:           torrent.Name,
 		Hash:           torrent.Hash,
@@ -981,11 +981,12 @@ func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, 
 }
 
 // computePreviewScore safely calculates the sorting score for preview functionality.
-func computePreviewScore(torrent *qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) float64 {
+func computePreviewScore(torrent *qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) *float64 {
 	if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
-		return CalculateScore(*torrent, rule.SortingConfig, evalCtx)
+		score := CalculateScore(*torrent, rule.SortingConfig, evalCtx)
+		return &score
 	}
-	return 0
+	return nil
 }
 
 // getDeleteMode returns the delete mode from rule or default.
