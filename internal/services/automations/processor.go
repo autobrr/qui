@@ -1027,7 +1027,7 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 	case models.FieldRatio:
 		return t.Ratio
 	case models.FieldProgress:
-		return t.Progress
+		return t.Progress * 100
 	case models.FieldAvailability:
 		return t.Availability
 	case models.FieldDlSpeed:
