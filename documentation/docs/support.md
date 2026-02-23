@@ -13,6 +13,7 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 ## Premium Themes
 
 Purchase premium themes directly from Settings → Themes in your qui instance. Your license key is delivered instantly after checkout.
+If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
 
 ## Donations
 
@@ -28,6 +29,8 @@ If you'd like to support development beyond theme purchases, donations are alway
   - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)
 
 ### Cryptocurrency
+
+Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
 
 #### Bitcoin (BTC)
 
@@ -45,6 +48,8 @@ If you'd like to support development beyond theme purchases, donations are alway
 <CopyAddress label="zze0s" address="ltc1qza9ffjr5y43uk8nj9ndjx9hkj0ph3rhur6wudn" />
 
 #### Monero (XMR)
+
+XMR discount codes are handled manually. Reach out on [Discord](https://discord.autobrr.com/qui) or [email s0up4200@pm.me](mailto:s0up4200@pm.me).
 
 <CopyAddress label="soup" address="8AMPTPgjmLG9armLBvRA8NMZqPWuNT4US3kQoZrxDDVSU21kpYpFr1UCWmmtcBKGsvDCFA3KTphGXExWb3aHEu67JkcjAvC" />
 <CopyAddress label="zze0s" address="44AvbWXzFN3bnv2oj92AmEaR26PQf5Ys4W155zw3frvEJf2s4g325bk4tRBgH7umSVMhk88vkU3gw9cDvuCSHgpRPsuWVJp" />
