@@ -36,6 +36,7 @@ const actionLabels: Record<AutomationActivity["action"], string> = {
   deleted_seeding: "Deleted (seeding)",
   deleted_unregistered: "Deleted (unregistered)",
   deleted_condition: "Deleted (condition)",
+  deleted_quality_upgrade: "Delete (quality upgrade)",
   delete_failed: "Delete failed",
   limit_failed: "Limit failed",
   tags_changed: "Tags changed",

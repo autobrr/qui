@@ -790,6 +790,7 @@ export function WorkflowsOverview({
     deleted_seeding: "bg-purple-500/10 text-purple-500 border-purple-500/20",
     deleted_unregistered: "bg-orange-500/10 text-orange-500 border-orange-500/20",
     deleted_condition: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+    deleted_quality_upgrade: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
     limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
     tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",

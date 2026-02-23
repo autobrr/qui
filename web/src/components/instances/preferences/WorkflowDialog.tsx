@@ -1226,9 +1226,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
     let freeSpaceSource: AutomationInput["freeSpaceSource"]
-    if (usesFreeSpace && input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
-      freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
-    } else if (input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
+    if (input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
       // Keep the path source even if FREE_SPACE isn't currently in the condition
       // (user might add it later, or just want to preserve the setting)
       freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
