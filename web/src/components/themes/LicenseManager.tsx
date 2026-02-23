@@ -469,36 +469,73 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
             <div className="rounded-lg border bg-background p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</div>
-                <p className="text-sm font-semibold">Complete checkout</p>
+                <p className="text-sm font-semibold">Choose payment method</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-8">
-                <a
-                  href={checkoutUrl}
-                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
-                >
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">DodoPayments checkout</p>
-                    <p className="text-xs text-muted-foreground">Card & local methods, returns to qui after payment</p>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </a>
-                <a
-                  href={SUPPORT_CRYPTOCURRENCY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
-                >
-                  <Bitcoin className="h-5 w-5 text-orange-500" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Cryptocurrency</p>
-                    <p className="text-xs text-muted-foreground">Donation addresses are listed in the README</p>
-                    <p className="text-xs text-muted-foreground">After donating, verify at crypto.getqui.com to get a 100% discount code</p>
-                    <p className="text-xs text-muted-foreground">XMR is manual: reach out on Discord or email s0up4200@pm.me</p>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </a>
-              </div>
+              <ul className="pl-8 space-y-4">
+                <li className="space-y-2">
+                  <p className="inline-flex items-center gap-2 text-sm font-medium">
+                    Card or local methods
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Pay directly in DodoPayments. You will return to qui after payment.
+                  </p>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={checkoutUrl}>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open DodoPayments checkout
+                    </a>
+                  </Button>
+                </li>
+
+                <li className="space-y-2">
+                  <p className="inline-flex items-center gap-1 text-sm font-medium">
+                    Crypto
+                    <Bitcoin className="h-4 w-4 text-orange-500" />
+                  </p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Crypto payment still completes in DodoPayments checkout.
+                  </p>
+                  <ol className="space-y-1 text-xs text-muted-foreground list-decimal pl-5">
+                    <li>
+                      Donate using the addresses in the{" "}
+                      <a
+                        href={SUPPORT_CRYPTOCURRENCY_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground"
+                      >
+                        README
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                      .
+                    </li>
+                    <li>
+                      Verify at{" "}
+                      <a
+                        href="https://crypto.getqui.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground"
+                      >
+                        crypto.getqui.com
+                        <ExternalLink className="h-3 w-3" />
+                      </a>{" "}
+                      to get your discount code.
+                    </li>
+                    <li>Open DodoPayments checkout, paste the code in Discount code, then click Apply.</li>
+                    <li>Confirm total is $0.00, then complete checkout.</li>
+                  </ol>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={checkoutUrl}>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open DodoPayments checkout
+                    </a>
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    XMR is manual: reach out on Discord or email s0up4200@pm.me.
+                  </p>
+                </li>
+              </ul>
             </div>
 
             {/* Step 2: Find license key */}
