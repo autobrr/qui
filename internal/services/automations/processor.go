@@ -899,6 +899,10 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		}
 	}
 
+	if config != nil && config.Type != models.SortingTypeSimple && config.Type != models.SortingTypeScore {
+		log.Warn().Interface("config", config).Msg("Unknown sorting type")
+	}
+
 	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
 	var scores map[string]float64
 	if config != nil && config.Type == models.SortingTypeScore {
@@ -950,7 +954,6 @@ func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores ma
 				return s1 > s2
 			}
 		default:
-			log.Warn().Interface("config", config).Msg("Unknown sorting type")
 			// Fallback for unknown config.Type
 			if t1.AddedOn != t2.AddedOn {
 				return t1.AddedOn < t2.AddedOn
