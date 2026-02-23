@@ -57,20 +57,17 @@ Join our community on [Discord](https://discord.autobrr.com/qui)!
 
 qui is developed and maintained by volunteers. Your support helps us continue improving the project.
 
-### License Key
+### Premium Themes
 
-Donate what you want (minimum $4.99) to unlock premium themes:
-- Use any donation method below
-- After donating, DM soup or ze0s on Discord (whoever you donated to)
-  - For crypto, include the transaction hash/link
-- You'll receive a 100% discount code
-- Redeem the code on [Polar](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) (free order) to receive your license key
-- Enter the license key in Settings → Themes in your qui instance
-- License is lifetime
+Purchase premium themes directly from Settings → Themes in your qui instance. Your license key is delivered instantly after checkout.
+If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
 
-### Donation Methods
+### Donations
+
+If you'd like to support development beyond theme purchases, donations are always appreciated.
 
 - **soup**
+  - [Patreon](https://www.patreon.com/c/s0up4200)
   - [GitHub Sponsors](https://github.com/sponsors/s0up4200)
   - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
   - [Ko-fi](https://ko-fi.com/s0up4200)
@@ -79,6 +76,8 @@ Donate what you want (minimum $4.99) to unlock premium themes:
   - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)
 
 #### Cryptocurrency
+
+Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
 
 #### Bitcoin (BTC)
 - soup: `bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem`
@@ -93,14 +92,13 @@ Donate what you want (minimum $4.99) to unlock premium themes:
 - zze0s: `ltc1qza9ffjr5y43uk8nj9ndjx9hkj0ph3rhur6wudn`
 
 #### Monero (XMR)
+- XMR discount codes are handled manually. Reach out on [Discord](https://discord.autobrr.com/qui) or email `s0up4200@pm.me`.
 - soup: `8AMPTPgjmLG9armLBvRA8NMZqPWuNT4US3kQoZrxDDVSU21kpYpFr1UCWmmtcBKGsvDCFA3KTphGXExWb3aHEu67JkcjAvC`
 - zze0s: `44AvbWXzFN3bnv2oj92AmEaR26PQf5Ys4W155zw3frvEJf2s4g325bk4tRBgH7umSVMhk88vkU3gw9cDvuCSHgpRPsuWVJp`
 
 ---
 
-All methods unlock premium themes — use whichever works best for you. For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
-
-Thank you for your support ❤️
+For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
 
 ## Contributing
 

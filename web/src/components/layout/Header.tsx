@@ -126,9 +126,7 @@ export function Header({
   }, [activeInstanceIds, isAllInstancesRoute, navigate, routeSearch])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
     const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
-    const nextIds = currentlySelected
-      ? effectiveUnifiedInstanceIds.filter(id => id !== instanceId)
-      : [...effectiveUnifiedInstanceIds, instanceId]
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
 
     if (nextIds.length === 0) {
       return
@@ -145,8 +143,8 @@ export function Header({
     if (!isInstanceRoute || selectedInstanceId === null || selectedInstanceId <= 0) return undefined
     return instances?.find(i => i.id === selectedInstanceId)
   }, [isInstanceRoute, instances, selectedInstanceId])
-  const instanceName = isAllInstancesRoute ? "Unified" : (currentInstance?.name ?? null)
   const hasMultipleActiveInstances = activeInstances.length > 1
+  const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
@@ -278,29 +276,29 @@ export function Header({
                 Switch Scope
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/instances"
-                  search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
-                  className={cn(
-                    "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
-                    isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
-                  )}
-                >
-                  <HardDrive className="h-4 w-4 flex-shrink-0" />
-                  <span className="flex-1 truncate">Unified</span>
-                  <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                    {activeInstances.length} active
-                  </span>
-                  {hasCustomUnifiedScope && (
-                    <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
-                      {unifiedScopeSummary}
-                    </span>
-                  )}
-                </Link>
-              </DropdownMenuItem>
-              {activeInstances.length > 1 && (
+              {hasMultipleActiveInstances && (
                 <>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      className={cn(
+                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                        isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
+                      )}
+                    >
+                      <HardDrive className="h-4 w-4 flex-shrink-0" />
+                      <span className="flex-1 truncate">Unified</span>
+                      <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {activeInstances.length} active
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
                     Unified Scope
@@ -339,9 +337,9 @@ export function Header({
                       </DropdownMenuCheckboxItem>
                     )
                   })}
+                  <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuSeparator />
               <div className="max-h-64 overflow-y-auto space-y-1">
                 {activeInstances.length > 0 ? (
                   activeInstances.map((instance) => (
@@ -722,30 +720,30 @@ export function Header({
                   Logs
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link
-                  to="/instances"
-                  search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
-                  className={cn(
-                    "flex cursor-pointer",
-                    isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"
-                  )}
-                >
-                  <HardDrive className="mr-2 h-4 w-4" />
-                  <span className="truncate">Unified</span>
-                  <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                    {activeInstances.length} active
-                  </span>
-                  {hasCustomUnifiedScope && (
-                    <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
-                      {unifiedScopeSummary}
-                    </span>
-                  )}
-                </Link>
-              </DropdownMenuItem>
-              {activeInstances.length > 1 && (
+              {hasMultipleActiveInstances && (
                 <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      className={cn(
+                        "flex cursor-pointer",
+                        isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"
+                      )}
+                    >
+                      <HardDrive className="mr-2 h-4 w-4" />
+                      <span className="truncate">Unified</span>
+                      <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {activeInstances.length} active
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
                     Unified Scope
@@ -784,64 +782,70 @@ export function Header({
                       </DropdownMenuCheckboxItem>
                     )
                   })}
+                  <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuSeparator />
               {activeInstances.length > 0 ? (
-                activeInstances.map((instance) => {
-                  const csState = crossSeedInstanceState[instance.id]
-                  const hasRss = csState?.rssEnabled || csState?.rssRunning
-                  const hasSearch = csState?.searchRunning
+                <>
+                  {!hasMultipleActiveInstances && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Instances
+                  </DropdownMenuLabel>
+                  {activeInstances.map((instance) => {
+                    const csState = crossSeedInstanceState[instance.id]
+                    const hasRss = csState?.rssEnabled || csState?.rssRunning
+                    const hasSearch = csState?.searchRunning
 
-                  return (
-                    <DropdownMenuItem key={instance.id} asChild>
-                      <Link
-                        to="/instances/$instanceId"
-                        params={{ instanceId: instance.id.toString() }}
-                        className="flex cursor-pointer pl-6"
-                      >
-                        <HardDrive className="mr-2 h-4 w-4" />
-                        <span className="truncate">{instance.name}</span>
-                        <span className="ml-auto flex items-center gap-1.5">
-                          {hasRss && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center">
-                                  {csState?.rssRunning ? (
-                                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                                  ) : (
-                                    <Rss className="h-3 w-3 text-muted-foreground" />
-                                  )}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="left" className="text-xs">
-                                RSS {csState?.rssRunning ? "running" : "enabled"}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          {hasSearch && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center">
-                                  <SearchCode className="h-3 w-3 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="left" className="text-xs">
-                                Scan running
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              instance.connected ? "bg-green-500" : "bg-red-500"
+                    return (
+                      <DropdownMenuItem key={instance.id} asChild>
+                        <Link
+                          to="/instances/$instanceId"
+                          params={{ instanceId: instance.id.toString() }}
+                          className="flex cursor-pointer pl-6"
+                        >
+                          <HardDrive className="mr-2 h-4 w-4" />
+                          <span className="truncate">{instance.name}</span>
+                          <span className="ml-auto flex items-center gap-1.5">
+                            {hasRss && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    {csState?.rssRunning ? (
+                                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                    ) : (
+                                      <Rss className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                </TooltipContent>
+                              </Tooltip>
                             )}
-                          />
-                        </span>
-                      </Link>
-                    </DropdownMenuItem>
-                  )
-                })
+                            {hasSearch && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    <SearchCode className="h-3 w-3 text-muted-foreground" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  Scan running
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full flex-shrink-0",
+                                instance.connected ? "bg-green-500" : "bg-red-500"
+                              )}
+                            />
+                          </span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                   No active instances

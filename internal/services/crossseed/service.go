@@ -8718,6 +8718,9 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 			pendingCount++
 		}
 	}
+	if completeCount == 0 {
+		return
+	}
 
 	lines := []string{
 		"Torrent: " + strings.TrimSpace(req.TorrentName),

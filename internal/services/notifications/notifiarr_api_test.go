@@ -166,3 +166,49 @@ func TestBuildNotifiarrAPIDataIncludesTorrentFields(t *testing.T) {
 	require.NotNil(t, data.Torrent.NumLeechs)
 	require.Equal(t, int64(35), *data.Torrent.NumLeechs)
 }
+
+func TestBuildNotifiarrAPIDataIncludesZeroValueTorrentMetrics(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	event := Event{
+		Type:                   EventTorrentAdded,
+		TorrentName:            "Zero.Value.Release",
+		TorrentHash:            "1234567890abcdef1234567890abcdef12345678",
+		TorrentETASeconds:      0,
+		TorrentProgress:        0,
+		TorrentRatio:           0,
+		TorrentDlSpeedBps:      0,
+		TorrentUpSpeedBps:      0,
+		TorrentNumSeeds:        0,
+		TorrentNumLeechs:       0,
+		TorrentTotalSizeBytes:  0,
+		TorrentDownloadedBytes: 0,
+		TorrentAmountLeftBytes: 0,
+	}
+
+	data := svc.buildNotifiarrAPIData(context.Background(), event, "title", "message")
+	require.NotNil(t, data.Torrent)
+	require.NotNil(t, data.Torrent.EtaSeconds)
+	require.Equal(t, int64(0), *data.Torrent.EtaSeconds)
+	require.NotNil(t, data.Torrent.EstimatedCompletionAt)
+	require.True(t, data.Torrent.EstimatedCompletionAt.Equal(data.Timestamp))
+	require.NotNil(t, data.Torrent.Progress)
+	require.InDelta(t, 0, *data.Torrent.Progress, 1e-9)
+	require.NotNil(t, data.Torrent.Ratio)
+	require.InDelta(t, 0, *data.Torrent.Ratio, 1e-9)
+	require.NotNil(t, data.Torrent.TotalSizeBytes)
+	require.Equal(t, int64(0), *data.Torrent.TotalSizeBytes)
+	require.NotNil(t, data.Torrent.DownloadedBytes)
+	require.Equal(t, int64(0), *data.Torrent.DownloadedBytes)
+	require.NotNil(t, data.Torrent.AmountLeftBytes)
+	require.Equal(t, int64(0), *data.Torrent.AmountLeftBytes)
+	require.NotNil(t, data.Torrent.DlSpeedBps)
+	require.Equal(t, int64(0), *data.Torrent.DlSpeedBps)
+	require.NotNil(t, data.Torrent.UpSpeedBps)
+	require.Equal(t, int64(0), *data.Torrent.UpSpeedBps)
+	require.NotNil(t, data.Torrent.NumSeeds)
+	require.Equal(t, int64(0), *data.Torrent.NumSeeds)
+	require.NotNil(t, data.Torrent.NumLeechs)
+	require.Equal(t, int64(0), *data.Torrent.NumLeechs)
+}

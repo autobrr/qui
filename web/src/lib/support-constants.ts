@@ -6,4 +6,3 @@
 export const SUPPORT_DEVELOPMENT_URL = "https://github.com/autobrr/qui#support-development"
 export const SUPPORT_CRYPTOCURRENCY_URL = "https://github.com/autobrr/qui#cryptocurrency"
 export const QUI_DISCORD_URL = "https://discord.autobrr.com/qui"
-
