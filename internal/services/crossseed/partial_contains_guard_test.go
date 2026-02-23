@@ -109,7 +109,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 	require.NoError(t, os.WriteFile(
 		filepath.Join(downloadsDir, "Movie.2024.1080p.WEB-DL-GROUP.mkv"),
 		[]byte("movie"),
-		0o644,
+		0o600,
 	))
 
 	candidateFiles := qbt.TorrentFiles{
