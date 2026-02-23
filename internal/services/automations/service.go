@@ -922,10 +922,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return nil, err
 	}
 
-	if err := SortTorrents(torrents, rule.SortingConfig, evalCtx); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", rule.Name).Msg("invalid sorting config during preview, falling back to default sort")
-		_ = SortTorrents(torrents, nil, evalCtx)
-	}
+	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 
 	deleteMode := getDeleteMode(rule)
 	eligibleMode := previewView == "eligible"
@@ -1492,10 +1489,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return nil, err
 	}
 
-	if err := SortTorrents(torrents, rule.SortingConfig, evalCtx); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", rule.Name).Msg("invalid sorting config during preview, falling back to default sort")
-		_ = SortTorrents(torrents, nil, evalCtx)
-	}
+	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 
 	catAction := getCategoryAction(rule)
 	state := newCategoryPreviewState(catAction.targetCategory)
@@ -2014,7 +2008,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	states := make(map[string]*torrentDesiredState)
 
 	// Group rules into batches based on sorting config equality
-	s.buildAndExecuteBatches(eligibleRules, torrents, evalCtx, skipCheck, ruleStats, states)
+	s.buildAndExecuteBatches(instanceID, eligibleRules, torrents, evalCtx, skipCheck, ruleStats, states)
 
 	if len(states) == 0 {
 		log.Debug().
@@ -5400,7 +5394,15 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 	}
 }
 
+func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {
+	if err := SortTorrents(torrents, config, evalCtx); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", ruleName).Msg("invalid sorting config during preview, falling back to default sort")
+		_ = SortTorrents(torrents, nil, evalCtx)
+	}
+}
+
 func executeBatch(
+	instanceID int,
 	currentBatch []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -5415,16 +5417,14 @@ func executeBatch(
 
 	// 1. Sort torrents based on this batch's configuration
 	// Use the config from the first rule (all rules in batch have equivalent config)
-	if err := SortTorrents(torrents, currentBatch[0].SortingConfig, evalCtx); err != nil {
-		log.Warn().Err(err).Str("rule", currentBatch[0].Name).Msg("invalid sorting config for batch, falling back to default sort")
-		_ = SortTorrents(torrents, nil, evalCtx)
-	}
+	SortTorrentsWithFallback(torrents, currentBatch[0].SortingConfig, evalCtx, instanceID, currentBatch[0].Name)
 
 	// 2. Process rules
 	processTorrents(torrents, currentBatch, evalCtx, sm, skipCheck, ruleStats, states)
 }
 
 func (s *Service) buildAndExecuteBatches(
+	instanceID int,
 	eligibleRules []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -5445,14 +5445,14 @@ func (s *Service) buildAndExecuteBatches(
 			currentBatch = append(currentBatch, rule)
 		} else {
 			// Execute current batch
-			executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+			executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
 			// Start new batch
 			currentBatch = []*models.Automation{rule}
 		}
 	}
 	// Execute final batch
 	if len(currentBatch) > 0 {
-		executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+		executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
 	}
 }
 
@@ -5474,42 +5474,52 @@ func sortingConfigEqual(a, b *models.SortingConfig) bool {
 		if a.Direction != b.Direction {
 			return false
 		}
-		if len(a.ScoreRules) != len(b.ScoreRules) {
-			return false
-		}
-		for i := range a.ScoreRules {
-			rA := a.ScoreRules[i]
-			rB := b.ScoreRules[i]
-			if rA.Type != rB.Type {
-				return false
-			}
-			switch rA.Type {
-			case models.ScoreRuleTypeFieldMultiplier:
-				if rA.FieldMultiplier == nil || rB.FieldMultiplier == nil {
-					return rA.FieldMultiplier == rB.FieldMultiplier
-				}
-				if rA.FieldMultiplier.Field != rB.FieldMultiplier.Field || rA.FieldMultiplier.Multiplier != rB.FieldMultiplier.Multiplier {
-					return false
-				}
-			case models.ScoreRuleTypeConditional:
-				if rA.Conditional == nil || rB.Conditional == nil {
-					return rA.Conditional == rB.Conditional
-				}
-				if rA.Conditional.Score != rB.Conditional.Score {
-					return false
-				}
-				if !conditionEqual(rA.Conditional.Condition, rB.Conditional.Condition) {
-					return false
-				}
-			default:
-				// Unknown type - treat as unequal to avoid incorrect batching
-				return false
-			}
-		}
-		return true
+		return scoreRulesEqual(a.ScoreRules, b.ScoreRules)
 	default:
 		return false
 	}
+}
+
+func scoreRulesEqual(rulesA, rulesB []models.ScoreRule) bool {
+	if len(rulesA) != len(rulesB) {
+		return false
+	}
+	for i := range rulesA {
+		rA := rulesA[i]
+		rB := rulesB[i]
+		if rA.Type != rB.Type {
+			return false
+		}
+		switch rA.Type {
+		case models.ScoreRuleTypeFieldMultiplier:
+			if rA.FieldMultiplier == nil || rB.FieldMultiplier == nil {
+				if rA.FieldMultiplier != rB.FieldMultiplier {
+					return false
+				}
+				continue
+			}
+			if rA.FieldMultiplier.Field != rB.FieldMultiplier.Field || rA.FieldMultiplier.Multiplier != rB.FieldMultiplier.Multiplier {
+				return false
+			}
+		case models.ScoreRuleTypeConditional:
+			if rA.Conditional == nil || rB.Conditional == nil {
+				if rA.Conditional != rB.Conditional {
+					return false
+				}
+				continue
+			}
+			if rA.Conditional.Score != rB.Conditional.Score {
+				return false
+			}
+			if !conditionEqual(rA.Conditional.Condition, rB.Conditional.Condition) {
+				return false
+			}
+		default:
+			// Unknown type - treat as unequal to avoid incorrect batching
+			return false
+		}
+	}
+	return true
 }
 
 func conditionEqual(a, b *models.RuleCondition) bool {
