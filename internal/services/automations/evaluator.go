@@ -107,6 +107,11 @@ type EvalContext struct {
 	groupIndexCache map[int]map[string]*groupIndex
 	// groupConditionUsageByRule caches which grouping IDs are referenced by grouped condition fields.
 	groupConditionUsageByRule map[int]groupingConditionUsage
+
+	// QualityUpgradeDeleteSets holds pre-computed delete decisions from quality upgrade rules.
+	// Keys are rule IDs; values map torrent hash → content group key for torrents that should
+	// be deleted because a better-quality peer exists in the same quality group.
+	QualityUpgradeDeleteSets QualityUpgradeDeleteSets
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.

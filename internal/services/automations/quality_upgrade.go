@@ -1,0 +1,283 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package automations
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"strings"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+// noValueRank is the rank assigned when a field value is absent from a tier's value_order.
+// It must be larger than any valid index so absent values sort last (worst quality).
+const noValueRank = math.MaxInt32
+
+// qualityGroupKey builds the group key for a torrent given a profile's group_fields list.
+// Torrents with the same key are treated as "the same content" and compared by quality.
+func qualityGroupKey(t qbt.Torrent, profile *models.QualityProfile, parser *releases.Parser) string {
+	r := parser.Parse(t.Name)
+
+	parts := make([]string, 0, len(profile.GroupFields))
+	for _, field := range profile.GroupFields {
+		var part string
+		switch field {
+		case models.QualityGroupFieldTitle:
+			raw := strings.TrimSpace(r.Title)
+			if raw == "" {
+				raw = t.Name
+			}
+			part = stringutils.NormalizeForMatching(raw)
+		case models.QualityGroupFieldSubtitle:
+			part = stringutils.NormalizeForMatching(r.Subtitle)
+		case models.QualityGroupFieldArtist:
+			part = stringutils.NormalizeForMatching(r.Artist)
+		case models.QualityGroupFieldPlatform:
+			part = stringutils.NormalizeForMatching(r.Platform)
+		case models.QualityGroupFieldCollection:
+			part = stringutils.NormalizeForMatching(r.Collection)
+		case models.QualityGroupFieldYear:
+			if r.Year > 0 {
+				part = fmt.Sprintf("%d", r.Year)
+			}
+		case models.QualityGroupFieldMonth:
+			if r.Month > 0 {
+				part = fmt.Sprintf("%02d", r.Month)
+			}
+		case models.QualityGroupFieldDay:
+			if r.Day > 0 {
+				part = fmt.Sprintf("%02d", r.Day)
+			}
+		case models.QualityGroupFieldSeries:
+			if r.Series > 0 {
+				part = fmt.Sprintf("s%02d", r.Series)
+			}
+		case models.QualityGroupFieldEpisode:
+			if r.Episode > 0 {
+				part = fmt.Sprintf("e%02d", r.Episode)
+			}
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "|")
+}
+
+// rankFieldValue returns the rank of a single string value within a value_order slice.
+// Comparison is case-insensitive. Returns noValueRank when the value is absent.
+func rankFieldValue(raw string, valueOrder []string) int {
+	upper := strings.ToUpper(strings.TrimSpace(raw))
+	for i, v := range valueOrder {
+		if strings.ToUpper(strings.TrimSpace(v)) == upper {
+			return i
+		}
+	}
+	return noValueRank
+}
+
+// rankSliceField returns the best (minimum) rank across all values in a slice field.
+// Returns noValueRank when no value matches.
+func rankSliceField(vals []string, valueOrder []string) int {
+	best := noValueRank
+	for _, v := range vals {
+		if r := rankFieldValue(v, valueOrder); r < best {
+			best = r
+		}
+	}
+	return best
+}
+
+// qualityRankVector computes the quality rank vector for a torrent name using the profile's
+// ranking tiers. Each element corresponds to one tier; lower values indicate higher quality.
+func qualityRankVector(name string, profile *models.QualityProfile, parser *releases.Parser) []int {
+	rel := parser.Parse(name)
+	ranks := make([]int, len(profile.RankingTiers))
+
+	for i, tier := range profile.RankingTiers {
+		switch tier.Field {
+		case models.QualityRankFieldResolution:
+			ranks[i] = rankFieldValue(rel.Resolution, tier.ValueOrder)
+
+		case models.QualityRankFieldSource:
+			normSource := releases.NormalizeSource(rel.Source)
+			normOrder := make([]string, len(tier.ValueOrder))
+			for j, v := range tier.ValueOrder {
+				normOrder[j] = releases.NormalizeSource(v)
+			}
+			ranks[i] = rankFieldValue(normSource, normOrder)
+
+		case models.QualityRankFieldCodec:
+			normCodecs := make([]string, len(rel.Codec))
+			for j, c := range rel.Codec {
+				normCodecs[j] = releases.NormalizeVideoCodec(c)
+			}
+			normOrder := make([]string, len(tier.ValueOrder))
+			for j, v := range tier.ValueOrder {
+				normOrder[j] = releases.NormalizeVideoCodec(v)
+			}
+			ranks[i] = rankSliceField(normCodecs, normOrder)
+
+		case models.QualityRankFieldHDR:
+			ranks[i] = rankSliceField(rel.HDR, tier.ValueOrder)
+
+		case models.QualityRankFieldAudio:
+			ranks[i] = rankSliceField(rel.Audio, tier.ValueOrder)
+
+		case models.QualityRankFieldChannels:
+			ranks[i] = rankFieldValue(rel.Channels, tier.ValueOrder)
+
+		case models.QualityRankFieldContainer:
+			ranks[i] = rankFieldValue(rel.Container, tier.ValueOrder)
+
+		case models.QualityRankFieldOther:
+			ranks[i] = rankSliceField(rel.Other, tier.ValueOrder)
+
+		case models.QualityRankFieldCut:
+			ranks[i] = rankSliceField(rel.Cut, tier.ValueOrder)
+
+		case models.QualityRankFieldEdition:
+			ranks[i] = rankSliceField(rel.Edition, tier.ValueOrder)
+
+		case models.QualityRankFieldLanguage:
+			ranks[i] = rankSliceField(rel.Language, tier.ValueOrder)
+
+		case models.QualityRankFieldRegion:
+			ranks[i] = rankFieldValue(rel.Region, tier.ValueOrder)
+
+		case models.QualityRankFieldGroup:
+			ranks[i] = rankFieldValue(rel.Group, tier.ValueOrder)
+
+		default:
+			ranks[i] = noValueRank
+		}
+	}
+	return ranks
+}
+
+// rankVectorLess returns true when rank vector a is strictly better than b
+// (lexicographically smaller = higher quality).
+func rankVectorLess(a, b []int) bool {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := range n {
+		if a[i] < b[i] {
+			return true
+		}
+		if a[i] > b[i] {
+			return false
+		}
+	}
+	return false
+}
+
+// torrentQualityInfo bundles a torrent hash with its quality group key and rank vector.
+type torrentQualityInfo struct {
+	hash     string
+	groupKey string
+	ranks    []int
+}
+
+// buildQualityUpgradeDeleteSet returns a map of torrent hash → content group key for every
+// torrent that should be deleted because a better-quality peer exists in the same group.
+func buildQualityUpgradeDeleteSet(
+	torrents []qbt.Torrent,
+	profile *models.QualityProfile,
+	parser *releases.Parser,
+) map[string]string {
+	if len(torrents) == 0 || len(profile.GroupFields) == 0 || len(profile.RankingTiers) == 0 {
+		return nil
+	}
+
+	infos := make([]torrentQualityInfo, 0, len(torrents))
+	for _, t := range torrents {
+		key := qualityGroupKey(t, profile, parser)
+		if key == "" {
+			continue
+		}
+		infos = append(infos, torrentQualityInfo{
+			hash:     t.Hash,
+			groupKey: key,
+			ranks:    qualityRankVector(t.Name, profile, parser),
+		})
+	}
+
+	byGroup := make(map[string][]torrentQualityInfo, len(infos))
+	for _, info := range infos {
+		byGroup[info.groupKey] = append(byGroup[info.groupKey], info)
+	}
+
+	deleteSet := make(map[string]string) // hash → groupKey
+	for groupKey, members := range byGroup {
+		if len(members) < 2 {
+			continue
+		}
+
+		bestRanks := members[0].ranks
+		for _, m := range members[1:] {
+			if rankVectorLess(m.ranks, bestRanks) {
+				bestRanks = m.ranks
+			}
+		}
+
+		for _, m := range members {
+			if rankVectorLess(bestRanks, m.ranks) {
+				deleteSet[m.hash] = groupKey
+			}
+		}
+	}
+	return deleteSet
+}
+
+// QualityUpgradeDeleteSets maps automation rule ID → (torrent hash → content group key).
+// Built once per evaluation batch, consumed during per-torrent processing.
+type QualityUpgradeDeleteSets map[int]map[string]string
+
+// PreComputeQualityUpgrades builds quality upgrade delete sets for all enabled
+// QualityUpgrade actions in the provided rules. Returns nil when no rules use the action.
+func PreComputeQualityUpgrades(
+	ctx context.Context,
+	rules []*models.Automation,
+	torrents []qbt.Torrent,
+	profileStore *models.QualityProfileStore,
+	parser *releases.Parser,
+) QualityUpgradeDeleteSets {
+	var sets QualityUpgradeDeleteSets
+	for _, rule := range rules {
+		if rule.Conditions == nil {
+			continue
+		}
+		qa := rule.Conditions.QualityUpgrade
+		if qa == nil || !qa.Enabled || qa.ProfileID <= 0 {
+			continue
+		}
+		if profileStore == nil {
+			log.Warn().Int("ruleID", rule.ID).
+				Msg("quality upgrade: no profile store available; skipping rule")
+			continue
+		}
+		profile, err := profileStore.Get(ctx, qa.ProfileID)
+		if err != nil {
+			log.Error().Err(err).Int("ruleID", rule.ID).Int("profileID", qa.ProfileID).
+				Msg("quality upgrade: failed to load quality profile; skipping rule")
+			continue
+		}
+		deleteSet := buildQualityUpgradeDeleteSet(torrents, profile, parser)
+		if len(deleteSet) == 0 {
+			continue
+		}
+		if sets == nil {
+			sets = make(QualityUpgradeDeleteSets)
+		}
+		sets[rule.ID] = deleteSet
+	}
+	return sets
+}

@@ -621,6 +621,7 @@ type ActionConditions struct {
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
+	QualityUpgrade  *QualityUpgradeAction  `json:"qualityUpgrade,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -733,6 +734,19 @@ type ExternalProgramAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
+// QualityUpgradeAction deletes inferior-quality torrents when a better-quality copy of the
+// same content exists in the same quality group. The quality profile defines both the
+// grouping fields (what makes two torrents "the same content") and the ranking tiers
+// (what makes one copy superior to another).
+type QualityUpgradeAction struct {
+	Enabled    bool   `json:"enabled"`
+	ProfileID  int    `json:"profileId"`            // FK to quality_profiles table
+	DeleteMode string `json:"deleteMode,omitempty"` // same values as DeleteAction.Mode; defaults to "delete"
+	// Condition is an optional extra filter evaluated per-torrent. Only torrents that pass
+	// both the quality-upgrade group check AND this condition are deleted.
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
 // Validate checks that the ExternalProgramAction has valid configuration.
 func (a *ExternalProgramAction) Validate() error {
 	if a == nil {
@@ -759,7 +773,8 @@ func (ac *ActionConditions) IsEmpty() bool {
 		len(ac.TagActions()) == 0 &&
 		ac.Category == nil &&
 		ac.Move == nil &&
-		ac.ExternalProgram == nil
+		ac.ExternalProgram == nil &&
+		ac.QualityUpgrade == nil
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.

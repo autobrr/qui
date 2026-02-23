@@ -11,13 +11,14 @@ import (
 
 // Re-export types from models for convenience
 type (
-	ConditionField    = models.ConditionField
-	ConditionOperator = models.ConditionOperator
-	RuleCondition     = models.RuleCondition
-	ActionConditions  = models.ActionConditions
-	SpeedLimitAction  = models.SpeedLimitAction
-	PauseAction       = models.PauseAction
-	DeleteAction      = models.DeleteAction
+	ConditionField       = models.ConditionField
+	ConditionOperator    = models.ConditionOperator
+	RuleCondition        = models.RuleCondition
+	ActionConditions     = models.ActionConditions
+	SpeedLimitAction     = models.SpeedLimitAction
+	PauseAction          = models.PauseAction
+	DeleteAction         = models.DeleteAction
+	QualityUpgradeAction = models.QualityUpgradeAction
 )
 
 // Re-export constants
@@ -127,6 +128,9 @@ const (
 	DeleteModeWithFiles                   = models.DeleteModeWithFiles
 	DeleteModeWithFilesPreserveCrossSeeds = models.DeleteModeWithFilesPreserveCrossSeeds
 	DeleteModeWithFilesIncludeCrossSeeds  = models.DeleteModeWithFilesIncludeCrossSeeds
+
+	// Activity actions
+	ActivityActionDeletedQualityUpgrade = models.ActivityActionDeletedQualityUpgrade
 
 	// Operators
 	OperatorAnd                = models.OperatorAnd

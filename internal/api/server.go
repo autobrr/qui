@@ -73,6 +73,7 @@ type Server struct {
 	automationStore                  *models.AutomationStore
 	automationActivityStore          *models.AutomationActivityStore
 	automationService                *automations.Service
+	qualityProfileStore              *models.QualityProfileStore
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
 	logExclusionsStore               *models.LogExclusionsStore
@@ -112,6 +113,7 @@ type Dependencies struct {
 	AutomationStore                  *models.AutomationStore
 	AutomationActivityStore          *models.AutomationActivityStore
 	AutomationService                *automations.Service
+	QualityProfileStore              *models.QualityProfileStore
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
 	LogExclusionsStore               *models.LogExclusionsStore
@@ -158,6 +160,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationStore:                  deps.AutomationStore,
 		automationActivityStore:          deps.AutomationActivityStore,
 		automationService:                deps.AutomationService,
+		qualityProfileStore:              deps.QualityProfileStore,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
@@ -309,6 +312,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
+	qualityProfileHandler := handlers.NewQualityProfileHandler(s.qualityProfileStore)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
@@ -427,6 +431,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Post("/", trackerCustomizationHandler.Create)
 				r.Put("/{id}", trackerCustomizationHandler.Update)
 				r.Delete("/{id}", trackerCustomizationHandler.Delete)
+			})
+
+			// Quality profiles (global, not per-instance)
+			r.Route("/quality-profiles", func(r chi.Router) {
+				r.Get("/", qualityProfileHandler.List)
+				r.Post("/", qualityProfileHandler.Create)
+				r.Get("/{id}", qualityProfileHandler.Get)
+				r.Put("/{id}", qualityProfileHandler.Update)
+				r.Delete("/{id}", qualityProfileHandler.Delete)
 			})
 
 			// Dashboard settings (per-user layout preferences)

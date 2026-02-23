@@ -49,22 +49,23 @@ const freeSpaceDeleteCooldown = 5 * time.Minute
 const logMsgRemoveTorrentWithFiles = "automations: removing torrent with files"
 
 var automationActionLabels = map[string]string{
-	models.ActivityActionDeletedRatio:        "Deleted torrent (ratio rule)",
-	models.ActivityActionDeletedSeeding:      "Deleted torrent (seeding rule)",
-	models.ActivityActionDeletedUnregistered: "Deleted torrent (unregistered)",
-	models.ActivityActionDeletedCondition:    "Deleted torrent (rule)",
-	models.ActivityActionDeleteFailed:        "Delete failed",
-	models.ActivityActionLimitFailed:         "Speed/share limit failed",
-	models.ActivityActionTagsChanged:         "Tags updated",
-	models.ActivityActionCategoryChanged:     "Category updated",
-	models.ActivityActionSpeedLimitsChanged:  "Speed limits updated",
-	models.ActivityActionShareLimitsChanged:  "Share limits updated",
-	models.ActivityActionPaused:              "Paused torrents",
-	models.ActivityActionResumed:             "Resumed torrents",
-	models.ActivityActionRechecked:           "Rechecked torrents",
-	models.ActivityActionReannounced:         "Reannounced torrents",
-	models.ActivityActionMoved:               "Moved torrents",
-	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
+	models.ActivityActionDeletedRatio:          "Deleted torrent (ratio rule)",
+	models.ActivityActionDeletedSeeding:        "Deleted torrent (seeding rule)",
+	models.ActivityActionDeletedUnregistered:   "Deleted torrent (unregistered)",
+	models.ActivityActionDeletedCondition:      "Deleted torrent (rule)",
+	models.ActivityActionDeletedQualityUpgrade: "Deleted torrent (quality upgrade)",
+	models.ActivityActionDeleteFailed:          "Delete failed",
+	models.ActivityActionLimitFailed:           "Speed/share limit failed",
+	models.ActivityActionTagsChanged:           "Tags updated",
+	models.ActivityActionCategoryChanged:       "Category updated",
+	models.ActivityActionSpeedLimitsChanged:    "Speed limits updated",
+	models.ActivityActionShareLimitsChanged:    "Share limits updated",
+	models.ActivityActionPaused:                "Paused torrents",
+	models.ActivityActionResumed:               "Resumed torrents",
+	models.ActivityActionRechecked:             "Rechecked torrents",
+	models.ActivityActionReannounced:           "Reannounced torrents",
+	models.ActivityActionMoved:                 "Moved torrents",
+	models.ActivityActionDryRunNoMatch:         "Dry-run: no matches",
 }
 
 type automationSummary struct {
@@ -505,6 +506,7 @@ type Service struct {
 	ruleStore                 *models.AutomationStore
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
+	qualityProfileStore       *models.QualityProfileStore // may be nil for installations without quality profiles
 	syncManager               *qbittorrent.SyncManager
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
@@ -518,7 +520,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, qualityProfileStore *models.QualityProfileStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -543,6 +545,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		ruleStore:                 ruleStore,
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
+		qualityProfileStore:       qualityProfileStore,
 		syncManager:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
@@ -1988,6 +1991,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
+	// Pre-compute quality upgrade delete sets for rules that use the quality upgrade action.
+	// This cross-torrent comparison must happen before the per-torrent processing loop.
+	if qupgradeSets := PreComputeQualityUpgrades(ctx, eligibleRules, torrents, s.qualityProfileStore, s.releaseParser); qupgradeSets != nil {
+		evalCtx.QualityUpgradeDeleteSets = qupgradeSets
+	}
+
 	// Process all torrents through all eligible rules
 	ruleStats := make(map[int]*ruleRunStats)
 	states := processTorrents(torrents, eligibleRules, evalCtx, s.syncManager, skipCheck, ruleStats)
@@ -2330,6 +2339,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					action = models.ActivityActionDeletedRatio
 				} else if state.deleteReason == "seeding time limit reached" || state.deleteReason == "ratio and seeding time limits reached" {
 					action = models.ActivityActionDeletedSeeding
+				} else if state.deleteReason == "quality upgrade" {
+					action = models.ActivityActionDeletedQualityUpgrade
 				}
 
 				pendingByHash[h] = pendingDeletion{

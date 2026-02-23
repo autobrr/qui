@@ -360,6 +360,13 @@ export interface ExternalProgramAction {
   condition?: RuleCondition
 }
 
+export interface QualityUpgradeAction {
+  enabled: boolean
+  profileId: number
+  deleteMode?: string // same values as DeleteAction.mode; defaults to "delete"
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   grouping?: GroupingConfig
@@ -377,6 +384,82 @@ export interface ActionConditions {
   category?: CategoryAction
   move?: MoveAction
   externalProgram?: ExternalProgramAction
+  qualityUpgrade?: QualityUpgradeAction
+}
+
+// ---- Quality Profiles -------------------------------------------------------
+
+/** One level in a quality ranking: a field name and its ordered preference list. */
+export interface RankingTier {
+  /** Field identifier — one of the QUALITY_RANK_FIELD_* constants. */
+  field: string
+  /** Ordered from best (index 0) to worst. Values absent from the list rank last. */
+  valueOrder: string[]
+}
+
+export interface QualityProfile {
+  id: number
+  name: string
+  description?: string
+  /** rls field names that together identify "same content". */
+  groupFields: string[]
+  /** Ordered priority tiers used to compare quality. */
+  rankingTiers: RankingTier[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface QualityProfileInput {
+  name: string
+  description?: string
+  groupFields: string[]
+  rankingTiers: RankingTier[]
+}
+
+// rls grouping field constants – identify "same content" for quality comparison.
+export const QUALITY_GROUP_FIELDS = [
+  { value: "title",      label: "Title" },
+  { value: "subtitle",   label: "Subtitle" },
+  { value: "year",       label: "Year" },
+  { value: "month",      label: "Month" },
+  { value: "day",        label: "Day" },
+  { value: "series",     label: "Series / Season" },
+  { value: "episode",    label: "Episode" },
+  { value: "artist",     label: "Artist" },
+  { value: "platform",   label: "Platform" },
+  { value: "collection", label: "Collection" },
+] as const
+
+export type QualityGroupFieldValue = (typeof QUALITY_GROUP_FIELDS)[number]["value"]
+
+// rls quality-ranking field constants – compare quality within a content group.
+export const QUALITY_RANK_FIELDS = [
+  { value: "resolution", label: "Resolution" },
+  { value: "source",     label: "Source" },
+  { value: "codec",      label: "Video Codec" },
+  { value: "hdr",        label: "HDR Format" },
+  { value: "audio",      label: "Audio Format" },
+  { value: "channels",   label: "Audio Channels" },
+  { value: "container",  label: "Container" },
+  { value: "edition",    label: "Edition" },
+  { value: "cut",        label: "Cut" },
+  { value: "other",      label: "Other Tags" },
+  { value: "language",   label: "Language" },
+  { value: "region",     label: "Region" },
+  { value: "group",      label: "Release Group" },
+] as const
+
+export type QualityRankFieldValue = (typeof QUALITY_RANK_FIELDS)[number]["value"]
+
+/** Sensible default value orderings for common ranking fields (best → worst). */
+export const QUALITY_DEFAULT_VALUE_ORDERS: Partial<Record<QualityRankFieldValue, string[]>> = {
+  resolution: ["2160p", "1080p", "720p", "480p", "360p"],
+  source:     ["BluRay", "REMUX", "WEB-DL", "WEBRip", "HDTV", "DVD"],
+  codec:      ["AV1", "HEVC", "AVC", "XviD", "MPEG2"],
+  hdr:        ["DV", "HDR10+", "HDR10", "HLG"],
+  audio:      ["TrueHD", "FLAC", "DTS-HD MA", "DTS-X", "DTS", "DD+", "DD", "AAC", "MP3"],
+  channels:   ["7.1", "5.1", "2.0", "1.0"],
+  container:  ["MKV", "MP4", "AVI"],
 }
 
 export type FreeSpaceSource =

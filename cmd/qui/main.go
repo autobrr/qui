@@ -513,6 +513,7 @@ func (app *Application) runServer() {
 	}
 
 	automationStore := models.NewAutomationStore(db)
+	qualityProfileStore := models.NewQualityProfileStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
 	logExclusionsStore := models.NewLogExclusionsStore(db)
@@ -633,7 +634,7 @@ func (app *Application) runServer() {
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, qualityProfileStore, syncManager, notificationService, externalProgramService)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
@@ -737,31 +738,30 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:                           cfg,
-		Version:                          buildinfo.Version,
-		AuthService:                      authService,
-		SessionManager:                   sessionManager,
-		InstanceStore:                    instanceStore,
-		InstanceReannounce:               instanceReannounceStore,
-		ReannounceCache:                  reannounceSettingsCache,
-		ReannounceService:                reannounceService,
-		ClientAPIKeyStore:                clientAPIKeyStore,
-		ExternalProgramStore:             externalProgramStore,
-		ExternalProgramService:           externalProgramService,
-		ClientPool:                       clientPool,
-		SyncManager:                      syncManager,
-		LicenseService:                   licenseService,
-		UpdateService:                    updateService,
-		TrackerIconService:               trackerIconService,
-		BackupService:                    backupService,
-		FilesManager:                     filesManagerService,
-		CrossSeedService:                 crossSeedService,
-		JackettService:                   jackettService,
-		TorznabIndexerStore:              torznabIndexerStore,
-		AutomationStore:                  automationStore,
-		AutomationActivityStore:          automationActivityStore,
-		AutomationService:                automationService,
-		TrackerCustomizationStore:        trackerCustomizationStore,
+		Config:                  cfg,
+		Version:                 buildinfo.Version,
+		AuthService:             authService,
+		SessionManager:          sessionManager,
+		InstanceStore:           instanceStore,
+		InstanceReannounce:      instanceReannounceStore,
+		ReannounceCache:         reannounceSettingsCache,
+		ReannounceService:       reannounceService,
+		ClientAPIKeyStore:       clientAPIKeyStore,
+		ExternalProgramStore:    externalProgramStore,
+		ExternalProgramService:  externalProgramService,
+		ClientPool:              clientPool,
+		SyncManager:             syncManager,
+		LicenseService:          licenseService,
+		UpdateService:           updateService,
+		TrackerIconService:      trackerIconService,
+		BackupService:           backupService,
+		FilesManager:            filesManagerService,
+		CrossSeedService:        crossSeedService,
+		JackettService:          jackettService,
+		TorznabIndexerStore:     torznabIndexerStore,
+		AutomationStore:         automationStore,
+		AutomationActivityStore: automationActivityStore,
+		AutomationService:       automationService, QualityProfileStore: qualityProfileStore, TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
 		LogExclusionsStore:               logExclusionsStore,
 		NotificationTargetStore:          notificationTargetStore,
