@@ -406,12 +406,12 @@ export type SortingConfig =
     schemaVersion: string
     type: "simple"
     field: ConditionField
-    direction?: "ASC" | "DESC"
+    direction: "ASC" | "DESC"
   }
   | {
     schemaVersion: string
     type: "score"
-    direction?: "ASC" | "DESC"
+    direction: "ASC" | "DESC"
     scoreRules: ScoreRule[]
   }
 
