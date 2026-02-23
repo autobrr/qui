@@ -492,7 +492,9 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                   <Bitcoin className="h-5 w-5 text-orange-500" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Cryptocurrency</p>
-                    <p className="text-xs text-muted-foreground">BTC, ETH, XMR, and more (manual)</p>
+                    <p className="text-xs text-muted-foreground">Donation addresses are listed in the README</p>
+                    <p className="text-xs text-muted-foreground">After donating, verify at crypto.getqui.com to get a 100% discount code</p>
+                    <p className="text-xs text-muted-foreground">XMR is manual: reach out on Discord or email s0up4200@pm.me</p>
                   </div>
                   <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 </a>
