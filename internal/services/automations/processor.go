@@ -891,16 +891,19 @@ func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *
 // Always applies Hash (ASC) as a deterministic tiebreaker.
 // Returns an error if the sorting configuration is invalid (e.g. unsupported field).
 func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) error {
-	if config != nil && config.Type == models.SortingTypeSimple {
-		if !isNumericField(config.Field) {
-			if _, ok := extractStringValue(qbt.Torrent{}, config.Field); !ok {
-				return fmt.Errorf("unsupported sort field: %s", config.Field)
+	if config != nil {
+		switch config.Type {
+		case models.SortingTypeSimple:
+			if !isNumericField(config.Field) {
+				if _, ok := extractStringValue(qbt.Torrent{}, config.Field); !ok {
+					return fmt.Errorf("unsupported sort field: %s", config.Field)
+				}
 			}
+		case models.SortingTypeScore:
+			// No initial validation needed
+		default:
+			return fmt.Errorf("unsupported sorting type: %s", config.Type)
 		}
-	}
-
-	if config != nil && config.Type != models.SortingTypeSimple && config.Type != models.SortingTypeScore {
-		log.Warn().Interface("config", config).Msg("Unknown sorting type")
 	}
 
 	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
@@ -954,7 +957,7 @@ func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores ma
 				return s1 > s2
 			}
 		default:
-			// Fallback for unknown config.Type
+			// Fallback for unknown config.Type. Should not happen.
 			if t1.AddedOn != t2.AddedOn {
 				return t1.AddedOn < t2.AddedOn
 			}
