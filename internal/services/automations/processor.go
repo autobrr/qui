@@ -482,35 +482,6 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	if conditions.Move != nil && conditions.Move.Enabled && !state.shouldMove {
 		evaluateMoveAction(rule, conditions.Move, torrent, evalCtx, crossSeedIndex, stats, state)
 	}
-
-	// Quality Upgrade: delete inferior-quality copies when a better peer exists in the same group.
-	// The delete sets are pre-computed by PreComputeQualityUpgrades before the per-torrent loop.
-	if !state.shouldDelete &&
-		conditions.QualityUpgrade != nil && conditions.QualityUpgrade.Enabled &&
-		evalCtx != nil && evalCtx.QualityUpgradeDeleteSets != nil {
-		if deleteSet := evalCtx.QualityUpgradeDeleteSets[rule.ID]; deleteSet != nil {
-			if _, markedForUpgrade := deleteSet[torrent.Hash]; markedForUpgrade {
-				// Optional extra per-torrent condition check.
-				shouldApply := conditions.QualityUpgrade.Condition == nil ||
-					EvaluateConditionWithContext(conditions.QualityUpgrade.Condition, torrent, evalCtx, 0)
-				if shouldApply {
-					if stats != nil {
-						stats.DeleteApplied++
-					}
-					state.shouldDelete = true
-					state.deleteMode = conditions.QualityUpgrade.DeleteMode
-					if state.deleteMode == "" {
-						state.deleteMode = DeleteModeKeepFiles
-					}
-					state.deleteRuleID = rule.ID
-					state.deleteRuleName = rule.Name
-					state.deleteReason = "quality upgrade"
-				} else if stats != nil {
-					stats.DeleteConditionNotMet++
-				}
-			}
-		}
-	}
 }
 
 func evaluateMoveAction(rule *models.Automation, action *models.MoveAction, torrent qbt.Torrent, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, state *torrentDesiredState) {

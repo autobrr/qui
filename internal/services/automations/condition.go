@@ -11,14 +11,13 @@ import (
 
 // Re-export types from models for convenience
 type (
-	ConditionField       = models.ConditionField
-	ConditionOperator    = models.ConditionOperator
-	RuleCondition        = models.RuleCondition
-	ActionConditions     = models.ActionConditions
-	SpeedLimitAction     = models.SpeedLimitAction
-	PauseAction          = models.PauseAction
-	DeleteAction         = models.DeleteAction
-	QualityUpgradeAction = models.QualityUpgradeAction
+	ConditionField    = models.ConditionField
+	ConditionOperator = models.ConditionOperator
+	RuleCondition     = models.RuleCondition
+	ActionConditions  = models.ActionConditions
+	SpeedLimitAction  = models.SpeedLimitAction
+	PauseAction       = models.PauseAction
+	DeleteAction      = models.DeleteAction
 )
 
 // Re-export constants
@@ -113,6 +112,10 @@ const (
 	FieldIsUnregistered     = models.FieldIsUnregistered
 	FieldHasMissingFiles    = models.FieldHasMissingFiles
 	FieldIsGrouped          = models.FieldIsGrouped
+
+	// Quality profile condition fields
+	FieldQualityIsBest     = models.FieldQualityIsBest
+	FieldQualityIsInferior = models.FieldQualityIsInferior
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope

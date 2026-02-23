@@ -1991,10 +1991,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Pre-compute quality upgrade delete sets for rules that use the quality upgrade action.
+	// Pre-compute quality best/inferior sets for rules that use QUALITY_IS_BEST or QUALITY_IS_INFERIOR conditions.
 	// This cross-torrent comparison must happen before the per-torrent processing loop.
-	if qupgradeSets := PreComputeQualityUpgrades(ctx, eligibleRules, torrents, s.qualityProfileStore, s.releaseParser); qupgradeSets != nil {
-		evalCtx.QualityUpgradeDeleteSets = qupgradeSets
+	bestByProfile, inferiorByProfile := PreComputeQualitySets(ctx, eligibleRules, torrents, s.qualityProfileStore, s.releaseParser)
+	if bestByProfile != nil {
+		evalCtx.QualityBestByProfile = bestByProfile
+	}
+	if inferiorByProfile != nil {
+		evalCtx.QualityInferiorByProfile = inferiorByProfile
 	}
 
 	// Process all torrents through all eligible rules

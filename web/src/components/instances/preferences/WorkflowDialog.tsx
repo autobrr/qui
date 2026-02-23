@@ -53,7 +53,6 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
-import { useQualityProfiles } from "@/hooks/useQualityProfiles"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
@@ -98,10 +97,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram" | "qualityUpgrade"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram", "qualityUpgrade"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -115,7 +114,6 @@ const ACTION_LABELS: Record<ActionType, string> = {
   category: "Category",
   move: "Move",
   externalProgram: "Run external program",
-  qualityUpgrade: "Quality upgrade",
 }
 
 const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
@@ -364,10 +362,6 @@ type FormState = {
   exprMoveAtomic: "all" | ""
   // External program action settings
   exprExternalProgramId: number | null
-  // Quality upgrade action settings
-  qualityUpgradeEnabled: boolean
-  exprQualityProfileId: number | null
-  exprQualityUpgradeDeleteMode: string
 }
 
 const emptyFormState: FormState = {
@@ -415,9 +409,6 @@ const emptyFormState: FormState = {
   exprMoveGroupId: "",
   exprMoveAtomic: "",
   exprExternalProgramId: null,
-  qualityUpgradeEnabled: false,
-  exprQualityProfileId: null,
-  exprQualityUpgradeDeleteMode: "deleteWithFilesPreserveCrossSeeds",
 }
 function getEnabledActions(state: FormState): ActionType[] {
   const actions: ActionType[] = []
@@ -432,7 +423,6 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
   if (state.externalProgramEnabled) actions.push("externalProgram")
-  if (state.qualityUpgradeEnabled) actions.push("qualityUpgrade")
   return actions
 }
 
@@ -565,8 +555,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return allExternalPrograms.filter(p => p.enabled || p.id === selectedId)
   }, [allExternalPrograms, formState.exprExternalProgramId])
 
-  // Quality profiles query
-  const { data: qualityProfiles, isLoading: qualityProfilesLoading } = useQualityProfiles()
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
@@ -811,9 +799,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
         let exprExternalProgramId: number | null = null
-        let qualityUpgradeEnabled = false
-        let exprQualityProfileId: number | null = null
-        let exprQualityUpgradeDeleteMode = "deleteWithFilesPreserveCrossSeeds"
         let exprGrouping: GroupingConfig | undefined
         let exprDeleteGroupId = ""
         let exprDeleteAtomic: FormState["exprDeleteAtomic"] = ""
@@ -844,7 +829,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.category?.condition
             ?? conditions.move?.condition
             ?? conditions.externalProgram?.condition
-            ?? conditions.qualityUpgrade?.condition
             ?? null
 
           if (conditions.speedLimits?.enabled) {
@@ -920,11 +904,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             externalProgramEnabled = true
             exprExternalProgramId = conditions.externalProgram.programId ?? null
           }
-          if (conditions.qualityUpgrade?.enabled) {
-            qualityUpgradeEnabled = true
-            exprQualityProfileId = conditions.qualityUpgrade.profileId ?? null
-            exprQualityUpgradeDeleteMode = conditions.qualityUpgrade.deleteMode ?? "deleteWithFilesPreserveCrossSeeds"
-          }
         }
 
         const newState: FormState = {
@@ -973,9 +952,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprMoveGroupId,
           exprMoveAtomic,
           exprExternalProgramId,
-          qualityUpgradeEnabled,
-          exprQualityProfileId,
-          exprQualityUpgradeDeleteMode,
         }
         setFormState(newState)
       } else {
@@ -1248,14 +1224,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
-    if (input.qualityUpgradeEnabled && input.exprQualityProfileId) {
-      conditions.qualityUpgrade = {
-        enabled: true,
-        profileId: input.exprQualityProfileId,
-        deleteMode: input.exprQualityUpgradeDeleteMode || undefined,
-        condition: input.actionCondition ?? undefined,
-      }
-    }
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
     let freeSpaceSource: AutomationInput["freeSpaceSource"]
     if (usesFreeSpace && input.exprFreeSpaceSourceType === "path" && trimmedFreeSpacePath) {
@@ -1306,7 +1274,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.categoryEnabled,
     formState.moveEnabled,
     formState.externalProgramEnabled,
-    formState.qualityUpgradeEnabled,
   ].filter(Boolean).length
 
   const latestDryRunOperationCount = useMemo(
@@ -1513,10 +1480,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
       toast.error("Select an external program")
-      return
-    }
-    if (dryRunInput.qualityUpgradeEnabled && !dryRunInput.exprQualityProfileId) {
-      toast.error("Select a quality profile")
       return
     }
     if (dryRunInput.tagEnabled) {
@@ -1743,12 +1706,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
         toast.error("Select an external program")
-        return
-      }
-    }
-    if (submitState.qualityUpgradeEnabled) {
-      if (!submitState.exprQualityProfileId) {
-        toast.error("Select a quality profile")
         return
       }
     }
@@ -2119,7 +2076,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
                         <SelectItem value="externalProgram">Run external program</SelectItem>
-                        <SelectItem value="qualityUpgrade">Quality upgrade</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -2792,97 +2748,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       </div>
                     )}
 
-                    {/* Quality Upgrade */}
-                    {formState.qualityUpgradeEnabled && (
-                      <div className="rounded-lg border p-3 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Quality upgrade</Label>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => setFormState(prev => ({
-                              ...prev,
-                              qualityUpgradeEnabled: false,
-                              exprQualityProfileId: null,
-                            }))}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Quality profile</Label>
-                          {qualityProfilesLoading ? (
-                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              Loading quality profiles...
-                            </div>
-                          ) : qualityProfiles && qualityProfiles.length > 0 ? (
-                            <Select
-                              value={formState.exprQualityProfileId?.toString() ?? ""}
-                              onValueChange={(value) => setFormState(prev => ({
-                                ...prev,
-                                exprQualityProfileId: value ? parseInt(value, 10) : null,
-                              }))}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a profile..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {qualityProfiles.map((profile) => (
-                                  <SelectItem key={profile.id} value={profile.id.toString()}>
-                                    {profile.name}
-                                    {profile.description && (
-                                      <span className="ml-2 text-xs text-muted-foreground">{profile.description}</span>
-                                    )}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
-                              No quality profiles configured.{" "}
-                              <a
-                                href={withBasePath("/settings?tab=quality-profiles")}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline"
-                              >
-                                Configure in Settings
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Delete mode for inferior copies</Label>
-                          <Select
-                            value={formState.exprQualityUpgradeDeleteMode}
-                            onValueChange={(value) => setFormState(prev => ({ ...prev, exprQualityUpgradeDeleteMode: value }))}
-                          >
-                            <SelectTrigger className="w-fit text-destructive">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">
-                                Remove with files (preserve cross-seeds)
-                              </SelectItem>
-                              <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">
-                                Remove with files
-                              </SelectItem>
-                              <SelectItem value="delete" className="text-destructive focus:text-destructive">
-                                Remove (keep files)
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          When a higher-quality copy is found in the same content group, inferior copies will be removed.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Delete - standalone only */}
+                    {/* Delete */}
                     {formState.deleteEnabled && (
                       <div className="rounded-lg border border-destructive/50 p-3 space-y-3">
                         <div className="flex items-center justify-between">

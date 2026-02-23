@@ -94,6 +94,8 @@ export const CONDITION_FIELDS = {
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
+  QUALITY_IS_BEST: { label: "Quality: Is Best", type: "boolean" as const, description: "Torrent is the best-quality copy in its content group per the selected profile" },
+  QUALITY_IS_INFERIOR: { label: "Quality: Is Inferior", type: "boolean" as const, description: "A better-quality copy exists in the same content group per the selected profile" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },

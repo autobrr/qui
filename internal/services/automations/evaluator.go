@@ -108,10 +108,15 @@ type EvalContext struct {
 	// groupConditionUsageByRule caches which grouping IDs are referenced by grouped condition fields.
 	groupConditionUsageByRule map[int]groupingConditionUsage
 
-	// QualityUpgradeDeleteSets holds pre-computed delete decisions from quality upgrade rules.
-	// Keys are rule IDs; values map torrent hash → content group key for torrents that should
-	// be deleted because a better-quality peer exists in the same quality group.
-	QualityUpgradeDeleteSets QualityUpgradeDeleteSets
+	// QualityBestByProfile maps quality profile ID → set of torrent hashes that are
+	// tied for best quality inside their content group (per that profile's definition).
+	// Only populated when at least one rule references QUALITY_IS_BEST for that profile.
+	QualityBestByProfile map[int]map[string]struct{}
+
+	// QualityInferiorByProfile maps quality profile ID → set of torrent hashes that have
+	// at least one better-quality peer in the same content group.
+	// Only populated when at least one rule references QUALITY_IS_INFERIOR for that profile.
+	QualityInferiorByProfile map[int]map[string]struct{}
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -546,6 +551,24 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			grouped = idx.SizeForHash(torrent.Hash) > 1
 		}
 		return compareBool(grouped, cond)
+
+	case FieldQualityIsBest:
+		isBest := false
+		if ctx != nil && ctx.QualityBestByProfile != nil {
+			if bestSet := ctx.QualityBestByProfile[cond.QualityProfileID]; bestSet != nil {
+				_, isBest = bestSet[torrent.Hash]
+			}
+		}
+		return compareBool(isBest, cond)
+
+	case FieldQualityIsInferior:
+		isInferior := false
+		if ctx != nil && ctx.QualityInferiorByProfile != nil {
+			if inferiorSet := ctx.QualityInferiorByProfile[cond.QualityProfileID]; inferiorSet != nil {
+				_, isInferior = inferiorSet[torrent.Hash]
+			}
+		}
+		return compareBool(isInferior, cond)
 
 	default:
 		return false

@@ -233,6 +233,8 @@ export type ConditionField =
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
   | "IS_GROUPED"
+  | "QUALITY_IS_BEST"
+  | "QUALITY_IS_INFERIOR"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -263,6 +265,7 @@ export interface RuleCondition {
   field?: ConditionField
   operator: ConditionOperator
   groupId?: string
+  qualityProfileId?: number
   value?: string
   minValue?: number
   maxValue?: number
@@ -360,13 +363,6 @@ export interface ExternalProgramAction {
   condition?: RuleCondition
 }
 
-export interface QualityUpgradeAction {
-  enabled: boolean
-  profileId: number
-  deleteMode?: string // same values as DeleteAction.mode; defaults to "delete"
-  condition?: RuleCondition
-}
-
 export interface ActionConditions {
   schemaVersion: string
   grouping?: GroupingConfig
@@ -384,7 +380,6 @@ export interface ActionConditions {
   category?: CategoryAction
   move?: MoveAction
   externalProgram?: ExternalProgramAction
-  qualityUpgrade?: QualityUpgradeAction
 }
 
 // ---- Quality Profiles -------------------------------------------------------

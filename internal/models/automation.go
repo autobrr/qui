@@ -533,6 +533,9 @@ const (
 	FieldIsUnregistered     ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles    ConditionField = "HAS_MISSING_FILES"
 	FieldIsGrouped          ConditionField = "IS_GROUPED"
+	// Quality profile conditions (require QualityProfileID on the RuleCondition)
+	FieldQualityIsBest     ConditionField = "QUALITY_IS_BEST"
+	FieldQualityIsInferior ConditionField = "QUALITY_IS_INFERIOR"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
@@ -574,16 +577,17 @@ const (
 
 // RuleCondition represents a condition or group of conditions for filtering torrents.
 type RuleCondition struct {
-	Field      ConditionField    `json:"field,omitempty"`
-	Operator   ConditionOperator `json:"operator"`
-	GroupID    string            `json:"groupId,omitempty"` // Optional grouping ID for GROUP_SIZE/IS_GROUPED conditions
-	Value      string            `json:"value,omitempty"`
-	MinValue   *float64          `json:"minValue,omitempty"`
-	MaxValue   *float64          `json:"maxValue,omitempty"`
-	Regex      bool              `json:"regex,omitempty"`
-	Negate     bool              `json:"negate,omitempty"`
-	Conditions []*RuleCondition  `json:"conditions,omitempty"`
-	Compiled   *regexp.Regexp    `json:"-"` // compiled regex, not serialized
+	Field            ConditionField    `json:"field,omitempty"`
+	Operator         ConditionOperator `json:"operator"`
+	GroupID          string            `json:"groupId,omitempty"`          // Optional grouping ID for GROUP_SIZE/IS_GROUPED conditions
+	QualityProfileID int               `json:"qualityProfileId,omitempty"` // Optional quality profile ID for QUALITY_IS_BEST/QUALITY_IS_INFERIOR conditions
+	Value            string            `json:"value,omitempty"`
+	MinValue         *float64          `json:"minValue,omitempty"`
+	MaxValue         *float64          `json:"maxValue,omitempty"`
+	Regex            bool              `json:"regex,omitempty"`
+	Negate           bool              `json:"negate,omitempty"`
+	Conditions       []*RuleCondition  `json:"conditions,omitempty"`
+	Compiled         *regexp.Regexp    `json:"-"` // compiled regex, not serialized
 }
 
 // IsGroup returns true if this condition is an AND/OR group containing child conditions.
@@ -621,7 +625,6 @@ type ActionConditions struct {
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
-	QualityUpgrade  *QualityUpgradeAction  `json:"qualityUpgrade,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -734,19 +737,6 @@ type ExternalProgramAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
-// QualityUpgradeAction deletes inferior-quality torrents when a better-quality copy of the
-// same content exists in the same quality group. The quality profile defines both the
-// grouping fields (what makes two torrents "the same content") and the ranking tiers
-// (what makes one copy superior to another).
-type QualityUpgradeAction struct {
-	Enabled    bool   `json:"enabled"`
-	ProfileID  int    `json:"profileId"`            // FK to quality_profiles table
-	DeleteMode string `json:"deleteMode,omitempty"` // same values as DeleteAction.Mode; defaults to "delete"
-	// Condition is an optional extra filter evaluated per-torrent. Only torrents that pass
-	// both the quality-upgrade group check AND this condition are deleted.
-	Condition *RuleCondition `json:"condition,omitempty"`
-}
-
 // Validate checks that the ExternalProgramAction has valid configuration.
 func (a *ExternalProgramAction) Validate() error {
 	if a == nil {
@@ -773,8 +763,7 @@ func (ac *ActionConditions) IsEmpty() bool {
 		len(ac.TagActions()) == 0 &&
 		ac.Category == nil &&
 		ac.Move == nil &&
-		ac.ExternalProgram == nil &&
-		ac.QualityUpgrade == nil
+		ac.ExternalProgram == nil
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.

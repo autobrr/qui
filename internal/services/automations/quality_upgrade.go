@@ -186,15 +186,19 @@ type torrentQualityInfo struct {
 	ranks    []int
 }
 
-// buildQualityUpgradeDeleteSet returns a map of torrent hash → content group key for every
-// torrent that should be deleted because a better-quality peer exists in the same group.
-func buildQualityUpgradeDeleteSet(
+// buildQualityBestAndInferiorSets returns two sets for the given profile and torrent list.
+//   - bestSet: hashes of torrents that are tied for best quality in their content group
+//   - inferiorSet: hashes of torrents that have at least one better-quality peer in the same group
+//
+// Only torrents that share a content group with at least one other torrent are included.
+// Lone members of a group (no peers) are excluded from both sets.
+func buildQualityBestAndInferiorSets(
 	torrents []qbt.Torrent,
 	profile *models.QualityProfile,
 	parser *releases.Parser,
-) map[string]string {
+) (bestSet, inferiorSet map[string]struct{}) {
 	if len(torrents) == 0 || len(profile.GroupFields) == 0 || len(profile.RankingTiers) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	infos := make([]torrentQualityInfo, 0, len(torrents))
@@ -215,12 +219,16 @@ func buildQualityUpgradeDeleteSet(
 		byGroup[info.groupKey] = append(byGroup[info.groupKey], info)
 	}
 
-	deleteSet := make(map[string]string) // hash → groupKey
-	for groupKey, members := range byGroup {
+	bestSet = make(map[string]struct{})
+	inferiorSet = make(map[string]struct{})
+
+	for _, members := range byGroup {
 		if len(members) < 2 {
+			// No peers to compare against — exclude from both sets.
 			continue
 		}
 
+		// Find the best (lexicographically smallest) rank vector in this group.
 		bestRanks := members[0].ranks
 		for _, m := range members[1:] {
 			if rankVectorLess(m.ranks, bestRanks) {
@@ -230,54 +238,132 @@ func buildQualityUpgradeDeleteSet(
 
 		for _, m := range members {
 			if rankVectorLess(bestRanks, m.ranks) {
-				deleteSet[m.hash] = groupKey
+				// Strictly worse than the best member → inferior.
+				inferiorSet[m.hash] = struct{}{}
+			} else {
+				// Ties for best in this group.
+				bestSet[m.hash] = struct{}{}
 			}
 		}
 	}
-	return deleteSet
+
+	if len(bestSet) == 0 {
+		bestSet = nil
+	}
+	if len(inferiorSet) == 0 {
+		inferiorSet = nil
+	}
+	return bestSet, inferiorSet
 }
 
-// QualityUpgradeDeleteSets maps automation rule ID → (torrent hash → content group key).
-// Built once per evaluation batch, consumed during per-torrent processing.
-type QualityUpgradeDeleteSets map[int]map[string]string
+// collectQualityProfileIDsFromCondition recursively walks a condition tree and
+// adds any referenced quality profile IDs to the seen set.
+func collectQualityProfileIDsFromCondition(cond *models.RuleCondition, seen map[int]struct{}) {
+	if cond == nil {
+		return
+	}
+	if (cond.Field == models.FieldQualityIsBest || cond.Field == models.FieldQualityIsInferior) && cond.QualityProfileID > 0 {
+		seen[cond.QualityProfileID] = struct{}{}
+	}
+	for _, child := range cond.Conditions {
+		collectQualityProfileIDsFromCondition(child, seen)
+	}
+}
 
-// PreComputeQualityUpgrades builds quality upgrade delete sets for all enabled
-// QualityUpgrade actions in the provided rules. Returns nil when no rules use the action.
-func PreComputeQualityUpgrades(
+// collectQualityProfileIDsFromActions collects all quality profile IDs referenced
+// in any action condition within an ActionConditions struct.
+func collectQualityProfileIDsFromActions(ac *models.ActionConditions, seen map[int]struct{}) {
+	if ac == nil {
+		return
+	}
+	if ac.SpeedLimits != nil {
+		collectQualityProfileIDsFromCondition(ac.SpeedLimits.Condition, seen)
+	}
+	if ac.ShareLimits != nil {
+		collectQualityProfileIDsFromCondition(ac.ShareLimits.Condition, seen)
+	}
+	if ac.Pause != nil {
+		collectQualityProfileIDsFromCondition(ac.Pause.Condition, seen)
+	}
+	if ac.Resume != nil {
+		collectQualityProfileIDsFromCondition(ac.Resume.Condition, seen)
+	}
+	if ac.Recheck != nil {
+		collectQualityProfileIDsFromCondition(ac.Recheck.Condition, seen)
+	}
+	if ac.Reannounce != nil {
+		collectQualityProfileIDsFromCondition(ac.Reannounce.Condition, seen)
+	}
+	if ac.Delete != nil {
+		collectQualityProfileIDsFromCondition(ac.Delete.Condition, seen)
+	}
+	if ac.Tag != nil {
+		collectQualityProfileIDsFromCondition(ac.Tag.Condition, seen)
+	}
+	for _, tag := range ac.Tags {
+		if tag != nil {
+			collectQualityProfileIDsFromCondition(tag.Condition, seen)
+		}
+	}
+	if ac.Category != nil {
+		collectQualityProfileIDsFromCondition(ac.Category.Condition, seen)
+	}
+	if ac.Move != nil {
+		collectQualityProfileIDsFromCondition(ac.Move.Condition, seen)
+	}
+	if ac.ExternalProgram != nil {
+		collectQualityProfileIDsFromCondition(ac.ExternalProgram.Condition, seen)
+	}
+}
+
+// PreComputeQualitySets scans all enabled rule conditions for QUALITY_IS_BEST /
+// QUALITY_IS_INFERIOR references, then pre-computes per-profile best and inferior
+// hash sets for use by the condition evaluator.
+//
+// Returns nil maps when no rules reference quality profiles.
+func PreComputeQualitySets(
 	ctx context.Context,
 	rules []*models.Automation,
 	torrents []qbt.Torrent,
 	profileStore *models.QualityProfileStore,
 	parser *releases.Parser,
-) QualityUpgradeDeleteSets {
-	var sets QualityUpgradeDeleteSets
+) (bestByProfile, inferiorByProfile map[int]map[string]struct{}) {
+	// Collect all unique quality profile IDs referenced in any rule condition.
+	seenIDs := make(map[int]struct{})
 	for _, rule := range rules {
 		if rule.Conditions == nil {
 			continue
 		}
-		qa := rule.Conditions.QualityUpgrade
-		if qa == nil || !qa.Enabled || qa.ProfileID <= 0 {
-			continue
-		}
-		if profileStore == nil {
-			log.Warn().Int("ruleID", rule.ID).
-				Msg("quality upgrade: no profile store available; skipping rule")
-			continue
-		}
-		profile, err := profileStore.Get(ctx, qa.ProfileID)
-		if err != nil {
-			log.Error().Err(err).Int("ruleID", rule.ID).Int("profileID", qa.ProfileID).
-				Msg("quality upgrade: failed to load quality profile; skipping rule")
-			continue
-		}
-		deleteSet := buildQualityUpgradeDeleteSet(torrents, profile, parser)
-		if len(deleteSet) == 0 {
-			continue
-		}
-		if sets == nil {
-			sets = make(QualityUpgradeDeleteSets)
-		}
-		sets[rule.ID] = deleteSet
+		collectQualityProfileIDsFromActions(rule.Conditions, seenIDs)
 	}
-	return sets
+	if len(seenIDs) == 0 {
+		return nil, nil
+	}
+	if profileStore == nil {
+		log.Warn().Msg("quality: profile store unavailable; skipping quality condition pre-computation")
+		return nil, nil
+	}
+
+	for profileID := range seenIDs {
+		profile, err := profileStore.Get(ctx, profileID)
+		if err != nil {
+			log.Error().Err(err).Int("profileID", profileID).
+				Msg("quality: failed to load quality profile; conditions referencing it will not match")
+			continue
+		}
+		best, inferior := buildQualityBestAndInferiorSets(torrents, profile, parser)
+		if best != nil {
+			if bestByProfile == nil {
+				bestByProfile = make(map[int]map[string]struct{})
+			}
+			bestByProfile[profileID] = best
+		}
+		if inferior != nil {
+			if inferiorByProfile == nil {
+				inferiorByProfile = make(map[int]map[string]struct{})
+			}
+			inferiorByProfile[profileID] = inferior
+		}
+	}
+	return bestByProfile, inferiorByProfile
 }

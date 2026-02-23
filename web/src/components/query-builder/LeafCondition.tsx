@@ -35,6 +35,7 @@ import {
 import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
 import type { GroupOption } from "./QueryBuilder";
+import { useQualityProfiles } from "@/hooks/useQualityProfiles";
 
 const DURATION_INPUT_UNITS = [
   { value: 60, label: "minutes" },
@@ -83,6 +84,10 @@ const DEFAULT_GROUP_ID = "cross_seed_content_save_path";
 
 function isGroupingConditionField(field: ConditionField | undefined): boolean {
   return field === "GROUP_SIZE" || field === "IS_GROUPED";
+}
+
+function isQualityConditionField(field: ConditionField | undefined): boolean {
+  return field === "QUALITY_IS_BEST" || field === "QUALITY_IS_INFERIOR";
 }
 
 // Format numeric value for display, avoiding floating-point artifacts
@@ -148,6 +153,8 @@ export function LeafCondition({
   const fieldType = condition.field ? getFieldType(condition.field) : "string";
   const operators = condition.field ? getOperatorsForField(condition.field) : [];
   const isGroupingField = isGroupingConditionField(condition.field);
+  const isQualityField = isQualityConditionField(condition.field);
+  const { data: qualityProfiles } = useQualityProfiles();
   const availableGroupOptions = (groupOptions && groupOptions.length > 0)
     ? groupOptions
     : [{ id: DEFAULT_GROUP_ID, label: "Cross-seed (content + save path)" }];
@@ -203,6 +210,7 @@ export function LeafCondition({
       field: field as ConditionField,
       operator: defaultOperator as ConditionOperator,
       groupId: isGroupingConditionField(field as ConditionField) ? (condition.groupId || DEFAULT_GROUP_ID) : undefined,
+      qualityProfileId: isQualityConditionField(field as ConditionField) ? condition.qualityProfileId : undefined,
       value: defaultValue,
       minValue: undefined,
       maxValue: undefined,
@@ -224,6 +232,10 @@ export function LeafCondition({
 
   const handleGroupIDChange = (groupId: string) => {
     onChange({ ...condition, groupId });
+  };
+
+  const handleQualityProfileIDChange = (value: string) => {
+    onChange({ ...condition, qualityProfileId: value ? parseInt(value, 10) : undefined });
   };
 
   const isCategoryEqualityOperator =
@@ -529,6 +541,42 @@ export function LeafCondition({
             <TooltipContent className="max-w-[320px]">
               <p>
                 This group applies only to this condition row. Use different groups on other GROUP_SIZE/IS_GROUPED rows if needed.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+
+      {isQualityField && (
+        <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
+          <Select
+            value={condition.qualityProfileId?.toString() ?? ""}
+            onValueChange={handleQualityProfileIDChange}
+          >
+            <SelectTrigger className="h-8 w-full sm:w-[200px]" aria-label="Quality profile for this condition">
+              <SelectValue placeholder="Select profile..." />
+            </SelectTrigger>
+            <SelectContent>
+              {(qualityProfiles ?? []).map((profile) => (
+                <SelectItem key={profile.id} value={profile.id.toString()}>
+                  {profile.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                aria-label="About quality profile selection"
+              >
+                <Info className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[320px]">
+              <p>
+                Select which quality profile to use for grouping and ranking. Torrents are compared within groups defined by the profile.
               </p>
             </TooltipContent>
           </Tooltip>
