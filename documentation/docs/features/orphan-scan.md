@@ -47,11 +47,25 @@ Directories are only scanned if at least one torrent points to them. If you dele
 | Grace period | Skip files modified within this window | 10 minutes |
 | Ignore paths | Directories to exclude from scanning | - |
 | Scan interval | How often scheduled scans run | 24 hours |
-| Max files per run | Limit results to prevent overwhelming large scans | 1,000 |
+| Max files per run | Maximum orphan preview entries saved for a run (also caps what can be deleted from that run) | 1,000 |
 | Auto-cleanup | Automatically delete orphans from scheduled scans | Disabled |
 | Auto-cleanup max files | Only auto-delete if orphan count is at or below this threshold | 100 |
 
 <OrphanScanDefaultIgnores />
+
+## Max Files Per Run Behavior
+
+- Scan scope is still full: qui walks all scan roots each run.
+- Then it sorts orphan candidates by your selected preview sort.
+- Then it applies `Max files per run` and marks the run as truncated when more candidates exist.
+- Deletion only operates on files saved in that run's preview list.
+
+**Example:** If 5,000 files are scanned, 2,000 are orphan candidates, and `Max files per run` is 1,000, qui scans all 5,000, saves the top 1,000 candidates for preview/deletion, and marks the run truncated.
+
+### FAQ
+
+**Do I need multiple runs to scan everything?**
+No. Each run scans all roots. Multiple runs are only needed if you want to work through orphan candidates beyond the per-run preview cap.
 
 ## Workflow
 

@@ -154,47 +154,85 @@ export type ConditionField =
   // String fields
   | "NAME"
   | "HASH"
+  | "INFOHASH_V1"
+  | "INFOHASH_V2"
+  | "MAGNET_URI"
   | "CATEGORY"
   | "TAGS"
   | "SAVE_PATH"
   | "CONTENT_PATH"
+  | "DOWNLOAD_PATH"
+  | "CREATED_BY"
+  | "TRACKERS"
+  | "CONTENT_TYPE"
+  | "EFFECTIVE_NAME"
+  | "RLS_SOURCE"
+  | "RLS_RESOLUTION"
+  | "RLS_CODEC"
+  | "RLS_HDR"
+  | "RLS_AUDIO"
+  | "RLS_CHANNELS"
+  | "RLS_GROUP"
   | "STATE"
   | "TRACKER"
   | "COMMENT"
   // Numeric fields (bytes)
   | "SIZE"
   | "TOTAL_SIZE"
+  | "COMPLETED"
   | "DOWNLOADED"
+  | "DOWNLOADED_SESSION"
   | "UPLOADED"
+  | "UPLOADED_SESSION"
   | "AMOUNT_LEFT"
   | "FREE_SPACE"
-  // Numeric fields (timestamps/seconds)
+  // Time fields (duration seconds and timestamp-backed ages)
   | "ADDED_ON"
   | "COMPLETION_ON"
   | "LAST_ACTIVITY"
+  | "SEEN_COMPLETE"
+  | "ETA"
+  | "REANNOUNCE"
   | "SEEDING_TIME"
   | "TIME_ACTIVE"
-  // Age fields (time since timestamp - duration type)
+  | "MAX_SEEDING_TIME"
+  | "MAX_INACTIVE_SEEDING_TIME"
+  | "SEEDING_TIME_LIMIT"
+  | "INACTIVE_SEEDING_TIME_LIMIT"
+  // Legacy age aliases (duration type)
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"
   // Numeric fields (float64)
   | "RATIO"
+  | "RATIO_LIMIT"
+  | "MAX_RATIO"
   | "PROGRESS"
   | "AVAILABILITY"
+  | "POPULARITY"
   // Numeric fields (speeds)
   | "DL_SPEED"
   | "UP_SPEED"
-  // Numeric fields (counts)
+  | "DL_LIMIT"
+  | "UP_LIMIT"
+  // Numeric fields (counts/misc)
   | "NUM_SEEDS"
   | "NUM_LEECHS"
   | "NUM_COMPLETE"
   | "NUM_INCOMPLETE"
   | "TRACKERS_COUNT"
+  | "PRIORITY"
+  | "GROUP_SIZE"
   // Boolean fields
   | "PRIVATE"
+  | "AUTO_MANAGED"
+  | "FIRST_LAST_PIECE_PRIO"
+  | "FORCE_START"
+  | "SEQUENTIAL_DOWNLOAD"
+  | "SUPER_SEEDING"
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
+  | "IS_GROUPED"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -224,6 +262,7 @@ export interface RuleCondition {
   clientId?: string
   field?: ConditionField
   operator: ConditionOperator
+  groupId?: string
   value?: string
   minValue?: number
   maxValue?: number
@@ -256,10 +295,34 @@ export interface ResumeAction {
   condition?: RuleCondition
 }
 
+export interface RecheckAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface ReannounceAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface GroupDefinition {
+  id: string
+  keys: string[]
+  ambiguousPolicy?: "verify_overlap" | "skip"
+  minFileOverlapPercent?: number
+}
+
+export interface GroupingConfig {
+  defaultGroupId?: string
+  groups?: GroupDefinition[]
+}
+
 export interface DeleteAction {
   enabled: boolean
   mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
+  groupId?: string
+  atomic?: "all"
   condition?: RuleCondition
 }
 
@@ -267,6 +330,7 @@ export interface TagAction {
   enabled: boolean
   tags: string[]
   mode: "full" | "add" | "remove"
+  deleteFromClient?: boolean
   useTrackerAsTag?: boolean
   useDisplayName?: boolean
   condition?: RuleCondition
@@ -276,6 +340,7 @@ export interface CategoryAction {
   enabled: boolean
   category: string
   includeCrossSeeds?: boolean
+  groupId?: string
   blockIfCrossSeedInCategories?: string[]
   condition?: RuleCondition
 }
@@ -284,6 +349,8 @@ export interface MoveAction {
   enabled: boolean
   path: string
   blockIfCrossSeed?: boolean
+  groupId?: string
+  atomic?: "all"
   condition?: RuleCondition
 }
 
@@ -295,12 +362,18 @@ export interface ExternalProgramAction {
 
 export interface ActionConditions {
   schemaVersion: string
+  grouping?: GroupingConfig
   speedLimits?: SpeedLimitAction
   shareLimits?: ShareLimitsAction
   pause?: PauseAction
   resume?: ResumeAction
+  recheck?: RecheckAction
+  reannounce?: ReannounceAction
   delete?: DeleteAction
+  // Legacy single-tag action (still accepted for existing automations)
   tag?: TagAction
+  // Preferred multi-tag actions
+  tags?: TagAction[]
   category?: CategoryAction
   move?: MoveAction
   externalProgram?: ExternalProgramAction
@@ -380,13 +453,19 @@ export interface AutomationPreviewInput extends AutomationInput {
   previewView?: PreviewView
 }
 
+export interface AutomationDryRunResult {
+  status: string
+  activityIds?: number[]
+  activities?: AutomationActivity[]
+}
+
 export interface AutomationActivity {
   id: number
   instanceId: number
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "moved" | "external_program"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "moved" | "external_program" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run"
@@ -1403,6 +1482,34 @@ export interface ExternalProgramExecuteResponse {
   results: ExternalProgramExecuteResult[]
 }
 
+export interface NotificationEventDefinition {
+  type: string
+  label: string
+  description: string
+}
+
+export interface NotificationTarget {
+  id: number
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationTargetRequest {
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+}
+
+export interface NotificationTestRequest {
+  title?: string
+  message?: string
+}
+
 export interface TorznabIndexer {
   id: number
   name: string
@@ -1844,6 +1951,10 @@ export interface CrossSeedAutomationSettings {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   createdAt?: string
   updatedAt?: string
 }
@@ -1891,6 +2002,10 @@ export interface CrossSeedAutomationSettingsPatch {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled?: boolean
+  redactedApiKey?: string
+  orpheusApiKey?: string
 }
 
 export interface CrossSeedAutomationStatus {
@@ -2086,6 +2201,7 @@ export interface DirScanSettings {
   sizeTolerancePercent: number
   minPieceRatio: number
   maxSearcheesPerRun: number
+  maxSearcheeAgeDays: number
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
@@ -2101,6 +2217,7 @@ export interface DirScanSettingsUpdate {
   sizeTolerancePercent?: number
   minPieceRatio?: number
   maxSearcheesPerRun?: number
+  maxSearcheeAgeDays?: number
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean

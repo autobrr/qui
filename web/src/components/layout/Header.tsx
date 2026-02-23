@@ -8,6 +8,7 @@ import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenuCheckboxItem,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -35,6 +36,14 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
+import {
+  ALL_INSTANCES_ID,
+  encodeUnifiedInstanceIds,
+  isAllInstancesScope,
+  normalizeUnifiedInstanceIds,
+  resolveUnifiedInstanceIds,
+  UNIFIED_INSTANCE_IDS_SEARCH_PARAM
+} from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -65,13 +74,16 @@ export function Header({
     totalSelectionCount,
     selectedTotalSize,
     excludeHashes,
+    excludeTargets,
     filters,
     clearSelection,
   } = useTorrentSelection()
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
+  const isAllInstancesRoute = isAllInstancesScope(selectedInstanceId ?? -1)
   const shouldShowInstanceControls = layoutRouteState.showInstanceControls && isInstanceRoute
+  const canManageSelectedInstance = shouldShowInstanceControls && selectedInstanceId !== null && selectedInstanceId > 0
 
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
@@ -81,14 +93,58 @@ export function Header({
     () => (instances ?? []).filter(instance => instance.isActive),
     [instances]
   )
+  const activeInstanceIds = useMemo(
+    () => activeInstances.map(instance => instance.id),
+    [activeInstances]
+  )
+  const effectiveUnifiedInstanceIds = useMemo(
+    () => resolveUnifiedInstanceIds(routeSearch?.[UNIFIED_INSTANCE_IDS_SEARCH_PARAM], activeInstanceIds),
+    [routeSearch, activeInstanceIds]
+  )
+  const normalizedUnifiedInstanceIds = useMemo(
+    () => normalizeUnifiedInstanceIds(effectiveUnifiedInstanceIds, activeInstanceIds),
+    [effectiveUnifiedInstanceIds, activeInstanceIds]
+  )
+  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
+  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
+  const applyUnifiedScope = useCallback((nextIds: number[]) => {
+    const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    const nextSearch: Record<string, unknown> = isAllInstancesRoute ? { ...(routeSearch || {}) } : {}
+    const encoded = encodeUnifiedInstanceIds(normalizedIds)
+
+    if (encoded) {
+      nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM] = encoded
+    } else {
+      delete nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM]
+    }
+
+    navigate({
+      to: "/instances",
+      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      replace: isAllInstancesRoute,
+    })
+  }, [activeInstanceIds, isAllInstancesRoute, navigate, routeSearch])
+  const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
+
+    if (nextIds.length === 0) {
+      return
+    }
+
+    applyUnifiedScope(nextIds)
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
+  const resetUnifiedScope = useCallback(() => {
+    applyUnifiedScope(activeInstanceIds)
+  }, [applyUnifiedScope, activeInstanceIds])
 
 
   const currentInstance = useMemo(() => {
-    if (!isInstanceRoute || selectedInstanceId === null) return undefined
+    if (!isInstanceRoute || selectedInstanceId === null || selectedInstanceId <= 0) return undefined
     return instances?.find(i => i.id === selectedInstanceId)
   }, [isInstanceRoute, instances, selectedInstanceId])
-  const instanceName = currentInstance?.name ?? null
   const hasMultipleActiveInstances = activeInstances.length > 1
+  const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
@@ -146,8 +202,8 @@ export function Header({
   // Query active task count for badge (lightweight endpoint, only for instance routes)
   const { data: activeTaskCount = 0 } = useQuery({
     queryKey: ["active-task-count", selectedInstanceId],
-    queryFn: () => selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
+    queryFn: () => canManageSelectedInstance && selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
+    enabled: canManageSelectedInstance,
     refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
     refetchIntervalInBackground: true,
   })
@@ -165,11 +221,11 @@ export function Header({
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
     queryKey: ["instance-capabilities", selectedInstanceId],
     queryFn: () => api.getInstanceCapabilities(selectedInstanceId!),
-    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
+    enabled: canManageSelectedInstance,
     staleTime: 300000, // Cache for 5 minutes (capabilities don't change often)
   })
 
-  const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
+  const supportsTorrentCreation = canManageSelectedInstance ? (instanceCapabilities?.supportsTorrentCreation ?? true) : false
 
   // Instance settings dialog state
   const [instanceSettingsOpen, setInstanceSettingsOpen] = useState(false)
@@ -189,7 +245,7 @@ export function Header({
     <header className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight)}>
       <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
         {children}
-        {instanceName && hasMultipleActiveInstances ? (
+        {instanceName && (hasMultipleActiveInstances || isAllInstancesRoute) ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -217,9 +273,73 @@ export function Header({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
               <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Switch Instance
+                Switch Scope
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {hasMultipleActiveInstances && (
+                <>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      className={cn(
+                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                        isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
+                      )}
+                    >
+                      <HardDrive className="h-4 w-4 flex-shrink-0" />
+                      <span className="flex-1 truncate">Unified</span>
+                      <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {activeInstances.length} active
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Unified Scope
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      resetUnifiedScope()
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    All active ({activeInstances.length})
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <div className="max-h-64 overflow-y-auto space-y-1">
                 {activeInstances.length > 0 ? (
                   activeInstances.map((instance) => (
@@ -297,89 +417,94 @@ export function Header({
               </TooltipTrigger>
               <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
             </Tooltip>
-            {/* Add Torrent button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="hidden md:inline-flex"
-                  onClick={() => {
-                    const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add torrent</TooltipContent>
-            </Tooltip>
-            {/* Create Torrent button - only show if instance supports it */}
-            {supportsTorrentCreation && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="hidden md:inline-flex"
-                    onClick={() => {
-                      const next = { ...(routeSearch || {}), modal: "create-torrent" }
-                      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                    }}
-                  >
-                    <FileEdit className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Create torrent</TooltipContent>
-              </Tooltip>
-            )}
-            {/* Tasks button - only show on instance routes if torrent creation is supported */}
-            {isInstanceRoute && supportsTorrentCreation && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="hidden md:inline-flex relative"
-                    onClick={() => {
-                      const next = { ...(routeSearch || {}), modal: "tasks" }
-                      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                    }}
-                  >
-                    <ListTodo className="h-4 w-4" />
-                    {activeTaskCount > 0 && (
-                      <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
-                        {activeTaskCount}
-                      </Badge>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Torrent creation tasks</TooltipContent>
-              </Tooltip>
-            )}
-            {/* Instance settings button */}
-            {isInstanceRoute && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="hidden md:inline-flex"
-                    onClick={() => setInstanceSettingsOpen(true)}
-                    aria-label="Instance settings"
-                  >
-                    <Cog className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Instance settings</TooltipContent>
-              </Tooltip>
+            {canManageSelectedInstance && (
+              <>
+                {/* Add Torrent button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="hidden md:inline-flex"
+                      onClick={() => {
+                        const next = { ...(routeSearch || {}), modal: "add-torrent" }
+                        navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Add torrent</TooltipContent>
+                </Tooltip>
+                {/* Create Torrent button - only show if instance supports it */}
+                {supportsTorrentCreation && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="hidden md:inline-flex"
+                        onClick={() => {
+                          const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                        }}
+                      >
+                        <FileEdit className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Create torrent</TooltipContent>
+                  </Tooltip>
+                )}
+                {/* Tasks button - only show on instance routes if torrent creation is supported */}
+                {isInstanceRoute && supportsTorrentCreation && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="hidden md:inline-flex relative"
+                        onClick={() => {
+                          const next = { ...(routeSearch || {}), modal: "tasks" }
+                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                        }}
+                      >
+                        <ListTodo className="h-4 w-4" />
+                        {activeTaskCount > 0 && (
+                          <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                            {activeTaskCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Torrent creation tasks</TooltipContent>
+                  </Tooltip>
+                )}
+                {/* Instance settings button */}
+                {isInstanceRoute && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="hidden md:inline-flex"
+                        onClick={() => setInstanceSettingsOpen(true)}
+                        aria-label="Instance settings"
+                      >
+                        <Cog className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Instance settings</TooltipContent>
+                  </Tooltip>
+                )}
+              </>
             )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
           {(selectedHashes.length > 0 || isAllSelected) && (
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
-                instanceId={selectedInstanceId || undefined}
+                instanceId={selectedInstanceId ?? undefined}
+                instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
                 selectedHashes={selectedHashes}
                 selectedTorrents={selectedTorrents}
                 isAllSelected={isAllSelected}
@@ -388,6 +513,7 @@ export function Header({
                 filters={filters}
                 search={routeSearch?.q}
                 excludeHashes={excludeHashes}
+                excludeTargets={excludeTargets}
                 onComplete={clearSelection}
               />
             </div>
@@ -594,8 +720,77 @@ export function Header({
                   Logs
                 </Link>
               </DropdownMenuItem>
-              {activeInstances.length > 0 && (
+              {hasMultipleActiveInstances && (
                 <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      className={cn(
+                        "flex cursor-pointer",
+                        isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"
+                      )}
+                    >
+                      <HardDrive className="mr-2 h-4 w-4" />
+                      <span className="truncate">Unified</span>
+                      <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {activeInstances.length} active
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Unified Scope
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      resetUnifiedScope()
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    All active ({activeInstances.length})
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`menu-scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {activeInstances.length > 0 ? (
+                <>
+                  {!hasMultipleActiveInstances && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Instances
+                  </DropdownMenuLabel>
                   {activeInstances.map((instance) => {
                     const csState = crossSeedInstanceState[instance.id]
                     const hasRss = csState?.rssEnabled || csState?.rssRunning
@@ -651,6 +846,10 @@ export function Header({
                     )
                   })}
                 </>
+              ) : (
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  No active instances
+                </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
@@ -673,7 +872,7 @@ export function Header({
       </div>
 
       {/* Instance Preferences Dialog */}
-      {selectedInstanceId !== null && instanceName && (
+      {selectedInstanceId !== null && selectedInstanceId > ALL_INSTANCES_ID && instanceName && (
         <InstancePreferencesDialog
           open={instanceSettingsOpen}
           onOpenChange={setInstanceSettingsOpen}

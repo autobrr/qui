@@ -36,6 +36,7 @@ export interface CategoryNode {
 interface CategoryTreeProps {
   categories: Record<string, Category>
   counts: Record<string, number>
+  readOnly?: boolean
   useSubcategories: boolean
   collapsedCategories: Set<string>
   onToggleCollapse: (category: string) => void
@@ -132,6 +133,7 @@ const CategoryTreeNode = memo(({
   getCategoryCount,
   getCategorySize,
   viewMode = "normal",
+  readOnly = false,
 }: {
   node: CategoryNode
   getCategoryState: (category: string) => "include" | "exclude" | "neutral"
@@ -151,6 +153,7 @@ const CategoryTreeNode = memo(({
   getCategoryCount: (category: string) => string
   getCategorySize?: (category: string) => string | null
   viewMode?: ViewMode
+  readOnly?: boolean
 }) => {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsedCategories.has(node.name)
@@ -181,25 +184,25 @@ const CategoryTreeNode = memo(({
   }, [onCategoryPointerDown, node.name])
 
   const handleCreateSubcategory = useCallback(() => {
-    if (!node.name) {
+    if (!node.name || readOnly) {
       return
     }
     onCreateSubcategory(node.name)
-  }, [node.name, onCreateSubcategory])
+  }, [node.name, onCreateSubcategory, readOnly])
 
   const handleEditCategory = useCallback(() => {
-    if (isSynthetic) {
+    if (isSynthetic || readOnly) {
       return
     }
     onEditCategory(node.name)
-  }, [isSynthetic, node.name, onEditCategory])
+  }, [isSynthetic, node.name, onEditCategory, readOnly])
 
   const handleDeleteCategory = useCallback(() => {
-    if (isSynthetic) {
+    if (isSynthetic || readOnly) {
       return
     }
     onDeleteCategory(node.name)
-  }, [isSynthetic, node.name, onDeleteCategory])
+  }, [isSynthetic, node.name, onDeleteCategory, readOnly])
 
   return (
     <>
@@ -266,26 +269,26 @@ const CategoryTreeNode = memo(({
         <ContextMenuContent>
           {useSubcategories && (
             <>
-              <ContextMenuItem onClick={handleCreateSubcategory} disabled={!node.name}>
+              <ContextMenuItem onClick={handleCreateSubcategory} disabled={!node.name || readOnly}>
                 <FolderPlus className="mr-2 size-4" />
                 Create subcategory
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}
-          <ContextMenuItem onClick={handleEditCategory} disabled={isSynthetic}>
+          <ContextMenuItem onClick={handleEditCategory} disabled={isSynthetic || readOnly}>
             <Edit className="mr-2 size-4" />
             Edit category
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={handleDeleteCategory} disabled={isSynthetic} className="text-destructive">
+          <ContextMenuItem onClick={handleDeleteCategory} disabled={isSynthetic || readOnly} className="text-destructive">
             <Trash2 className="mr-2 size-4" />
             Delete category
           </ContextMenuItem>
           {onRemoveEmptyCategories && (
             <ContextMenuItem
               onClick={() => onRemoveEmptyCategories()}
-              disabled={!hasEmptyCategories}
+              disabled={readOnly || !hasEmptyCategories}
               className="text-destructive"
             >
               <Trash2 className="mr-2 size-4" />
@@ -318,6 +321,7 @@ const CategoryTreeNode = memo(({
               getCategoryCount={getCategoryCount}
               getCategorySize={getCategorySize}
               viewMode={viewMode}
+              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -349,6 +353,7 @@ export const CategoryTree = memo(({
   getCategoryCount,
   getCategorySize,
   viewMode = "normal",
+  readOnly = false,
 }: CategoryTreeProps) => {
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
@@ -437,6 +442,7 @@ export const CategoryTree = memo(({
           getCategoryCount={getCategoryCount}
           getCategorySize={getCategorySize}
           viewMode={viewMode}
+          readOnly={readOnly}
         />
       ))}
     </div>

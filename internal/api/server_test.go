@@ -15,6 +15,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
@@ -50,6 +52,7 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/automations"}:                       {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations"}:                      {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/apply"}:                {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/dry-run"}:              {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/preview"}:              {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/validate-regex"}:       {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/order"}:                 {},
@@ -110,14 +113,18 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	require.NoError(t, err)
 
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, &models.InstanceStore{}, log.Logger)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
+		nil,
 		&models.InstanceStore{},
 		&qbittorrent.SyncManager{},
 		nil,
 		nil,
 		trackerCustomizationStore,
+		nil,
 	)
 
 	return &Dependencies{
@@ -141,6 +148,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		AutomationStore:           models.NewAutomationStore(db),
 		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		NotificationTargetStore:   notificationTargetStore,
+		NotificationService:       notificationService,
 		DirScanService:            dirScanService,
 	}
 }

@@ -266,7 +266,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
 		// treat an empty resolution as a match only when the other side is clearly SD.
 		isKnownSD := func(res string) bool {
-			switch strings.ToUpper(strings.TrimSpace(res)) {
+			switch normalizeVariant(res) {
 			case "480P", "576P", "SD":
 				return true
 			default:
@@ -303,6 +303,14 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceHDR := joinNormalizedSlice(source.HDR)
 	candidateHDR := joinNormalizedSlice(candidate.HDR)
 	if sourceHDR != candidateHDR {
+		return false
+	}
+
+	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
+	// We intentionally don't enforce "either present" here since indexer titles often omit it.
+	sourceBitDepth := s.stringNormalizer.Normalize(source.BitDepth)
+	candidateBitDepth := s.stringNormalizer.Normalize(candidate.BitDepth)
+	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
 		return false
 	}
 
@@ -392,7 +400,7 @@ func joinNormalizedSlice(slice []string) string {
 	}
 	normalized := make([]string, len(slice))
 	for i, s := range slice {
-		normalized[i] = strings.ToUpper(strings.TrimSpace(s))
+		normalized[i] = normalizeVariant(s)
 	}
 	sort.Strings(normalized)
 	return strings.Join(normalized, " ")
@@ -415,7 +423,7 @@ var videoCodecAliases = map[string]string{
 // normalizeVideoCodec converts a video codec string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
 func normalizeVideoCodec(codec string) string {
-	upper := strings.ToUpper(strings.TrimSpace(codec))
+	upper := normalizeVariant(codec)
 	if canonical, ok := videoCodecAliases[upper]; ok {
 		return canonical
 	}
@@ -435,7 +443,7 @@ var sourceAliases = map[string]string{
 // normalizeSource converts a source string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
 func normalizeSource(source string) string {
-	upper := strings.ToUpper(strings.TrimSpace(source))
+	upper := normalizeVariant(source)
 	if canonical, ok := sourceAliases[upper]; ok {
 		return canonical
 	}
@@ -1028,6 +1036,11 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	// Fill in missing HDR info from torrent.
 	if len(enriched.HDR) == 0 && len(torrentRelease.HDR) > 0 {
 		enriched.HDR = torrentRelease.HDR
+	}
+
+	// Fill in missing bit depth from torrent.
+	if enriched.BitDepth == "" && torrentRelease.BitDepth != "" {
+		enriched.BitDepth = torrentRelease.BitDepth
 	}
 
 	// Fill in missing season from torrent (for season packs).

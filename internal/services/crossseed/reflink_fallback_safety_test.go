@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"testing"
 
@@ -44,6 +45,10 @@ func (m *reflinkFallbackSafetySyncManager) GetTorrentFilesBatch(_ context.Contex
 		}
 	}
 	return result, nil
+}
+
+func (*reflinkFallbackSafetySyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*reflinkFallbackSafetySyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {

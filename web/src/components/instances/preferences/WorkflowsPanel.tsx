@@ -49,6 +49,17 @@ function formatSpeedLimit(kiB: number | undefined): string | null {
   return `${kiB} KiB/s`
 }
 
+function getTagActions(rule: Automation) {
+  const conditions = rule.conditions
+  if (conditions.tags && conditions.tags.length > 0) {
+    return conditions.tags
+  }
+  if (conditions.tag) {
+    return [conditions.tag]
+  }
+  return []
+}
+
 export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelProps) {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -401,6 +412,22 @@ function RuleSummary({ rule }: { rule: Automation }) {
         </Badge>
       )}
 
+      {/* Recheck */}
+      {conditions?.recheck?.enabled && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-orange-600 border-orange-600/50 cursor-default">
+          <RefreshCw className="h-3 w-3" />
+          Recheck
+        </Badge>
+      )}
+
+      {/* Reannounce */}
+      {conditions?.reannounce?.enabled && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-fuchsia-600 border-fuchsia-600/50 cursor-default">
+          <RefreshCw className="h-3 w-3" />
+          Reannounce
+        </Badge>
+      )}
+
       {/* Delete */}
       {conditions?.delete?.enabled && (
         <Tooltip>
@@ -423,19 +450,22 @@ function RuleSummary({ rule }: { rule: Automation }) {
       )}
 
       {/* Tag */}
-      {conditions?.tag?.enabled && (
+      {getTagActions(rule).some((action) => action.enabled) && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-blue-600 border-blue-600/50 cursor-help">
               <Tag className="h-3 w-3" />
-              {conditions.tag.tags.length} tag{conditions.tag.tags.length !== 1 ? "s" : ""}
+              {getTagActions(rule).length} action{getTagActions(rule).length !== 1 ? "s" : ""}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Tags: {conditions.tag.tags.join(", ")}</p>
-            <p className="text-muted-foreground">
-              Mode: {conditions.tag.mode === "full" ? "Full sync" : conditions.tag.mode === "add" ? "Add only" : "Remove only"}
-            </p>
+            {getTagActions(rule).map((action, index) => (
+              <p key={index}>
+                #{index + 1}: {action.useTrackerAsTag ? "Tracker-derived tag" : (action.tags?.join(", ") || "No tags")}
+                {" "}
+                ({action.mode === "full" ? "Full sync" : action.mode === "add" ? "Add only" : "Remove only"})
+              </p>
+            ))}
           </TooltipContent>
         </Tooltip>
       )}
@@ -472,4 +502,3 @@ function RuleSummary({ rule }: { rule: Automation }) {
     </div>
   )
 }
-

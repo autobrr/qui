@@ -577,10 +577,10 @@ func TestSortCrossInstanceTorrentsByTracker_EmptyTrackersGoToEnd(t *testing.T) {
 	sm := NewSyncManager(nil, nil)
 
 	torrents := []CrossInstanceTorrentView{
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash1", Tracker: "", Name: "No Tracker"}}, InstanceName: "Instance1"},
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash2", Tracker: "https://zebra.com/announce", Name: "Zebra"}}, InstanceName: "Instance1"},
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash3", Tracker: "https://apple.com/announce", Name: "Apple"}}, InstanceName: "Instance2"},
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash4", Tracker: "", Name: "Also No Tracker"}}, InstanceName: "Instance2"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash1", Tracker: "", Name: "No Tracker"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://zebra.com/announce", Name: "Zebra"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash3", Tracker: "https://apple.com/announce", Name: "Apple"}}, InstanceName: "Instance2"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash4", Tracker: "", Name: "Also No Tracker"}}, InstanceName: "Instance2"},
 	}
 
 	// Test ascending: empty trackers should go to the end
@@ -613,9 +613,9 @@ func TestSortCrossInstanceTorrentsByTracker_WithCustomNames(t *testing.T) {
 	})
 
 	torrents := []CrossInstanceTorrentView{
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash1", Tracker: "https://zebra.com/announce", Name: "Torrent A"}}, InstanceName: "Instance1"},
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash2", Tracker: "https://apple.com/announce", Name: "Torrent B"}}, InstanceName: "Instance2"},
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash1", Tracker: "https://zebra.com/announce", Name: "Torrent A"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://apple.com/announce", Name: "Torrent B"}}, InstanceName: "Instance2"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"}}, InstanceName: "Instance1"},
 	}
 
 	sm.sortCrossInstanceTorrentsByTracker(torrents, false)
@@ -632,14 +632,102 @@ func TestSortCrossInstanceTorrentsByTracker_UnknownTrackersGoToEnd(t *testing.T)
 	sm := NewSyncManager(nil, nil)
 
 	torrents := []CrossInstanceTorrentView{
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash1", Tracker: "unknown", Name: "Unknown Tracker"}}, InstanceName: "Instance1"},
-		{TorrentView: TorrentView{Torrent: qbt.Torrent{Hash: "hash2", Tracker: "https://valid.com/announce", Name: "Valid"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash1", Tracker: "unknown", Name: "Unknown Tracker"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://valid.com/announce", Name: "Valid"}}, InstanceName: "Instance1"},
 	}
 
 	sm.sortCrossInstanceTorrentsByTracker(torrents, false)
 
 	require.Equal(t, "hash2", torrents[0].Hash, "valid tracker should come first")
 	require.Equal(t, "hash1", torrents[1].Hash, "unknown tracker should go to end")
+}
+
+func TestSortCrossInstanceTorrents_CommonFields(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	build := func() []CrossInstanceTorrentView {
+		return []CrossInstanceTorrentView{
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-alpha",
+						Name:        "Alpha",
+						State:       qbt.TorrentStatePausedUp,
+						AddedOn:     100,
+						DlSpeed:     50,
+						NumComplete: 10,
+						Priority:    1,
+						ETA:         60,
+						Private:     false,
+					},
+				},
+				InstanceID:   1,
+				InstanceName: "One",
+			},
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-beta",
+						Name:        "beta",
+						State:       qbt.TorrentStateDownloading,
+						AddedOn:     200,
+						DlSpeed:     10,
+						NumComplete: 5,
+						Priority:    0,
+						ETA:         8640000, // infinity ETA
+						Private:     true,
+					},
+				},
+				InstanceID:   2,
+				InstanceName: "Two",
+			},
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-gamma",
+						Name:        "Gamma",
+						State:       qbt.TorrentStateUploading,
+						AddedOn:     150,
+						DlSpeed:     100,
+						NumComplete: 20,
+						Priority:    2,
+						ETA:         120,
+						Private:     false,
+					},
+				},
+				InstanceID:   3,
+				InstanceName: "Three",
+			},
+		}
+	}
+
+	testCases := []struct {
+		name      string
+		sort      string
+		desc      bool
+		firstHash string
+		lastHash  string
+	}{
+		{name: "state asc", sort: "state", desc: false, firstHash: "hash-beta", lastHash: "hash-alpha"},
+		{name: "added_on desc", sort: "added_on", desc: true, firstHash: "hash-beta", lastHash: "hash-alpha"},
+		{name: "dlspeed desc", sort: "dlspeed", desc: true, firstHash: "hash-gamma", lastHash: "hash-beta"},
+		{name: "num_complete asc", sort: "num_complete", desc: false, firstHash: "hash-beta", lastHash: "hash-gamma"},
+		{name: "priority asc keeps zero last", sort: "priority", desc: false, firstHash: "hash-gamma", lastHash: "hash-beta"},
+		{name: "eta asc keeps infinity last", sort: "eta", desc: false, firstHash: "hash-alpha", lastHash: "hash-beta"},
+		{name: "private desc", sort: "private", desc: true, firstHash: "hash-beta", lastHash: "hash-gamma"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			torrents := build()
+			sm.sortCrossInstanceTorrents(torrents, tc.sort, tc.desc)
+			require.Equal(t, tc.firstHash, torrents[0].Hash)
+			require.Equal(t, tc.lastHash, torrents[len(torrents)-1].Hash)
+		})
+	}
 }
 
 func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {
