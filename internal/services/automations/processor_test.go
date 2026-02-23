@@ -1504,7 +1504,7 @@ func TestCalculateScore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			score := CalculateScore(tt.torrent, tt.config, nil)
+			score := CalculateScore(tt.torrent, &tt.config, nil)
 			require.InDelta(t, tt.expectedScore, score, 0.001)
 		})
 	}

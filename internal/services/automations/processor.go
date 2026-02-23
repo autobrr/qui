@@ -859,8 +859,12 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 }
 
 // CalculateScore computes the weighted score for a torrent based on configuration.
-func CalculateScore(torrent qbt.Torrent, config models.SortingConfig, evalCtx *EvalContext) float64 {
+func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) float64 {
 	var totalScore float64
+
+	if config == nil {
+		return 0
+	}
 
 	for _, rule := range config.ScoreRules {
 		switch rule.Type {
@@ -900,60 +904,61 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 	if config != nil && config.Type == models.SortingTypeScore {
 		scores = make(map[string]float64, len(torrents))
 		for _, t := range torrents {
-			scores[t.Hash] = CalculateScore(t, *config, evalCtx)
+			scores[t.Hash] = CalculateScore(t, config, evalCtx)
 		}
 	}
 
 	sort.Slice(torrents, func(i, j int) bool {
-		t1 := torrents[i]
-		t2 := torrents[j]
-
-		// 1. Primary Sort
-		if config != nil {
-			switch config.Type {
-			case models.SortingTypeSimple:
-				if isNumericField(config.Field) {
-					v1 := getNumericFieldValue(t1, config.Field, evalCtx)
-					v2 := getNumericFieldValue(t2, config.Field, evalCtx)
-					if v1 != v2 {
-						if config.Direction == models.SortDirectionASC {
-							return v1 < v2
-						}
-						return v1 > v2
-					}
-				} else {
-					v1, _ := extractStringValue(t1, config.Field)
-					v2, _ := extractStringValue(t2, config.Field)
-					if v1 != v2 {
-						if config.Direction == models.SortDirectionASC {
-							return v1 < v2
-						}
-						return v1 > v2
-					}
-				}
-			case models.SortingTypeScore:
-				s1 := scores[t1.Hash]
-				s2 := scores[t2.Hash]
-				if s1 != s2 {
-					if config.Direction == models.SortDirectionASC {
-						return s1 < s2
-					}
-
-					return s1 > s2
-				}
-			}
-		} else {
-			// Default sort: Oldest first (AddedOn ASC)
-			if t1.AddedOn != t2.AddedOn {
-				return t1.AddedOn < t2.AddedOn
-			}
-		}
-
-		// 2. Tiebreaker: Hash ASC
-		return t1.Hash < t2.Hash
+		return compareTorrents(torrents[i], torrents[j], config, scores, evalCtx)
 	})
 
 	return nil
+}
+
+// compareTorrents is a helper function that returns true if t1 should sort before t2.
+func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores map[string]float64, evalCtx *EvalContext) bool {
+	// 1. Primary Sort
+	if config != nil {
+		switch config.Type {
+		case models.SortingTypeSimple:
+			if isNumericField(config.Field) {
+				v1 := getNumericFieldValue(t1, config.Field, evalCtx)
+				v2 := getNumericFieldValue(t2, config.Field, evalCtx)
+				if v1 != v2 {
+					if config.Direction == models.SortDirectionASC {
+						return v1 < v2
+					}
+					return v1 > v2
+				}
+			} else {
+				v1, _ := extractStringValue(t1, config.Field)
+				v2, _ := extractStringValue(t2, config.Field)
+				if v1 != v2 {
+					if config.Direction == models.SortDirectionASC {
+						return v1 < v2
+					}
+					return v1 > v2
+				}
+			}
+		case models.SortingTypeScore:
+			s1 := scores[t1.Hash]
+			s2 := scores[t2.Hash]
+			if s1 != s2 {
+				if config.Direction == models.SortDirectionASC {
+					return s1 < s2
+				}
+				return s1 > s2
+			}
+		}
+	} else {
+		// Default sort: Oldest first (AddedOn ASC)
+		if t1.AddedOn != t2.AddedOn {
+			return t1.AddedOn < t2.AddedOn
+		}
+	}
+
+	// 2. Tiebreaker: Hash ASC
+	return t1.Hash < t2.Hash
 }
 
 // getNowUnix returns the current time from context or system time.
@@ -1008,21 +1013,8 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 			return 0
 		}
 		return float64(t.TimeActive)
-	case models.FieldAddedOnAge:
-		if t.AddedOn <= 0 {
-			return 0
-		}
-		return float64(getNowUnix(evalCtx) - t.AddedOn)
-	case models.FieldCompletionOnAge:
-		if t.CompletionOn <= 0 {
-			return 0
-		}
-		return float64(getNowUnix(evalCtx) - t.CompletionOn)
-	case models.FieldLastActivityAge:
-		if t.LastActivity <= 0 {
-			return 0
-		}
-		return float64(getNowUnix(evalCtx) - t.LastActivity)
+	case models.FieldAddedOnAge, models.FieldCompletionOnAge, models.FieldLastActivityAge:
+		return getAgeFieldValue(evalCtx, field, t)
 	case models.FieldRatio:
 		return t.Ratio
 	case models.FieldProgress:
@@ -1047,6 +1039,22 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 	return 0
 }
 
+func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
+	var ts int64
+	switch field {
+	case models.FieldAddedOnAge:
+		ts = t.AddedOn
+	case models.FieldCompletionOnAge:
+		ts = t.CompletionOn
+	case models.FieldLastActivityAge:
+		ts = t.LastActivity
+	}
+	if ts <= 0 {
+		return 0
+	}
+	return float64(getNowUnix(evalCtx) - ts)
+}
+
 func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
 	switch field {
 	case models.FieldName:
@@ -1058,7 +1066,7 @@ func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, boo
 	case models.FieldTracker:
 		return strings.ToLower(t.Tracker), true
 	case models.FieldState:
-		return string(t.State), true
+		return strings.ToLower(string(t.State)), true
 	case models.FieldSavePath:
 		return strings.ToLower(t.SavePath), true
 	case models.FieldContentPath:

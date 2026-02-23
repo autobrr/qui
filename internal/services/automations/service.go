@@ -983,7 +983,7 @@ func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, 
 // computePreviewScore safely calculates the sorting score for preview functionality.
 func computePreviewScore(torrent *qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) float64 {
 	if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
-		return CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
+		return CalculateScore(*torrent, rule.SortingConfig, evalCtx)
 	}
 	return 0
 }
@@ -2013,26 +2013,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	states := make(map[string]*torrentDesiredState)
 
 	// Group rules into batches based on sorting config equality
-	if len(eligibleRules) > 0 {
-		currentBatch := []*models.Automation{eligibleRules[0]}
-		for i := 1; i < len(eligibleRules); i++ {
-			rule := eligibleRules[i]
-			prevRule := eligibleRules[i-1]
-
-			if sortingConfigEqual(prevRule.SortingConfig, rule.SortingConfig) {
-				currentBatch = append(currentBatch, rule)
-			} else {
-				// Execute current batch
-				executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
-				// Start new batch
-				currentBatch = []*models.Automation{rule}
-			}
-		}
-		// Execute final batch
-		if len(currentBatch) > 0 {
-			executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
-		}
-	}
+	s.buildAndExecuteBatches(eligibleRules, torrents, evalCtx, skipCheck, ruleStats, states)
 
 	if len(states) == 0 {
 		log.Debug().
@@ -5419,27 +5400,59 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 }
 
 func executeBatch(
-	rules []*models.Automation,
+	currentBatch []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
-	stats map[int]*ruleRunStats,
+	ruleStats map[int]*ruleRunStats,
 	states map[string]*torrentDesiredState,
 ) {
-	if len(rules) == 0 {
+	if len(currentBatch) == 0 {
 		return
 	}
 
 	// 1. Sort torrents based on this batch's configuration
 	// Use the config from the first rule (all rules in batch have equivalent config)
-	if err := SortTorrents(torrents, rules[0].SortingConfig, evalCtx); err != nil {
-		log.Warn().Err(err).Str("rule", rules[0].Name).Msg("invalid sorting config for batch, falling back to default sort")
+	if err := SortTorrents(torrents, currentBatch[0].SortingConfig, evalCtx); err != nil {
+		log.Warn().Err(err).Str("rule", currentBatch[0].Name).Msg("invalid sorting config for batch, falling back to default sort")
 		_ = SortTorrents(torrents, nil, evalCtx)
 	}
 
 	// 2. Process rules
-	processTorrents(torrents, rules, evalCtx, sm, skipCheck, stats, states)
+	processTorrents(torrents, currentBatch, evalCtx, sm, skipCheck, ruleStats, states)
+}
+
+func (s *Service) buildAndExecuteBatches(
+	eligibleRules []*models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	skipCheck func(hash string) bool,
+	ruleStats map[int]*ruleRunStats,
+	states map[string]*torrentDesiredState,
+) {
+	if len(eligibleRules) == 0 {
+		return
+	}
+
+	currentBatch := []*models.Automation{eligibleRules[0]}
+	for i := 1; i < len(eligibleRules); i++ {
+		rule := eligibleRules[i]
+		prevRule := eligibleRules[i-1]
+
+		if sortingConfigEqual(prevRule.SortingConfig, rule.SortingConfig) {
+			currentBatch = append(currentBatch, rule)
+		} else {
+			// Execute current batch
+			executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+			// Start new batch
+			currentBatch = []*models.Automation{rule}
+		}
+	}
+	// Execute final batch
+	if len(currentBatch) > 0 {
+		executeBatch(currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+	}
 }
 
 func sortingConfigEqual(a, b *models.SortingConfig) bool {
