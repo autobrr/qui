@@ -793,9 +793,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       options.push({
         id,
         label: `${id} (custom)`,
-        description: group.keys.length > 0
-          ? `Custom keys: ${group.keys.join(", ")}`
-          : "Custom group",
+        description: group.keys.length > 0? `Custom keys: ${group.keys.join(", ")}`: "Custom group",
       })
     }
     return options
@@ -941,9 +939,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprDeleteGroupId = conditions.delete.groupId ?? ""
             exprDeleteAtomic = conditions.delete.atomic ?? ""
           }
-          const resolvedTagActions = (conditions.tags && conditions.tags.length > 0
-            ? conditions.tags
-            : conditions.tag ? [conditions.tag] : [])
+          const resolvedTagActions = (conditions.tags && conditions.tags.length > 0? conditions.tags: conditions.tag ? [conditions.tag] : [])
             .filter((action) => action && action.enabled)
           if (resolvedTagActions.length > 0) {
             tagEnabled = true
@@ -1328,6 +1324,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             const multiplier = typeof val === "string" ? parseFloat(val) : val
             if (Number.isFinite(multiplier)) {
               return [{ type: "field_multiplier", fieldMultiplier: { ...r.fieldMultiplier, multiplier } }]
+            } else {
+              throw new Error("Invalid score rule: Field multiplier must be a valid number")
             }
           }
           if (r.type === "conditional" && r.conditional && r.conditional.condition) {
@@ -1335,6 +1333,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             const score = typeof val === "string" ? parseFloat(val) : val
             if (Number.isFinite(score)) {
               return [{ type: "conditional", conditional: { ...r.conditional, score, condition: r.conditional.condition } }]
+            } else {
+              throw new Error("Invalid score rule: Conditional score must be a valid number")
             }
           }
           return []
@@ -1509,11 +1509,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
     if (!hasValidFreeSpaceSourceForLivePreview(formState)) return null
 
-    return {
-      ...buildPayload(formState),
-      previewLimit: livePreviewPageSize,
-      previewOffset: 0,
-      previewView: "needed" as PreviewView,
+    try {
+      return {
+        ...buildPayload(formState),
+        previewLimit: livePreviewPageSize,
+        previewOffset: 0,
+        previewView: "needed" as PreviewView,
+      }
+    } catch {
+      return null
     }
   }, [
     buildPayload,
@@ -2246,9 +2250,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">
-                            {isCategoryRule
-                              ? `${livePreviewResult.totalMatches} torrents impacted (${(livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0)} direct + ${livePreviewResult.crossSeedCount ?? 0} cross-seeds).`
-                              : `${livePreviewResult.totalMatches} torrents impacted.`}
+                            {isCategoryRule? `${livePreviewResult.totalMatches} torrents impacted (${(livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0)} direct + ${livePreviewResult.crossSeedCount ?? 0} cross-seeds).`: `${livePreviewResult.totalMatches} torrents impacted.`}
                           </p>
                           {livePreviewResult.examples.length > 0 ? (
                             <div className="space-y-1">
@@ -2334,9 +2336,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     exprGrouping: {
                                       ...prev.exprGrouping,
                                       groups: (prev.exprGrouping?.groups || []).filter((_, i) => i !== idx),
-                                      defaultGroupId: prev.exprGrouping?.defaultGroupId === group.id
-                                        ? undefined
-                                        : prev.exprGrouping?.defaultGroupId,
+                                      defaultGroupId: prev.exprGrouping?.defaultGroupId === group.id? undefined: prev.exprGrouping?.defaultGroupId,
                                     },
                                   }))
                                 }}
@@ -3553,10 +3553,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       {/* Show custom option if current value is non-preset */}
                       {formState.intervalSeconds !== null &&
                         ![60, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400].includes(formState.intervalSeconds) && (
-                          <SelectItem value={String(formState.intervalSeconds)}>
-                            Custom ({formState.intervalSeconds}s)
-                          </SelectItem>
-                        )}
+                        <SelectItem value={String(formState.intervalSeconds)}>
+                          Custom ({formState.intervalSeconds}s)
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   {deleteUsesFreeSpace && (

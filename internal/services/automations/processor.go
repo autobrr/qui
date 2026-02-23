@@ -5,6 +5,7 @@ package automations
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
 	"strings"
 	"text/template"
@@ -199,10 +200,10 @@ func processTorrents(
 			state = existing
 		} else {
 			state = &torrentDesiredState{
-				hash:        torrent.Hash,
-				name:        torrent.Name,
-				currentTags: parseTorrentTags(torrent.Tags),
-				tagActions:  make(map[string]string),
+				hash:         torrent.Hash,
+				name:         torrent.Name,
+				currentTags:  parseTorrentTags(torrent.Tags),
+				tagActions:   make(map[string]string),
 				tagRuleByTag: make(map[string]ruleRef),
 			}
 		}
@@ -884,7 +885,16 @@ func CalculateScore(torrent qbt.Torrent, config models.SortingConfig, evalCtx *E
 
 // SortTorrents sorts the slice in-place based on the configuration.
 // Always applies Hash (ASC) as a deterministic tiebreaker.
-func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) {
+// Returns an error if the sorting configuration is invalid (e.g. unsupported field).
+func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) error {
+	if config != nil && config.Type == models.SortingTypeSimple {
+		if !isNumericField(config.Field) {
+			if _, ok := extractStringValue(qbt.Torrent{}, config.Field); !ok {
+				return fmt.Errorf("unsupported sort field: %s", config.Field)
+			}
+		}
+	}
+
 	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
 	var scores map[string]float64
 	if config != nil && config.Type == models.SortingTypeScore {
@@ -912,8 +922,8 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 						return v1 > v2
 					}
 				} else {
-					v1 := extractStringValue(t1, config.Field)
-					v2 := extractStringValue(t2, config.Field)
+					v1, _ := extractStringValue(t1, config.Field)
+					v2, _ := extractStringValue(t2, config.Field)
 					if v1 != v2 {
 						if config.Direction == models.SortDirectionASC {
 							return v1 < v2
@@ -942,6 +952,8 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 		// 2. Tiebreaker: Hash ASC
 		return t1.Hash < t2.Hash
 	})
+
+	return nil
 }
 
 // getNowUnix returns the current time from context or system time.
@@ -1035,26 +1047,26 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 	return 0
 }
 
-func extractStringValue(t qbt.Torrent, field models.ConditionField) string {
+func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
 	switch field {
 	case models.FieldName:
-		return strings.ToLower(t.Name)
+		return strings.ToLower(t.Name), true
 	case models.FieldCategory:
-		return strings.ToLower(t.Category)
+		return strings.ToLower(t.Category), true
 	case models.FieldTags:
-		return strings.ToLower(t.Tags)
+		return strings.ToLower(t.Tags), true
 	case models.FieldTracker:
-		return strings.ToLower(t.Tracker)
+		return strings.ToLower(t.Tracker), true
 	case models.FieldState:
-		return string(t.State)
+		return string(t.State), true
 	case models.FieldSavePath:
-		return strings.ToLower(t.SavePath)
+		return strings.ToLower(t.SavePath), true
 	case models.FieldContentPath:
-		return strings.ToLower(t.ContentPath)
+		return strings.ToLower(t.ContentPath), true
 	case models.FieldComment:
-		return strings.ToLower(t.Comment)
+		return strings.ToLower(t.Comment), true
 	}
-	return ""
+	return "", false
 }
 
 func isNumericField(field models.ConditionField) bool {

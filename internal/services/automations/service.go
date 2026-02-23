@@ -922,7 +922,10 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return nil, err
 	}
 
-	SortTorrents(torrents, rule.SortingConfig, evalCtx)
+	if err := SortTorrents(torrents, rule.SortingConfig, evalCtx); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", rule.Name).Msg("invalid sorting config during preview, falling back to default sort")
+		_ = SortTorrents(torrents, nil, evalCtx)
+	}
 
 	deleteMode := getDeleteMode(rule)
 	eligibleMode := previewView == "eligible"
@@ -975,6 +978,14 @@ func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, 
 	}
 
 	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+}
+
+// computePreviewScore safely calculates the sorting score for preview functionality.
+func computePreviewScore(torrent *qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) float64 {
+	if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
+		return CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
+	}
+	return 0
 }
 
 // getDeleteMode returns the delete mode from rule or default.
@@ -1131,10 +1142,7 @@ func (s *Service) previewDeleteStandard(
 			_, isDirect := directMatchSet[torrent.Hash]
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
 
-			var score float64
-			if rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
-				score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
-			}
+			score := computePreviewScore(torrent, rule, evalCtx)
 
 			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false, score))
 		}
@@ -1165,10 +1173,7 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 		if len(result.Examples) < cfg.limit {
-			var score float64
-			if rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
-				score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
-			}
+			score := computePreviewScore(torrent, rule, evalCtx)
 
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
 			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false, score))
@@ -1340,10 +1345,7 @@ func (s *Service) buildCrossSeedPreviewResult(
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
 		_, isHardlinkCopy := state.hardlinkCopySet[torrent.Hash]
 
-		var score float64
-		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
-			score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
-		}
+		score := computePreviewScore(torrent, rule, evalCtx)
 
 		tracker := getTrackerForTorrent(torrent, s.syncManager)
 		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy, score))
@@ -1489,7 +1491,10 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return nil, err
 	}
 
-	SortTorrents(torrents, rule.SortingConfig, evalCtx)
+	if err := SortTorrents(torrents, rule.SortingConfig, evalCtx); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", rule.Name).Msg("invalid sorting config during preview, falling back to default sort")
+		_ = SortTorrents(torrents, nil, evalCtx)
+	}
 
 	catAction := getCategoryAction(rule)
 	state := newCategoryPreviewState(catAction.targetCategory)
@@ -1741,10 +1746,7 @@ func (s *Service) buildCategoryPreviewResult(
 
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
 
-		var score float64
-		if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
-			score = CalculateScore(*torrent, *rule.SortingConfig, evalCtx)
-		}
+		score := computePreviewScore(torrent, rule, evalCtx)
 
 		tracker := getTrackerForTorrent(torrent, s.syncManager)
 		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, false, score))
@@ -5431,7 +5433,10 @@ func executeBatch(
 
 	// 1. Sort torrents based on this batch's configuration
 	// Use the config from the first rule (all rules in batch have equivalent config)
-	SortTorrents(torrents, rules[0].SortingConfig, evalCtx)
+	if err := SortTorrents(torrents, rules[0].SortingConfig, evalCtx); err != nil {
+		log.Warn().Err(err).Str("rule", rules[0].Name).Msg("invalid sorting config for batch, falling back to default sort")
+		_ = SortTorrents(torrents, nil, evalCtx)
+	}
 
 	// 2. Process rules
 	processTorrents(torrents, rules, evalCtx, sm, skipCheck, stats, states)
