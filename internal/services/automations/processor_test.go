@@ -1530,35 +1530,38 @@ func TestSortTorrents_Score(t *testing.T) {
 		},
 	}
 
-	// Test DESC (Default/Explicit)
-	t.Run("Score DESC", func(t *testing.T) {
-		descConfig := config
-		descConfig.Direction = models.SortDirectionDESC
-		sorted := make([]qbt.Torrent, len(torrents))
-		copy(sorted, torrents)
+	tests := []struct {
+		name      string
+		Direction models.SortDirection
+		expected  []string
+	}{
+		{
+			name:      "Score DESC",
+			Direction: models.SortDirectionDESC,
+			expected:  []string{"b", "c", "a"},
+		},
+		{
+			name:      "Score ASC",
+			Direction: models.SortDirectionASC,
+			expected:  []string{"a", "c", "b"},
+		},
+	}
 
-		err := SortTorrents(sorted, &descConfig, nil)
-		require.NoError(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			testConfig := config
+			testConfig.Direction = tc.Direction
+			sorted := make([]qbt.Torrent, len(torrents))
+			copy(sorted, torrents)
 
-		require.Equal(t, "b", sorted[0].Hash)
-		require.Equal(t, "c", sorted[1].Hash)
-		require.Equal(t, "a", sorted[2].Hash)
-	})
+			err := SortTorrents(sorted, &testConfig, nil)
+			require.NoError(t, err)
 
-	// Test ASC
-	t.Run("Score ASC", func(t *testing.T) {
-		ascConfig := config
-		ascConfig.Direction = models.SortDirectionASC
-		sorted := make([]qbt.Torrent, len(torrents))
-		copy(sorted, torrents)
-
-		err := SortTorrents(sorted, &ascConfig, nil)
-		require.NoError(t, err)
-
-		require.Equal(t, "a", sorted[0].Hash)
-		require.Equal(t, "c", sorted[1].Hash)
-		require.Equal(t, "b", sorted[2].Hash)
-	})
+			for i, expectedHash := range tc.expected {
+				require.Equal(t, expectedHash, sorted[i].Hash)
+			}
+		})
+	}
 }
 
 func TestProcessTorrents_PauseResume(t *testing.T) {
