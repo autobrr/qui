@@ -12,6 +12,7 @@ import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
+import { QualityProfilesManager } from "@/components/settings/QualityProfilesManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
@@ -59,7 +60,7 @@ import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Star, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -825,6 +826,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 External Programs
               </div>
             </SelectItem>
+            <SelectItem value="quality-profiles">
+              <div className="flex items-center">
+                <Star className="w-4 h-4 mr-2" />
+                Quality Profiles
+              </div>
+            </SelectItem>
             <SelectItem value="notifications">
               <div className="flex items-center">
                 <Bell className="w-4 h-4 mr-2" />
@@ -925,6 +932,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             >
               <Terminal className="w-4 h-4 mr-2" />
               External Programs
+            </button>
+            <button
+              onClick={() => handleTabChange("quality-profiles")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "quality-profiles" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Star className="w-4 h-4 mr-2" />
+              Quality Profiles
             </button>
             <button
               onClick={() => handleTabChange("notifications")}
@@ -1078,6 +1094,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 </CardHeader>
                 <CardContent>
                   <ExternalProgramsManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "quality-profiles" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Quality Profiles</CardTitle>
+                  <CardDescription>
+                    Define how to identify duplicate content and rank quality — used by the Quality Upgrade action in automations
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <QualityProfilesManager />
                 </CardContent>
               </Card>
             </div>

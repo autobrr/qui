@@ -113,6 +113,8 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
+  QualityProfile,
+  QualityProfileInput,
   TransferInfo,
   User,
   WarningResponse,
@@ -2617,6 +2619,35 @@ class ApiClient {
   async reprocessRSSRules(instanceId: number): Promise<void> {
     return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
       method: "POST",
+    })
+  }
+
+  // Quality Profiles endpoints
+  async listQualityProfiles(): Promise<QualityProfile[]> {
+    return this.request<QualityProfile[]>("/quality-profiles")
+  }
+
+  async getQualityProfile(id: number): Promise<QualityProfile> {
+    return this.request<QualityProfile>(`/quality-profiles/${id}`)
+  }
+
+  async createQualityProfile(data: QualityProfileInput): Promise<QualityProfile> {
+    return this.request<QualityProfile>("/quality-profiles", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateQualityProfile(id: number, data: QualityProfileInput): Promise<QualityProfile> {
+    return this.request<QualityProfile>(`/quality-profiles/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteQualityProfile(id: number): Promise<void> {
+    return this.request(`/quality-profiles/${id}`, {
+      method: "DELETE",
     })
   }
 }

@@ -16,6 +16,7 @@ const settingsSearchSchema = z.object({
     "client-api",
     "api",
     "external-programs",
+    "quality-profiles",
     "notifications",
     "datetime",
     "themes",
