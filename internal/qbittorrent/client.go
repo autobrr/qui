@@ -22,6 +22,7 @@ var (
 	torrentCreationMinVersion  = semver.MustParse("2.11.2")
 	exportTorrentMinVersion    = semver.MustParse("2.8.11")
 	trackerEditingMinVersion   = semver.MustParse("2.2.0")
+	trackerIncludeMinVersion   = semver.MustParse("2.11.4")
 	filePriorityMinVersion     = semver.MustParse("2.2.0")
 	renameTorrentMinVersion    = semver.MustParse("2.0.0")
 	renameFileMinVersion       = semver.MustParse("2.4.0")
@@ -47,6 +48,7 @@ type Client struct {
 	supportsSubcategories    bool
 	supportsTorrentTmpPath   bool
 	supportsPathAutocomplete bool
+	trackerIncludeSupported  bool
 	supportsSetRSSFeedURL    bool
 	lastHealthCheck          time.Time
 	lastRecoveryTime         time.Time // When client transitioned from unhealthy→healthy (or was created)
@@ -238,14 +240,20 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	c.mu.Lock()
 	previousVersion := c.webAPIVersion
 	c.applyCapabilitiesLocked(version)
+	supportsInclude := c.trackerIncludeSupported
 	c.mu.Unlock()
 
-	if previousVersion != version {
-		log.Trace().
+	// Update TrackerManager's include capability
+	if tm := c.trackerManager(); tm != nil {
+		tm.SetUseIncludeTrackers(supportsInclude)
+	}
+
+	if previousVersion != "" && previousVersion != version {
+		log.Info().
 			Int("instanceID", c.instanceID).
-			Str("previousWebAPIVersion", previousVersion).
-			Str("webAPIVersion", version).
-			Msg("Refreshed qBittorrent capabilities")
+			Str("previousVersion", previousVersion).
+			Str("newVersion", version).
+			Msg("qBittorrent version changed, refreshed capabilities")
 	}
 
 	return nil
@@ -268,6 +276,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
+	c.trackerIncludeSupported = !v.LessThan(trackerIncludeMinVersion)
 	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
 	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
@@ -466,12 +475,9 @@ func (c *Client) trackerManager() *qbt.TrackerManager {
 }
 
 func (c *Client) supportsTrackerInclude() bool {
-	if c.trackerManager() == nil {
-		return false
-	}
-
-	// Check if the underlying client supports tracker include
-	return c.trackerManager().SupportsIncludeTrackers()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.trackerIncludeSupported
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {

@@ -134,3 +134,35 @@ func TestAutomationSummaryMessageIncludesTagDetailsAndSamples(t *testing.T) {
 	require.Contains(t, msg, "Torrent A")
 	require.Contains(t, msg, "Torrent B")
 }
+
+func TestAutomationSummaryMessageIncludesSamplesForNonDeleteActions(t *testing.T) {
+	t.Parallel()
+
+	summary := newAutomationSummary()
+	summary.recordActivity(&models.AutomationActivity{
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeSuccess,
+		TorrentName: "Some.Release.2026",
+	}, 1)
+
+	msg := summary.message()
+	require.Contains(t, msg, "Samples: Some.Release.2026")
+}
+
+func TestAutomationSummaryAddTorrentSamplesUsesLimitAndDedupes(t *testing.T) {
+	t.Parallel()
+
+	summary := newAutomationSummary()
+	summary.addTorrentSamples([]string{
+		"Torrent C",
+		"Torrent A",
+		"Torrent A",
+		"Torrent B",
+	}, 3)
+
+	msg := summary.message()
+	require.Contains(t, msg, "Samples:")
+	require.Contains(t, msg, "Torrent A")
+	require.Contains(t, msg, "Torrent B")
+	require.Contains(t, msg, "Torrent C")
+}

@@ -163,6 +163,7 @@ Open **Dir Scan > Settings**:
 | Size Tolerance (%) | Allows small size differences when matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
+| Skip searchees older than (days) | Excludes searchees where all files are older than the cutoff. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
@@ -178,6 +179,20 @@ This setting limits how many **top-level folders/files** Dir Scan will process i
 So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run (so already-final files won't be reprocessed). See [Incremental progress and resets](#incremental-progress-and-resets).
 
 This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
+
+### "Skip searchees older than (days)" explained
+
+This setting reduces tracker/API load by excluding stale content before search begins.
+
+- A searchee is excluded only if **all files in that searchee** are older than the cutoff.
+- Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
+- The timestamp used is filesystem **modified time (mtime)**, not release date or qBittorrent add time.
+- `0` disables age filtering.
+
+Example with `7` days:
+
+- `Movie.2024/` has one subtitle updated yesterday -> included.
+- `Old.Show.S01/` has all files older than 7 days -> skipped.
 
 ## Directories
 

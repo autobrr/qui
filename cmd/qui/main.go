@@ -643,67 +643,11 @@ func (app *Application) runServer() {
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
-		trackerDomain := ""
-		if torrent.Tracker != "" {
-			trackerDomain = syncManager.ExtractDomainFromURL(torrent.Tracker)
-		}
-		tags := []string{}
-		if strings.TrimSpace(torrent.Tags) != "" {
-			for tag := range strings.SplitSeq(torrent.Tags, ",") {
-				trimmed := strings.TrimSpace(tag)
-				if trimmed == "" {
-					continue
-				}
-				tags = append(tags, trimmed)
-			}
-		}
-		notificationService.Notify(ctx, notifications.Event{
-			Type:          notifications.EventTorrentCompleted,
-			InstanceID:    instanceID,
-			TorrentName:   torrent.Name,
-			TorrentHash:   torrent.Hash,
-			TrackerDomain: trackerDomain,
-			Category:      torrent.Category,
-			Tags:          tags,
-		})
+		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	})
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		trackerDomain := ""
-		if torrent.Tracker != "" {
-			trackerDomain = syncManager.ExtractDomainFromURL(torrent.Tracker)
-		}
-		tags := []string{}
-		if strings.TrimSpace(torrent.Tags) != "" {
-			for tag := range strings.SplitSeq(torrent.Tags, ",") {
-				trimmed := strings.TrimSpace(tag)
-				if trimmed == "" {
-					continue
-				}
-				tags = append(tags, trimmed)
-			}
-		}
-		notificationService.Notify(ctx, notifications.Event{
-			Type:                   notifications.EventTorrentAdded,
-			InstanceID:             instanceID,
-			TorrentName:            torrent.Name,
-			TorrentHash:            torrent.Hash,
-			TorrentAddedOn:         torrent.AddedOn,
-			TorrentETASeconds:      torrent.ETA,
-			TorrentState:           string(torrent.State),
-			TorrentProgress:        torrent.Progress,
-			TorrentRatio:           torrent.Ratio,
-			TorrentTotalSizeBytes:  torrent.TotalSize,
-			TorrentDownloadedBytes: torrent.Downloaded,
-			TorrentAmountLeftBytes: torrent.AmountLeft,
-			TorrentDlSpeedBps:      torrent.DlSpeed,
-			TorrentUpSpeedBps:      torrent.UpSpeed,
-			TorrentNumSeeds:        torrent.NumSeeds,
-			TorrentNumLeechs:       torrent.NumLeechs,
-			TrackerDomain:          trackerDomain,
-			Category:               torrent.Category,
-			Tags:                   tags,
-		})
+		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())

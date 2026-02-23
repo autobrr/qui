@@ -6982,6 +6982,9 @@ components:
         maxSearcheesPerRun:
           type: integer
           description: Maximum eligible searchees to process per scan run (0 = unlimited)
+        maxSearcheeAgeDays:
+          type: integer
+          description: Skip searchees older than this many days using file modification time (0 = disabled)
         allowPartial:
           type: boolean
         skipPieceBoundarySafetyCheck:
@@ -7007,6 +7010,7 @@ components:
         - sizeTolerancePercent
         - minPieceRatio
         - maxSearcheesPerRun
+        - maxSearcheeAgeDays
         - allowPartial
         - skipPieceBoundarySafetyCheck
         - startPaused
@@ -7029,6 +7033,8 @@ components:
           type: number
           format: double
         maxSearcheesPerRun:
+          type: integer
+        maxSearcheeAgeDays:
           type: integer
         allowPartial:
           type: boolean

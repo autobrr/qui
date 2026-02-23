@@ -2,6 +2,11 @@
 
 Repository guidelines for AI coding agents (Codex, Claude Code, etc.) working on qui.
 
+## Owner Collaboration Notes
+
+- Do not implement review-suggested or extra changes outside requested scope without explicit user approval first.
+- Treat other agent/Codex/CodeRabbit feedback as input to discuss, not automatic action.
+
 ## Project Structure & Module Organization
 
 The Go backend lives in `cmd/qui` (entrypoint) and `internal/` modules for configuration, qBittorrent, metrics, and API routing; shared helpers sit in `pkg/`. The React/Vite client is in `web/src` with static assets in `web/public`, and its production bundle must stay synced to `internal/web/dist`. Reference docs live under `docs/`, while Docker and compose files in the repository root support container workflows.

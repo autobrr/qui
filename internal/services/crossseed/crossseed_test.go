@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -2322,6 +2323,68 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 	}
 }
 
+func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{
+		ID:   1,
+		Name: "Test Instance",
+	}
+	store := &fakeInstanceStore{
+		instances: map[int]*models.Instance{
+			instance.ID: instance,
+		},
+	}
+
+	tests := []struct {
+		name              string
+		progress          float64
+		wantCanCrossSeed  bool
+		wantNotificationN int
+	}{
+		{
+			name:              "pending-only match does not notify",
+			progress:          0.5,
+			wantCanCrossSeed:  false,
+			wantNotificationN: 0,
+		},
+		{
+			name:              "complete match notifies once",
+			progress:          1.0,
+			wantCanCrossSeed:  true,
+			wantNotificationN: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notifier := &recordingNotifier{}
+			svc := &Service{
+				instanceStore:    store,
+				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{{Hash: "abc123", Name: "Notify.Test.2025.1080p.BluRay.x264-GRP", Progress: tt.progress}}, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				notifier:         notifier,
+			}
+
+			resp, err := svc.CheckWebhook(context.Background(), &WebhookCheckRequest{
+				InstanceIDs: []int{instance.ID},
+				TorrentName: "Notify.Test.2025.1080p.BluRay.x264-GRP",
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
+			assert.Equal(t, "download", resp.Recommendation)
+
+			events := notifier.Events()
+			assert.Len(t, events, tt.wantNotificationN)
+			if tt.wantNotificationN > 0 {
+				assert.Equal(t, notifications.EventCrossSeedWebhookSucceeded, events[0].Type)
+			}
+		})
+	}
+}
+
 func TestCheckWebhook_NoInstancesAvailable(t *testing.T) {
 	t.Parallel()
 
@@ -2531,6 +2594,20 @@ func TestFindCandidates_NonTVDoesNotMatchUnrelatedTorrents(t *testing.T) {
 
 type fakeInstanceStore struct {
 	instances map[int]*models.Instance
+}
+
+type recordingNotifier struct {
+	events []notifications.Event
+}
+
+func (r *recordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	r.events = append(r.events, event)
+}
+
+func (r *recordingNotifier) Events() []notifications.Event {
+	result := make([]notifications.Event, len(r.events))
+	copy(result, r.events)
+	return result
 }
 
 func (f *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
