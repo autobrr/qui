@@ -949,6 +949,12 @@ func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores ma
 				}
 				return s1 > s2
 			}
+		default:
+			log.Warn().Interface("config", config).Msg("Unknown sorting type")
+			// Fallback for unknown config.Type
+			if t1.AddedOn != t2.AddedOn {
+				return t1.AddedOn < t2.AddedOn
+			}
 		}
 	} else {
 		// Default sort: Oldest first (AddedOn ASC)
