@@ -5505,6 +5505,10 @@ func conditionEqual(a, b *models.RuleCondition) bool {
 		a.Regex != b.Regex || a.Negate != b.Negate {
 		return false
 	}
+	// GroupID comparison
+	if a.GroupID != b.GroupID {
+		return false
+	}
 	// Compare pointers
 	if (a.MinValue == nil) != (b.MinValue == nil) {
 		return false
