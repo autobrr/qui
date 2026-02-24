@@ -27,6 +27,7 @@ interface CompletionFormState {
   excludeCategories: string[]
   excludeTags: string[]
   indexerIds: number[]
+  bypassTorznabCache: boolean
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -36,6 +37,7 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   excludeCategories: [],
   excludeTags: [],
   indexerIds: [],
+  bypassTorznabCache: false,
 }
 
 function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefined): CompletionFormState {
@@ -47,6 +49,7 @@ function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefine
     excludeCategories: settings.excludeCategories ?? [],
     excludeTags: settings.excludeTags ?? [],
     indexerIds: settings.indexerIds ?? [],
+    bypassTorznabCache: settings.bypassTorznabCache ?? false,
   }
 }
 
@@ -58,6 +61,7 @@ function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedComple
     excludeCategories: form.excludeCategories,
     excludeTags: form.excludeTags,
     indexerIds: form.indexerIds,
+    bypassTorznabCache: form.bypassTorznabCache,
   }
 }
 
@@ -352,6 +356,20 @@ export function CompletionOverview() {
                             </p>
                           </div>
                         )}
+
+                        <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 p-3">
+                          <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">Bypass Torznab cache</Label>
+                            <p className="text-xs text-muted-foreground">
+                              When on, completion searches for this instance always hit indexers (no cached results). Default off.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={form.bypassTorznabCache}
+                            onCheckedChange={(checked) => handleFormChange(instance.id, "bypassTorznabCache", checked, form)}
+                            disabled={isSaving}
+                          />
+                        </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">

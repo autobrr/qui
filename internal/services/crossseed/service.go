@@ -1717,12 +1717,16 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				searchCtx := ctx
 				searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
+				cacheMode := ""
+				if completionSettings != nil && completionSettings.BypassTorznabCache {
+					cacheMode = jackett.CacheModeBypass
+				}
 				resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 					IndexerIDs:             allowedIndexerIDs,
 					FindIndividualEpisodes: settings.FindIndividualEpisodes,
 					// Completion search should prioritize Torznab for non-Gazelle sources.
 					SkipGazelle: !isGazelleSource,
-					CacheMode:              jackett.CacheModeBypass,
+					CacheMode:              cacheMode,
 				})
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
