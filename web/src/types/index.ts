@@ -96,6 +96,7 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeCategories: string[]
   excludeTags: string[]
   indexerIds: number[]
+  bypassTorznabCache: boolean
 }
 
 /**

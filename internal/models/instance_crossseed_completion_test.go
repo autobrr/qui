@@ -78,6 +78,7 @@ func TestInstanceCrossSeedCompletionStore_GetReturnsDefaults(t *testing.T) {
 
 	assert.Equal(t, 999, settings.InstanceID)
 	assert.False(t, settings.Enabled)
+	assert.False(t, settings.BypassTorznabCache)
 	assert.Empty(t, settings.Categories)
 	assert.Empty(t, settings.Tags)
 	assert.Empty(t, settings.ExcludeCategories)
