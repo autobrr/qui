@@ -2168,6 +2168,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeHashes := make([]string, 0)
 	recheckHashes := make([]string, 0)
 	reannounceHashes := make([]string, 0)
+	autoManageHashes := make([]string, 0)
 	uploadRuleByHash := make(map[string]ruleRef)
 	downloadRuleByHash := make(map[string]ruleRef)
 	shareRatioRuleByHash := make(map[string]ruleRef)
@@ -2176,6 +2177,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeRuleByHash := make(map[string]ruleRef)
 	recheckRuleByHash := make(map[string]ruleRef)
 	reannounceRuleByHash := make(map[string]ruleRef)
+	autoManageRuleByHash := make(map[string]ruleRef)
 	categoryRuleByHash := make(map[string]ruleRef)
 	moveRuleByHash := make(map[string]ruleRef)
 
@@ -2545,6 +2547,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			reannounceRuleByHash[hash] = state.reannounceRule
 		}
 
+		// Auto management
+		if state.shouldAutoManage {
+			autoManageHashes = append(autoManageHashes, hash)
+			autoManageRuleByHash[hash] = state.autoManageRule
+		}
+
 		// Tags
 		if len(state.tagActions) > 0 {
 			var toAdd, toRemove []string
@@ -2608,6 +2616,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			resumeHashes,
 			recheckHashes,
 			reannounceHashes,
+			autoManageHashes,
 			tagChanges,
 			categoryBatches,
 			moveBatches,
@@ -2931,6 +2940,52 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record reannounce activity")
 			} else if s.activityRuns != nil {
 				items := buildRunItemsFromHashes(reannouncedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Execute auto management actions
+	autoManagedCount := 0
+	autoManagedHashesSuccess := make([]string, 0)
+	if len(autoManageHashes) > 0 {
+		limited := limitHashBatch(autoManageHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.SetAutoTMM(ctx, instanceID, batch, true); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: auto management action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: enabled auto management for torrents")
+				autoManagedCount += len(batch)
+				autoManagedHashesSuccess = append(autoManagedHashesSuccess, batch...)
+			}
+		}
+	}
+
+	// Record aggregated auto management activity
+	if autoManagedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": autoManagedCount})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionAutoManaged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, autoManagedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionAutoManaged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(autoManagedHashesSuccess, autoManageRuleByHash),
+		)
+		summary.addTorrentSamples(collectTorrentNamesForHashes(autoManagedHashesSuccess, torrentByHash), 3)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record auto management activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(autoManagedHashesSuccess, torrentByHash, s.syncManager)
 				if len(items) > 0 {
 					s.activityRuns.Put(activityID, instanceID, items)
 				}
@@ -4878,6 +4933,7 @@ func (s *Service) recordDryRunActivities(
 	resumeHashes []string,
 	recheckHashes []string,
 	reannounceHashes []string,
+	autoManageHashes []string,
 	tagChanges map[string]*tagChange,
 	categoryBatches map[string][]string,
 	moveBatches map[string][]string,
@@ -4985,6 +5041,7 @@ func (s *Service) recordDryRunActivities(
 		{action: models.ActivityActionResumed, hashes: resumeHashes},
 		{action: models.ActivityActionRechecked, hashes: recheckHashes},
 		{action: models.ActivityActionReannounced, hashes: reannounceHashes},
+		{action: models.ActivityActionAutoManaged, hashes: autoManageHashes},
 	} {
 		if len(a.hashes) == 0 {
 			continue

@@ -105,10 +105,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -117,6 +117,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   resume: "Resume",
   recheck: "Force recheck",
   reannounce: "Force reannounce",
+  autoManagement: "Auto management",
   delete: "Delete",
   tag: "Tag",
   category: "Category",
@@ -139,6 +140,7 @@ const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
   resumed: "Resume",
   rechecked: "Recheck",
   reannounced: "Reannounce",
+  auto_managed: "Auto management",
   moved: "Move",
   external_program: "External program",
   dry_run_no_match: "No matches",
@@ -432,6 +434,7 @@ type FormState = {
   resumeEnabled: boolean
   recheckEnabled: boolean
   reannounceEnabled: boolean
+  autoManagementEnabled: boolean
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -493,6 +496,7 @@ const emptyFormState: FormState = {
   resumeEnabled: false,
   recheckEnabled: false,
   reannounceEnabled: false,
+  autoManagementEnabled: false,
   deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
@@ -537,6 +541,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.resumeEnabled) actions.push("resume")
   if (state.recheckEnabled) actions.push("recheck")
   if (state.reannounceEnabled) actions.push("reannounce")
+  if (state.autoManagementEnabled) actions.push("autoManagement")
   if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
@@ -899,6 +904,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let resumeEnabled = false
         let recheckEnabled = false
         let reannounceEnabled = false
+        let autoManagementEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
@@ -971,6 +977,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.resume?.condition
             ?? conditions.recheck?.condition
             ?? conditions.reannounce?.condition
+            ?? conditions.autoManagement?.condition
             ?? conditions.delete?.condition
             ?? conditions.tags?.[0]?.condition
             ?? conditions.tag?.condition
@@ -1012,6 +1019,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
           if (conditions.reannounce?.enabled) {
             reannounceEnabled = true
+          }
+          if (conditions.autoManagement?.enabled) {
+            autoManagementEnabled = true
           }
           if (conditions.delete?.enabled) {
             deleteEnabled = true
@@ -1070,6 +1080,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           resumeEnabled,
           recheckEnabled,
           reannounceEnabled,
+          autoManagementEnabled,
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -1317,6 +1328,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.autoManagementEnabled) {
+      conditions.autoManagement = {
+        enabled: true,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.deleteEnabled) {
       conditions.delete = {
         enabled: true,
@@ -1467,6 +1484,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.resumeEnabled,
     formState.recheckEnabled,
     formState.reannounceEnabled,
+    formState.autoManagementEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
@@ -2504,6 +2522,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             resumeEnabled: false,
                             recheckEnabled: false,
                             reannounceEnabled: false,
+                            autoManagementEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
@@ -2877,6 +2896,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             size="icon"
                             className="h-6 w-6"
                             onClick={() => setFormState(prev => ({ ...prev, reannounceEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {/* Auto management */}
+                    {formState.autoManagementEnabled && (
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Auto management</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, autoManagementEnabled: false }))}
                           >
                             <X className="h-3.5 w-3.5" />
                           </Button>

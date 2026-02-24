@@ -856,7 +856,8 @@ type ActionConditions struct {
 	Tags            []*TagAction           `json:"tags,omitempty"` // Preferred multi-tag actions
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
-	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
+	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty"`
+	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -895,6 +896,12 @@ type RecheckAction struct {
 
 // ReannounceAction configures force reannounce action with optional conditions.
 type ReannounceAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// AutoManagementAction configures automatic torrent management (ATM) with optional conditions.
+type AutoManagementAction struct {
 	Enabled   bool           `json:"enabled"`
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
@@ -995,7 +1002,8 @@ func (ac *ActionConditions) IsEmpty() bool {
 		len(ac.TagActions()) == 0 &&
 		ac.Category == nil &&
 		ac.Move == nil &&
-		ac.ExternalProgram == nil
+		ac.ExternalProgram == nil &&
+		ac.AutoManagement == nil
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.
