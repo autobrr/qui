@@ -262,6 +262,8 @@ export type ConditionField =
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
   | "IS_GROUPED"
+  | "EXISTS_ON_OTHER_INSTANCE"
+  | "SEEDING_ON_OTHER_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 

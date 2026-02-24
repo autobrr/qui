@@ -94,6 +94,8 @@ export const CONDITION_FIELDS = {
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
+  EXISTS_ON_OTHER_INSTANCE: { label: "Exists on Other Instance", type: "boolean" as const, description: "Torrent exists on at least one other configured instance (by hash)" },
+  SEEDING_ON_OTHER_INSTANCE: { label: "Seeding on Other Instance", type: "boolean" as const, description: "Torrent is seeding (100% complete) on at least one other instance" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
@@ -259,6 +261,10 @@ export const FIELD_GROUPS = [
   {
     label: "Tracker",
     fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+  },
+  {
+    label: "Cross-Instance",
+    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE"],
   },
   {
     label: "Mode",

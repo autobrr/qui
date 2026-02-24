@@ -110,8 +110,10 @@ const (
 	FieldSequentialDownload = models.FieldSequentialDownload
 	FieldSuperSeeding       = models.FieldSuperSeeding
 	FieldIsUnregistered     = models.FieldIsUnregistered
-	FieldHasMissingFiles    = models.FieldHasMissingFiles
-	FieldIsGrouped          = models.FieldIsGrouped
+	FieldHasMissingFiles        = models.FieldHasMissingFiles
+	FieldIsGrouped              = models.FieldIsGrouped
+	FieldExistsOnOtherInstance  = models.FieldExistsOnOtherInstance
+	FieldSeedingOnOtherInstance = models.FieldSeedingOnOtherInstance
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope

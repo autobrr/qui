@@ -89,6 +89,13 @@ type EvalContext struct {
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
 	NowUnix int64
 
+	// CrossInstanceHashSet contains hashes of torrents that exist on at least one other instance.
+	// Built from SyncManager cached data when rules use EXISTS_ON_OTHER_INSTANCE.
+	CrossInstanceHashSet map[string]struct{}
+	// CrossInstanceSeedingHashSet contains hashes of torrents that are actively seeding on at least one other instance.
+	// Built from SyncManager cached data when rules use SEEDING_ON_OTHER_INSTANCE.
+	CrossInstanceSeedingHashSet map[string]struct{}
+
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
@@ -541,6 +548,20 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			grouped = idx.SizeForHash(torrent.Hash) > 1
 		}
 		return compareBool(grouped, cond)
+
+	case FieldExistsOnOtherInstance:
+		exists := false
+		if ctx != nil && ctx.CrossInstanceHashSet != nil {
+			_, exists = ctx.CrossInstanceHashSet[torrent.Hash]
+		}
+		return compareBool(exists, cond)
+
+	case FieldSeedingOnOtherInstance:
+		seeding := false
+		if ctx != nil && ctx.CrossInstanceSeedingHashSet != nil {
+			_, seeding = ctx.CrossInstanceSeedingHashSet[torrent.Hash]
+		}
+		return compareBool(seeding, cond)
 
 	default:
 		return false

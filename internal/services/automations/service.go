@@ -1949,6 +1949,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 	}
 
+	// On-demand cross-instance lookup (only if rules use EXISTS_ON_OTHER_INSTANCE or SEEDING_ON_OTHER_INSTANCE)
+	needsExistsOnOther := rulesUseCondition(eligibleRules, FieldExistsOnOtherInstance)
+	needsSeedingOnOther := rulesUseCondition(eligibleRules, FieldSeedingOnOtherInstance)
+	if needsExistsOnOther || needsSeedingOnOther {
+		existsSet, seedingSet := s.buildCrossInstanceHashSets(ctx, instanceID, needsSeedingOnOther)
+		if needsExistsOnOther {
+			evalCtx.CrossInstanceHashSet = existsSet
+		}
+		if needsSeedingOnOther {
+			evalCtx.CrossInstanceSeedingHashSet = seedingSet
+		}
+	}
+
 	// Get free space on instance (only if rules use FREE_SPACE field)
 	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
@@ -4490,6 +4503,42 @@ func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
 		}
 	}
 	return false
+}
+
+// buildCrossInstanceHashSets builds sets of torrent hashes that exist (and optionally are seeding)
+// on other instances. Uses the SyncManager's in-memory cache for efficient lookups.
+func (s *Service) buildCrossInstanceHashSets(ctx context.Context, currentInstanceID int, needsSeeding bool) (existsSet, seedingSet map[string]struct{}) {
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("automations: failed to list instances for cross-instance lookup")
+		return nil, nil
+	}
+
+	existsSet = make(map[string]struct{})
+	if needsSeeding {
+		seedingSet = make(map[string]struct{})
+	}
+
+	for _, inst := range instances {
+		if inst.ID == currentInstanceID || !inst.IsActive {
+			continue
+		}
+
+		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", inst.ID).Msg("automations: skipping instance for cross-instance lookup")
+			continue
+		}
+
+		for _, view := range views {
+			existsSet[view.Hash] = struct{}{}
+			if needsSeeding && view.Progress >= 1.0 {
+				seedingSet[view.Hash] = struct{}{}
+			}
+		}
+	}
+
+	return existsSet, seedingSet
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks
