@@ -2064,6 +2064,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		pending,
 		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
@@ -2107,6 +2108,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		nil,
 		nil,
 		[]string{"abc123", "abc123"},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2259,6 +2261,7 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		true,
 	)
 
@@ -2309,6 +2312,7 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 		_ = s.recordDryRunActivities(
 			context.Background(),
 			1,
+			nil,
 			nil,
 			nil,
 			nil,
@@ -2418,6 +2422,7 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		nil,
 		nil,
 		nil,
+		nil,
 		map[string][]string{"/data/moved": {"a"}},
 		nil,
 		nil,
@@ -2449,6 +2454,7 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 	activities := s.recordDryRunActivities(
 		context.Background(),
 		1,
+		nil,
 		nil,
 		nil,
 		nil,
