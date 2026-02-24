@@ -33,9 +33,13 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 	client := &Client{instanceID: 7}
 
 	seen := make(chan qbt.Torrent, 1)
+	wrongID := make(chan int, 1)
 	client.SetTorrentCompletionHandler(func(_ context.Context, instanceID int, torrent qbt.Torrent) {
 		if instanceID != 7 {
-			t.Fatalf("unexpected instanceID: %d", instanceID)
+			select {
+			case wrongID <- instanceID:
+			default:
+			}
 		}
 		seen <- torrent
 	})
@@ -54,6 +58,7 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 	})
 
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+	requireNoIntEvent(t, wrongID)
 
 	// Post-startup: state normalizes; this must not look like a fresh completion.
 	client.handleCompletionUpdates(&qbt.MainData{
@@ -69,6 +74,7 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 	})
 
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+	requireNoIntEvent(t, wrongID)
 }
 
 func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
@@ -77,9 +83,13 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 	client := &Client{instanceID: 9}
 
 	seen := make(chan qbt.Torrent, 2)
+	wrongID := make(chan int, 1)
 	client.SetTorrentCompletionHandler(func(_ context.Context, instanceID int, torrent qbt.Torrent) {
 		if instanceID != 9 {
-			t.Fatalf("unexpected instanceID: %d", instanceID)
+			select {
+			case wrongID <- instanceID:
+			default:
+			}
 		}
 		seen <- torrent
 	})
@@ -97,6 +107,7 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 	})
 
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+	requireNoIntEvent(t, wrongID)
 
 	client.handleCompletionUpdates(&qbt.MainData{
 		Torrents: map[string]qbt.Torrent{
@@ -118,6 +129,7 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("expected a completion event")
 	}
+	requireNoIntEvent(t, wrongID)
 
 	// Another update should not re-fire.
 	client.handleCompletionUpdates(&qbt.MainData{
@@ -133,6 +145,7 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 	})
 
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+	requireNoIntEvent(t, wrongID)
 }
 
 func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, d time.Duration) {
@@ -147,5 +160,15 @@ func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, d time.Duration)
 			torrent.CompletionOn,
 		)
 	case <-time.After(d):
+	}
+}
+
+func requireNoIntEvent(t *testing.T, ch <-chan int) {
+	t.Helper()
+
+	select {
+	case got := <-ch:
+		t.Fatalf("unexpected instanceID reported from handler goroutine: %d", got)
+	default:
 	}
 }
