@@ -2102,6 +2102,33 @@ func TestProcessTorrents_SkipCheckSameRuleDebounce(t *testing.T) {
 	require.False(t, ok, "torrent should be skipped for the only matching rule")
 }
 
+func TestProcessTorrents_SkipCheckAllRulesSkippedEarlyOut(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "abc", Name: "test", Category: "tv"},
+	}
+
+	ruleA := &models.Automation{
+		ID: 1, Enabled: true, TrackerPattern: "*",
+		Conditions: &models.ActionConditions{SchemaVersion: "1", Pause: &models.PauseAction{Enabled: true}},
+	}
+	ruleB := &models.Automation{
+		ID: 2, Enabled: true, TrackerPattern: "*",
+		Conditions: &models.ActionConditions{SchemaVersion: "1", Recheck: &models.RecheckAction{Enabled: true}},
+	}
+
+	// skipCheck blocks ALL rules for "abc"
+	skipCheck := func(hash string, ruleID int) bool {
+		return hash == "abc"
+	}
+
+	states, rulesUsed := processTorrents(torrents, []*models.Automation{ruleA, ruleB}, nil, sm, skipCheck, nil)
+	_, ok := states["abc"]
+	require.False(t, ok, "torrent should be absent when all rules are in cooldown")
+	require.Empty(t, rulesUsed, "no rules should be used when all are skipped")
+}
+
 func TestProcessTorrents_RulesUsedAccuracy(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 

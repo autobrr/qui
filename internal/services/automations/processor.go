@@ -190,6 +190,20 @@ func processTorrents(
 			continue
 		}
 
+		// Skip torrent entirely if every matching rule is in cooldown
+		if skipCheck != nil {
+			allSkipped := true
+			for _, rule := range matchingRules {
+				if !skipCheck(torrent.Hash, rule.ID) {
+					allSkipped = false
+					break
+				}
+			}
+			if allSkipped {
+				continue
+			}
+		}
+
 		// Initialize state for this torrent
 		state := &torrentDesiredState{
 			hash:         torrent.Hash,
