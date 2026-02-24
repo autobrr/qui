@@ -88,7 +88,7 @@ type torrentDesiredState struct {
 	externalProgramID *int
 	programRuleID     int
 	programRuleName   string
-	matchedRuleIDs []int // rules that matched this torrent (for per-rule skipCheck stamps)
+	matchedRuleIDs    []int // rules that matched this torrent (for per-rule skipCheck stamps)
 }
 
 type ruleRef struct {

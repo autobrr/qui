@@ -2119,7 +2119,7 @@ func TestProcessTorrents_SkipCheckAllRulesSkippedEarlyOut(t *testing.T) {
 	}
 
 	// skipCheck blocks ALL rules for "abc"
-	skipCheck := func(hash string, ruleID int) bool {
+	skipCheck := func(hash string, _ int) bool {
 		return hash == "abc"
 	}
 
@@ -2146,7 +2146,7 @@ func TestProcessTorrents_RulesUsedAccuracy(t *testing.T) {
 	}
 
 	// skipCheck blocks ruleA but allows ruleB
-	skipCheck := func(hash string, ruleID int) bool {
+	skipCheck := func(_ string, ruleID int) bool {
 		return ruleID == 1
 	}
 
