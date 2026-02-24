@@ -455,6 +455,12 @@ type ruleKey struct {
 	ruleID     int
 }
 
+// appliedKey scopes skipCheck per (hash, ruleID) to prevent cross-rule starvation.
+type appliedKey struct {
+	hash   string
+	ruleID int
+}
+
 type shareKey struct {
 	ratio    float64
 	seed     int64
@@ -512,9 +518,9 @@ type Service struct {
 	releaseParser             *releases.Parser
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
-	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
-	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
-	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
+	lastApplied           map[int]map[appliedKey]time.Time // instanceID -> (hash, ruleID) -> timestamp
+	lastRuleRun           map[ruleKey]time.Time            // per-rule cadence tracking
+	lastFreeSpaceDeleteAt map[int]time.Time                // instanceID -> last FREE_SPACE delete timestamp
 	mu                    sync.RWMutex
 }
 
@@ -548,7 +554,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		externalProgramService:    externalProgramService,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
-		lastApplied:               make(map[int]map[string]time.Time),
+		lastApplied:               make(map[int]map[appliedKey]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
 	}
@@ -563,9 +569,9 @@ func (s *Service) cleanupStaleEntries() {
 	defer s.mu.Unlock()
 
 	for _, instMap := range s.lastApplied {
-		for hash, ts := range instMap {
+		for key, ts := range instMap {
 			if ts.Before(cutoff) {
-				delete(instMap, hash)
+				delete(instMap, key)
 			}
 		}
 	}
@@ -585,6 +591,23 @@ func (s *Service) cleanupStaleEntries() {
 
 	if s.activityRuns != nil {
 		s.activityRuns.Prune()
+	}
+}
+
+func (s *Service) ClearSkipCheckForRule(instanceID, ruleID int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	instMap, ok := s.lastApplied[instanceID]
+	if !ok {
+		return
+	}
+	for key := range instMap {
+		if key.ruleID == ruleID {
+			delete(instMap, key)
+		}
 	}
 }
 
@@ -676,6 +699,12 @@ func (s *Service) ApplyRuleDryRun(ctx context.Context, instanceID int, rule *mod
 	if err != nil {
 		return nil, err
 	}
+
+	// Reset skipCheck so next live run matches what dry run showed
+	if rule.ID > 0 {
+		s.ClearSkipCheckForRule(instanceID, rule.ID)
+	}
+
 	if len(activities) == 0 {
 		return s.recordDryRunNoMatch(ctx, instanceID), nil
 	}
@@ -1961,36 +1990,27 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if !ok || instLastApplied == nil {
 		s.mu.Lock()
 		if s.lastApplied[instanceID] == nil {
-			s.lastApplied[instanceID] = make(map[string]time.Time)
+			s.lastApplied[instanceID] = make(map[appliedKey]time.Time)
 		}
 		instLastApplied = s.lastApplied[instanceID]
 		s.mu.Unlock()
 	}
 
-	// Skip checker for recently processed torrents
-	skipCheck := func(hash string) bool {
-		s.mu.RLock()
-		ts, exists := instLastApplied[hash]
-		s.mu.RUnlock()
-		return exists && now.Sub(ts) < s.cfg.SkipWithin
-	}
-
-	// Compute which rules actually have matching torrents that won't be skipped.
-	// This must happen after skipCheck is defined so we only stamp lastRuleRun
-	// for rules that will actually process at least one torrent.
-	rulesUsed := make(map[int]struct{})
-	for _, torrent := range torrents {
-		if skipCheck(torrent.Hash) {
-			continue
-		}
-		for _, rule := range selectMatchingRules(torrent, eligibleRules, s.syncManager) {
-			rulesUsed[rule.ID] = struct{}{}
+	// Skip checker scoped per (hash, ruleID); nil for dry runs.
+	var skipCheck func(hash string, ruleID int) bool
+	if !dryRun {
+		skipCheck = func(hash string, ruleID int) bool {
+			key := appliedKey{hash: hash, ruleID: ruleID}
+			s.mu.RLock()
+			ts, exists := instLastApplied[key]
+			s.mu.RUnlock()
+			return exists && now.Sub(ts) < s.cfg.SkipWithin
 		}
 	}
 
 	// Process all torrents through all eligible rules
 	ruleStats := make(map[int]*ruleRunStats)
-	states := processTorrents(torrents, eligibleRules, evalCtx, s.syncManager, skipCheck, ruleStats)
+	states, rulesUsed := processTorrents(torrents, eligibleRules, evalCtx, s.syncManager, skipCheck, ruleStats)
 
 	if len(states) == 0 {
 		log.Debug().
@@ -2346,7 +2366,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				// Mark as processed
 				if !dryRun {
 					s.mu.Lock()
-					instLastApplied[h] = now
+					instLastApplied[appliedKey{hash: h, ruleID: state.deleteRuleID}] = now
 					s.mu.Unlock()
 				}
 			}
@@ -2488,7 +2508,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// Mark as processed
 		if !dryRun {
 			s.mu.Lock()
-			instLastApplied[hash] = now
+			for _, ruleID := range state.matchedRuleIDs {
+				instLastApplied[appliedKey{hash: hash, ruleID: ruleID}] = now
+			}
 			s.mu.Unlock()
 		}
 	}

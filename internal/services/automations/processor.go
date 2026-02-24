@@ -88,6 +88,7 @@ type torrentDesiredState struct {
 	externalProgramID *int
 	programRuleID     int
 	programRuleName   string
+	matchedRuleIDs []int // rules that matched this torrent (for per-rule skipCheck stamps)
 }
 
 type ruleRef struct {
@@ -168,11 +169,12 @@ func processTorrents(
 	rules []*models.Automation,
 	evalCtx *EvalContext,
 	sm *qbittorrent.SyncManager,
-	skipCheck func(hash string) bool,
+	skipCheck func(hash string, ruleID int) bool,
 	stats map[int]*ruleRunStats,
-) map[string]*torrentDesiredState {
+) (map[string]*torrentDesiredState, map[int]struct{}) {
 	states := make(map[string]*torrentDesiredState)
 	crossSeedIndex := buildCrossSeedIndex(torrents)
+	rulesUsed := make(map[int]struct{})
 
 	// Stable sort for deterministic pagination: oldest first, then by hash
 	sort.Slice(torrents, func(i, j int) bool {
@@ -183,11 +185,6 @@ func processTorrents(
 	})
 
 	for _, torrent := range torrents {
-		// Skip if recently processed
-		if skipCheck != nil && skipCheck(torrent.Hash) {
-			continue
-		}
-
 		matchingRules := selectMatchingRules(torrent, rules, sm)
 		if len(matchingRules) == 0 {
 			continue
@@ -207,10 +204,15 @@ func processTorrents(
 
 		// Process each matching rule in order
 		for _, rule := range matchingRules {
+			if skipCheck != nil && skipCheck(torrent.Hash, rule.ID) {
+				continue
+			}
 			if state.shouldDelete {
 				// Once delete is triggered, stop processing further rules
 				break
 			}
+			state.matchedRuleIDs = append(state.matchedRuleIDs, rule.ID)
+			rulesUsed[rule.ID] = struct{}{}
 			ruleStats := getOrCreateRuleStats(stats, rule)
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
@@ -229,7 +231,7 @@ func processTorrents(
 		evalCtx.PersistFreeSpaceSourceState()
 	}
 
-	return states
+	return states, rulesUsed
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.

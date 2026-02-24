@@ -175,6 +175,10 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.service != nil {
+		h.service.ClearSkipCheckForRule(instanceID, automation.ID)
+	}
+
 	RespondJSON(w, http.StatusOK, automation)
 }
 
