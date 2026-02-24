@@ -1728,6 +1728,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 					IndexerIDs:             allowedIndexerIDs,
 					FindIndividualEpisodes: settings.FindIndividualEpisodes,
+					CacheMode:              jackett.CacheModeBypass,
 				})
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
