@@ -1722,6 +1722,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 					FindIndividualEpisodes: settings.FindIndividualEpisodes,
 					// Completion search should prioritize Torznab for non-Gazelle sources.
 					SkipGazelle: !isGazelleSource,
+					CacheMode:              jackett.CacheModeBypass,
 				})
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
