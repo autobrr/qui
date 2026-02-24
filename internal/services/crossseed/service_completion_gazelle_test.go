@@ -211,10 +211,11 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	completionStore := models.NewInstanceCrossSeedCompletionStore(q)
 
 	src := qbt.Torrent{
-		Hash:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Name:     "test (2026) [FLAC]",
-		Tracker:  "https://flacsfor.me/announce",
-		Progress: 1.0,
+		Hash:         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Name:         "test (2026) [FLAC]",
+		Tracker:      "https://flacsfor.me/announce",
+		Progress:     1.0,
+		CompletionOn: 123,
 	}
 
 	syncMock := &completionGazelleSyncMock{torrent: src}
