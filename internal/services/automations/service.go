@@ -848,6 +848,29 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 	return evalCtx, instance
 }
 
+// setupPreviewCrossInstanceContext populates cross-instance hash sets in evalCtx
+// if the rule condition uses EXISTS_ON_OTHER_INSTANCE or SEEDING_ON_OTHER_INSTANCE.
+// This ensures live preview shows accurate counts for cross-instance conditions.
+func (s *Service) setupPreviewCrossInstanceContext(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
+	if evalCtx == nil || cond == nil {
+		return
+	}
+
+	needsExists := ConditionUsesField(cond, FieldExistsOnOtherInstance)
+	needsSeeding := ConditionUsesField(cond, FieldSeedingOnOtherInstance)
+	if !needsExists && !needsSeeding {
+		return
+	}
+
+	existsSet, seedingSet := s.buildCrossInstanceHashSets(ctx, instanceID, needsSeeding)
+	if needsExists {
+		evalCtx.CrossInstanceHashSet = existsSet
+	}
+	if needsSeeding {
+		evalCtx.CrossInstanceSeedingHashSet = seedingSet
+	}
+}
+
 func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
 	if evalCtx == nil || cond == nil || evalCtx.TrackerDisplayNameByDomain != nil {
 		return
@@ -919,6 +942,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
+		s.setupPreviewCrossInstanceContext(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1520,6 +1544,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
+		s.setupPreviewCrossInstanceContext(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
