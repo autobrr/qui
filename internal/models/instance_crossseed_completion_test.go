@@ -95,18 +95,20 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 
 	// Upsert new settings
 	saved, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID:        instanceID,
-		Enabled:           true,
-		Categories:        []string{"Movies", "TV"},
-		Tags:              []string{"scene", "internal"},
-		ExcludeCategories: []string{"XXX"},
-		ExcludeTags:       []string{"skip"},
-		IndexerIDs:        []int{3, 9},
+		InstanceID:         instanceID,
+		Enabled:            true,
+		Categories:         []string{"Movies", "TV"},
+		Tags:               []string{"scene", "internal"},
+		ExcludeCategories:  []string{"XXX"},
+		ExcludeTags:        []string{"skip"},
+		IndexerIDs:         []int{3, 9},
+		BypassTorznabCache: true,
 	})
 	require.NoError(t, err)
 
 	assert.Equal(t, instanceID, saved.InstanceID)
 	assert.True(t, saved.Enabled)
+	assert.True(t, saved.BypassTorznabCache)
 	assert.ElementsMatch(t, []string{"Movies", "TV"}, saved.Categories)
 	assert.ElementsMatch(t, []string{"scene", "internal"}, saved.Tags)
 	assert.ElementsMatch(t, []string{"XXX"}, saved.ExcludeCategories)
@@ -119,6 +121,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 
 	assert.Equal(t, saved.InstanceID, retrieved.InstanceID)
 	assert.Equal(t, saved.Enabled, retrieved.Enabled)
+	assert.Equal(t, saved.BypassTorznabCache, retrieved.BypassTorznabCache)
 	assert.ElementsMatch(t, saved.Categories, retrieved.Categories)
 	assert.ElementsMatch(t, saved.Tags, retrieved.Tags)
 	assert.ElementsMatch(t, saved.ExcludeCategories, retrieved.ExcludeCategories)
@@ -240,6 +243,7 @@ func TestDefaultInstanceCrossSeedCompletionSettings(t *testing.T) {
 
 	assert.Equal(t, 42, defaults.InstanceID)
 	assert.False(t, defaults.Enabled)
+	assert.False(t, defaults.BypassTorznabCache)
 	assert.Empty(t, defaults.Categories)
 	assert.Empty(t, defaults.Tags)
 	assert.Empty(t, defaults.ExcludeCategories)
