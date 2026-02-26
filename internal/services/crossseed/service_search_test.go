@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 type failingEnabledIndexerStore struct {
@@ -263,7 +263,7 @@ func TestResolveTorznabIndexerIDs_PreservesOPSREDForRSSAutomation(t *testing.T) 
 
 func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-resolve-exclude-gazelle.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-resolve-exclude-gazelle.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -298,7 +298,7 @@ func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t
 
 func TestResolveTorznabIndexerIDs_DoesNotExcludeOPSREDForPartialGazelleConfig(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-resolve-partial-gazelle.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-resolve-partial-gazelle.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -335,7 +335,7 @@ func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {
 	ctx := context.Background()
 
 	// Store is required for buildGazelleClientSet, but keys can be missing for this test.
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-client-cache.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-gazelle-client-cache.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -368,7 +368,7 @@ func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {
 
 func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-refresh.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -433,7 +433,7 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 
 func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-only.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-refresh-gazelle-only.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -495,7 +495,7 @@ func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 
 func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-already-seeded.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-refresh-gazelle-already-seeded.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -589,7 +589,7 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 
 func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-duplicates.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-duplicates.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -635,7 +635,7 @@ func TestPropagateDuplicateSearchHistory(t *testing.T) {
 
 func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-gazelle-only.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-gazelle-only.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -691,7 +691,7 @@ func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 
 func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-disable-torznab.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -728,7 +728,7 @@ func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 
 func TestStartSearchRun_DisableTorznabRequiresDecryptableGazelleKey(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-decryptable.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-disable-torznab-decryptable.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -772,7 +772,7 @@ func TestStartSearchRun_DisableTorznabRequiresDecryptableGazelleKey(t *testing.T
 
 func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-jackett-probe.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-disable-torznab-jackett-probe.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -829,7 +829,7 @@ func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
 
 func TestStartSearchRun_FallsBackToGazelleWhenJackettProbeFails(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-jackett-probe-fallback.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-jackett-probe-fallback.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -885,7 +885,7 @@ func TestStartSearchRun_FallsBackToGazelleWhenJackettProbeFails(t *testing.T) {
 
 func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-jackett-probe-failure.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-jackett-probe-failure.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -922,7 +922,7 @@ func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {
 
 func TestStartSearchRun_DisableTorznabUsesGazelleIntervalFloor(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-interval.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-disable-torznab-interval.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -980,7 +980,7 @@ func TestStartSearchRun_DisableTorznabUsesGazelleIntervalFloor(t *testing.T) {
 
 func TestStartSearchRun_TorznabKeepsConservativeIntervalFloor(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-torznab-interval.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-start-torznab-interval.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -1207,7 +1207,7 @@ func (*gazelleSkipHashSyncManager) CreateCategory(_ context.Context, _ int, _, _
 
 func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-no-backend.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-gazelle-no-backend.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -1251,7 +1251,7 @@ func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testin
 
 func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-disable-torznab-no-gazelle.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-gazelle-disable-torznab-no-gazelle.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -1295,7 +1295,7 @@ func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testin
 }
 func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-partial-disable-torznab.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-gazelle-partial-disable-torznab.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -1356,7 +1356,7 @@ func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testi
 
 func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-skip-hash.db")
+	dbPath := testdb.PathFromTemplate(t, "crossseed", "crossseed-gazelle-skip-hash.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {

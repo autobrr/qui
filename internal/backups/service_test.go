@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 // Helper function to insert a test instance with interned fields
@@ -43,7 +43,7 @@ func setupTestBackupDB(t *testing.T) *database.DB {
 	t.Helper()
 
 	// Create a unique database file for each test
-	dbPath := filepath.Join(t.TempDir(), "test.db")
+	dbPath := testdb.PathFromTemplate(t, "backups-service", "test.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err, "Failed to initialize test database with migrations")
 

@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 func newRequestWithParams(method, path string, params map[string]string) *http.Request {
@@ -58,7 +59,7 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 	t.Helper()
 
 	// Create test database
-	dbPath := filepath.Join(t.TempDir(), "test.db")
+	dbPath := testdb.PathFromTemplate(t, "api-handlers", "test.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 

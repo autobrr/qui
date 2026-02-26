@@ -8,7 +8,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,10 +15,11 @@ import (
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/testdb"
 )
 
 func TestValidateLicense_MissingStoredLicenseReturns404(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
+	dbPath := testdb.PathFromTemplate(t, "api-handlers", "licenses.db")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)
 	defer db.Close()
