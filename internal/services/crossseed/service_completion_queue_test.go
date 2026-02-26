@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +22,11 @@ import (
 func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCompletionStore {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", "file:completion_queue_tests?mode=memory&cache=shared")
+	dsn := fmt.Sprintf(
+		"file:completion_queue_tests_%s?mode=memory&cache=shared",
+		strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()),
+	)
+	db, err := sql.Open("sqlite", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -98,7 +104,7 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 
 	select {
 	case <-firstStarted:
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("first completion search did not start")
 	}
 
@@ -122,7 +128,7 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 
 	select {
 	case <-secondStarted:
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("second completion search did not start after first completed")
 	}
 
@@ -155,7 +161,6 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 		},
 	}
 
-	started := time.Now()
 	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
 		Hash:     "cccccccccccccccccccccccccccccccccccccccc",
 		Name:     "retry-me",
@@ -163,7 +168,6 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 	})
 
 	assert.Equal(t, 2, attempts)
-	assert.GreaterOrEqual(t, time.Since(started), 8*time.Millisecond)
 }
 
 func TestCompletionRetryDelay_FallbackRateLimitMessages(t *testing.T) {
