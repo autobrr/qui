@@ -183,27 +183,27 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	q := &testQuerier{DB: db}
 
 	_, err = q.ExecContext(context.Background(), `
-		CREATE TABLE instance_crossseed_completion_settings (
-			instance_id INTEGER PRIMARY KEY,
-			enabled INTEGER NOT NULL,
-			categories_json TEXT NOT NULL,
-			tags_json TEXT NOT NULL,
-			exclude_categories_json TEXT NOT NULL,
-			exclude_tags_json TEXT NOT NULL,
-			indexer_ids_json TEXT NOT NULL,
-			updated_at DATETIME NOT NULL
-		);
-	`)
+			CREATE TABLE instance_crossseed_completion_settings (
+				instance_id INTEGER PRIMARY KEY,
+				enabled INTEGER NOT NULL,
+				categories_json TEXT NOT NULL,
+				tags_json TEXT NOT NULL,
+				exclude_categories_json TEXT NOT NULL,
+				exclude_tags_json TEXT NOT NULL,
+				indexer_ids_json TEXT NOT NULL,
+				updated_at DATETIME NOT NULL
+			);
+		`)
 	if err != nil {
 		t.Fatalf("create completion settings table: %v", err)
 	}
 
 	_, err = q.ExecContext(context.Background(), `
-		INSERT INTO instance_crossseed_completion_settings (
-			instance_id, enabled, categories_json, tags_json,
-			exclude_categories_json, exclude_tags_json, indexer_ids_json, updated_at
-		) VALUES (1, 1, '[]', '[]', '[]', '[]', '[]', ?);
-	`, time.Now().UTC())
+			INSERT INTO instance_crossseed_completion_settings (
+				instance_id, enabled, categories_json, tags_json,
+				exclude_categories_json, exclude_tags_json, indexer_ids_json, updated_at
+			) VALUES (1, 1, '[]', '[]', '[]', '[]', '[]', ?);
+		`, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("insert completion settings: %v", err)
 	}
