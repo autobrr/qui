@@ -62,6 +62,12 @@ import { conditionGroupResources } from "./conditionGroupResources"
 import { categorySubmenuResources } from "./categorySubmenuResources"
 import { webSeedsTableResources } from "./webSeedsTableResources"
 import { crossSeedTableResources } from "./crossSeedTableResources"
+import {
+  es419Overrides,
+  frOverrides,
+  koOverrides,
+  type LocaleNamespaceOverrides
+} from "./localeOverridesResources"
 
 // Translation values are sentence-level UI copy, not word-by-word fragments.
 // Keep intent/context intact when adding new locales.
@@ -232,6 +238,9 @@ export const resources = {
           ja: "Japanese",
           ptBR: "Portuguese (Brazil)",
           de: "German",
+          es419: "Spanish (Latin America)",
+          fr: "French",
+          ko: "Korean",
         },
       },
       torrentsPage: {
@@ -1465,6 +1474,9 @@ export const resources = {
           ja: "日本語",
           ptBR: "Português (Brasil)",
           de: "Deutsch",
+          es419: "Español (Latinoamérica)",
+          fr: "Français",
+          ko: "한국어",
         },
       },
       torrentsPage: {
@@ -2698,6 +2710,9 @@ export const resources = {
           ja: "日本語",
           ptBR: "Português (Brasil)",
           de: "Deutsch",
+          es419: "Español (Latinoamérica)",
+          fr: "Français",
+          ko: "한국어",
         },
       },
       torrentsPage: {
@@ -3931,6 +3946,9 @@ export const resources = {
           ja: "日本語",
           ptBR: "Português (Brasil)",
           de: "Deutsch",
+          es419: "Español (Latinoamérica)",
+          fr: "Français",
+          ko: "한국어",
         },
       },
       torrentsPage: {
@@ -5164,6 +5182,9 @@ export const resources = {
           ja: "日本語",
           ptBR: "Português (Brasil)",
           de: "Deutsch",
+          es419: "Español (Latinoamérica)",
+          fr: "Français",
+          ko: "한국어",
         },
       },
       torrentsPage: {
@@ -6232,3 +6253,57 @@ export const resources = {
     },
   },
 } as const
+
+interface LocaleNamespaceBundle {
+  common: Record<string, unknown>
+  auth: Record<string, unknown>
+  footer: Record<string, unknown>
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function cloneDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneDeep(item)) as T
+  }
+  if (isPlainObject(value)) {
+    const copy: Record<string, unknown> = {}
+    for (const [key, nestedValue] of Object.entries(value)) {
+      copy[key] = cloneDeep(nestedValue)
+    }
+    return copy as T
+  }
+  return value
+}
+
+function mergeDeep(
+  base: Record<string, unknown>,
+  overrides: Record<string, unknown>
+): Record<string, unknown> {
+  const result = cloneDeep(base)
+  for (const [key, value] of Object.entries(overrides)) {
+    const existing = result[key]
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      result[key] = mergeDeep(existing, value)
+    } else {
+      result[key] = cloneDeep(value)
+    }
+  }
+  return result
+}
+
+function buildLocaleFromEnglish(overrides: LocaleNamespaceOverrides): LocaleNamespaceBundle {
+  const english = resources.en as unknown as LocaleNamespaceBundle
+  return {
+    common: mergeDeep(english.common, overrides.common ?? {}),
+    auth: mergeDeep(english.auth, overrides.auth ?? {}),
+    footer: mergeDeep(english.footer, overrides.footer ?? {}),
+  }
+}
+
+const mutableResources = resources as unknown as Record<string, LocaleNamespaceBundle>
+mutableResources["es-419"] = buildLocaleFromEnglish(es419Overrides)
+mutableResources.fr = buildLocaleFromEnglish(frOverrides)
+mutableResources.ko = buildLocaleFromEnglish(koOverrides)
