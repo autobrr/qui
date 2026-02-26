@@ -1393,8 +1393,8 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	if torrent.Progress < 1.0 || torrent.Hash == "" {
-		// Safety check – the qbittorrent completion hook should only fire for 100% torrents.
+	if torrent.CompletionOn <= 0 || torrent.Hash == "" {
+		// Safety check – the qbittorrent completion hook should only fire for completed torrents.
 		return
 	}
 
