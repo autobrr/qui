@@ -3,6 +3,7 @@ package crossseed
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -163,4 +164,57 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 
 	assert.Equal(t, 2, attempts)
 	assert.GreaterOrEqual(t, time.Since(started), 8*time.Millisecond)
+}
+
+func TestCompletionRetryDelay_FallbackRateLimitMessages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "rate-limited wording from jackett cooldown path",
+			err:  errors.New("all indexers are currently rate-limited. 2 indexer(s) in cooldown"),
+			want: true,
+		},
+		{
+			name: "cooldown wording",
+			err:  errors.New("skipping request due to cooldown"),
+			want: true,
+		},
+		{
+			name: "prowlarr query limit wording",
+			err:  errors.New("user configurable indexer query limit of 10 in last 1 hour(s) reached"),
+			want: true,
+		},
+		{
+			name: "prowlarr grab limit wording",
+			err:  errors.New("user configurable indexer grab limit of 10 in last 1 hour(s) reached"),
+			want: true,
+		},
+		{
+			name: "torznab request limit wording",
+			err:  errors.New("Request limit reached"),
+			want: true,
+		},
+		{
+			name: "non rate limit error",
+			err:  errors.New("network timeout"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			delay, retry := completionRetryDelay(tt.err)
+			assert.Equal(t, tt.want, retry)
+			if tt.want {
+				assert.Equal(t, defaultCompletionRetryDelay, delay)
+			} else {
+				assert.Zero(t, delay)
+			}
+		})
+	}
 }

@@ -241,7 +241,17 @@ const (
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
 
-var completionRateLimitTokens = []string{"429", "rate limit", "too many requests"}
+var completionRateLimitTokens = []string{
+	"429",
+	"rate limit",
+	"rate-limited",
+	"too many requests",
+	"cooldown",
+	"request limit reached",
+	"query limit",
+	"grab limit",
+	"disabled till",
+}
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(indexerCount)
