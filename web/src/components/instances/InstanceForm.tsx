@@ -13,6 +13,7 @@ import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface InstanceFormProps {
@@ -24,6 +25,8 @@ interface InstanceFormProps {
 }
 
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   const [authBypass, setAuthBypass] = useState(instance?.username === "")
@@ -66,28 +69,32 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
     if (instance) {
       updateInstance({ id: instance.id, data: submitData }, {
         onSuccess: () => {
-          toast.success("Instance Updated", {
-            description: "Instance updated successfully. Connection testing in background...",
+          toast.success(tr("instanceForm.toasts.updatedTitle"), {
+            description: tr("instanceForm.toasts.updatedDescription"),
           })
           onSuccess()
         },
         onError: (error) => {
-          toast.error("Update Failed", {
-            description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to update instance",
+          toast.error(tr("instanceForm.toasts.updateFailedTitle"), {
+            description: error instanceof Error
+              ? formatErrorMessage(error.message)
+              : tr("instanceForm.toasts.updateFailedDescription"),
           })
         },
       })
     } else {
       createInstance(submitData, {
         onSuccess: () => {
-          toast.success("Instance Created", {
-            description: "Instance created successfully. Connection testing in background...",
+          toast.success(tr("instanceForm.toasts.createdTitle"), {
+            description: tr("instanceForm.toasts.createdDescription"),
           })
           onSuccess()
         },
         onError: (error) => {
-          toast.error("Create Failed", {
-            description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to create instance",
+          toast.error(tr("instanceForm.toasts.createFailedTitle"), {
+            description: error instanceof Error
+              ? formatErrorMessage(error.message)
+              : tr("instanceForm.toasts.createFailedDescription"),
           })
         },
       })
@@ -125,18 +132,18 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           name="name"
           validators={{
             onChange: ({ value }) =>
-              !value ? "Instance name is required" : undefined,
+              !value ? tr("instanceForm.validation.nameRequired") : undefined,
           }}
         >
           {(field) => (
             <div className="space-y-2">
-              <Label htmlFor={field.name}>Instance Name</Label>
+              <Label htmlFor={field.name}>{tr("instanceForm.fields.instanceName")}</Label>
               <Input
                 id={field.name}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="e.g., Main Server or Home qBittorrent"
+                placeholder={tr("instanceForm.placeholders.instanceName")}
                 data-1p-ignore
                 autoComplete="off"
               />
@@ -158,7 +165,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         >
           {(field) => (
             <div className="space-y-2">
-              <Label htmlFor={field.name}>URL</Label>
+              <Label htmlFor={field.name}>{tr("instanceForm.fields.url")}</Label>
               <Input
                 id={field.name}
                 value={field.state.value}
@@ -170,7 +177,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   }
                 }}
                 onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="http://localhost:8080 or 192.168.1.100:8080"
+                placeholder={tr("instanceForm.placeholders.url")}
               />
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
                 <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -183,9 +190,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           {(field) => (
             <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
-                <Label htmlFor="tls-skip-verify">Skip TLS Certificate Verification</Label>
+                <Label htmlFor="tls-skip-verify">{tr("instanceForm.fields.skipTlsVerification")}</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
-                  Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.
+                  {tr("instanceForm.fields.skipTlsVerificationDescription")}
                 </p>
               </div>
               <Switch
@@ -201,9 +208,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           {(field) => (
             <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
-                <Label htmlFor="local-filesystem-access">Local Filesystem Access</Label>
+                <Label htmlFor="local-filesystem-access">{tr("instanceForm.fields.localFilesystemAccess")}</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
-                  Enable if qui can access this instance's download paths (required for hardlink detection in automations).
+                  {tr("instanceForm.fields.localFilesystemAccessDescription")}
                 </p>
               </div>
               <Switch
@@ -218,9 +225,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="auth-bypass-toggle">Authentication Bypass</Label>
+              <Label htmlFor="auth-bypass-toggle">{tr("instanceForm.fields.authenticationBypass")}</Label>
               <p className="text-sm text-muted-foreground pr-2">
-                Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs
+                {tr("instanceForm.fields.authenticationBypassDescription")}
               </p>
             </div>
             <Switch
@@ -236,13 +243,13 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
             <form.Field name="username">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Username</Label>
+                  <Label htmlFor={field.name}>{tr("instanceForm.fields.username")}</Label>
                   <Input
                     id={field.name}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="qBittorrent username (usually admin)"
+                    placeholder={tr("instanceForm.placeholders.username")}
                     data-1p-ignore
                     autoComplete="off"
                   />
@@ -255,14 +262,16 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
             >
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Password</Label>
+                  <Label htmlFor={field.name}>{tr("instanceForm.fields.password")}</Label>
                   <Input
                     id={field.name}
                     type="password"
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder={instance ? "Leave empty to keep current password" : "qBittorrent password"}
+                    placeholder={instance
+                      ? tr("instanceForm.placeholders.passwordKeepCurrent")
+                      : tr("instanceForm.placeholders.password")}
                     data-1p-ignore
                     autoComplete="off"
                   />
@@ -278,9 +287,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="basic-auth-toggle">HTTP Basic Authentication</Label>
+              <Label htmlFor="basic-auth-toggle">{tr("instanceForm.fields.httpBasicAuthentication")}</Label>
               <p className="text-sm text-muted-foreground">
-                Enable if your qBittorrent is behind a reverse proxy with Basic Auth
+                {tr("instanceForm.fields.httpBasicAuthenticationDescription")}
               </p>
             </div>
             <Switch
@@ -295,13 +304,13 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
               <form.Field name="basicUsername">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Basic Auth Username</Label>
+                    <Label htmlFor={field.name}>{tr("instanceForm.fields.basicAuthUsername")}</Label>
                     <Input
                       id={field.name}
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Basic auth username"
+                      placeholder={tr("instanceForm.placeholders.basicAuthUsername")}
                       data-1p-ignore
                       autoComplete="off"
                     />
@@ -313,12 +322,14 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                 name="basicPassword"
                 validators={{
                   onChange: ({ value }) =>
-                    showBasicAuth && value === "" ? "Basic auth password is required when basic auth is enabled" : undefined,
+                    showBasicAuth && value === ""
+                      ? tr("instanceForm.validation.basicAuthPasswordRequired")
+                      : undefined,
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Basic Auth Password</Label>
+                    <Label htmlFor={field.name}>{tr("instanceForm.fields.basicAuthPassword")}</Label>
                     <Input
                       id={field.name}
                       type="password"
@@ -331,7 +342,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                         }
                       }}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter basic auth password (required)"
+                      placeholder={tr("instanceForm.placeholders.basicAuthPassword")}
                       data-1p-ignore
                       autoComplete="off"
                     />
@@ -355,7 +366,11 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   type="submit"
                   disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
                 >
-                  {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
+                  {(isCreating || isUpdating)
+                    ? tr("instanceForm.actions.saving")
+                    : instance
+                      ? tr("instanceForm.actions.updateInstance")
+                      : tr("instanceForm.actions.addInstance")}
                 </Button>
               )}
             </form.Subscribe>
@@ -365,7 +380,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
               variant="outline"
               onClick={onCancel}
             >
-              Cancel
+              {tr("instanceForm.actions.cancel")}
             </Button>
           </div>
         )}

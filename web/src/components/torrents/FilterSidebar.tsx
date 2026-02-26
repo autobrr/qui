@@ -82,6 +82,7 @@ import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
 import { useMutation } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface FilterBadgeProps {
@@ -154,24 +155,29 @@ const arraysEqual = (a?: string[], b?: string[]) => {
 }
 
 
+function useCommonTr() {
+  const { t } = useTranslation("common")
+  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+}
+
 // Define torrent states based on qBittorrent
-const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
-  { value: "downloading", label: "Downloading", icon: Download },
-  { value: "uploading", label: "Seeding", icon: Upload },
-  { value: "completed", label: "Completed", icon: CheckCircle2 },
-  { value: "stopped", label: "Stopped", icon: StopCircle },
-  { value: "active", label: "Active", icon: PlayCircle },
-  { value: "inactive", label: "Inactive", icon: StopCircle },
-  { value: "running", label: "Running", icon: PlayCircle },
-  { value: "stalled", label: "Stalled", icon: AlertCircle },
-  { value: "stalled_uploading", label: "Stalled Up", icon: AlertCircle },
-  { value: "stalled_downloading", label: "Stalled Down", icon: AlertCircle },
-  { value: "errored", label: "Error", icon: XCircle },
-  { value: "checking", label: "Checking", icon: RotateCw },
-  { value: "moving", label: "Moving", icon: MoveRight },
-  { value: "unregistered", label: "Unregistered", icon: XCircle },
-  { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
-  { value: "cross-seeds", label: "Cross Seeds", icon: GitBranch },
+const TORRENT_STATES: Array<{ value: string; labelKey: string; icon: LucideIcon }> = [
+  { value: "downloading", labelKey: "downloading", icon: Download },
+  { value: "uploading", labelKey: "uploading", icon: Upload },
+  { value: "completed", labelKey: "completed", icon: CheckCircle2 },
+  { value: "stopped", labelKey: "stopped", icon: StopCircle },
+  { value: "active", labelKey: "active", icon: PlayCircle },
+  { value: "inactive", labelKey: "inactive", icon: StopCircle },
+  { value: "running", labelKey: "running", icon: PlayCircle },
+  { value: "stalled", labelKey: "stalled", icon: AlertCircle },
+  { value: "stalled_uploading", labelKey: "stalledUploading", icon: AlertCircle },
+  { value: "stalled_downloading", labelKey: "stalledDownloading", icon: AlertCircle },
+  { value: "errored", labelKey: "errored", icon: XCircle },
+  { value: "checking", labelKey: "checking", icon: RotateCw },
+  { value: "moving", labelKey: "moving", icon: MoveRight },
+  { value: "unregistered", labelKey: "unregistered", icon: XCircle },
+  { value: "tracker_down", labelKey: "trackerDown", icon: AlertCircle },
+  { value: "cross-seeds", labelKey: "crossSeeds", icon: GitBranch },
 ]
 
 
@@ -191,6 +197,7 @@ const FilterSidebarComponent = ({
   isLoading = false,
   isMobile = false,
 }: FilterSidebarProps) => {
+  const tr = useCommonTr()
   const isReadOnly = readOnly || instanceId <= 0
   const isConcreteInstanceScope = instanceId > 0
   const { instances } = useInstances()
@@ -207,17 +214,19 @@ const FilterSidebarComponent = ({
   )
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
-  const supportsSubcategories = isConcreteInstanceScope
-    ? (capabilities?.supportsSubcategories ?? false)
-    : Boolean(useSubcategories)
+  let supportsSubcategories = Boolean(useSubcategories)
+  if (isConcreteInstanceScope) {
+    supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  }
   const { preferences } = useInstancePreferences(
     instanceId,
     { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = isConcreteInstanceScope
-    ? Boolean(supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false))
-    : Boolean(useSubcategories)
+  let subcategoriesEnabled = Boolean(useSubcategories)
+  if (isConcreteInstanceScope) {
+    subcategoriesEnabled = Boolean(supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false))
+  }
 
   // View mode syncs with the torrent list (table on desktop, cards on mobile).
   // Desktop supports all modes including "dense" (compact table rows).
@@ -394,11 +403,11 @@ const FilterSidebarComponent = ({
       }
     } catch (error) {
       console.error("Failed to fetch tracker URLs:", error)
-      toast.error("Failed to fetch tracker URLs")
+      toast.error(tr("filterSidebar.toasts.fetchTrackerUrlsFailed"))
     } finally {
       setLoadingTrackerURLs(false)
     }
-  }, [instanceId, supportsTrackerHealth])
+  }, [instanceId, supportsTrackerHealth, tr])
 
   // Mutation for editing trackers
   const editTrackersMutation = useMutation({
@@ -424,12 +433,12 @@ const FilterSidebarComponent = ({
       })
     },
     onSuccess: () => {
-      toast.success("Updated tracker URL across all affected torrents")
+      toast.success(tr("filterSidebar.toasts.trackerUrlUpdated"))
       setShowEditTrackerDialog(false)
       setTrackerFullURLs([])
     },
     onError: (error: Error) => {
-      toast.error("Failed to update tracker", {
+      toast.error(tr("filterSidebar.toasts.trackerUpdateFailed"), {
         description: error.message,
       })
     },
@@ -441,7 +450,7 @@ const FilterSidebarComponent = ({
     if (httpUrls.length === 0) return
 
     if (!trackerToEdit) {
-      toast.error("No tracker selected for conversion")
+      toast.error(tr("filterSidebar.toasts.noTrackerSelected"))
       return
     }
 
@@ -520,16 +529,24 @@ const FilterSidebarComponent = ({
     setIsConvertingScheme(false)
 
     if (successCount > 0) {
-      toast.success(`Converted ${successCount} tracker URL${successCount > 1 ? "s" : ""} to HTTPS`)
+      let convertedMessage = tr("filterSidebar.toasts.convertedSingle", { count: successCount })
+      if (successCount > 1) {
+        convertedMessage = tr("filterSidebar.toasts.convertedPlural", { count: successCount })
+      }
+      toast.success(convertedMessage)
       // Refresh the tracker URLs to show updated state
       await fetchTrackerURLs(trackerToEdit)
     }
     if (failCount > 0) {
-      toast.error(`Failed to convert ${failCount} URL${failCount > 1 ? "s" : ""}`, {
+      let failedConvertMessage = tr("filterSidebar.toasts.failedConvertSingle", { count: failCount })
+      if (failCount > 1) {
+        failedConvertMessage = tr("filterSidebar.toasts.failedConvertPlural", { count: failCount })
+      }
+      toast.error(failedConvertMessage, {
         description: firstError ?? undefined,
       })
     }
-  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs])
+  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs, tr])
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -1598,6 +1615,8 @@ const FilterSidebarComponent = ({
     ).length
   }, [categoryPartition.empty, debouncedCategorySearch, showHiddenCategories])
 
+  const categoryNoResultsMessage = !showHiddenCategories && hiddenCategorySearchMatches > 0 ? tr("filterSidebar.categories.allMatchingEmpty") : tr("filterSidebar.categories.noMatch", { query: debouncedCategorySearch })
+
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
     if (!debouncedTagSearch) {
@@ -1620,6 +1639,8 @@ const FilterSidebarComponent = ({
       tag.toLowerCase().includes(searchLower)
     ).length
   }, [debouncedTagSearch, showHiddenTags, tagPartition.empty])
+
+  const tagNoResultsMessage = !showHiddenTags && hiddenTagSearchMatches > 0 ? tr("filterSidebar.tags.allMatchingEmpty") : tr("filterSidebar.tags.noMatch", { query: debouncedTagSearch })
 
   // Filtered trackers for performance - now uses processedTrackers with customizations
   const filteredProcessedTrackers = useMemo(() => {
@@ -1647,6 +1668,15 @@ const FilterSidebarComponent = ({
   const filterItemClass = viewMode === "dense" ? "px-1.5 py-0.5" : "px-2 py-1.5"
   const filterRowClass = "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
   const filterRowWithIconClass = "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2"
+  let mobileViewModeDescription = tr("filterSidebar.viewMode.description.ultraCompact")
+  let mobileViewModeButtonLabel = tr("filterSidebar.viewMode.button.ultra")
+  if (viewMode === "normal") {
+    mobileViewModeDescription = tr("filterSidebar.viewMode.description.normal")
+    mobileViewModeButtonLabel = tr("filterSidebar.viewMode.button.normal")
+  } else if (viewMode === "compact") {
+    mobileViewModeDescription = tr("filterSidebar.viewMode.description.compact")
+    mobileViewModeButtonLabel = tr("filterSidebar.viewMode.button.compact")
+  }
 
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
@@ -1829,7 +1859,7 @@ const FilterSidebarComponent = ({
   if (isConcreteInstanceScope && !isInstanceActive) {
     return (
       <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
-        This instance is disabled. Enable it from Settings → Instances to use filters.
+        {tr("filterSidebar.instanceDisabled")}
       </div>
     )
   }
@@ -1848,23 +1878,23 @@ const FilterSidebarComponent = ({
         <div className={viewMode === "dense" ? "px-3 py-2" : "p-4"}>
           <div className={cn("flex items-center justify-between", viewMode === "dense" ? "mb-2" : "mb-4")}>
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-semibold">Filters</h3>
+              <h3 className="font-semibold">{tr("filterSidebar.filtersTitle")}</h3>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground"
-                    aria-label="Filter selection tips"
+                    aria-label={tr("filterSidebar.tips.ariaLabel")}
                   >
                     <Info className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-[220px]">
-                  Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.
+                  {tr("filterSidebar.tips.content")}
                 </TooltipContent>
               </Tooltip>
               {(isLoading || isStaleData) && (
-                <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
+                <span className="text-xs text-muted-foreground animate-pulse">{tr("filterSidebar.loading")}</span>
               )}
             </div>
             {hasActiveFilters && (
@@ -1872,7 +1902,7 @@ const FilterSidebarComponent = ({
                 onClick={clearFilters}
                 className="text-xs text-muted-foreground hover:text-foreground shrink-0"
               >
-                Clear all
+                {tr("filterSidebar.clearAll")}
               </button>
             )}
           </div>
@@ -1881,16 +1911,16 @@ const FilterSidebarComponent = ({
           {isMobile && (
             <div className="flex items-center justify-between p-3 mb-4 bg-muted/20 rounded-lg">
               <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium">View Mode</span>
+                <span className="text-sm font-medium">{tr("filterSidebar.viewMode.title")}</span>
                 <span className="text-xs text-muted-foreground">
-                  {viewMode === "normal" ? "Full torrent cards" : viewMode === "compact" ? "Compact cards" : "Ultra compact"}
+                  {mobileViewModeDescription}
                 </span>
               </div>
               <button
                 onClick={cycleViewMode}
                 className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted"
               >
-                {viewMode === "normal" ? "Normal" : viewMode === "compact" ? "Compact" : "Ultra"}
+                {mobileViewModeButtonLabel}
               </button>
             </div>
           )}
@@ -1908,7 +1938,7 @@ const FilterSidebarComponent = ({
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-4 w-4" />
-                      <span className="text-sm font-medium">Custom Filter</span>
+                      <span className="text-sm font-medium">{tr("filterSidebar.customFilter.title")}</span>
                     </div>
                     <FilterBadge
                       count={1}
@@ -1921,7 +1951,7 @@ const FilterSidebarComponent = ({
                     {selectedFilters.expr}
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
-                    Active custom expression filter (e.g., cross-seed results)
+                    {tr("filterSidebar.customFilter.activeExpression")}
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -1931,7 +1961,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="status" className="border rounded-lg">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Status</span>
+                  <span className="text-sm font-medium">{tr("filterSidebar.sections.status")}</span>
                   {selectedFilters.status.length + selectedFilters.excludeStatus.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.status.length + selectedFilters.excludeStatus.length}
@@ -1951,12 +1981,12 @@ const FilterSidebarComponent = ({
                       {showHiddenStatuses ? (
                         <>
                           <ListChevronsDownUp className="h-3.5 w-3.5" />
-                          <span>Hide empty</span>
+                          <span>{tr("filterSidebar.actions.hideEmpty")}</span>
                         </>
                       ) : (
                         <>
                           <ListChevronsUpDown className="h-3.5 w-3.5" />
-                          <span>Show empty</span>
+                          <span>{tr("filterSidebar.actions.showEmpty")}</span>
                         </>
                       )}
                     </button>
@@ -1964,7 +1994,7 @@ const FilterSidebarComponent = ({
 
                   {statusOptionsForDisplay.length === 0 && hiddenStatusCount > 0 && !showHiddenStatuses && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      All statuses are empty. Click above to show them.
+                      {tr("filterSidebar.status.allEmpty")}
                     </div>
                   )}
 
@@ -1998,7 +2028,7 @@ const FilterSidebarComponent = ({
                           )}
                         >
                           <state.icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{state.label}</span>
+                          <span className="truncate">{tr(`filterSidebar.stateLabels.${state.labelKey}`)}</span>
                         </span>
                         <span
                           className={cn(
@@ -2018,7 +2048,7 @@ const FilterSidebarComponent = ({
                             {statusItem}
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-[250px]">
-                            Cross-seed filter is active. Uncheck to clear the filter.
+                            {tr("filterSidebar.status.crossSeedHelp")}
                           </TooltipContent>
                         </Tooltip>
                       )
@@ -2034,7 +2064,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="categories" className="border rounded-lg">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Categories</span>
+                  <span className="text-sm font-medium">{tr("filterSidebar.sections.categories")}</span>
                   {selectedFilters.categories.length + selectedFilters.excludeCategories.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.categories.length + selectedFilters.excludeCategories.length}
@@ -2050,7 +2080,7 @@ const FilterSidebarComponent = ({
                     <button
                       className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
                       disabled={isReadOnly}
-                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      title={isReadOnly ? tr("filterSidebar.readOnlyUnavailable") : undefined}
                       onClick={() => {
                         if (isReadOnly) {
                           return
@@ -2060,7 +2090,7 @@ const FilterSidebarComponent = ({
                       }}
                     >
                       <Plus className="h-3 w-3" />
-                      <span>Add category</span>
+                      <span>{tr("filterSidebar.categories.add")}</span>
                     </button>
                     {hiddenCategoryCount > 0 && (
                       <>
@@ -2073,12 +2103,12 @@ const FilterSidebarComponent = ({
                           {showHiddenCategories ? (
                             <>
                               <ListChevronsDownUp className="h-3.5 w-3.5" />
-                              <span>Hide empty</span>
+                              <span>{tr("filterSidebar.actions.hideEmpty")}</span>
                             </>
                           ) : (
                             <>
                               <ListChevronsUpDown className="h-3.5 w-3.5" />
-                              <span>Show empty</span>
+                              <span>{tr("filterSidebar.actions.showEmpty")}</span>
                             </>
                           )}
                         </button>
@@ -2089,7 +2119,7 @@ const FilterSidebarComponent = ({
                   {/* Search input for categories */}
                   <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
-                      placeholder="Search categories..."
+                      placeholder={tr("filterSidebar.categories.searchPlaceholder")}
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
                       onClear={() => setCategorySearch("")}
@@ -2120,7 +2150,7 @@ const FilterSidebarComponent = ({
                           uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
-                        Uncategorized
+                        {tr("filterSidebar.categories.uncategorized")}
                       </span>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2145,28 +2175,28 @@ const FilterSidebarComponent = ({
                   {/* Loading message for categories */}
                   {!hasReceivedCategoriesData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading categories...
+                      {tr("filterSidebar.categories.loading")}
                     </div>
                   )}
 
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenCategories && hiddenCategorySearchMatches > 0? "All matching categories are empty. Click above to show them.": `No categories found matching "${debouncedCategorySearch}"`}
+                      {categoryNoResultsMessage}
                     </div>
                   )}
 
                   {/* Empty categories message */}
                   {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No categories available
+                      {tr("filterSidebar.categories.noneAvailable")}
                     </div>
                   )}
 
                   {/* All categories hidden message */}
                   {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length > 0 && filteredCategories.length === 0 && hiddenCategoryCount > 0 && !showHiddenCategories && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      All categories are empty. Click above to show them.
+                      {tr("filterSidebar.categories.allEmpty")}
                     </div>
                   )}
 
@@ -2279,7 +2309,7 @@ const FilterSidebarComponent = ({
                                         onClick={() => handleCreateSubcategory(name)}
                                       >
                                         <FolderPlus className="mr-2 h-4 w-4" />
-                                        Create Subcategory
+                                        {tr("filterSidebar.contextMenu.createSubcategory")}
                                       </ContextMenuItem>
                                       <ContextMenuSeparator />
                                     </>
@@ -2295,7 +2325,7 @@ const FilterSidebarComponent = ({
                                     }}
                                   >
                                     <Edit className="mr-2 h-4 w-4" />
-                                    Edit Category
+                                    {tr("filterSidebar.contextMenu.editCategory")}
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
@@ -2310,7 +2340,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Category
+                                    {tr("filterSidebar.contextMenu.deleteCategory")}
                                   </ContextMenuItem>
                                   <ContextMenuItem
                                     onClick={handleRemoveEmptyCategories}
@@ -2318,7 +2348,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Remove Empty Categories
+                                    {tr("filterSidebar.contextMenu.removeEmptyCategories")}
                                   </ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
@@ -2391,7 +2421,7 @@ const FilterSidebarComponent = ({
                                   onClick={() => handleCreateSubcategory(name)}
                                 >
                                   <FolderPlus className="mr-2 h-4 w-4" />
-                                  Create Subcategory
+                                  {tr("filterSidebar.contextMenu.createSubcategory")}
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
                               </>
@@ -2407,7 +2437,7 @@ const FilterSidebarComponent = ({
                               }}
                             >
                               <Edit className="mr-2 h-4 w-4" />
-                              Edit Category
+                              {tr("filterSidebar.contextMenu.editCategory")}
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
@@ -2422,7 +2452,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Category
+                              {tr("filterSidebar.contextMenu.deleteCategory")}
                             </ContextMenuItem>
                             <ContextMenuItem
                               onClick={handleRemoveEmptyCategories}
@@ -2430,7 +2460,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Remove Empty Categories
+                              {tr("filterSidebar.contextMenu.removeEmptyCategories")}
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -2445,7 +2475,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="tags" className="border rounded-lg">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Tags</span>
+                  <span className="text-sm font-medium">{tr("filterSidebar.sections.tags")}</span>
                   {selectedFilters.tags.length + selectedFilters.excludeTags.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.tags.length + selectedFilters.excludeTags.length}
@@ -2461,7 +2491,7 @@ const FilterSidebarComponent = ({
                     <button
                       className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
                       disabled={isReadOnly}
-                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      title={isReadOnly ? tr("filterSidebar.readOnlyUnavailable") : undefined}
                       onClick={() => {
                         if (isReadOnly) {
                           return
@@ -2470,7 +2500,7 @@ const FilterSidebarComponent = ({
                       }}
                     >
                       <Plus className="h-3 w-3" />
-                      <span>Add tag</span>
+                      <span>{tr("filterSidebar.tags.add")}</span>
                     </button>
                     {hiddenTagCount > 0 && (
                       <>
@@ -2483,12 +2513,12 @@ const FilterSidebarComponent = ({
                           {showHiddenTags ? (
                             <>
                               <ListChevronsDownUp className="h-3.5 w-3.5" />
-                              <span>Hide empty</span>
+                              <span>{tr("filterSidebar.actions.hideEmpty")}</span>
                             </>
                           ) : (
                             <>
                               <ListChevronsUpDown className="h-3.5 w-3.5" />
-                              <span>Show empty</span>
+                              <span>{tr("filterSidebar.actions.showEmpty")}</span>
                             </>
                           )}
                         </button>
@@ -2499,7 +2529,7 @@ const FilterSidebarComponent = ({
                   {/* Search input for tags */}
                   <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
-                      placeholder="Search tags..."
+                      placeholder={tr("filterSidebar.tags.searchPlaceholder")}
                       value={tagSearch}
                       onChange={(e) => setTagSearch(e.target.value)}
                       onClear={() => setTagSearch("")}
@@ -2530,7 +2560,7 @@ const FilterSidebarComponent = ({
                           untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
-                        Untagged
+                        {tr("filterSidebar.tags.untagged")}
                       </span>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2555,28 +2585,28 @@ const FilterSidebarComponent = ({
                   {/* Loading message for tags */}
                   {!hasReceivedTagsData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading tags...
+                      {tr("filterSidebar.tags.loading")}
                     </div>
                   )}
 
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenTags && hiddenTagSearchMatches > 0? "All matching tags are empty. Click above to show them.": `No tags found matching "${debouncedTagSearch}"`}
+                      {tagNoResultsMessage}
                     </div>
                   )}
 
                   {/* Empty tags message */}
                   {hasReceivedTagsData && !debouncedTagSearch && tags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No tags available
+                      {tr("filterSidebar.tags.noneAvailable")}
                     </div>
                   )}
 
                   {/* All tags hidden message */}
                   {hasReceivedTagsData && !debouncedTagSearch && tags.length > 0 && filteredTags.length === 0 && hiddenTagCount > 0 && !showHiddenTags && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      All tags are empty. Click above to show them.
+                      {tr("filterSidebar.tags.allEmpty")}
                     </div>
                   )}
 
@@ -2661,7 +2691,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Tag
+                                    {tr("filterSidebar.contextMenu.deleteTag")}
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
@@ -2675,7 +2705,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete All Unused Tags
+                                    {tr("filterSidebar.contextMenu.deleteAllUnusedTags")}
                                   </ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
@@ -2744,7 +2774,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Tag
+                              {tr("filterSidebar.contextMenu.deleteTag")}
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
@@ -2758,7 +2788,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete All Unused Tags
+                              {tr("filterSidebar.contextMenu.deleteAllUnusedTags")}
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -2773,7 +2803,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="trackers" className="border rounded-lg last:border-b">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Trackers</span>
+                  <span className="text-sm font-medium">{tr("filterSidebar.sections.trackers")}</span>
                   {selectedFilters.trackers.length + selectedFilters.excludeTrackers.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.trackers.length + selectedFilters.excludeTrackers.length}
@@ -2787,7 +2817,7 @@ const FilterSidebarComponent = ({
                   {/* Search input for trackers */}
                   <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
-                      placeholder="Search trackers..."
+                      placeholder={tr("filterSidebar.trackers.searchPlaceholder")}
                       value={trackerSearch}
                       onChange={(e) => setTrackerSearch(e.target.value)}
                       onClear={() => setTrackerSearch("")}
@@ -2817,7 +2847,7 @@ const FilterSidebarComponent = ({
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
-                      No tracker
+                      {tr("filterSidebar.trackers.noTracker")}
                     </span>
                     <span
                       className={cn(
@@ -2832,14 +2862,14 @@ const FilterSidebarComponent = ({
                   {/* Loading message for trackers */}
                   {!hasReceivedTrackersData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading trackers...
+                      {tr("filterSidebar.trackers.loading")}
                     </div>
                   )}
 
                   {/* No results message for trackers */}
                   {hasReceivedTrackersData && debouncedTrackerSearch && nonEmptyFilteredProcessedTrackers.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No trackers found matching "{debouncedTrackerSearch}"
+                      {tr("filterSidebar.trackers.noMatch", { query: debouncedTrackerSearch })}
                     </div>
                   )}
 
@@ -2918,13 +2948,13 @@ const FilterSidebarComponent = ({
                                       }}
                                     >
                                       <Edit className="mr-2 h-4 w-4" />
-                                      Edit Tracker URL
+                                      {tr("filterSidebar.contextMenu.editTrackerUrl")}
                                     </ContextMenuItem>
                                   ) : (
                                     <ContextMenuSub>
                                       <ContextMenuSubTrigger disabled={!supportsTrackerEditing}>
                                         <Edit className="mr-2 h-4 w-4" />
-                                        Edit Tracker URL
+                                        {tr("filterSidebar.contextMenu.editTrackerUrl")}
                                       </ContextMenuSubTrigger>
                                       <ContextMenuSubContent>
                                         {trackerGroup.domains.map((domain) => (
@@ -3006,13 +3036,13 @@ const FilterSidebarComponent = ({
                                 }}
                               >
                                 <Edit className="mr-2 h-4 w-4" />
-                                Edit Tracker URL
+                                {tr("filterSidebar.contextMenu.editTrackerUrl")}
                               </ContextMenuItem>
                             ) : (
                               <ContextMenuSub>
                                 <ContextMenuSubTrigger disabled={!supportsTrackerEditing}>
                                   <Edit className="mr-2 h-4 w-4" />
-                                  Edit Tracker URL
+                                  {tr("filterSidebar.contextMenu.editTrackerUrl")}
                                 </ContextMenuSubTrigger>
                                 <ContextMenuSubContent>
                                   {trackerGroup.domains.map((domain) => (

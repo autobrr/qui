@@ -1,0 +1,142 @@
+export const themeSelectorResources = {
+  en: {
+    title: "Theme Selection",
+    description: "Choose from available themes. Premium themes require a valid license.",
+    values: {
+      premium: "Premium",
+      pro: "Pro",
+      free: "Free",
+      locked: "Locked",
+      lock: "Lock",
+    },
+    toasts: {
+      unableVerifyLicenseTitle: "Unable to verify license",
+      unableVerifyLicenseDescription: "License check failed. Premium theme switching is temporarily unavailable.",
+      premiumRequiredTitle: "This theme requires a premium license",
+      premiumRequiredDescription: "Open Settings -> Themes to see payment options and redeem your discount code.",
+    },
+    states: {
+      loadingThemes: "Loading available themes...",
+      licenseUnavailable: "License verification unavailable. Premium theme switching is temporarily disabled.",
+      premiumNotLoaded: "Premium themes not loaded",
+      premiumNotLoadedHelpPrefix: "Configure",
+      premiumNotLoadedHelpInfix: "and run",
+    },
+    sections: {
+      freeThemes: "Free Themes",
+      premiumThemes: "Premium Themes",
+    },
+  },
+  "zh-CN": {
+    title: "主题选择",
+    description: "从可用主题中选择。高级主题需要有效许可。",
+    values: {
+      premium: "高级",
+      pro: "专业",
+      free: "免费",
+      locked: "已锁定",
+      lock: "锁定",
+    },
+    toasts: {
+      unableVerifyLicenseTitle: "无法验证许可证",
+      unableVerifyLicenseDescription: "许可证校验失败，暂时无法切换高级主题。",
+      premiumRequiredTitle: "该主题需要高级许可证",
+      premiumRequiredDescription: "前往 设置 -> 主题 查看购买选项并兑换折扣码。",
+    },
+    states: {
+      loadingThemes: "正在加载可用主题...",
+      licenseUnavailable: "许可证验证不可用，暂时禁用高级主题切换。",
+      premiumNotLoaded: "高级主题未加载",
+      premiumNotLoadedHelpPrefix: "请配置",
+      premiumNotLoadedHelpInfix: "并运行",
+    },
+    sections: {
+      freeThemes: "免费主题",
+      premiumThemes: "高级主题",
+    },
+  },
+  ja: {
+    title: "テーマ選択",
+    description: "利用可能なテーマから選択できます。プレミアムテーマには有効なライセンスが必要です。",
+    values: {
+      premium: "プレミアム",
+      pro: "Pro",
+      free: "無料",
+      locked: "ロック中",
+      lock: "ロック",
+    },
+    toasts: {
+      unableVerifyLicenseTitle: "ライセンスを確認できません",
+      unableVerifyLicenseDescription: "ライセンス確認に失敗したため、プレミアムテーマの切り替えは一時的に利用できません。",
+      premiumRequiredTitle: "このテーマにはプレミアムライセンスが必要です",
+      premiumRequiredDescription: "Settings -> Themes を開いて支払いオプションと割引コードの適用を確認してください。",
+    },
+    states: {
+      loadingThemes: "利用可能なテーマを読み込み中...",
+      licenseUnavailable: "ライセンス確認が利用できないため、プレミアムテーマの切り替えは一時的に無効です。",
+      premiumNotLoaded: "プレミアムテーマが読み込まれていません",
+      premiumNotLoadedHelpPrefix: "を設定し",
+      premiumNotLoadedHelpInfix: "を実行してください",
+    },
+    sections: {
+      freeThemes: "無料テーマ",
+      premiumThemes: "プレミアムテーマ",
+    },
+  },
+  "pt-BR": {
+    title: "Seleção de tema",
+    description: "Escolha entre os temas disponíveis. Temas premium exigem uma licença válida.",
+    values: {
+      premium: "Premium",
+      pro: "Pro",
+      free: "Grátis",
+      locked: "Bloqueado",
+      lock: "Trava",
+    },
+    toasts: {
+      unableVerifyLicenseTitle: "Não foi possível verificar a licença",
+      unableVerifyLicenseDescription: "A verificação da licença falhou. A troca de temas premium está temporariamente indisponível.",
+      premiumRequiredTitle: "Este tema exige uma licença premium",
+      premiumRequiredDescription: "Abra Configurações -> Temas para ver opções de pagamento e resgatar seu código de desconto.",
+    },
+    states: {
+      loadingThemes: "Carregando temas disponíveis...",
+      licenseUnavailable: "Verificação de licença indisponível. A troca de temas premium está temporariamente desativada.",
+      premiumNotLoaded: "Temas premium não carregados",
+      premiumNotLoadedHelpPrefix: "Configure",
+      premiumNotLoadedHelpInfix: "e execute",
+    },
+    sections: {
+      freeThemes: "Temas grátis",
+      premiumThemes: "Temas premium",
+    },
+  },
+  de: {
+    title: "Themaauswahl",
+    description: "Wähle aus verfügbaren Themes. Premium-Themes erfordern eine gültige Lizenz.",
+    values: {
+      premium: "Premium",
+      pro: "Pro",
+      free: "Kostenlos",
+      locked: "Gesperrt",
+      lock: "Sperre",
+    },
+    toasts: {
+      unableVerifyLicenseTitle: "Lizenz konnte nicht verifiziert werden",
+      unableVerifyLicenseDescription: "Lizenzprüfung fehlgeschlagen. Das Wechseln von Premium-Themes ist vorübergehend nicht verfügbar.",
+      premiumRequiredTitle: "Dieses Theme erfordert eine Premium-Lizenz",
+      premiumRequiredDescription: "Öffne Einstellungen -> Themes, um Zahlungsoptionen zu sehen und deinen Rabattcode einzulösen.",
+    },
+    states: {
+      loadingThemes: "Verfügbare Themes werden geladen...",
+      licenseUnavailable: "Lizenzprüfung nicht verfügbar. Das Wechseln von Premium-Themes ist vorübergehend deaktiviert.",
+      premiumNotLoaded: "Premium-Themes nicht geladen",
+      premiumNotLoadedHelpPrefix: "Konfiguriere",
+      premiumNotLoadedHelpInfix: "und führe aus",
+    },
+    sections: {
+      freeThemes: "Kostenlose Themes",
+      premiumThemes: "Premium-Themes",
+    },
+  },
+} as const

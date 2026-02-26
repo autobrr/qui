@@ -390,6 +390,7 @@ const getStatusBadgeMeta = (
 }
 
 export type TableViewMode = "normal" | "dense" | "compact"
+type ColumnTranslateFn = (key: string, options?: Record<string, unknown>) => string
 
 export const createColumns = (
   incognitoMode: boolean,
@@ -414,8 +415,16 @@ export const createColumns = (
   showInstanceColumn: boolean = false,
   viewMode: TableViewMode = "normal",
   trackerCustomizationLookup?: TrackerCustomizationLookup,
-  includeSelectionColumn: boolean = true
+  includeSelectionColumn: boolean = true,
+  translate?: ColumnTranslateFn
 ): ColumnDef<Torrent>[] => {
+  const tr = (key: string, fallback: string, options?: Record<string, unknown>) => {
+    if (translate) {
+      return translate(key, options)
+    }
+    return fallback
+  }
+
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
 
@@ -451,7 +460,7 @@ export const createColumns = (
                 table.toggleAllPageRowsSelected(!!checked)
               }
             }}
-            aria-label="Select all"
+            aria-label={tr("torrentTableColumns.selection.selectAllAria", "Select all")}
             className="hover:border-ring cursor-pointer transition-colors"
           />
         </div>
@@ -526,7 +535,7 @@ export const createColumns = (
                   selectionEnhancers.shiftPressedRef.current = false
                 }
               }}
-              aria-label="Select row"
+              aria-label={tr("torrentTableColumns.selection.selectRowAria", "Select row")}
               className="hover:border-ring cursor-pointer transition-colors"
             />
           </div>
@@ -547,7 +556,7 @@ export const createColumns = (
               <ListOrdered className="h-4 w-4" />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Priority</TooltipContent>
+          <TooltipContent>{tr("torrentTableColumns.priority.tooltip", "Priority")}</TooltipContent>
         </Tooltip>
       ),
       meta: {
@@ -628,11 +637,11 @@ export const createColumns = (
       header: () => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Status Icon">
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={tr("torrentTableColumns.statusIcon.ariaLabel", "Status Icon")}>
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Status Icon</TooltipContent>
+          <TooltipContent>{tr("torrentTableColumns.statusIcon.tooltip", "Status Icon")}</TooltipContent>
         </Tooltip>
       ),
       meta: {
@@ -854,11 +863,11 @@ export const createColumns = (
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
+              <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={tr("torrentTableColumns.trackerIcon.ariaLabel", "Tracker Icon")}>
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </div>
             </TooltipTrigger>
-            <TooltipContent>Tracker Icon</TooltipContent>
+            <TooltipContent>{tr("torrentTableColumns.trackerIcon.tooltip", "Tracker Icon")}</TooltipContent>
           </Tooltip>
         )
       },

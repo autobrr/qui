@@ -5,83 +5,89 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
 import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
 import type { SearchHistoryEntry } from "@/types"
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
 import { type ReactNode, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 // Torznab standard category mappings (synced with pkg/gojackett/constants.go)
-const CATEGORY_MAP: Record<string, string> = {
+const CATEGORY_KEY_MAP: Record<string, string> = {
   // Parent categories
-  "1000": "Console",
-  "2000": "Movies",
-  "3000": "Audio",
-  "4000": "PC",
-  "5000": "TV",
-  "6000": "XXX",
-  "7000": "Other",
-  "8000": "Books",
+  "1000": "console",
+  "2000": "movies",
+  "3000": "audio",
+  "4000": "pc",
+  "5000": "tv",
+  "6000": "xxx",
+  "7000": "other",
+  "8000": "books",
   // Movies subcategories
-  "2010": "Movies Foreign",
-  "2020": "Movies Other",
-  "2030": "Movies SD",
-  "2040": "Movies HD",
-  "2045": "Movies UHD",
-  "2050": "Movies BluRay",
-  "2060": "Movies 3D",
-  "2070": "Movies Web",
+  "2010": "moviesForeign",
+  "2020": "moviesOther",
+  "2030": "moviesSd",
+  "2040": "moviesHd",
+  "2045": "moviesUhd",
+  "2050": "moviesBluRay",
+  "2060": "movies3d",
+  "2070": "moviesWeb",
   // Audio subcategories
-  "3010": "Audio MP3",
-  "3020": "Audio Video",
-  "3030": "Audiobook",
-  "3040": "Audio Lossless",
-  "3050": "Audio Other",
-  "3060": "Audio Foreign",
+  "3010": "audioMp3",
+  "3020": "audioVideo",
+  "3030": "audiobook",
+  "3040": "audioLossless",
+  "3050": "audioOther",
+  "3060": "audioForeign",
   // PC subcategories
-  "4010": "PC 0day",
-  "4020": "PC ISO",
-  "4030": "PC Mac",
-  "4040": "PC Phone Other",
-  "4050": "PC Games",
-  "4060": "PC Phone iOS",
-  "4070": "PC Phone Android",
+  "4010": "pc0day",
+  "4020": "pcIso",
+  "4030": "pcMac",
+  "4040": "pcPhoneOther",
+  "4050": "pcGames",
+  "4060": "pcPhoneIos",
+  "4070": "pcPhoneAndroid",
   // TV subcategories
-  "5010": "TV Web",
-  "5020": "TV Foreign",
-  "5030": "TV SD",
-  "5040": "TV HD",
-  "5045": "TV UHD",
-  "5060": "TV Sport",
-  "5070": "TV Anime",
-  "5080": "TV Documentary",
-  "5090": "TV Other",
+  "5010": "tvWeb",
+  "5020": "tvForeign",
+  "5030": "tvSd",
+  "5040": "tvHd",
+  "5045": "tvUhd",
+  "5060": "tvSport",
+  "5070": "tvAnime",
+  "5080": "tvDocumentary",
+  "5090": "tvOther",
   // XXX subcategories
-  "6010": "XXX DVD",
-  "6020": "XXX WMV",
-  "6030": "XXX XviD",
-  "6040": "XXX x264",
-  "6045": "XXX UHD",
-  "6050": "XXX Pack",
-  "6060": "XXX ImageSet",
-  "6070": "XXX Other",
-  "6080": "XXX SD",
-  "6090": "XXX Web",
+  "6010": "xxxDvd",
+  "6020": "xxxWmv",
+  "6030": "xxxXvid",
+  "6040": "xxxX264",
+  "6045": "xxxUhd",
+  "6050": "xxxPack",
+  "6060": "xxxImageSet",
+  "6070": "xxxOther",
+  "6080": "xxxSd",
+  "6090": "xxxWeb",
   // Other subcategories
-  "7010": "Other Misc",
-  "7020": "Other Hashed",
+  "7010": "otherMisc",
+  "7020": "otherHashed",
   // Books subcategories
-  "8010": "Books Mags",
-  "8020": "Books EBook",
-  "8030": "Books Comics",
-  "8040": "Books Technical",
-  "8050": "Books Foreign",
-  "8060": "Books Other",
+  "8010": "booksMags",
+  "8020": "booksEbook",
+  "8030": "booksComics",
+  "8040": "booksTechnical",
+  "8050": "booksForeign",
+  "8060": "booksOther",
+}
+
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string
+
+function formatSearchDuration(durationMs: number, secondsPrecision: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`
+  }
+  return `${(durationMs / 1000).toFixed(secondsPrecision)}s`
 }
 
 interface ParamBadge {
@@ -90,17 +96,17 @@ interface ParamBadge {
 }
 
 // Transform raw torznab params into semantic badges
-function transformParams(params: Record<string, string>): ParamBadge[] {
+function transformParams(params: Record<string, string>, tr: TranslateFn): ParamBadge[] {
   const badges: ParamBadge[] = []
   const consumed = new Set<string>()
 
   // Season and episode as separate badges
   if (params.season) {
-    badges.push({ label: "Season", value: params.season })
+    badges.push({ label: tr("searchHistoryPanel.params.season"), value: params.season })
     consumed.add("season")
   }
   if (params.ep) {
-    badges.push({ label: "Episode", value: params.ep })
+    badges.push({ label: tr("searchHistoryPanel.params.episode"), value: params.ep })
     consumed.add("ep")
   }
 
@@ -109,12 +115,16 @@ function transformParams(params: Record<string, string>): ParamBadge[] {
     // Handle comma-separated categories, use first one for display
     const firstCat = params.cat.split(",")[0]
     // Try exact match first, then fall back to parent category (e.g., 5030 -> 5000 -> TV)
-    let catName = CATEGORY_MAP[firstCat]
-    if (!catName && firstCat.length >= 4) {
+    let catKey = CATEGORY_KEY_MAP[firstCat]
+    if (!catKey && firstCat.length >= 4) {
       const parentCat = `${firstCat.slice(0, 1)}000`
-      catName = CATEGORY_MAP[parentCat]
+      catKey = CATEGORY_KEY_MAP[parentCat]
     }
-    const catLabel = catName ? `${catName} (${firstCat})` : firstCat
+    const catName = catKey ? tr(`searchHistoryPanel.params.categories.${catKey}`) : ""
+    let catLabel = firstCat
+    if (catName) {
+      catLabel = tr("searchHistoryPanel.params.categoryWithId", { category: catName, id: firstCat })
+    }
     badges.push({ label: catLabel })
     consumed.add("cat")
   }
@@ -127,11 +137,11 @@ function transformParams(params: Record<string, string>): ParamBadge[] {
 
   // External IDs with labels
   const idMappings: [string, string][] = [
-    ["imdbid", "IMDB"],
-    ["tmdbid", "TMDB"],
-    ["tvdbid", "TVDB"],
-    ["tvmazeid", "TVMaze"],
-    ["rid", "TVRage"],
+    ["imdbid", tr("searchHistoryPanel.params.ids.imdb")],
+    ["tmdbid", tr("searchHistoryPanel.params.ids.tmdb")],
+    ["tvdbid", tr("searchHistoryPanel.params.ids.tvdb")],
+    ["tvmazeid", tr("searchHistoryPanel.params.ids.tvmaze")],
+    ["rid", tr("searchHistoryPanel.params.ids.tvrage")],
   ]
   for (const [key, label] of idMappings) {
     if (params[key]) {
@@ -157,6 +167,8 @@ function transformParams(params: Record<string, string>): ParamBadge[] {
 export function SearchHistoryPanel() {
   const [isOpen, setIsOpen] = useState(true)
   const [selectedEntry, setSelectedEntry] = useState<SearchHistoryEntry | null>(null)
+  const { t } = useTranslation()
+  const tr: TranslateFn = (key, options) => String(t(key as never, options as never))
   const { data, isLoading } = useSearchHistory({
     limit: 50,
     enabled: true,
@@ -176,16 +188,16 @@ export function SearchHistoryPanel() {
           <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
             <div className="flex items-center gap-2">
               <History className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Search History</span>
+              <span className="text-sm font-medium">{tr("searchHistoryPanel.panel.title")}</span>
               {isLoading ? (
                 <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
               ) : total > 0 ? (
                 <Badge variant="secondary" className="text-xs">
-                  {total} searches
-                  {errorCount > 0 && `, ${errorCount} errors`}
+                  {tr("searchHistoryPanel.panel.summary.searches", { count: total })}
+                  {errorCount > 0 && tr("searchHistoryPanel.panel.summary.errorsInline", { count: errorCount })}
                 </Badge>
               ) : (
-                <span className="text-xs text-muted-foreground">No searches yet</span>
+                <span className="text-xs text-muted-foreground">{tr("searchHistoryPanel.panel.summary.none")}</span>
               )}
             </div>
             <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -198,17 +210,17 @@ export function SearchHistoryPanel() {
                 <div className="flex items-center gap-4 text-xs text-muted-foreground border-b pb-2">
                   <span className="flex items-center gap-1">
                     <CheckCircle2 className="h-3 w-3 text-primary" />
-                    {successCount} successful
+                    {tr("searchHistoryPanel.panel.summary.successful", { count: successCount })}
                   </span>
                   {errorCount > 0 && (
                     <span className="flex items-center gap-1">
                       <XCircle className="h-3 w-3 text-destructive" />
-                      {errorCount} failed
+                      {tr("searchHistoryPanel.panel.summary.failed", { count: errorCount })}
                     </span>
                   )}
                   {data?.source && (
                     <span className="ml-auto">
-                      Source: {data.source}
+                      {tr("searchHistoryPanel.panel.summary.source", { source: data.source })}
                     </span>
                   )}
                 </div>
@@ -246,16 +258,28 @@ interface HistoryRowProps {
 }
 
 function HistoryRow({ entry, onClick }: HistoryRowProps) {
+  const { t } = useTranslation()
+  const tr: TranslateFn = (key, options) => String(t(key as never, options as never))
+
   const statusIcons: Record<string, ReactNode> = {
     success: <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />,
     error: <XCircle className="h-3 w-3 text-destructive shrink-0" />,
     skipped: <Clock className="h-3 w-3 text-muted-foreground shrink-0" />,
     rate_limited: <AlertCircle className="h-3 w-3 text-destructive shrink-0" />,
   }
+  const priorityLabelKeys: Record<string, string> = {
+    interactive: "searchHistoryPanel.priority.interactive",
+    rss: "searchHistoryPanel.priority.rss",
+    completion: "searchHistoryPanel.priority.completion",
+    background: "searchHistoryPanel.priority.background",
+  }
 
-  const durationStr = entry.durationMs < 1000
-    ? `${entry.durationMs}ms`
-    : `${(entry.durationMs / 1000).toFixed(1)}s`
+  const durationStr = formatSearchDuration(entry.durationMs, 1)
+  let priorityLabel = entry.priority
+  const priorityLabelKey = priorityLabelKeys[entry.priority]
+  if (priorityLabelKey) {
+    priorityLabel = tr(priorityLabelKey)
+  }
 
   // Hide "unknown" content type - it's noise for RSS searches
   const showContentType = entry.contentType && entry.contentType !== "unknown"
@@ -289,7 +313,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
       <div className="flex flex-wrap items-center gap-2 shrink-0 pl-5 md:pl-0">
         {entry.status === "success" && (
           <span className={`text-xs ${entry.resultCount > 0 ? "text-primary" : "text-muted-foreground"}`}>
-            {entry.resultCount} results
+            {tr("searchHistoryPanel.row.results", { count: entry.resultCount })}
           </span>
         )}
         {entry.status === "error" && entry.errorMessage && (
@@ -297,9 +321,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
             {entry.errorMessage}
           </span>
         )}
-        <span className="text-xs text-muted-foreground">
-          {entry.priority}
-        </span>
+        <span className="text-xs text-muted-foreground">{priorityLabel}</span>
         <span className="text-xs text-muted-foreground">
           {durationStr}
         </span>
@@ -318,24 +340,35 @@ interface SearchDetailDialogProps {
 }
 
 function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
+  const { t } = useTranslation()
+  const tr: TranslateFn = (key, options) => String(t(key as never, options as never))
   if (!entry) return null
 
-  const statusLabels: Record<string, string> = {
-    success: "Success",
-    error: "Failed",
-    skipped: "Skipped",
-    rate_limited: "Rate Limited",
+  const statusLabelKeys: Record<string, string> = {
+    success: "searchHistoryPanel.status.success",
+    error: "searchHistoryPanel.status.error",
+    skipped: "searchHistoryPanel.status.skipped",
+    rate_limited: "searchHistoryPanel.status.rateLimited",
+  }
+  const priorityLabelKeys: Record<string, string> = {
+    interactive: "searchHistoryPanel.priority.interactive",
+    rss: "searchHistoryPanel.priority.rss",
+    completion: "searchHistoryPanel.priority.completion",
+    background: "searchHistoryPanel.priority.background",
   }
 
   const isSuccess = entry.status === "success"
   const isError = entry.status === "error" || entry.status === "rate_limited"
 
-  const durationStr = entry.durationMs < 1000
-    ? `${entry.durationMs}ms`
-    : `${(entry.durationMs / 1000).toFixed(2)}s`
+  const durationStr = formatSearchDuration(entry.durationMs, 2)
+  let priorityLabel = entry.priority
+  const priorityLabelKey = priorityLabelKeys[entry.priority]
+  if (priorityLabelKey) {
+    priorityLabel = tr(priorityLabelKey)
+  }
 
   // Transform params into semantic badges
-  const paramBadges = entry.params ? transformParams(entry.params) : []
+  const paramBadges = entry.params ? transformParams(entry.params, tr) : []
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -352,7 +385,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
               variant={isSuccess ? "default" : isError ? "destructive" : "secondary"}
               className="shrink-0"
             >
-              {statusLabels[entry.status] ?? entry.status}
+              {statusLabelKeys[entry.status] ? tr(statusLabelKeys[entry.status]) : entry.status}
             </Badge>
           </div>
         </div>
@@ -362,7 +395,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
           {entry.releaseName && (
             <div className="rounded-lg border border-border bg-muted/40 p-3">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-                Release
+                {tr("searchHistoryPanel.dialog.sections.release")}
               </div>
               <div className="font-mono text-[13px] leading-relaxed break-all">
                 {entry.releaseName}
@@ -373,25 +406,25 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
           {/* Stats Row */}
           <div className="flex items-center gap-6 text-sm">
             <div>
-              <span className="text-muted-foreground">Results </span>
+              <span className="text-muted-foreground">{tr("searchHistoryPanel.dialog.stats.results")} </span>
               <span className={entry.resultCount > 0 ? "font-semibold text-primary" : "text-muted-foreground"}>
                 {entry.resultCount}
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground">Duration </span>
+              <span className="text-muted-foreground">{tr("searchHistoryPanel.dialog.stats.duration")} </span>
               <span className="font-medium">{durationStr}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Priority </span>
-              <span className="font-medium">{entry.priority}</span>
+              <span className="text-muted-foreground">{tr("searchHistoryPanel.dialog.stats.priority")} </span>
+              <span className="font-medium">{priorityLabel}</span>
             </div>
             {/* Cross-seed outcome - only show successful adds */}
             {entry.outcome === "added" && (
               <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">Cross-seed </span>
+                <span className="text-muted-foreground">{tr("searchHistoryPanel.dialog.stats.crossSeed")} </span>
                 <Badge className="bg-primary/10 text-primary border-primary/30">
-                  Added {entry.addedCount || 1}
+                  {tr("searchHistoryPanel.dialog.badges.added", { count: entry.addedCount || 1 })}
                 </Badge>
               </div>
             )}
@@ -401,7 +434,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
           {entry.errorMessage && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
               <div className="text-[11px] uppercase tracking-wide text-destructive/80 mb-1">
-                Error
+                {tr("searchHistoryPanel.dialog.sections.error")}
               </div>
               <div className="text-sm text-destructive break-all">
                 {entry.errorMessage}
@@ -413,7 +446,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
           {paramBadges.length > 0 && (
             <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
-                Search Parameters
+                {tr("searchHistoryPanel.dialog.sections.searchParameters")}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {paramBadges.map((badge, i) => (
@@ -432,17 +465,17 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
             <div className="flex items-center gap-4">
               {entry.searchMode && (
                 <span>
-                  Mode: <span className="text-foreground/70">{entry.searchMode}</span>
+                  {tr("searchHistoryPanel.dialog.footer.mode")}: <span className="text-foreground/70">{entry.searchMode}</span>
                 </span>
               )}
               {entry.contentType && entry.contentType !== "unknown" && (
                 <span>
-                  Type: <span className="text-foreground/70">{entry.contentType}</span>
+                  {tr("searchHistoryPanel.dialog.footer.type")}: <span className="text-foreground/70">{entry.contentType}</span>
                 </span>
               )}
             </div>
             <div className="font-mono text-[10px] text-muted-foreground/60">
-              {formatTimeHMS(new Date(entry.completedAt))} · Job {entry.jobId}
+              {formatTimeHMS(new Date(entry.completedAt))} · {tr("searchHistoryPanel.dialog.footer.job", { id: entry.jobId })}
             </div>
           </div>
         </div>

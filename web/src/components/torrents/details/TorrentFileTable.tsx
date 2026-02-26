@@ -14,6 +14,7 @@ import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronDown, ChevronRight, Download, File, Folder, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface TorrentFileTableProps {
   files: TorrentFile[] | undefined
@@ -173,6 +174,8 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   onRenameFolder,
   onDownloadFile,
 }: TorrentFileTableProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
   const [searchQuery, setSearchQuery] = useState("")
   const initializedForHash = useRef<string | null>(null)
@@ -292,9 +295,17 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   if (!files || files.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No files
+        {tr("torrentFileTable.empty.noFiles")}
       </div>
     )
+  }
+
+  let toolbarCountLabel = tr("torrentFileTable.toolbar.fileCountOther", { count: files.length })
+  if (files.length === 1) {
+    toolbarCountLabel = tr("torrentFileTable.toolbar.fileCountOne", { count: files.length })
+  }
+  if (searchQuery) {
+    toolbarCountLabel = tr("torrentFileTable.toolbar.filteredCount", { filtered: filteredRows.length, total: files.length })
   }
 
   return (
@@ -305,20 +316,20 @@ export const TorrentFileTable = memo(function TorrentFileTable({
           className="text-muted-foreground hover:text-foreground"
           onClick={expandAll}
         >
-          Expand All
+          {tr("torrentFileTable.toolbar.expandAll")}
         </button>
         <span className="text-muted-foreground">/</span>
         <button
           className="text-muted-foreground hover:text-foreground"
           onClick={collapseAll}
         >
-          Collapse All
+          {tr("torrentFileTable.toolbar.collapseAll")}
         </button>
         <div className="relative ml-2">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Search files..."
+            placeholder={tr("torrentFileTable.toolbar.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-6 w-40 pl-7 pr-7 text-xs"
@@ -333,7 +344,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
           )}
         </div>
         <span className="ml-auto text-muted-foreground">
-          {searchQuery ? `${filteredRows.length} of ${files.length}` : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+          {toolbarCountLabel}
         </span>
       </div>
 
@@ -347,9 +358,9 @@ export const TorrentFileTable = memo(function TorrentFileTable({
             {supportsFilePriority && (
               <div className="w-8 px-2 py-1.5 text-left shrink-0"></div>
             )}
-            <div className="flex-1 px-2 py-1.5 text-left font-medium text-muted-foreground">Name</div>
-            <div className="w-28 px-2 py-1.5 text-left font-medium text-muted-foreground shrink-0">Progress</div>
-            <div className="w-24 px-2 py-1.5 text-right font-medium text-muted-foreground shrink-0">Size</div>
+            <div className="flex-1 px-2 py-1.5 text-left font-medium text-muted-foreground">{tr("torrentFileTable.header.name")}</div>
+            <div className="w-28 px-2 py-1.5 text-left font-medium text-muted-foreground shrink-0">{tr("torrentFileTable.header.progress")}</div>
+            <div className="w-24 px-2 py-1.5 text-right font-medium text-muted-foreground shrink-0">{tr("torrentFileTable.header.size")}</div>
           </div>
           {/* Virtualized body */}
           <div
@@ -463,19 +474,19 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                           disabled={incognitoMode}
                         >
                           <Download className="h-3.5 w-3.5 mr-2" />
-                          Download
+                          {tr("torrentFileTable.context.download")}
                         </ContextMenuItem>
                       )}
                       {isFile && onRenameFile && (
                         <ContextMenuItem onClick={() => onRenameFile(node.id)}>
                           <Pencil className="h-3.5 w-3.5 mr-2" />
-                          Rename File
+                          {tr("torrentFileTable.context.renameFile")}
                         </ContextMenuItem>
                       )}
                       {!isFile && onRenameFolder && (
                         <ContextMenuItem onClick={() => onRenameFolder(node.id)}>
                           <Pencil className="h-3.5 w-3.5 mr-2" />
-                          Rename Folder
+                          {tr("torrentFileTable.context.renameFolder")}
                         </ContextMenuItem>
                       )}
                     </ContextMenuContent>

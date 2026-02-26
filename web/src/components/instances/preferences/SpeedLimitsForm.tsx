@@ -12,6 +12,7 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useForm } from "@tanstack/react-form"
 import { Clock, Download, Upload } from "lucide-react"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // Convert bytes/s to MiB/s for display
@@ -24,30 +25,20 @@ function mibToBytes(mib: number): number {
   return mib === 0 ? 0 : Math.round(mib * 1024 * 1024)
 }
 
-// Day options for scheduler
-const dayOptions = [
-  { value: 0, label: "Every day" },
-  { value: 1, label: "Every weekday" },
-  { value: 2, label: "Every weekend" },
-  { value: 3, label: "Monday" },
-  { value: 4, label: "Tuesday" },
-  { value: 5, label: "Wednesday" },
-  { value: 6, label: "Thursday" },
-  { value: 7, label: "Friday" },
-  { value: 8, label: "Saturday" },
-  { value: 9, label: "Sunday" },
-]
-
 function SpeedLimitInput({
   label,
   value,
   onChange,
   icon: Icon,
+  placeholder,
+  unitLabel,
 }: {
   label: string
   value: number
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
+  placeholder: string
+  unitLabel: string
 }) {
   const inputId = React.useId()
   const [localValue, setLocalValue] = React.useState("")
@@ -83,11 +74,11 @@ function SpeedLimitInput({
             }
           }}
           onBlur={() => setIsFocused(false)}
-          placeholder="0 (Unlimited)"
+          placeholder={placeholder}
           className="flex-1"
           aria-describedby={`${inputId}-unit`}
         />
-        <span id={`${inputId}-unit`} className="text-sm text-muted-foreground min-w-12">MiB/s</span>
+        <span id={`${inputId}-unit`} className="text-sm text-muted-foreground min-w-12">{unitLabel}</span>
       </div>
     </div>
   )
@@ -99,17 +90,21 @@ function TimeInput({
   onHourChange,
   onMinuteChange,
   disabled = false,
-  labelPrefix = "Schedule",
+  groupAriaLabel,
+  hourAriaLabel,
+  minuteAriaLabel,
 }: {
   hour: number
   minute: number
   onHourChange: (hour: number) => void
   onMinuteChange: (minute: number) => void
   disabled?: boolean
-  labelPrefix?: string
+  groupAriaLabel: string
+  hourAriaLabel: string
+  minuteAriaLabel: string
 }) {
   return (
-    <div className="flex items-center gap-1" role="group" aria-label={`${labelPrefix} time`}>
+    <div className="flex items-center gap-1" role="group" aria-label={groupAriaLabel}>
       <Input
         type="number"
         min="0"
@@ -123,7 +118,7 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
-        aria-label={`${labelPrefix} hour (0-23)`}
+        aria-label={hourAriaLabel}
       />
       <span className="text-muted-foreground" aria-hidden="true">:</span>
       <Input
@@ -139,7 +134,7 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
-        aria-label={`${labelPrefix} minute (0-59)`}
+        aria-label={minuteAriaLabel}
       />
     </div>
   )
@@ -151,8 +146,22 @@ interface SpeedLimitsFormProps {
 }
 
 export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
+  const dayOptions = React.useMemo(() => ([
+    { value: 0, label: tr("speedLimitsForm.dayOptions.everyDay") },
+    { value: 1, label: tr("speedLimitsForm.dayOptions.everyWeekday") },
+    { value: 2, label: tr("speedLimitsForm.dayOptions.everyWeekend") },
+    { value: 3, label: tr("speedLimitsForm.dayOptions.monday") },
+    { value: 4, label: tr("speedLimitsForm.dayOptions.tuesday") },
+    { value: 5, label: tr("speedLimitsForm.dayOptions.wednesday") },
+    { value: 6, label: tr("speedLimitsForm.dayOptions.thursday") },
+    { value: 7, label: tr("speedLimitsForm.dayOptions.friday") },
+    { value: 8, label: tr("speedLimitsForm.dayOptions.saturday") },
+    { value: 9, label: tr("speedLimitsForm.dayOptions.sunday") },
+  ]), [tr])
 
   // Track if form is being actively edited
   const [isFormDirty, setIsFormDirty] = React.useState(false)
@@ -177,12 +186,12 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        await updatePreferences(value)
         setIsFormDirty(false) // Reset dirty flag after successful save
-        toast.success("Speed limits updated successfully")
+        toast.success(tr("speedLimitsForm.toasts.updated"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update speed limits")
+        toast.error(tr("speedLimitsForm.toasts.failedUpdate"))
       }
     },
   })
@@ -208,7 +217,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading speed limits...</p>
+        <p className="text-sm text-muted-foreground">{tr("speedLimitsForm.states.loading")}</p>
       </div>
     )
   }
@@ -216,7 +225,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   if (!memoizedPreferences) {
     return (
       <div className="flex items-center justify-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{tr("speedLimitsForm.states.failedLoadPreferences")}</p>
       </div>
     )
   }
@@ -235,7 +244,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return "Global download rate limit must be greater than 0 or disabled"
+                return tr("speedLimitsForm.errors.globalDownloadRate")
               }
               return undefined
             },
@@ -244,13 +253,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Download Limit"
+                label={tr("speedLimitsForm.fields.downloadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
                   field.handleChange(value)
                 }}
                 icon={Download}
+                placeholder={tr("speedLimitsForm.fields.limitPlaceholder")}
+                unitLabel={tr("speedLimitsForm.units.mibPerSecond")}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -264,7 +275,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return "Global upload rate limit must be greater than 0 or disabled"
+                return tr("speedLimitsForm.errors.globalUploadRate")
               }
               return undefined
             },
@@ -273,13 +284,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Upload Limit"
+                label={tr("speedLimitsForm.fields.uploadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
                   field.handleChange(value)
                 }}
                 icon={Upload}
+                placeholder={tr("speedLimitsForm.fields.limitPlaceholder")}
+                unitLabel={tr("speedLimitsForm.units.mibPerSecond")}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -293,7 +306,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return "Alternative download rate limit must be greater than 0 or disabled"
+                return tr("speedLimitsForm.errors.alternativeDownloadRate")
               }
               return undefined
             },
@@ -302,13 +315,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Alternative Download Limit"
+                label={tr("speedLimitsForm.fields.alternativeDownloadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
                   field.handleChange(value)
                 }}
                 icon={Download}
+                placeholder={tr("speedLimitsForm.fields.limitPlaceholder")}
+                unitLabel={tr("speedLimitsForm.units.mibPerSecond")}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -322,7 +337,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return "Alternative upload rate limit must be greater than 0 or disabled"
+                return tr("speedLimitsForm.errors.alternativeUploadRate")
               }
               return undefined
             },
@@ -331,13 +346,15 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Alternative Upload Limit"
+                label={tr("speedLimitsForm.fields.alternativeUploadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
                   field.handleChange(value)
                 }}
                 icon={Upload}
+                placeholder={tr("speedLimitsForm.fields.limitPlaceholder")}
+                unitLabel={tr("speedLimitsForm.units.mibPerSecond")}
               />
               {field.state.meta.errors.length > 0 && (
                 <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -362,7 +379,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <Label className="text-sm font-medium">
-                  Schedule the use of alternative rate limits
+                  {tr("speedLimitsForm.fields.scheduleAlternativeLimits")}
                 </Label>
               </div>
             </div>
@@ -375,7 +392,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">From:</Label>
+                    <Label className="text-sm font-medium">{tr("speedLimitsForm.labels.from")}</Label>
                     <div className="flex items-center gap-4">
                       <form.Field name="schedule_from_hour">
                         {(hourField) => (
@@ -392,7 +409,9 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                   setIsFormDirty(true)
                                   minField.handleChange(minute)
                                 }}
-                                labelPrefix="Start"
+                                groupAriaLabel={tr("speedLimitsForm.aria.startTimeGroup")}
+                                hourAriaLabel={tr("speedLimitsForm.aria.startHour")}
+                                minuteAriaLabel={tr("speedLimitsForm.aria.startMinute")}
                               />
                             )}
                           </form.Field>
@@ -402,7 +421,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">To:</Label>
+                    <Label className="text-sm font-medium">{tr("speedLimitsForm.labels.to")}</Label>
                     <div className="flex items-center gap-4">
                       <form.Field name="schedule_to_hour">
                         {(hourField) => (
@@ -419,7 +438,9 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                                   setIsFormDirty(true)
                                   minField.handleChange(minute)
                                 }}
-                                labelPrefix="End"
+                                groupAriaLabel={tr("speedLimitsForm.aria.endTimeGroup")}
+                                hourAriaLabel={tr("speedLimitsForm.aria.endHour")}
+                                minuteAriaLabel={tr("speedLimitsForm.aria.endMinute")}
                               />
                             )}
                           </form.Field>
@@ -430,7 +451,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">When:</Label>
+                  <Label className="text-sm font-medium">{tr("speedLimitsForm.labels.when")}</Label>
                   <form.Field name="scheduler_days">
                     {(field) => (
                       <Select
@@ -470,7 +491,9 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating
+                ? tr("speedLimitsForm.actions.saving")
+                : tr("speedLimitsForm.actions.saveChanges")}
             </Button>
           )}
         </form.Subscribe>

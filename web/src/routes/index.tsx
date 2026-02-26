@@ -5,6 +5,7 @@
 
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { useAuth } from "@/hooks/useAuth"
+import { useTranslation } from "react-i18next"
 
 export const Route = createFileRoute("/")({
   component: IndexComponent,
@@ -12,9 +13,10 @@ export const Route = createFileRoute("/")({
 
 function IndexComponent() {
   const { isAuthenticated, isLoading } = useAuth()
+  const { t } = useTranslation()
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return <div>{t("loading")}</div>
   }
 
   if (!isAuthenticated) {

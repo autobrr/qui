@@ -6,12 +6,15 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
 import type { InstanceResponse } from "@/types"
+import { useTranslation } from "react-i18next"
 
 interface PasswordIssuesBannerProps {
   instances: InstanceResponse[]
 }
 
 export function PasswordIssuesBanner({ instances }: PasswordIssuesBannerProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const hasDecryptionErrors = instances.some(instance => instance.hasDecryptionError)
 
   if (!hasDecryptionErrors) {
@@ -21,10 +24,9 @@ export function PasswordIssuesBanner({ instances }: PasswordIssuesBannerProps) {
   return (
     <Alert className="mb-6">
       <AlertTriangle className="h-4 w-4" />
-      <AlertTitle>Password Issues Detected</AlertTitle>
+      <AlertTitle>{tr("passwordIssuesBanner.title")}</AlertTitle>
       <AlertDescription>
-        Some instances cannot decrypt their saved passwords, likely due to a configuration change.
-        Check the affected instances below to resolve this issue.
+        {tr("passwordIssuesBanner.description")}
       </AlertDescription>
     </Alert>
   )

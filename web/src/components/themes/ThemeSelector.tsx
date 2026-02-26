@@ -12,6 +12,7 @@ import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface ThemeCardProps {
@@ -23,6 +24,8 @@ interface ThemeCardProps {
 }
 
 function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }: ThemeCardProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   // Get current variation for theme (validated)
   const variation = getThemeVariation(theme.id)
 
@@ -117,20 +120,20 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
           {theme.isPremium ? (
             <Badge variant="secondary" className="text-xs px-1.5 sm:px-2">
               <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
-              <span className="hidden sm:inline">Premium</span>
-              <span className="sm:hidden">Pro</span>
+              <span className="hidden sm:inline">{tr("themeSelector.values.premium")}</span>
+              <span className="sm:hidden">{tr("themeSelector.values.pro")}</span>
             </Badge>
           ) : (
             <Badge variant="outline" className="text-xs px-1.5 sm:px-2">
-              Free
+              {tr("themeSelector.values.free")}
             </Badge>
           )}
 
           {isLocked && (
             <Badge variant="destructive" className="text-xs px-1.5 sm:px-2">
               <Lock className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
-              <span className="hidden sm:inline">Locked</span>
-              <span className="sm:hidden">Lock</span>
+              <span className="hidden sm:inline">{tr("themeSelector.values.locked")}</span>
+              <span className="sm:hidden">{tr("themeSelector.values.lock")}</span>
             </Badge>
           )}
         </div>
@@ -140,6 +143,8 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
 }
 
 export function ThemeSelector() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { theme: currentTheme, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
 
@@ -159,14 +164,14 @@ export function ThemeSelector() {
 
   const showThemeLockedToast = () => {
     if (isError) {
-      toast.error("Unable to verify license", {
-        description: "License check failed. Premium theme switching is temporarily unavailable.",
+      toast.error(tr("themeSelector.toasts.unableVerifyLicenseTitle"), {
+        description: tr("themeSelector.toasts.unableVerifyLicenseDescription"),
       })
       return
     }
 
-    toast.error("This theme requires a premium license", {
-      description: "Open Settings → Themes to see payment options and redeem your discount code.",
+    toast.error(tr("themeSelector.toasts.premiumRequiredTitle"), {
+      description: tr("themeSelector.toasts.premiumRequiredDescription"),
     })
   }
 
@@ -193,9 +198,9 @@ export function ThemeSelector() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Palette className="h-5 w-5" />
-            Theme Selection
+            {tr("themeSelector.title")}
           </CardTitle>
-          <CardDescription>Loading available themes...</CardDescription>
+          <CardDescription>{tr("themeSelector.states.loadingThemes")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="animate-pulse space-y-3">
@@ -215,10 +220,10 @@ export function ThemeSelector() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Palette className="h-5 w-5" />
-          Theme Selection
+          {tr("themeSelector.title")}
         </CardTitle>
         <CardDescription>
-          Choose from available themes. Premium themes require a valid license.
+          {tr("themeSelector.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -226,7 +231,7 @@ export function ThemeSelector() {
           <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
             <WifiOff className="h-4 w-4 flex-shrink-0" />
             <p className="text-sm">
-              License verification unavailable. Premium theme switching is temporarily disabled.
+              {tr("themeSelector.states.licenseUnavailable")}
             </p>
           </div>
         )}
@@ -234,8 +239,8 @@ export function ThemeSelector() {
         {/* Free Themes */}
         <div>
           <h4 className="font-medium mb-3 flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">Free</Badge>
-            Free Themes
+            <Badge variant="outline" className="text-xs">{tr("themeSelector.values.free")}</Badge>
+            {tr("themeSelector.sections.freeThemes")}
           </h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
             {freeThemes.map((theme) => (
@@ -258,20 +263,22 @@ export function ThemeSelector() {
           <h4 className="font-medium mb-3 flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">
               <Sparkles className="h-3 w-3 mr-1" />
-              Premium
+              {tr("themeSelector.values.premium")}
             </Badge>
-            Premium Themes
+            {tr("themeSelector.sections.premiumThemes")}
           </h4>
 
           {premiumThemes.length === 0 ? (
             <div className="flex flex-col items-center py-8 space-y-3">
               <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 dark:text-orange-400 dark:border-orange-800 dark:bg-orange-950/20">
                 <AlertTriangle className="h-3 w-3 mr-1" />
-                Premium themes not loaded
+                {tr("themeSelector.states.premiumNotLoaded")}
               </Badge>
               <p className="text-sm text-muted-foreground text-center max-w-sm">
-                Configure <code className="text-xs bg-muted px-1 py-0.5 rounded">THEMES_REPO_TOKEN</code> and run{" "}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">make themes-fetch</code>.{" "}
+                {tr("themeSelector.states.premiumNotLoadedHelpPrefix")}{" "}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">THEMES_REPO_TOKEN</code>{" "}
+                {tr("themeSelector.states.premiumNotLoadedHelpInfix")}{" "}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">make themes-fetch</code>.
               </p>
             </div>
           ) : (

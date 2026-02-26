@@ -30,6 +30,12 @@ import {
 import type { TorznabIndexer } from "@/types"
 import { Check, Edit2, Filter, RefreshCw, TestTube, Trash2, X } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+
+function useCommonTr() {
+  const { t } = useTranslation("common")
+  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+}
 
 type SortField = "name" | "backend" | "priority" | "status"
 type SortDirection = "asc" | "desc"
@@ -53,6 +59,7 @@ export function IndexerTable({
   onSyncCaps,
   onTestAll,
 }: IndexerTableProps) {
+  const tr = useCommonTr()
   const [expandedCapabilities, setExpandedCapabilities] = useState<Set<number>>(new Set())
   const [sortField, setSortField] = useState<SortField>("priority")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
@@ -129,15 +136,22 @@ export function IndexerTable({
   }, [indexers, sortField, sortDirection, filterStatus, filterTestStatus, filterBackend])
 
   const hasActiveFilters = filterStatus !== "all" || filterTestStatus !== "all" || filterBackend !== "all"
+  const activeFiltersCount = [filterStatus !== "all", filterTestStatus !== "all", filterBackend !== "all"].filter(Boolean).length
+
+  const getBackendLabel = (backend: TorznabIndexer["backend"]) => {
+    if (backend === "jackett") return tr("indexerTable.backends.jackett")
+    if (backend === "prowlarr") return tr("indexerTable.backends.prowlarr")
+    return tr("indexerTable.backends.native")
+  }
 
   if (loading) {
-    return <div className="text-center py-8 text-muted-foreground">Loading...</div>
+    return <div className="text-center py-8 text-muted-foreground">{tr("indexerTable.loading")}</div>
   }
 
   if (!indexers || indexers.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No indexers configured. Add one to get started.
+        {tr("indexerTable.empty.noIndexers")}
       </div>
     )
   }
@@ -151,87 +165,87 @@ export function IndexerTable({
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-8">
                 <Filter className="mr-2 h-4 w-4" />
-                Filters
+                {tr("indexerTable.filters.title")}
                 {hasActiveFilters && (
                   <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                    {[filterStatus !== "all", filterTestStatus !== "all", filterBackend !== "all"].filter(Boolean).length}
+                    {activeFiltersCount}
                   </Badge>
                 )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>Status</DropdownMenuLabel>
+              <DropdownMenuLabel>{tr("indexerTable.filters.statusLabel")}</DropdownMenuLabel>
               <DropdownMenuCheckboxItem
                 checked={filterStatus === "all"}
                 onCheckedChange={() => setFilterStatus("all")}
               >
-                All
+                {tr("indexerTable.filters.options.all")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterStatus === "enabled"}
                 onCheckedChange={() => setFilterStatus("enabled")}
               >
-                Enabled only
+                {tr("indexerTable.filters.options.enabledOnly")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterStatus === "disabled"}
                 onCheckedChange={() => setFilterStatus("disabled")}
               >
-                Disabled only
+                {tr("indexerTable.filters.options.disabledOnly")}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Test Status</DropdownMenuLabel>
+              <DropdownMenuLabel>{tr("indexerTable.filters.testStatusLabel")}</DropdownMenuLabel>
               <DropdownMenuCheckboxItem
                 checked={filterTestStatus === "all"}
                 onCheckedChange={() => setFilterTestStatus("all")}
               >
-                All
+                {tr("indexerTable.filters.options.all")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterTestStatus === "ok"}
                 onCheckedChange={() => setFilterTestStatus("ok")}
               >
-                Working only
+                {tr("indexerTable.filters.options.workingOnly")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterTestStatus === "error"}
                 onCheckedChange={() => setFilterTestStatus("error")}
               >
-                Failed only
+                {tr("indexerTable.filters.options.failedOnly")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterTestStatus === "untested"}
                 onCheckedChange={() => setFilterTestStatus("untested")}
               >
-                Untested only
+                {tr("indexerTable.filters.options.untestedOnly")}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Backend</DropdownMenuLabel>
+              <DropdownMenuLabel>{tr("indexerTable.filters.backendLabel")}</DropdownMenuLabel>
               <DropdownMenuCheckboxItem
                 checked={filterBackend === "all"}
                 onCheckedChange={() => setFilterBackend("all")}
               >
-                All
+                {tr("indexerTable.filters.options.all")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterBackend === "jackett"}
                 onCheckedChange={() => setFilterBackend("jackett")}
               >
-                Jackett
+                {tr("indexerTable.backends.jackett")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterBackend === "prowlarr"}
                 onCheckedChange={() => setFilterBackend("prowlarr")}
               >
-                Prowlarr
+                {tr("indexerTable.backends.prowlarr")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterBackend === "native"}
                 onCheckedChange={() => setFilterBackend("native")}
               >
-                Native
+                {tr("indexerTable.backends.native")}
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -244,7 +258,7 @@ export function IndexerTable({
             disabled={loading || filteredAndSortedIndexers.length === 0}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
-            Test All
+            {tr("indexerTable.actions.testAll")}
           </Button>
 
           {hasActiveFilters && (
@@ -258,12 +272,15 @@ export function IndexerTable({
                 setFilterBackend("all")
               }}
             >
-              Clear filters
+              {tr("indexerTable.actions.clearFilters")}
             </Button>
           )}
 
           <div className="ml-auto text-sm text-muted-foreground">
-            Showing {filteredAndSortedIndexers.length} of {indexers.length} indexers
+            {tr("indexerTable.summary.showing", {
+              visible: filteredAndSortedIndexers.length,
+              total: indexers.length,
+            })}
           </div>
         </div>
 
@@ -279,7 +296,7 @@ export function IndexerTable({
                     className="h-8 w-full justify-center data-[state=open]:bg-accent"
                     onClick={() => handleSort("name")}
                   >
-                    Name
+                    {tr("indexerTable.columns.name")}
                   </Button>
                 </TableHead>
                 <TableHead className="hidden md:table-cell text-center">
@@ -289,7 +306,7 @@ export function IndexerTable({
                     className="h-8 w-full justify-center data-[state=open]:bg-accent"
                     onClick={() => handleSort("backend")}
                   >
-                    Backend
+                    {tr("indexerTable.columns.backend")}
                   </Button>
                 </TableHead>
                 <TableHead className="text-center">
@@ -299,11 +316,11 @@ export function IndexerTable({
                     className="h-8 w-full justify-center data-[state=open]:bg-accent"
                     onClick={() => handleSort("status")}
                   >
-                    Status
+                    {tr("indexerTable.columns.status")}
                   </Button>
                 </TableHead>
-                <TableHead className="text-center">Test Status</TableHead>
-                <TableHead className="hidden xl:table-cell text-center">Capabilities</TableHead>
+                <TableHead className="text-center">{tr("indexerTable.columns.testStatus")}</TableHead>
+                <TableHead className="hidden xl:table-cell text-center">{tr("indexerTable.columns.capabilities")}</TableHead>
                 <TableHead className="hidden sm:table-cell text-center">
                   <Button
                     variant="ghost"
@@ -311,18 +328,18 @@ export function IndexerTable({
                     className="h-8 w-full justify-center data-[state=open]:bg-accent"
                     onClick={() => handleSort("priority")}
                   >
-                    Priority
+                    {tr("indexerTable.columns.priority")}
                   </Button>
                 </TableHead>
-                <TableHead className="hidden sm:table-cell text-center">Timeout</TableHead>
-                <TableHead className="text-center">Actions</TableHead>
+                <TableHead className="hidden sm:table-cell text-center">{tr("indexerTable.columns.timeout")}</TableHead>
+                <TableHead className="text-center">{tr("indexerTable.columns.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredAndSortedIndexers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No indexers match the current filters
+                    {tr("indexerTable.empty.noMatches")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -332,9 +349,7 @@ export function IndexerTable({
                       <div>
                         <div>{indexer.name}</div>
                         <div className="md:hidden text-xs text-muted-foreground mt-1">
-                          {indexer.backend === "jackett" && "Jackett"}
-                          {indexer.backend === "prowlarr" && "Prowlarr"}
-                          {indexer.backend === "native" && "Native"}
+                          {getBackendLabel(indexer.backend)}
                         </div>
                       </div>
                     </TableCell>
@@ -347,12 +362,12 @@ export function IndexerTable({
                       {indexer.enabled ? (
                         <Badge variant="default" className="gap-1">
                           <Check className="h-3 w-3" />
-                          <span className="hidden sm:inline">Enabled</span>
+                          <span className="hidden sm:inline">{tr("indexerTable.status.enabled")}</span>
                         </Badge>
                       ) : (
                         <Badge variant="secondary" className="gap-1">
                           <X className="h-3 w-3" />
-                          <span className="hidden sm:inline">Disabled</span>
+                          <span className="hidden sm:inline">{tr("indexerTable.status.disabled")}</span>
                         </Badge>
                       )}
                     </TableCell>
@@ -360,16 +375,20 @@ export function IndexerTable({
                       {indexer.last_test_status === "ok" ? (
                         <Badge variant="default" className="gap-1">
                           <Check className="h-3 w-3" />
-                          <span className="hidden sm:inline">Working</span>
+                          <span className="hidden sm:inline">{tr("indexerTable.testStatus.working")}</span>
                         </Badge>
                       ) : indexer.last_test_status === "error" ? (
-                        <Badge variant="destructive" className="gap-1" title={indexer.last_test_error || "Unknown error"}>
+                        <Badge
+                          variant="destructive"
+                          className="gap-1"
+                          title={indexer.last_test_error || tr("indexerTable.testStatus.unknownError")}
+                        >
                           <X className="h-3 w-3" />
-                          <span className="hidden sm:inline">Failed</span>
+                          <span className="hidden sm:inline">{tr("indexerTable.testStatus.failed")}</span>
                         </Badge>
                       ) : (
                         <Badge variant="secondary" className="gap-1">
-                          <span className="hidden sm:inline">Untested</span>
+                          <span className="hidden sm:inline">{tr("indexerTable.testStatus.untested")}</span>
                         </Badge>
                       )}
                     </TableCell>
@@ -384,7 +403,7 @@ export function IndexerTable({
                                     key={cap}
                                     variant="secondary"
                                     className="text-xs"
-                                    title={`Capability: ${cap}`}
+                                    title={tr("indexerTable.capabilities.capabilityTitle", { capability: cap })}
                                   >
                                     {cap}
                                   </Badge>
@@ -395,9 +414,9 @@ export function IndexerTable({
                                 size="sm"
                                 className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
                                 onClick={() => toggleCapabilities(indexer.id)}
-                                title="Collapse capabilities"
+                                title={tr("indexerTable.capabilities.collapseTitle")}
                               >
-                                Collapse
+                                {tr("indexerTable.capabilities.collapse")}
                               </Button>
                             </div>
                           ) : (
@@ -415,7 +434,9 @@ export function IndexerTable({
                                       size="sm"
                                       className="text-xs h-5 px-1.5 flex-shrink-0"
                                       onClick={() => toggleCapabilities(indexer.id)}
-                                      aria-label={`Click to show all ${indexer.capabilities.length} capabilities`}
+                                      aria-label={tr("indexerTable.capabilities.expandAria", {
+                                        count: indexer.capabilities.length,
+                                      })}
                                     >
                                       +{indexer.capabilities.length - 2}
                                     </Button>
@@ -437,23 +458,25 @@ export function IndexerTable({
                       ) : (
                         <div className="flex items-center justify-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            No capabilities
+                            {tr("indexerTable.capabilities.none")}
                           </span>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-6 px-2 text-xs"
                             onClick={() => onSyncCaps(indexer.id)}
-                            title="Sync capabilities from backend"
-                            aria-label="Sync capabilities from backend"
+                            title={tr("indexerTable.capabilities.syncTitle")}
+                            aria-label={tr("indexerTable.capabilities.syncAria")}
                           >
-                            Sync
+                            {tr("indexerTable.actions.sync")}
                           </Button>
                         </div>
                       )}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-center">{indexer.priority}</TableCell>
-                    <TableCell className="hidden sm:table-cell text-center">{indexer.timeout_seconds}s</TableCell>
+                    <TableCell className="hidden sm:table-cell text-center">
+                      {tr("indexerTable.units.seconds", { value: indexer.timeout_seconds })}
+                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex justify-center gap-1">
                         <Button
@@ -461,7 +484,7 @@ export function IndexerTable({
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => onTest(indexer.id)}
-                          title="Test connection"
+                          title={tr("indexerTable.actions.testConnection")}
                         >
                           <TestTube className="h-4 w-4" />
                         </Button>
@@ -470,7 +493,7 @@ export function IndexerTable({
                           size="icon"
                           className="h-8 w-8 hidden sm:inline-flex"
                           onClick={() => onSyncCaps(indexer.id)}
-                          title="Sync capabilities"
+                          title={tr("indexerTable.actions.syncCapabilities")}
                         >
                           <RefreshCw className="h-4 w-4" />
                         </Button>
@@ -479,7 +502,7 @@ export function IndexerTable({
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => onEdit(indexer)}
-                          title="Edit"
+                          title={tr("indexerTable.actions.edit")}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -488,7 +511,7 @@ export function IndexerTable({
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => onDelete(indexer.id)}
-                          title="Delete"
+                          title={tr("indexerTable.actions.delete")}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

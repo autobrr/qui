@@ -23,6 +23,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
   getFieldType,
@@ -37,9 +38,9 @@ import { FieldCombobox } from "./FieldCombobox";
 import type { GroupOption } from "./QueryBuilder";
 
 const DURATION_INPUT_UNITS = [
-  { value: 60, label: "minutes" },
-  { value: 3600, label: "hours" },
-  { value: 86400, label: "days" },
+  { value: 60, labelKey: "leafCondition.units.duration.minutes" },
+  { value: 3600, labelKey: "leafCondition.units.duration.hours" },
+  { value: 86400, labelKey: "leafCondition.units.duration.days" },
 ];
 
 // Detect best duration unit from seconds value
@@ -50,15 +51,15 @@ function detectDurationUnit(secs: number): number {
 }
 
 const SPEED_INPUT_UNITS = [
-  { value: 1, label: "B/s" },
-  { value: 1024, label: "KiB/s" },
-  { value: 1024 * 1024, label: "MiB/s" },
+  { value: 1, labelKey: "leafCondition.units.speed.bytesPerSecond" },
+  { value: 1024, labelKey: "leafCondition.units.speed.kibPerSecond" },
+  { value: 1024 * 1024, labelKey: "leafCondition.units.speed.mibPerSecond" },
 ];
 
 const BYTES_INPUT_UNITS = [
-  { value: 1024 * 1024, label: "MiB" },
-  { value: 1024 * 1024 * 1024, label: "GiB" },
-  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
+  { value: 1024 * 1024, labelKey: "leafCondition.units.bytes.mib" },
+  { value: 1024 * 1024 * 1024, labelKey: "leafCondition.units.bytes.gib" },
+  { value: 1024 * 1024 * 1024 * 1024, labelKey: "leafCondition.units.bytes.tib" },
 ];
 
 // Decimal precision by unit to avoid float artifacts (e.g., 24.199999999999818)
@@ -80,6 +81,31 @@ const DECIMALS_BY_SPEED_UNIT: Record<number, number> = {
 };
 
 const DEFAULT_GROUP_ID = "cross_seed_content_save_path";
+
+const HARDLINK_SCOPE_LABEL_KEYS: Record<string, string> = {
+  none: "leafCondition.hardlinkScope.none",
+  torrents_only: "leafCondition.hardlinkScope.torrentsOnly",
+  outside_qbittorrent: "leafCondition.hardlinkScope.outsideQBittorrent",
+};
+
+const TORRENT_STATE_LABEL_KEYS: Record<string, string> = {
+  downloading: "leafCondition.torrentState.downloading",
+  uploading: "leafCondition.torrentState.uploading",
+  completed: "leafCondition.torrentState.completed",
+  stopped: "leafCondition.torrentState.stopped",
+  active: "leafCondition.torrentState.active",
+  inactive: "leafCondition.torrentState.inactive",
+  running: "leafCondition.torrentState.running",
+  stalled: "leafCondition.torrentState.stalled",
+  stalled_uploading: "leafCondition.torrentState.stalledUploading",
+  stalled_downloading: "leafCondition.torrentState.stalledDownloading",
+  errored: "leafCondition.torrentState.error",
+  tracker_down: "leafCondition.torrentState.trackerDown",
+  checking: "leafCondition.torrentState.checking",
+  checkingResumeData: "leafCondition.torrentState.checkingResumeData",
+  moving: "leafCondition.torrentState.moving",
+  missingFiles: "leafCondition.torrentState.missingFiles",
+};
 
 function isGroupingConditionField(field: ConditionField | undefined): boolean {
   return field === "GROUP_SIZE" || field === "IS_GROUPED";
@@ -144,14 +170,17 @@ export function LeafCondition({
   const style = {
     transform: CSS.Translate.toString(transform),
   };
+  const { t } = useTranslation();
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never));
 
   const fieldType = condition.field ? getFieldType(condition.field) : "string";
   const operators = condition.field ? getOperatorsForField(condition.field) : [];
   const isGroupingField = isGroupingConditionField(condition.field);
-  const availableGroupOptions = (groupOptions && groupOptions.length > 0)
-    ? groupOptions
-    : [{ id: DEFAULT_GROUP_ID, label: "Cross-seed (content + save path)" }];
+  const availableGroupOptions = groupOptions && groupOptions.length > 0 ? groupOptions : [{ id: DEFAULT_GROUP_ID, label: tr("leafCondition.group.defaultLabel") }];
   const groupIdValue = condition.groupId || DEFAULT_GROUP_ID;
+  const negateButtonLabel = condition.negate ? tr("leafCondition.negation.not") : tr("leafCondition.negation.if");
+  const negateTooltipLabel = condition.negate ? tr("leafCondition.negation.negated") : tr("leafCondition.negation.clickToNegate");
+  const regexTooltipLabel = condition.regex ? tr("leafCondition.regex.enabled") : tr("leafCondition.regex.enable");
 
   // Track duration unit separately so it persists when value is empty
   const [durationUnit, setDurationUnit] = useState<number>(() =>
@@ -235,7 +264,7 @@ export function LeafCondition({
     if (!isCategoryEqualityOperator) return categoryOptions;
     const filtered = categoryOptions.filter((opt) => opt.value !== CATEGORY_UNCATEGORIZED_VALUE);
     return [
-      { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+      { label: tr("leafCondition.category.uncategorized"), value: CATEGORY_UNCATEGORIZED_VALUE },
       ...filtered,
     ];
   })();
@@ -464,11 +493,11 @@ export function LeafCondition({
             )}
             onClick={toggleNegate}
           >
-            {condition.negate ? "NOT" : "IF"}
+            {negateButtonLabel}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {condition.negate ? "Condition is negated" : "Click to negate"}
+          {negateTooltipLabel}
         </TooltipContent>
       </Tooltip>
 
@@ -483,7 +512,7 @@ export function LeafCondition({
           disabled={!condition.field}
         >
           <SelectTrigger className="h-8 w-full sm:w-fit min-w-[80px]">
-            <SelectValue placeholder="Operator" />
+            <SelectValue placeholder={tr("leafCondition.operator.placeholder")} />
           </SelectTrigger>
           <SelectContent>
             {operators.map((op) => (
@@ -498,8 +527,8 @@ export function LeafCondition({
       {isGroupingField && (
         <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
           <Select value={groupIdValue} onValueChange={handleGroupIDChange}>
-            <SelectTrigger className="h-8 w-full sm:w-[240px]" aria-label="Group for this grouped condition">
-              <SelectValue placeholder="Group for this condition" />
+            <SelectTrigger className="h-8 w-full sm:w-[240px]" aria-label={tr("leafCondition.group.ariaLabel")}>
+              <SelectValue placeholder={tr("leafCondition.group.placeholder")} />
             </SelectTrigger>
             <SelectContent>
               {availableGroupOptions.map((option) => (
@@ -521,14 +550,14 @@ export function LeafCondition({
               <button
                 type="button"
                 className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                aria-label="About grouped condition group selection"
+                aria-label={tr("leafCondition.group.helpAriaLabel")}
               >
                 <Info className="size-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-[320px]">
               <p>
-                This group applies only to this condition row. Use different groups on other GROUP_SIZE/IS_GROUPED rows if needed.
+                {tr("leafCondition.group.helpText")}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -544,7 +573,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenDurationDisplay.minValue}
               onChange={(e) => handleBetweenDurationChange(e.target.value, betweenDurationDisplay.maxValue, betweenDurationDisplay.unit)}
-              placeholder="Min"
+              placeholder={tr("leafCondition.placeholders.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -552,7 +581,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenDurationDisplay.maxValue}
               onChange={(e) => handleBetweenDurationChange(betweenDurationDisplay.minValue, e.target.value, betweenDurationDisplay.unit)}
-              placeholder="Max"
+              placeholder={tr("leafCondition.placeholders.max")}
             />
             <Select
               value={String(betweenDurationDisplay.unit)}
@@ -564,7 +593,7 @@ export function LeafCondition({
               <SelectContent>
                 {DURATION_INPUT_UNITS.map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
-                    {u.label}
+                    {tr(u.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -577,7 +606,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenBytesDisplay.minValue}
               onChange={(e) => handleBetweenBytesChange(e.target.value, betweenBytesDisplay.maxValue, betweenBytesDisplay.unit)}
-              placeholder="Min"
+              placeholder={tr("leafCondition.placeholders.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -585,7 +614,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenBytesDisplay.maxValue}
               onChange={(e) => handleBetweenBytesChange(betweenBytesDisplay.minValue, e.target.value, betweenBytesDisplay.unit)}
-              placeholder="Max"
+              placeholder={tr("leafCondition.placeholders.max")}
             />
             <Select
               value={String(betweenBytesDisplay.unit)}
@@ -597,7 +626,7 @@ export function LeafCondition({
               <SelectContent>
                 {BYTES_INPUT_UNITS.map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
-                    {u.label}
+                    {tr(u.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -613,7 +642,7 @@ export function LeafCondition({
               min={0}
               max={100}
               step="0.01"
-              placeholder="Min"
+              placeholder={tr("leafCondition.placeholders.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -624,7 +653,7 @@ export function LeafCondition({
               min={0}
               max={100}
               step="0.01"
-              placeholder="Max"
+              placeholder={tr("leafCondition.placeholders.max")}
             />
             <span className="text-sm text-muted-foreground">%</span>
           </div>
@@ -635,7 +664,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={condition.minValue ?? ""}
               onChange={(e) => handleMinValueChange(e.target.value)}
-              placeholder="Min"
+              placeholder={tr("leafCondition.placeholders.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -643,30 +672,35 @@ export function LeafCondition({
               className="h-8 w-20"
               value={condition.maxValue ?? ""}
               onChange={(e) => handleMaxValueChange(e.target.value)}
-              placeholder="Max"
+              placeholder={tr("leafCondition.placeholders.max")}
             />
           </div>
         ) : fieldType === "state" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
-              <SelectValue placeholder="Select state" />
+              <SelectValue placeholder={tr("leafCondition.state.selectState")} />
             </SelectTrigger>
             <SelectContent>
               {TORRENT_STATES.map((state) => {
                 const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
                 const isDisabled = disabledInfo !== undefined;
+                let translatedLabel = state.label;
+                const stateLabelKey = TORRENT_STATE_LABEL_KEYS[state.value];
+                if (stateLabelKey) {
+                  translatedLabel = tr(stateLabelKey);
+                }
 
                 if (isDisabled) {
                   return (
                     <DisabledOption key={state.value} reason={disabledInfo.reason}>
-                      <SelectItem value={state.value}>{state.label}</SelectItem>
+                      <SelectItem value={state.value}>{translatedLabel}</SelectItem>
                     </DisabledOption>
                   );
                 }
 
                 return (
                   <SelectItem key={state.value} value={state.value}>
-                    {state.label}
+                    {translatedLabel}
                   </SelectItem>
                 );
               })}
@@ -675,14 +709,21 @@ export function LeafCondition({
         ) : fieldType === "hardlinkScope" ? (
           <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
-              <SelectValue placeholder="Select scope" />
+              <SelectValue placeholder={tr("leafCondition.hardlinkScope.selectScope")} />
             </SelectTrigger>
             <SelectContent>
-              {HARDLINK_SCOPE_VALUES.map((scope) => (
-                <SelectItem key={scope.value} value={scope.value}>
-                  {scope.label}
-                </SelectItem>
-              ))}
+              {HARDLINK_SCOPE_VALUES.map((scope) => {
+                let scopeLabel = scope.label;
+                const scopeLabelKey = HARDLINK_SCOPE_LABEL_KEYS[scope.value];
+                if (scopeLabelKey) {
+                  scopeLabel = tr(scopeLabelKey);
+                }
+                return (
+                  <SelectItem key={scope.value} value={scope.value}>
+                    {scopeLabel}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         ) : fieldType === "boolean" ? (
@@ -691,8 +732,8 @@ export function LeafCondition({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="true">True</SelectItem>
-              <SelectItem value="false">False</SelectItem>
+              <SelectItem value="true">{tr("leafCondition.boolean.true")}</SelectItem>
+              <SelectItem value="false">{tr("leafCondition.boolean.false")}</SelectItem>
             </SelectContent>
           </Select>
         ) : fieldType === "duration" && durationDisplay ? (
@@ -702,7 +743,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={durationDisplay.value}
               onChange={(e) => handleDurationChange(e.target.value, durationDisplay.unit)}
-              placeholder="0"
+              placeholder={tr("leafCondition.placeholders.zero")}
             />
             <Select
               value={String(durationDisplay.unit)}
@@ -714,7 +755,7 @@ export function LeafCondition({
               <SelectContent>
                 {DURATION_INPUT_UNITS.map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
-                    {u.label}
+                    {tr(u.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -727,7 +768,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={speedDisplay.value}
               onChange={(e) => handleSpeedChange(e.target.value, speedDisplay.unit)}
-              placeholder="0"
+              placeholder={tr("leafCondition.placeholders.zero")}
             />
             <Select
               value={String(speedDisplay.unit)}
@@ -739,7 +780,7 @@ export function LeafCondition({
               <SelectContent>
                 {SPEED_INPUT_UNITS.map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
-                    {u.label}
+                    {tr(u.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -752,7 +793,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={bytesDisplay.value}
               onChange={(e) => handleBytesChange(e.target.value, bytesDisplay.unit)}
-              placeholder="0"
+              placeholder={tr("leafCondition.placeholders.zero")}
             />
             <Select
               value={String(bytesDisplay.unit)}
@@ -764,7 +805,7 @@ export function LeafCondition({
               <SelectContent>
                 {BYTES_INPUT_UNITS.map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
-                    {u.label}
+                    {tr(u.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -780,14 +821,14 @@ export function LeafCondition({
               min={0}
               max={100}
               step="0.01"
-              placeholder="0-100"
+              placeholder={tr("leafCondition.placeholders.percentage")}
             />
             <span className="text-sm text-muted-foreground">%</span>
           </div>
         ) : ((condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || isCategoryEqualityOperator) && categorySelectOptions && categorySelectOptions.length > 0) ? (
           <Select value={getCategoryDisplayValue()} onValueChange={handleCategoryValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
-              <SelectValue placeholder="Select category" />
+              <SelectValue placeholder={tr("leafCondition.category.selectCategory")} />
             </SelectTrigger>
             <SelectContent>
               {categorySelectOptions!.map((cat) => (
@@ -808,7 +849,7 @@ export function LeafCondition({
               className="h-8 min-w-0 flex-1"
               value={condition.value ?? ""}
               onChange={(e) => handleValueChange(e.target.value)}
-              placeholder={getPlaceholder(fieldType)}
+              placeholder={getPlaceholder(fieldType, tr)}
             />
             {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
             {fieldType === "string" &&
@@ -836,7 +877,7 @@ export function LeafCondition({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {condition.regex ? "Regex enabled" : "Enable regex"}
+                  {regexTooltipLabel}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -863,21 +904,21 @@ function isNumericType(type: string): boolean {
   return ["bytes", "duration", "float", "percentage", "speed", "integer"].includes(type);
 }
 
-function getPlaceholder(type: string): string {
+function getPlaceholder(type: string, tr: (key: string) => string): string {
   switch (type) {
     case "bytes":
-      return "Size in bytes";
+      return tr("leafCondition.dynamicPlaceholder.bytes");
     case "duration":
-      return "Seconds";
+      return tr("leafCondition.dynamicPlaceholder.duration");
     case "float":
-      return "0.0";
+      return tr("leafCondition.dynamicPlaceholder.float");
     case "percentage":
-      return "0-100";
+      return tr("leafCondition.dynamicPlaceholder.percentage");
     case "speed":
-      return "Bytes/s";
+      return tr("leafCondition.dynamicPlaceholder.speed");
     case "integer":
-      return "0";
+      return tr("leafCondition.dynamicPlaceholder.integer");
     default:
-      return "Value";
+      return tr("leafCondition.dynamicPlaceholder.value");
   }
 }

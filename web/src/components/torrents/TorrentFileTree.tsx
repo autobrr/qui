@@ -11,6 +11,7 @@ import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronRight, Download, FilePen, FolderPen, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface TorrentFileTreeProps {
   files: TorrentFile[]
@@ -68,9 +69,10 @@ function buildFileTree(
       let node = nodeMap.get(currentPath)
 
       if (!node) {
-        const displayName = incognitoMode && isLeaf
-          ? getLinuxFileName(torrentHash, file.index).split("/").pop() || segment
-          : segment
+        let displayName = segment
+        if (incognitoMode && isLeaf) {
+          displayName = getLinuxFileName(torrentHash, file.index).split("/").pop() || segment
+        }
 
         node = {
           id: currentPath,
@@ -182,6 +184,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   onRenameFolder,
   onDownloadFile,
 }: TorrentFileTreeProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const { nodes, allFolderIds } = useMemo(
@@ -287,6 +291,10 @@ export const TorrentFileTree = memo(function TorrentFileTree({
             const isComplete = file.progress === 1
             const progressPercent = file.progress * 100
             const indent = depth * 20 + 28
+            let fileCheckboxAriaLabel = tr("torrentFileTree.file.checkbox.skipDownload")
+            if (isSkipped) {
+              fileCheckboxAriaLabel = tr("torrentFileTree.file.checkbox.selectForDownload")
+            }
 
             return (
               <ContextMenu key={node.id} modal={false}>
@@ -313,7 +321,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                           checked={!isSkipped}
                           disabled={isPending}
                           onCheckedChange={(checked) => onToggleFile(file, checked === true)}
-                          aria-label={isSkipped ? "Select file for download" : "Skip file download"}
+                          aria-label={fileCheckboxAriaLabel}
                           className="shrink-0"
                         />
                       )}
@@ -344,8 +352,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                           if (!incognitoMode) onRenameFile(file.name)
                         }}
                         disabled={incognitoMode}
-                        aria-label="Rename file"
-                        title="Rename file"
+                        aria-label={tr("torrentFileTree.file.actions.renameAria")}
+                        title={tr("torrentFileTree.file.actions.renameTitle")}
                       >
                         <FilePen className="h-3 w-3" />
                       </button>
@@ -359,7 +367,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       disabled={incognitoMode}
                     >
                       <Download className="h-4 w-4 mr-2" />
-                      Download
+                      {tr("torrentFileTree.file.actions.download")}
                     </ContextMenuItem>
                   )}
                   <ContextMenuItem
@@ -367,7 +375,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     disabled={incognitoMode}
                   >
                     <FilePen className="h-4 w-4 mr-2" />
-                    Rename
+                    {tr("torrentFileTree.file.actions.rename")}
                   </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
@@ -375,15 +383,14 @@ export const TorrentFileTree = memo(function TorrentFileTree({
           }
 
           // Folder row
-          const progressPercent = node.totalSize > 0
-            ? (node.totalProgress / node.totalSize) * 100
-            : 0
+          const progressPercent = node.totalSize > 0 ? (node.totalProgress / node.totalSize) * 100 : 0
           const isFolderComplete = progressPercent === 100
-          const checkState: boolean | "indeterminate" = node.selectedCount === 0
-            ? false
-            : node.selectedCount === node.totalCount
-              ? true
-              : "indeterminate"
+          let checkState: boolean | "indeterminate" = "indeterminate"
+          if (node.selectedCount === 0) {
+            checkState = false
+          } else if (node.selectedCount === node.totalCount) {
+            checkState = true
+          }
           const indent = depth * 20 + 4
 
           const handleCheckChange = () => {
@@ -422,7 +429,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         checked={checkState}
                         onCheckedChange={handleCheckChange}
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={`Select all files in ${node.name}`}
+                        aria-label={tr("torrentFileTree.folder.checkbox.selectAllInFolder", { name: node.name })}
                         className="shrink-0"
                       />
                     )}
@@ -447,8 +454,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         if (!incognitoMode) onRenameFolder(node.id)
                       }}
                       disabled={incognitoMode}
-                      aria-label="Rename folder"
-                      title="Rename folder"
+                      aria-label={tr("torrentFileTree.folder.actions.renameAria")}
+                      title={tr("torrentFileTree.folder.actions.renameTitle")}
                     >
                       <FolderPen className="h-3 w-3" />
                     </button>
@@ -464,7 +471,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                   disabled={incognitoMode}
                 >
                   <FolderPen className="h-4 w-4 mr-2" />
-                  Rename
+                  {tr("torrentFileTree.folder.actions.rename")}
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

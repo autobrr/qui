@@ -4,10 +4,12 @@
  */
 
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
+import i18n from "@/i18n"
 import { ALL_INSTANCES_ID } from "@/lib/instances"
 import { Torrents } from "@/pages/Torrents"
 import { createFileRoute } from "@tanstack/react-router"
 import { useLayoutEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { z } from "zod"
 
 const unifiedSearchSchema = z.object({
@@ -21,11 +23,12 @@ export const Route = createFileRoute("/_authenticated/instances/")({
   validateSearch: unifiedSearchSchema,
   component: UnifiedInstanceTorrents,
   staticData: {
-    title: "Unified",
+    title: i18n.t("header.unified"),
   },
 })
 
 function UnifiedInstanceTorrents() {
+  const { t } = useTranslation()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   const { setLayoutRouteState, resetLayoutRouteState } = useLayoutRoute()
@@ -56,7 +59,7 @@ function UnifiedInstanceTorrents() {
   return (
     <Torrents
       instanceId={ALL_INSTANCES_ID}
-      instanceName="Unified"
+      instanceName={t("header.unified")}
       isAllInstancesView
       search={search}
       onSearchChange={handleSearchChange}

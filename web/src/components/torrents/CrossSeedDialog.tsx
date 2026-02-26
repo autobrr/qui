@@ -39,6 +39,7 @@ import type {
 } from "@/types"
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
@@ -132,6 +133,8 @@ const CrossSeedDialogComponent = ({
   refreshCooldownLabel,
   onForceRefresh,
 }: CrossSeedDialogProps) => {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
   const excludedIndexerEntries = useMemo(() => {
     if (!sourceTorrent?.excludedIndexers) {
       return []
@@ -177,16 +180,16 @@ const CrossSeedDialogComponent = ({
 
   const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string) => {
     if (instanceId <= 0) {
-      toast.error("Missing instance for blocklist")
+      toast.error(tr("searchPage.crossSeedDialog.toasts.missingInstance"))
       return
     }
     const pendingKey = getBlocklistPendingKey(instanceId, infoHash)
     setBlocklistPendingKeys(prev => new Set(prev).add(pendingKey))
     try {
       await api.addCrossSeedBlocklist({ instanceId, infoHash })
-      toast.success("Added to blocklist")
+      toast.success(tr("searchPage.crossSeedDialog.toasts.addedToBlocklist"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to add to blocklist"
+      const message = error instanceof Error ? error.message : tr("searchPage.crossSeedDialog.toasts.failedToBlocklist")
       toast.error(message)
     } finally {
       setBlocklistPendingKeys((prev) => {
@@ -195,16 +198,16 @@ const CrossSeedDialogComponent = ({
         return next
       })
     }
-  }, [])
+  }, [tr])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-[90vw] sm:max-w-3xl flex flex-col">
         <DialogHeader className="min-w-0 shrink-0 pb-3">
-          <DialogTitle className="text-base">Search Cross-Seeds</DialogTitle>
+          <DialogTitle className="text-base">{tr("searchPage.crossSeedDialog.title")}</DialogTitle>
           <DialogDescription className="min-w-0 space-y-1">
             <p className="truncate font-mono text-xs font-medium" title={sourceTorrent?.name ?? torrent?.name}>
-              {sourceTorrent?.name ?? torrent?.name ?? "Torrent"}
+              {sourceTorrent?.name ?? torrent?.name ?? tr("searchPage.crossSeedDialog.torrentFallback")}
             </p>
             {(sourceTorrent?.category || sourceTorrent?.size !== undefined || sourceTorrent?.contentType) && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -213,8 +216,8 @@ const CrossSeedDialogComponent = ({
                     {sourceTorrent.contentType}
                   </Badge>
                 )}
-                {sourceTorrent?.category && <span>Category: {sourceTorrent.category}</span>}
-                {sourceTorrent?.size !== undefined && <span>Size: {formatBytes(sourceTorrent.size)}</span>}
+                {sourceTorrent?.category && <span>{tr("searchPage.crossSeedDialog.meta.category", { value: sourceTorrent.category })}</span>}
+                {sourceTorrent?.size !== undefined && <span>{tr("searchPage.crossSeedDialog.meta.size", { value: formatBytes(sourceTorrent.size) })}</span>}
               </div>
             )}
           </DialogDescription>
@@ -222,10 +225,13 @@ const CrossSeedDialogComponent = ({
             <div className="mt-2 space-y-2 rounded-lg border border-dashed border-border/70 p-2 text-xs text-muted-foreground">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <span>
-                  {cacheMetadata.hit ? "Served from cache" : "Fresh search"} · {cacheMetadata.scope?.replace("_", " ") ?? "torznab"}
+                  {cacheMetadata.hit ? tr("searchPage.crossSeedDialog.cache.servedFromCache") : tr("searchPage.crossSeedDialog.cache.freshSearch")} · {cacheMetadata.scope?.replace("_", " ") ?? "torznab"}
                 </span>
                 <span>
-                  Cached {formatRelativeTime(cacheMetadata.cachedAt)} · Expires {formatRelativeTime(cacheMetadata.expiresAt)}
+                  {tr("searchPage.crossSeedDialog.cache.cachedExpires", {
+                    cached: formatRelativeTime(cacheMetadata.cachedAt),
+                    expires: formatRelativeTime(cacheMetadata.expiresAt),
+                  })}
                 </span>
               </div>
               {onForceRefresh && (
@@ -238,7 +244,7 @@ const CrossSeedDialogComponent = ({
                     onClick={onForceRefresh}
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    Refresh from indexers
+                    {tr("searchPage.crossSeedDialog.actions.refreshFromIndexers")}
                   </Button>
                   {!canForceRefresh && refreshCooldownLabel && (
                     <span className="text-[11px] text-muted-foreground">{refreshCooldownLabel}</span>
@@ -267,17 +273,17 @@ const CrossSeedDialogComponent = ({
               />
             ) : (
               <div className="space-y-1.5 text-sm text-muted-foreground">
-                <p className="font-medium">No Torznab indexers available</p>
+                <p className="font-medium">{tr("searchPage.crossSeedDialog.scope.noTorznabIndexers")}</p>
                 <p className="text-xs">
-                  Add or enable Torznab indexers in Settings to search for cross-seeds.
+                  {tr("searchPage.crossSeedDialog.scope.noTorznabIndexersHint")}
                 </p>
               </div>
             )}
             {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
               <div className="mt-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
-                <p className="font-medium text-[11px] text-foreground">Capability note</p>
+                <p className="font-medium text-[11px] text-foreground">{tr("searchPage.crossSeedDialog.scope.capabilityNoteTitle")}</p>
                 <p>
-                  These indexers lack the required capabilities/categories for this torrent and will be skipped by the server:
+                  {tr("searchPage.crossSeedDialog.scope.capabilityNoteDescription")}
                 </p>
                 <ul className="mt-1.5 ml-4 space-y-0.5">
                   {capabilityFilteredIndexerEntries.map(entry => (
@@ -298,16 +304,16 @@ const CrossSeedDialogComponent = ({
                     {!sourceTorrent?.contentFilteringCompleted ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span className="font-medium">Content Filtering In Progress</span>
+                        <span className="font-medium">{tr("searchPage.crossSeedDialog.filtering.inProgressTitle")}</span>
                         <Badge variant="secondary" className="text-xs">
-                          Analyzing existing content...
+                          {tr("searchPage.crossSeedDialog.filtering.analyzing")}
                         </Badge>
                       </>
                     ) : (
                       <>
-                        <span className="font-medium">Smart Filtering Active</span>
+                        <span className="font-medium">{tr("searchPage.crossSeedDialog.filtering.activeTitle")}</span>
                         <Badge variant="secondary" className="text-xs">
-                          {excludedIndexerEntries.length} {excludedIndexerEntries.length === 1 ? "indexer" : "indexers"} filtered
+                          {tr("searchPage.crossSeedDialog.filtering.filteredCount", { count: excludedIndexerEntries.length })}
                         </Badge>
                       </>
                     )}
@@ -317,12 +323,12 @@ const CrossSeedDialogComponent = ({
                   <div className="px-2.5 pb-2.5">
                     {!sourceTorrent?.contentFilteringCompleted ? (
                       <p className="text-xs text-muted-foreground">
-                        Checking your existing torrents to find duplicates and exclude redundant trackers. This helps avoid downloading the same content multiple times.
+                        {tr("searchPage.crossSeedDialog.filtering.inProgressDescription")}
                       </p>
                     ) : excludedIndexerEntries.length > 0 ? (
                       <>
                         <p className="text-xs text-muted-foreground">
-                          You already seed this release from these trackers, so they're excluded from the search.
+                          {tr("searchPage.crossSeedDialog.filtering.excludedDescription")}
                         </p>
                         <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
                           {excludedIndexerEntries.map(entry => (
@@ -334,7 +340,7 @@ const CrossSeedDialogComponent = ({
                       </>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Content filtering completed. No duplicate content found on your enabled trackers.
+                        {tr("searchPage.crossSeedDialog.filtering.completedNoDuplicates")}
                       </p>
                     )}
                   </div>
@@ -345,7 +351,7 @@ const CrossSeedDialogComponent = ({
           {!hasSearched ? null : isLoading ? (
             <div className="flex items-center justify-center gap-2.5 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Searching indexers…</span>
+              <span>{tr("searchPage.crossSeedDialog.searchingIndexers")}</span>
             </div>
           ) : error ? (
             <div className="space-y-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
@@ -353,22 +359,22 @@ const CrossSeedDialogComponent = ({
               {(error.includes("rate limit") || error.includes("429") || error.includes("too many requests") ||
                 error.includes("cooldown") || error.includes("rate-limited")) ? (
                   <div className="text-xs text-muted-foreground space-y-1">
-                    <p><strong>Why this happens:</strong> Trackers limit request frequency to prevent abuse and bans.</p>
-                    <p><strong>What you can do:</strong></p>
+                    <p><strong>{tr("searchPage.crossSeedDialog.rateLimit.whyTitle")}</strong> {tr("searchPage.crossSeedDialog.rateLimit.whyDescription")}</p>
+                    <p><strong>{tr("searchPage.crossSeedDialog.rateLimit.whatTitle")}</strong></p>
                     <ul className="list-disc list-inside space-y-0.5 ml-2">
-                      <li>Wait 30-60 minutes before trying again</li>
-                      <li>Try searching with fewer indexers selected</li>
-                      <li>Use the RSS automation feature for ongoing cross-seeding</li>
-                      <li>Check the indexers page to see which ones are rate-limited</li>
+                      <li>{tr("searchPage.crossSeedDialog.rateLimit.tipWait")}</li>
+                      <li>{tr("searchPage.crossSeedDialog.rateLimit.tipFewer")}</li>
+                      <li>{tr("searchPage.crossSeedDialog.rateLimit.tipRss")}</li>
+                      <li>{tr("searchPage.crossSeedDialog.rateLimit.tipIndexers")}</li>
                     </ul>
                   </div>
                 ) : null}
               <div className="flex gap-2">
                 <Button size="sm" onClick={onRetry} className="h-7">
-                  Retry
+                  {tr("searchPage.crossSeedDialog.actions.retry")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={onClose} className="h-7">
-                  Close
+                  {tr("searchPage.crossSeedDialog.actions.close")}
                 </Button>
               </div>
             </div>
@@ -376,21 +382,21 @@ const CrossSeedDialogComponent = ({
             <>
               {results.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                  No matches found in your search.
+                  {tr("searchPage.crossSeedDialog.noMatches")}
                 </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate text-muted-foreground">Select the releases you want to add</span>
+                    <span className="truncate text-muted-foreground">{tr("searchPage.crossSeedDialog.selectReleases")}</span>
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="outline" className="shrink-0 text-xs">
                         {selectionCount} / {results.length}
                       </Badge>
                       <Button variant="outline" size="sm" onClick={onSelectAll} className="h-7">
-                        Select All
+                        {tr("searchPage.crossSeedDialog.actions.selectAll")}
                       </Button>
                       <Button variant="outline" size="sm" onClick={onClearSelection} className="h-7">
-                        Clear
+                        {tr("searchPage.crossSeedDialog.actions.clear")}
                       </Button>
                     </div>
                   </div>
@@ -403,7 +409,7 @@ const CrossSeedDialogComponent = ({
                           <Checkbox
                             checked={checked}
                             onCheckedChange={() => onToggleSelection(result, index)}
-                            aria-label={`Select ${result.title}`}
+                            aria-label={tr("searchPage.crossSeedDialog.aria.selectRelease", { title: result.title })}
                             className="shrink-0 mt-0.5"
                           />
                           <div className="min-w-0 flex-1 space-y-1">
@@ -426,8 +432,8 @@ const CrossSeedDialogComponent = ({
                             </div>
                             <div className="flex min-w-0 flex-wrap gap-x-2.5 text-xs text-muted-foreground">
                               <span className="shrink-0">{formatBytes(result.size)}</span>
-                              <span className="shrink-0">{result.seeders} seeders</span>
-                              {result.matchReason && <span className="min-w-0 truncate">Match: {result.matchReason}</span>}
+                              <span className="shrink-0">{tr("searchPage.crossSeedDialog.seeders", { count: result.seeders })}</span>
+                              {result.matchReason && <span className="min-w-0 truncate">{tr("searchPage.crossSeedDialog.matchReason", { reason: result.matchReason })}</span>}
                               <span className="shrink-0">{formatCrossSeedPublishDate(result.publishDate)}</span>
                             </div>
                           </div>
@@ -444,13 +450,13 @@ const CrossSeedDialogComponent = ({
                           onCheckedChange={(value) => onUseTagChange(Boolean(value))}
                         />
                         <label htmlFor="cross-seed-tag-toggle" className="text-sm whitespace-nowrap">
-                          Tag added torrents
+                          {tr("searchPage.crossSeedDialog.tagAddedTorrents")}
                         </label>
                       </div>
                       <Input
                         value={tagName}
                         onChange={(event) => onTagNameChange(event.target.value)}
-                        placeholder="cross-seed"
+                        placeholder={tr("searchPage.crossSeedDialog.tagPlaceholder")}
                         disabled={!useTag}
                         className="w-32 min-w-0 h-8"
                       />
@@ -462,7 +468,7 @@ const CrossSeedDialogComponent = ({
                         onCheckedChange={(value) => onStartPausedChange(Boolean(value))}
                       />
                       <label htmlFor="cross-seed-start-paused" className="text-sm">
-                        Start paused
+                        {tr("searchPage.crossSeedDialog.startPaused")}
                       </label>
                     </div>
                   </div>
@@ -474,7 +480,7 @@ const CrossSeedDialogComponent = ({
                     <CollapsibleTrigger className="w-full px-3 pt-2.5 pb-2 text-left hover:bg-muted/50 transition-colors">
                       <div className="flex items-center gap-2">
                         <ChevronRight className={`h-3.5 w-3.5 transition-transform ${applyResultOpen ? "rotate-90" : ""}`} />
-                        <p className="text-sm font-medium">Latest add attempt</p>
+                        <p className="text-sm font-medium">{tr("searchPage.crossSeedDialog.latestAddAttempt")}</p>
                         <Badge variant="outline" className="text-xs">
                           {applyResult.results.length}
                         </Badge>
@@ -490,7 +496,7 @@ const CrossSeedDialogComponent = ({
                             <div className="flex items-center justify-between gap-2 text-sm">
                               <span className="min-w-0 truncate">{result.indexer}</span>
                               <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
-                                {result.success ? "Queued" : "Check"}
+                                {result.success ? tr("searchPage.crossSeedDialog.status.queued") : tr("searchPage.crossSeedDialog.status.check")}
                               </Badge>
                             </div>
                             <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
@@ -501,7 +507,7 @@ const CrossSeedDialogComponent = ({
                                   const infoHash = result.infoHash
                                   const pendingKey = infoHash ? getBlocklistPendingKey(instance.instanceId, infoHash) : null
                                   const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
-                                  const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
+                                  const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success, tr)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
                                       <div className="flex items-center gap-1.5">
@@ -518,11 +524,11 @@ const CrossSeedDialogComponent = ({
                                             size="sm"
                                             onClick={() => handleBlockInfoHash(instance.instanceId, infoHash!)}
                                             disabled={isBlocking}
-                                            aria-label={`Block ${infoHash} for ${instance.instanceName}`}
-                                            title={`Block ${infoHash}`}
+                                            aria-label={tr("searchPage.crossSeedDialog.aria.blockHashForInstance", { hash: infoHash, instance: instance.instanceName })}
+                                            title={tr("searchPage.crossSeedDialog.aria.blockHash", { hash: infoHash })}
                                             className="h-5 px-2 text-[10px]"
                                           >
-                                            {isBlocking ? "Blocking..." : "Block"}
+                                            {isBlocking ? tr("searchPage.crossSeedDialog.actions.blocking") : tr("searchPage.crossSeedDialog.actions.block")}
                                           </Button>
                                         )}
                                       </div>
@@ -548,7 +554,7 @@ const CrossSeedDialogComponent = ({
         </div>
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={onClose}>
-            Close
+            {tr("searchPage.crossSeedDialog.actions.close")}
           </Button>
           <Button
             onClick={onApply}
@@ -562,10 +568,10 @@ const CrossSeedDialogComponent = ({
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Adding…
+                {tr("searchPage.crossSeedDialog.actions.adding")}
               </>
             ) : (
-              "Add Selected"
+              tr("searchPage.crossSeedDialog.actions.addSelected")
             )}
           </Button>
         </DialogFooter>
@@ -586,32 +592,36 @@ function formatCrossSeedPublishDate(value: string): string {
 }
 
 // Maps instance status codes to user-friendly display information
-function getInstanceStatusDisplay(status: string, success: boolean): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
+function getInstanceStatusDisplay(
+  status: string,
+  success: boolean,
+  tr: (key: string) => string
+): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
   switch (status) {
     case "added":
-      return { text: "Added", variant: "success" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.added"), variant: "success" }
     case "added_hardlink":
-      return { text: "Added (hardlink)", variant: "success" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.addedHardlink"), variant: "success" }
     case "added_reflink":
-      return { text: "Added (reflink)", variant: "success" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.addedReflink"), variant: "success" }
     case "exists":
-      return { text: "Already exists", variant: "warning" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.exists"), variant: "warning" }
     case "blocked":
-      return { text: "Blocked", variant: "warning" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.blocked"), variant: "warning" }
     case "no_match":
-      return { text: "No match", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.noMatch"), variant: "destructive" }
     case "rejected":
-      return { text: "Size mismatch", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.rejected"), variant: "destructive" }
     case "no_save_path":
-      return { text: "No save path", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.noSavePath"), variant: "destructive" }
     case "invalid_content_path":
-      return { text: "Invalid path", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.invalidPath"), variant: "destructive" }
     case "skipped_recheck":
-      return { text: "Skipped - recheck required", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.skippedRecheck"), variant: "destructive" }
     case "skipped_unsafe_pieces":
-      return { text: "Skipped - unsafe pieces", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.skippedUnsafePieces"), variant: "destructive" }
     case "error":
-      return { text: "Error", variant: "destructive" }
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.error"), variant: "destructive" }
     default:
       // For unknown status, use success flag to determine variant
       return { text: status, variant: success ? "success" : "destructive" }
@@ -672,6 +682,8 @@ const CrossSeedScopeSelector = memo(({
   onScopeSearch,
   isSearching,
 }: CrossSeedScopeSelectorProps) => {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
   const excludedCount = excludedIndexerIds.length
@@ -688,20 +700,18 @@ const CrossSeedScopeSelector = memo(({
   }, [indexerMode, total, selectedCount])
 
   const statusText = useMemo(() => {
-    const suffix = total === 1 ? "indexer" : "indexers"
     if (indexerMode === "all") {
-      return `${total} enabled ${suffix}`
+      return tr("searchPage.crossSeedDialog.scope.enabledIndexers", { count: total })
     }
     if (selectedCount === 0) {
-      return "None selected"
+      return tr("searchPage.crossSeedDialog.scope.noneSelected")
     }
-    return `${selectedCount} of ${total} selected`
-  }, [indexerMode, total, selectedCount])
+    return tr("searchPage.crossSeedDialog.scope.selectedOfTotal", { selected: selectedCount, total })
+  }, [indexerMode, selectedCount, total, tr])
 
   const searchText = useMemo(() => {
-    const suffix = searchIndexerCount === 1 ? "indexer" : "indexers"
-    return `${searchIndexerCount} ${suffix} for search`
-  }, [searchIndexerCount])
+    return tr("searchPage.crossSeedDialog.scope.searchIndexers", { count: searchIndexerCount })
+  }, [searchIndexerCount, tr])
 
   // Memoize the dropdown items to prevent recreation on each render
   const indexerItems = useMemo(
@@ -732,7 +742,7 @@ const CrossSeedScopeSelector = memo(({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium">Search Scope</h3>
+          <h3 className="text-xs font-medium">{tr("searchPage.crossSeedDialog.scope.title")}</h3>
         </div>
         <div className="flex flex-col items-end gap-0.5">
           <div className="text-xs text-muted-foreground">
@@ -757,7 +767,7 @@ const CrossSeedScopeSelector = memo(({
             disabled={isSearching}
             className="h-7 flex-1 sm:flex-initial text-xs"
           >
-            All indexers
+            {tr("searchPage.crossSeedDialog.scope.allIndexers")}
           </Button>
           <Button
             size="sm"
@@ -766,7 +776,7 @@ const CrossSeedScopeSelector = memo(({
             disabled={disableCustomSelection || isSearching}
             className="h-7 flex-1 sm:flex-initial text-xs"
           >
-            Select Custom
+            {tr("searchPage.crossSeedDialog.scope.selectCustom")}
           </Button>
         </div>
 
@@ -781,12 +791,14 @@ const CrossSeedScopeSelector = memo(({
                   disabled={isSearching}
                   className="h-7 text-xs"
                 >
-                  {selectedCount > 0 ? `${selectedCount} selected` : "Select indexers"}
+                  {selectedCount > 0
+                    ? tr("searchPage.crossSeedDialog.scope.selectedCount", { count: selectedCount })
+                    : tr("searchPage.crossSeedDialog.scope.selectIndexers")}
                   <ChevronDown className="ml-1.5 h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-64" align="end">
-                <DropdownMenuLabel className="text-xs">Available Indexers</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs">{tr("searchPage.crossSeedDialog.scope.availableIndexers")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {indexerItems}
                 <DropdownMenuSeparator />
@@ -795,14 +807,14 @@ const CrossSeedScopeSelector = memo(({
                   onClick={onSelectAllIndexers}
                   className="text-xs"
                 >
-                  Select all
+                  {tr("searchPage.crossSeedDialog.actions.selectAll")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={(event) => event.preventDefault()}
                   onClick={onClearIndexerSelection}
                   className="text-xs"
                 >
-                  Clear selection
+                  {tr("searchPage.crossSeedDialog.actions.clearSelection")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -816,15 +828,15 @@ const CrossSeedScopeSelector = memo(({
             {filteringInProgress ? (
               <>
                 <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                Filtering…
+                {tr("searchPage.crossSeedDialog.scope.filtering")}
               </>
             ) : isSearching ? (
               <>
                 <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                Searching
+                {tr("searchPage.crossSeedDialog.scope.searching")}
               </>
             ) : (
-              "Search"
+              tr("searchPage.crossSeedDialog.actions.search")
             )}
           </Button>
         </div>
