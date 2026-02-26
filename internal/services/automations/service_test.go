@@ -6,6 +6,7 @@ package automations
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -1705,6 +1706,104 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
+func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireConditionForAllMembers(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "h1",
+			Name:        "Tagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "abcd",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "h2",
+			Name:        "Untagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Category: &models.CategoryAction{
+				Enabled:           true,
+				Category:          "new-category",
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "abcd",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	require.Contains(t, states, "h1")
+	require.NotContains(t, states, "h2")
+
+	categoryBatches := map[string][]string{
+		"new-category": {"h1"},
+	}
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": torrents[0],
+		"h2": torrents[1],
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		categoryBatches,
+		nil,
+		nil,
+		nil,
+		torrentByHash,
+		torrents,
+		states,
+		map[int]*models.Automation{1: rule},
+		nil,
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+
+	var details struct {
+		Categories map[string]int `json:"categories"`
+	}
+	require.NoError(t, json.Unmarshal(mockDB.activities[0].Details, &details))
+	assert.Equal(t, 2, details.Categories["new-category"])
+}
+
 func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 	mockDB := &mockQuerier{
 		activities: make([]*models.AutomationActivity, 0),
@@ -1972,6 +2071,9 @@ func (m *mockQuerier) ExecContext(_ context.Context, query string, args ...any) 
 			RuleName:    args[6].(string),
 			Outcome:     args[7].(string),
 			Reason:      args[8].(string),
+		}
+		if details, ok := args[9].(sql.NullString); ok && details.Valid {
+			activity.Details = json.RawMessage(details.String)
 		}
 		m.activities = append(m.activities, activity)
 	}
