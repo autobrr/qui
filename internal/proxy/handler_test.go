@@ -73,13 +73,11 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 	}
 
 	for _, baseCase := range baseCases {
-
 		t.Run(baseCase.name, func(t *testing.T) {
 			h := NewHandler(nil, nil, nil, nil, nil, nil, baseCase.baseURL)
 			require.NotNil(t, h)
 
 			for _, tc := range instanceCases {
-
 				t.Run(tc.name, func(t *testing.T) {
 					req := httptest.NewRequest("GET", baseCase.requestPath, nil)
 

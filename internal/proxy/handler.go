@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -244,7 +245,7 @@ func bufferRequestBody(r *http.Request) ([]byte, error) {
 		r.Body.Close()
 		if n > 0 {
 			// Body exceeds limit - use generic error message
-			return nil, fmt.Errorf("request body exceeds maximum allowed size")
+			return nil, errors.New("request body exceeds maximum allowed size")
 		}
 	} else {
 		r.Body.Close()
@@ -437,12 +438,12 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 	if instanceID == 0 || clientAPIKey == nil {
 		sampled := logger.Sample(missingProxyContextSampler)
 		sampled.Warn().Msg("Proxy request missing instance ID or client API key")
-		return nil, fmt.Errorf("missing proxy context")
+		return nil, errors.New("missing proxy context")
 	}
 
 	instance, err := h.instanceStore.Get(ctx, instanceID)
 	if err != nil {
-		if err == models.ErrInstanceNotFound {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			logger.Warn().Msg("Instance not found for proxy request")
 		} else {
 			logger.Error().Err(err).Msg("Failed to load instance for proxy request")
@@ -748,7 +749,6 @@ func splitStatusFilters(filterValues []string) (status []string, excludeStatus [
 	excludeSeen := make(map[string]struct{})
 
 	for _, normalized := range normalizeStatusFilters(filterValues) {
-
 		switch normalized {
 		case "unregistered", "tracker_down":
 			if _, ok := excludeSeen[normalized]; ok {
