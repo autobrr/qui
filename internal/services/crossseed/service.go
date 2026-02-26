@@ -3787,7 +3787,7 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Regular mode: continue with reuse+rename alignment
 
-	// SAFETY: Guard against partial-contains with extra files when converting from folder to rootless.
+	// SAFETY: Guard against folder->rootless adds with extra files in regular mode.
 	// When the incoming torrent has a top-level folder, the existing torrent is rootless,
 	// and the incoming torrent has extra files (sample, nfo, srr), using contentLayout=NoSubfolder
 	// would cause those extra files to be downloaded into the base directory (e.g., /downloads/)
@@ -3796,9 +3796,9 @@ func (s *Service) processCrossSeedCandidate(
 	//
 	// Hardlink/reflink modes are safe because they use contentLayout=Original and preserve
 	// the incoming torrent's layout exactly via hardlink/reflink tree creation.
-	if matchType == "partial-contains" && sourceRoot != "" && candidateRoot == "" && hasExtraFiles {
+	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles {
 		result.Status = "requires_hardlink_reflink"
-		result.Message = "Skipped: partial cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
+		result.Message = "Skipped: cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
@@ -3807,7 +3807,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("sourceRoot", sourceRoot).
 			Str("candidateRoot", candidateRoot).
 			Bool("hasExtraFiles", hasExtraFiles).
-			Msg("[CROSSSEED] Skipped partial-contains: would use NoSubfolder layout and scatter extra files in base directory. Enable hardlink or reflink mode to allow this match type.")
+			Msg("[CROSSSEED] Skipped folder->rootless regular add: NoSubfolder would scatter extra files in base directory. Enable hardlink or reflink mode.")
 		return result
 	}
 

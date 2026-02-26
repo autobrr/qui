@@ -94,6 +94,84 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 	require.Nil(t, sync.addedOptions, "regular mode must skip before AddTorrent")
 }
 
+func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instanceID := 1
+	matchedHash := "matchedhash"
+	newHash := "newhash"
+	torrentName := "Unparsable.Release.Name-XYZ"
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "video.main.mkv", Size: 1000},
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Unparsable.Release.Name-XYZ/video.main.mkv", Size: 1000},
+		{Name: "Unparsable.Release.Name-XYZ/Sample/sample.mkv", Size: 100},
+	}
+
+	matchedTorrent := qbt.Torrent{
+		Hash:        matchedHash,
+		Name:        torrentName,
+		Progress:    1.0,
+		ContentPath: "/downloads/video.main.mkv",
+	}
+
+	sync := &rootlessSavePathSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			normalizeHash(matchedHash): candidateFiles,
+		},
+		props: map[string]*qbt.TorrentProperties{
+			normalizeHash(matchedHash): {SavePath: "/downloads"},
+		},
+	}
+
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+				UseReflinks:  false,
+			},
+		},
+	}
+
+	service := &Service{
+		syncManager:      sync,
+		instanceStore:    instanceStore,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+
+	candidate := CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "test",
+		Torrents:     []qbt.Torrent{matchedTorrent},
+	}
+
+	result := service.processCrossSeedCandidate(
+		ctx,
+		candidate,
+		[]byte("torrent"),
+		newHash,
+		"",
+		torrentName,
+		&CrossSeedRequest{},
+		service.releaseCache.Parse(torrentName),
+		sourceFiles,
+		nil,
+	)
+
+	require.False(t, result.Success)
+	require.Equal(t, "requires_hardlink_reflink", result.Status)
+	require.Contains(t, result.Message, "requires hardlink or reflink mode")
+	require.Nil(t, sync.addedOptions, "regular mode must skip before AddTorrent")
+}
+
 func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypassesGuard(t *testing.T) {
 	t.Parallel()
 
