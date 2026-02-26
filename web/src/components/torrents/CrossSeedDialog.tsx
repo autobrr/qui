@@ -610,6 +610,8 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
       return { text: "Skipped - recheck required", variant: "destructive" }
     case "skipped_unsafe_pieces":
       return { text: "Skipped - unsafe pieces", variant: "destructive" }
+    case "requires_hardlink_reflink":
+      return { text: "Skipped - Requires Hardlink/Reflink Mode", variant: "destructive" }
     case "error":
       return { text: "Error", variant: "destructive" }
     default:
