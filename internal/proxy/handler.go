@@ -626,6 +626,177 @@ func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, al
 	return true
 }
 
+func parseCSVQueryValues(queryParams url.Values, keys ...string) []string {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	parsed := make([]string, 0)
+
+	for _, key := range keys {
+		values, exists := queryParams[key]
+		if !exists {
+			continue
+		}
+
+		for _, value := range values {
+			for entry := range strings.SplitSeq(value, ",") {
+				trimmed := strings.TrimSpace(entry)
+				if trimmed == "" {
+					continue
+				}
+
+				if _, ok := seen[trimmed]; ok {
+					continue
+				}
+
+				seen[trimmed] = struct{}{}
+				parsed = append(parsed, trimmed)
+			}
+		}
+	}
+
+	if len(parsed) == 0 {
+		return nil
+	}
+
+	return parsed
+}
+
+func parseHashesQueryValues(queryParams url.Values) []string {
+	hashValues, exists := queryParams["hashes"]
+	if !exists {
+		return nil
+	}
+
+	rawHashes := make([]string, 0, len(hashValues))
+	for _, hashValue := range hashValues {
+		for segment := range strings.SplitSeq(hashValue, "|") {
+			for hashEntry := range strings.SplitSeq(segment, ",") {
+				trimmed := strings.TrimSpace(hashEntry)
+				if trimmed == "" || strings.EqualFold(trimmed, "all") {
+					continue
+				}
+
+				rawHashes = append(rawHashes, trimmed)
+			}
+		}
+	}
+
+	if len(rawHashes) == 0 {
+		return nil
+	}
+
+	return normalizeHashes(rawHashes)
+}
+
+func mergeUniqueStringSlices(valueSets ...[]string) []string {
+	merged := make([]string, 0)
+	seen := make(map[string]struct{})
+
+	for _, values := range valueSets {
+		for _, value := range values {
+			if value == "" {
+				continue
+			}
+
+			if _, ok := seen[value]; ok {
+				continue
+			}
+
+			seen[value] = struct{}{}
+			merged = append(merged, value)
+		}
+	}
+
+	if len(merged) == 0 {
+		return nil
+	}
+
+	return merged
+}
+
+func normalizeStatusFilters(statusValues []string) []string {
+	normalized := make([]string, 0, len(statusValues))
+	seen := make(map[string]struct{})
+
+	for _, status := range statusValues {
+		trimmed := strings.TrimSpace(status)
+		if trimmed == "" {
+			continue
+		}
+
+		lowered := strings.ToLower(trimmed)
+		if _, ok := seen[lowered]; ok {
+			continue
+		}
+
+		seen[lowered] = struct{}{}
+		normalized = append(normalized, lowered)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
+}
+
+func splitStatusFilters(filterValues []string) (status []string, excludeStatus []string) {
+	statusSeen := make(map[string]struct{})
+	excludeSeen := make(map[string]struct{})
+
+	for _, normalized := range normalizeStatusFilters(filterValues) {
+
+		switch normalized {
+		case "unregistered", "tracker_down":
+			if _, ok := excludeSeen[normalized]; ok {
+				continue
+			}
+			excludeSeen[normalized] = struct{}{}
+			excludeStatus = append(excludeStatus, normalized)
+		default:
+			if _, ok := statusSeen[normalized]; ok {
+				continue
+			}
+			statusSeen[normalized] = struct{}{}
+			status = append(status, normalized)
+		}
+	}
+
+	return status, excludeStatus
+}
+
+func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions {
+	legacyFilterValues := parseCSVQueryValues(queryParams, "filter")
+	legacyStatusFilters, legacyExcludeStatusFilters := splitStatusFilters(legacyFilterValues)
+
+	statusFilters := mergeUniqueStringSlices(
+		normalizeStatusFilters(parseCSVQueryValues(queryParams, "status")),
+		legacyStatusFilters,
+	)
+	excludeStatusFilters := mergeUniqueStringSlices(
+		normalizeStatusFilters(parseCSVQueryValues(queryParams, "excludeStatus")),
+		legacyExcludeStatusFilters,
+	)
+
+	filters := qbittorrent.FilterOptions{
+		Hashes:            parseHashesQueryValues(queryParams),
+		Status:            statusFilters,
+		ExcludeStatus:     excludeStatusFilters,
+		Categories:        parseCSVQueryValues(queryParams, "category", "categories"),
+		ExcludeCategories: parseCSVQueryValues(queryParams, "excludeCategories"),
+		Tags:              parseCSVQueryValues(queryParams, "tag", "tags"),
+		ExcludeTags:       parseCSVQueryValues(queryParams, "excludeTags"),
+		Trackers:          parseCSVQueryValues(queryParams, "trackers"),
+		ExcludeTrackers:   parseCSVQueryValues(queryParams, "excludeTrackers"),
+		Expr:              strings.TrimSpace(queryParams.Get("expr")),
+	}
+
+	return filters
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
@@ -648,9 +819,10 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queryParams := r.URL.Query()
-	filter := queryParams.Get("filter")
-	category := queryParams.Get("category")
-	tag := queryParams.Get("tag")
+	filterValues := parseCSVQueryValues(queryParams, "filter")
+	categoryValues := parseCSVQueryValues(queryParams, "category")
+	tagValues := parseCSVQueryValues(queryParams, "tag")
+	statusFilters, excludeStatusFilters := splitStatusFilters(filterValues)
 	sort := queryParams.Get("sort")
 	reverse := queryParams.Get("reverse") == "true"
 	limit := 0
@@ -697,16 +869,20 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		filters.Hashes = hashes
 	}
 
-	if filter != "" {
-		filters.Status = []string{filter}
+	if len(statusFilters) > 0 {
+		filters.Status = statusFilters
 	}
 
-	if category != "" {
-		filters.Categories = []string{category}
+	if len(excludeStatusFilters) > 0 {
+		filters.ExcludeStatus = excludeStatusFilters
 	}
 
-	if tag != "" {
-		filters.Tags = []string{tag}
+	if len(categoryValues) > 0 {
+		filters.Categories = categoryValues
+	}
+
+	if len(tagValues) > 0 {
+		filters.Tags = tagValues
 	}
 
 	// Default sort order
@@ -721,9 +897,9 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
-		Str("filter", filter).
-		Str("category", category).
-		Str("tag", tag).
+		Strs("filter", filterValues).
+		Strs("category", categoryValues).
+		Strs("tag", tagValues).
 		Str("sort", sort).
 		Str("order", order).
 		Int("limit", limit).
@@ -770,14 +946,24 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Extract qBittorrent API parameters
 	allowedParams := map[string]struct{}{
-		"search":   {},
-		"filter":   {},
-		"category": {},
-		"tag":      {},
-		"sort":     {},
-		"reverse":  {},
-		"limit":    {},
-		"offset":   {},
+		"search":            {},
+		"filter":            {},
+		"status":            {},
+		"excludestatus":     {},
+		"category":          {},
+		"categories":        {},
+		"excludecategories": {},
+		"tag":               {},
+		"tags":              {},
+		"excludetags":       {},
+		"trackers":          {},
+		"excludetrackers":   {},
+		"expr":              {},
+		"hashes":            {},
+		"sort":              {},
+		"reverse":           {},
+		"limit":             {},
+		"offset":            {},
 	}
 	if !h.validateQueryParams(w, r, allowedParams, "torrents/search") {
 		return
@@ -785,9 +971,7 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 
 	queryParams := r.URL.Query()
 	search := queryParams.Get("search")
-	filter := queryParams.Get("filter")
-	category := queryParams.Get("category")
-	tag := queryParams.Get("tag")
+	filters := buildTorrentSearchFilters(queryParams)
 	sort := queryParams.Get("sort")
 	reverse := queryParams.Get("reverse") == "true"
 	limit := 0
@@ -803,22 +987,6 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
 			offset = parsed
 		}
-	}
-
-	// Build filter options from qBittorrent API parameters
-	filters := qbittorrent.FilterOptions{}
-
-	// Map standard qBittorrent parameters to qui filter
-	if filter != "" {
-		filters.Status = []string{filter}
-	}
-
-	if category != "" {
-		filters.Categories = []string{category}
-	}
-
-	if tag != "" {
-		filters.Tags = []string{tag}
 	}
 
 	// Default sort order
@@ -839,7 +1007,15 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("search", search).
-		Str("filter", filter).
+		Strs("status", filters.Status).
+		Strs("excludeStatus", filters.ExcludeStatus).
+		Strs("categories", filters.Categories).
+		Strs("excludeCategories", filters.ExcludeCategories).
+		Strs("tags", filters.Tags).
+		Strs("excludeTags", filters.ExcludeTags).
+		Strs("trackers", filters.Trackers).
+		Strs("excludeTrackers", filters.ExcludeTrackers).
+		Str("expr", filters.Expr).
 		Str("sort", sort).
 		Str("order", order).
 		Int("limit", limit).
