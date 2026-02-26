@@ -93,14 +93,15 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
-			Hash:     firstHash,
-			Name:     "first",
-			Progress: 1.0,
-		})
-	}()
+		go func() {
+			defer wg.Done()
+			svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+				Hash:     firstHash,
+				Name:     "first",
+				Progress: 1.0,
+				CompletionOn: 123,
+			})
+		}()
 
 	select {
 	case <-firstStarted:
@@ -108,14 +109,15 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 		t.Fatal("first completion search did not start")
 	}
 
-	go func() {
-		defer wg.Done()
-		svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
-			Hash:     secondHash,
-			Name:     "second",
-			Progress: 1.0,
-		})
-	}()
+		go func() {
+			defer wg.Done()
+			svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+				Hash:     secondHash,
+				Name:     "second",
+				Progress: 1.0,
+				CompletionOn: 124,
+			})
+		}()
 
 	select {
 	case <-secondStarted:
@@ -165,6 +167,7 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 		Hash:     "cccccccccccccccccccccccccccccccccccccccc",
 		Name:     "retry-me",
 		Progress: 1.0,
+		CompletionOn: 125,
 	})
 
 	assert.Equal(t, 2, attempts)
