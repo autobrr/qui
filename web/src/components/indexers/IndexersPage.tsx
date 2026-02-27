@@ -39,7 +39,10 @@ interface IndexersPageProps {
 
 function useCommonTr() {
   const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  return useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t],
+  )
 }
 
 export function IndexersPage({ withContainer = true }: IndexersPageProps) {
@@ -69,10 +72,9 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       toast.error(tr("indexersPage.toasts.loadFailed"))
       setIndexers([])
     } finally {
-      if (signal?.aborted) {
-        return
+      if (!signal?.aborted) {
+        setLoading(false)
       }
-      setLoading(false)
     }
   }, [tr])
 

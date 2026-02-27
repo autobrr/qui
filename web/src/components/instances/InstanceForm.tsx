@@ -44,7 +44,7 @@ function translateInstanceUrlValidationError(
     return tr(key)
   }
 
-  return message
+  return tr("instanceForm.validation.urlInvalid")
 }
 
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {

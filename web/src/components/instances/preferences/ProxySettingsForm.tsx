@@ -107,9 +107,9 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
           toast.success(tr("proxySettingsForm.toasts.updated"))
           onSuccess?.()
         },
-        onError: (error) => {
+        onError: () => {
           toast.error(tr("proxySettingsForm.toasts.failedUpdate"))
-          console.error("Failed to update proxy settings:", error)
+          console.error("Failed to update proxy settings")
         },
       })
     },

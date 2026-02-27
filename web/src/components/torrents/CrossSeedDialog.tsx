@@ -31,7 +31,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
-import { formatBytes, formatRelativeTime } from "@/lib/utils"
+import { formatBytes } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedTorrentSearchResponse,
@@ -133,8 +133,38 @@ const CrossSeedDialogComponent = ({
   refreshCooldownLabel,
   onForceRefresh,
 }: CrossSeedDialogProps) => {
-  const { t } = useTranslation("common")
+  const { t, i18n } = useTranslation("common")
   const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
+  const relativeTimeFormatter = useMemo(
+    () => new Intl.RelativeTimeFormat(i18n.resolvedLanguage ?? i18n.language ?? undefined, { numeric: "auto", style: "short" }),
+    [i18n.language, i18n.resolvedLanguage],
+  )
+  const formatLocalizedRelativeTime = useCallback((value?: string | number | Date | null) => {
+    if (value === undefined || value === null) {
+      return "—"
+    }
+
+    const date = value instanceof Date
+      ? value
+      : new Date(typeof value === "number" ? value * 1000 : value)
+
+    if (Number.isNaN(date.getTime())) {
+      return "—"
+    }
+
+    const diffMs = date.getTime() - Date.now()
+    const absDiffMs = Math.abs(diffMs)
+    const units: Array<{ unit: Intl.RelativeTimeFormatUnit; ms: number }> = [
+      { unit: "day", ms: 86_400_000 },
+      { unit: "hour", ms: 3_600_000 },
+      { unit: "minute", ms: 60_000 },
+      { unit: "second", ms: 1_000 },
+    ]
+    const selectedUnit = units.find((unit) => absDiffMs >= unit.ms) ?? units[units.length - 1]
+    const relativeValue = Math.round(diffMs / selectedUnit.ms)
+
+    return relativeTimeFormatter.format(relativeValue, selectedUnit.unit)
+  }, [relativeTimeFormatter])
   const excludedIndexerEntries = useMemo(() => {
     if (!sourceTorrent?.excludedIndexers) {
       return []
@@ -225,12 +255,12 @@ const CrossSeedDialogComponent = ({
             <div className="mt-2 space-y-2 rounded-lg border border-dashed border-border/70 p-2 text-xs text-muted-foreground">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <span>
-                  {cacheMetadata.hit ? tr("searchPage.crossSeedDialog.cache.servedFromCache") : tr("searchPage.crossSeedDialog.cache.freshSearch")} · {cacheMetadata.scope?.replace("_", " ") ?? "torznab"}
+                  {cacheMetadata.hit ? tr("searchPage.crossSeedDialog.cache.servedFromCache") : tr("searchPage.crossSeedDialog.cache.freshSearch")} · {cacheMetadata.scope?.replaceAll("_", " ") ?? "torznab"}
                 </span>
                 <span>
                   {tr("searchPage.crossSeedDialog.cache.cachedExpires", {
-                    cached: formatRelativeTime(cacheMetadata.cachedAt),
-                    expires: formatRelativeTime(cacheMetadata.expiresAt),
+                    cached: formatLocalizedRelativeTime(cacheMetadata.cachedAt),
+                    expires: formatLocalizedRelativeTime(cacheMetadata.expiresAt),
                   })}
                 </span>
               </div>

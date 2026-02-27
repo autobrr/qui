@@ -77,7 +77,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
 
   const { data: blocklistData, isLoading } = useQuery({
     queryKey: ["cross-seed", "blocklist", effectiveInstanceId],
-    queryFn: () => effectiveInstanceId ? api.listCrossSeedBlocklist(effectiveInstanceId) : Promise.resolve([]),
+    queryFn: () => effectiveInstanceId !== null ? api.listCrossSeedBlocklist(effectiveInstanceId) : Promise.resolve([]),
     enabled: effectiveInstanceId !== null,
   })
   const blocklist = blocklistData ?? []
@@ -107,7 +107,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
   })
 
   const handleAdd = useCallback(() => {
-    if (!effectiveInstanceId) {
+    if (effectiveInstanceId === null) {
       toast.error(tr("blocklistTab.toasts.selectInstance"))
       return
     }
@@ -159,7 +159,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
             <div className="space-y-2">
               <Label htmlFor="blocklist-instance">{tr("blocklistTab.labels.instance")}</Label>
               <Select
-                value={effectiveInstanceId ? effectiveInstanceId.toString() : ""}
+                value={effectiveInstanceId !== null ? effectiveInstanceId.toString() : ""}
                 onValueChange={(value) => setInstanceId(Number(value))}
               >
                 <SelectTrigger id="blocklist-instance">
