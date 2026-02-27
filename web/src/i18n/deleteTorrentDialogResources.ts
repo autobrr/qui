@@ -49,4 +49,34 @@ export const deleteTorrentDialogResources = {
       delete: "Löschen",
     },
   },
+  "es-419": {
+    title: "¿Eliminar {{count}} torrent(s)?",
+    description: "Esta acción no se puede deshacer. Los torrents se eliminarán de qBittorrent.",
+    totalSize: "Tamaño total: {{size}}",
+    blockCrossSeeds: "Bloquear infohashes de cross-seed (evitar re-agregado)",
+    actions: {
+      cancel: "Cancelar",
+      delete: "Eliminar",
+    },
+  },
+  fr: {
+    title: "Supprimer {{count}} torrent(s) ?",
+    description: "Cette action est irréversible. Les torrents seront retirés de qBittorrent.",
+    totalSize: "Taille totale : {{size}}",
+    blockCrossSeeds: "Bloquer les infohashs cross-seed (éviter la réimportation)",
+    actions: {
+      cancel: "Annuler",
+      delete: "Supprimer",
+    },
+  },
+  ko: {
+    title: "{{count}}개 토렌트를 삭제할까요?",
+    description: "이 작업은 되돌릴 수 없습니다. 토렌트가 qBittorrent에서 제거됩니다.",
+    totalSize: "총 크기: {{size}}",
+    blockCrossSeeds: "크로스시드 infohash 차단 (재추가 방지)",
+    actions: {
+      cancel: "취소",
+      delete: "삭제",
+    },
+  },
 } as const

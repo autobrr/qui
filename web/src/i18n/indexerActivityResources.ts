@@ -123,6 +123,99 @@ export const indexerActivityResources = {
       timeLeft: "faltam {{time}}",
     },
   },
+  "es-419": {
+    title: "Actividad del programador",
+    summary: {
+      running: "{{count}} en ejecución",
+      queued: "{{count}} en cola",
+      cooldown: "{{count}} en enfriamiento",
+      workers: "{{inUse}}/{{total}} workers",
+    },
+    sections: {
+      running: "En ejecución ({{count}})",
+      queued: "En cola ({{count}})",
+      andMore: "...y {{count}} más",
+      rateLimited: "Con límite de tasa ({{count}})",
+    },
+    empty: {
+      noActivity: "No hay tareas activas ni límites de tasa",
+    },
+    priority: {
+      interactive: "interactivo",
+      rss: "rss",
+      completion: "finalización",
+      background: "segundo plano",
+    },
+    badges: {
+      rss: "RSS",
+    },
+    cooldown: {
+      ready: "Listo",
+      timeLeft: "quedan {{time}}",
+    },
+  },
+  fr: {
+    title: "Activité du planificateur",
+    summary: {
+      running: "{{count}} en cours",
+      queued: "{{count}} en file d'attente",
+      cooldown: "{{count}} en cooldown",
+      workers: "{{inUse}}/{{total}} workers",
+    },
+    sections: {
+      running: "En cours ({{count}})",
+      queued: "En file d'attente ({{count}})",
+      andMore: "...et encore {{count}}",
+      rateLimited: "Limités par débit ({{count}})",
+    },
+    empty: {
+      noActivity: "Aucune tâche active ni limite de débit",
+    },
+    priority: {
+      interactive: "interactif",
+      rss: "rss",
+      completion: "finalisation",
+      background: "arrière-plan",
+    },
+    badges: {
+      rss: "RSS",
+    },
+    cooldown: {
+      ready: "Prêt",
+      timeLeft: "{{time}} restantes",
+    },
+  },
+  ko: {
+    title: "스케줄러 활동",
+    summary: {
+      running: "실행 중 {{count}}개",
+      queued: "대기 중 {{count}}개",
+      cooldown: "쿨다운 {{count}}개",
+      workers: "워커 {{inUse}}/{{total}}개",
+    },
+    sections: {
+      running: "실행 중 ({{count}})",
+      queued: "대기열 ({{count}})",
+      andMore: "...외 {{count}}개",
+      rateLimited: "속도 제한 중 ({{count}})",
+    },
+    empty: {
+      noActivity: "활성 작업이나 속도 제한이 없습니다",
+    },
+    priority: {
+      interactive: "인터랙티브",
+      rss: "rss",
+      completion: "완료",
+      background: "백그라운드",
+    },
+    badges: {
+      rss: "RSS",
+    },
+    cooldown: {
+      ready: "준비됨",
+      timeLeft: "{{time}} 남음",
+    },
+  },
   de: {
     title: "Scheduler-Aktivität",
     summary: {

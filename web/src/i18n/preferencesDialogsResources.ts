@@ -451,6 +451,345 @@ export const preferencesDialogsResources = {
       },
     },
   },
+  "es-419": {
+    seedingLimitsForm: {
+      loading: "Cargando límites de siembra...",
+      loadFailed: "No se pudieron cargar las preferencias",
+      toasts: {
+        updated: "Límites de siembra actualizados",
+        failedUpdate: "No se pudieron actualizar los límites de siembra",
+      },
+      fields: {
+        enableShareRatioLimitLabel: "Habilitar límite de ratio de compartición",
+        enableShareRatioLimitDescription: "Detener la siembra al alcanzar este ratio.",
+        maximumShareRatioLabel: "Ratio de compartición máximo",
+        maximumShareRatioDescription: "Detener la siembra en esta relación subida/descarga.",
+        enableSeedingTimeLimitLabel: "Habilitar límite de tiempo de siembra",
+        enableSeedingTimeLimitDescription: "Detener la siembra después de un límite de tiempo.",
+        maximumSeedingTimeLabel: "Tiempo máximo de siembra (minutos)",
+        maximumSeedingTimeDescription: "Detener la siembra después de esta cantidad de minutos.",
+      },
+      actions: {
+        saving: "Guardando...",
+        saveChanges: "Guardar cambios",
+      },
+    },
+    queueManagementForm: {
+      loading: "Cargando configuración de cola...",
+      loadFailed: "No se pudieron cargar las preferencias",
+      toasts: {
+        updated: "Configuración de cola actualizada",
+        failedUpdate: "No se pudo actualizar la configuración de cola",
+      },
+      fields: {
+        enableQueueingLabel: "Habilitar cola",
+        enableQueueingDescription: "Limita cuántos torrents pueden estar activos al mismo tiempo.",
+        maxActiveDownloadsLabel: "Máx. descargas activas",
+        maxActiveDownloadsDescription: "Número máximo de torrents descargando.",
+        maxActiveUploadsLabel: "Máx. subidas activas",
+        maxActiveUploadsDescription: "Número máximo de torrents subiendo.",
+        maxActiveTorrentsLabel: "Máx. torrents activos",
+        maxActiveTorrentsDescription: "Máximo total de torrents activos.",
+        maxCheckingTorrentsLabel: "Máx. torrents verificando",
+        maxCheckingTorrentsDescription: "Máximo de torrents verificando simultáneamente.",
+      },
+      errors: {
+        maxActiveDownloadsMin: "El máximo de descargas activas debe ser mayor que -1",
+        maxActiveUploadsMin: "El máximo de subidas activas debe ser mayor que -1",
+        maxActiveTorrentsMin: "El máximo de torrents activos debe ser mayor que -1",
+      },
+      actions: {
+        saving: "Guardando...",
+        saveChanges: "Guardar cambios",
+      },
+    },
+    orphanScanSettingsDialog: {
+      title: "Configurar escaneo de huérfanos",
+      instanceFallback: "Instancia",
+      actions: {
+        saveChanges: "Guardar cambios",
+      },
+    },
+    orphanScanPreviewDialog: {
+      title: "Vista previa de archivos huérfanos",
+      description: "Revisa archivos no asociados con ningún torrent antes de eliminarlos.",
+      summary: {
+        filesAndSize: "{{count}} archivos · {{size}}",
+        truncated: "(truncado)",
+      },
+      table: {
+        path: "Ruta",
+        size: "Tamaño",
+        modified: "Modificado",
+        status: "Estado",
+      },
+      states: {
+        loading: "Cargando...",
+        noFiles: "No hay archivos para mostrar.",
+      },
+      pagination: {
+        showing: "Mostrando {{shown}} de {{total}}",
+      },
+      actions: {
+        loadMore: "Cargar más",
+        exportCsv: "Exportar CSV",
+        close: "Cerrar",
+        deleteFiles: "Eliminar archivos",
+      },
+      csv: {
+        path: "Ruta",
+        size: "Tamaño",
+        sizeBytes: "Tamaño (bytes)",
+        modified: "Modificado",
+      },
+      toasts: {
+        deletionStarted: {
+          title: "Eliminación iniciada",
+          description: "Los archivos huérfanos se están eliminando.",
+        },
+        failedStartDeletion: {
+          title: "No se pudo iniciar la eliminación",
+        },
+        unknownError: "Error desconocido",
+        exportedCsv: "Se exportaron {{count}} archivos a CSV",
+        failedExport: "No se pudieron exportar los archivos",
+      },
+    },
+    reannounceSettingsDialog: {
+      title: "Configurar reanuncio",
+      instanceFallback: "Instancia",
+      actions: {
+        saving: "Guardando...",
+        saveChanges: "Guardar cambios",
+      },
+    },
+  },
+  fr: {
+    seedingLimitsForm: {
+      loading: "Chargement des limites de seeding...",
+      loadFailed: "Échec du chargement des préférences",
+      toasts: {
+        updated: "Limites de seeding mises à jour",
+        failedUpdate: "Échec de la mise à jour des limites de seeding",
+      },
+      fields: {
+        enableShareRatioLimitLabel: "Activer la limite de ratio de partage",
+        enableShareRatioLimitDescription: "Arrêter le seeding quand ce ratio est atteint.",
+        maximumShareRatioLabel: "Ratio de partage maximal",
+        maximumShareRatioDescription: "Arrêter le seeding à ce ratio upload/download.",
+        enableSeedingTimeLimitLabel: "Activer la limite de durée de seeding",
+        enableSeedingTimeLimitDescription: "Arrêter le seeding après une limite de temps.",
+        maximumSeedingTimeLabel: "Durée maximale de seeding (minutes)",
+        maximumSeedingTimeDescription: "Arrêter le seeding après ce nombre de minutes.",
+      },
+      actions: {
+        saving: "Enregistrement...",
+        saveChanges: "Enregistrer les modifications",
+      },
+    },
+    queueManagementForm: {
+      loading: "Chargement des paramètres de file...",
+      loadFailed: "Échec du chargement des préférences",
+      toasts: {
+        updated: "Paramètres de file mis à jour",
+        failedUpdate: "Échec de la mise à jour des paramètres de file",
+      },
+      fields: {
+        enableQueueingLabel: "Activer la file",
+        enableQueueingDescription: "Limiter le nombre de torrents actifs simultanément.",
+        maxActiveDownloadsLabel: "Max téléchargements actifs",
+        maxActiveDownloadsDescription: "Nombre maximum de torrents en téléchargement.",
+        maxActiveUploadsLabel: "Max envois actifs",
+        maxActiveUploadsDescription: "Nombre maximum de torrents en envoi.",
+        maxActiveTorrentsLabel: "Max torrents actifs",
+        maxActiveTorrentsDescription: "Nombre total maximum de torrents actifs.",
+        maxCheckingTorrentsLabel: "Max torrents en vérification",
+        maxCheckingTorrentsDescription: "Nombre maximum de torrents vérifiés simultanément.",
+      },
+      errors: {
+        maxActiveDownloadsMin: "Le maximum de téléchargements actifs doit être supérieur à -1",
+        maxActiveUploadsMin: "Le maximum d'envois actifs doit être supérieur à -1",
+        maxActiveTorrentsMin: "Le maximum de torrents actifs doit être supérieur à -1",
+      },
+      actions: {
+        saving: "Enregistrement...",
+        saveChanges: "Enregistrer les modifications",
+      },
+    },
+    orphanScanSettingsDialog: {
+      title: "Configurer l'analyse des orphelins",
+      instanceFallback: "Instance",
+      actions: {
+        saveChanges: "Enregistrer les modifications",
+      },
+    },
+    orphanScanPreviewDialog: {
+      title: "Aperçu des fichiers orphelins",
+      description: "Vérifiez les fichiers non associés à un torrent avant suppression.",
+      summary: {
+        filesAndSize: "{{count}} fichiers · {{size}}",
+        truncated: "(tronqué)",
+      },
+      table: {
+        path: "Chemin",
+        size: "Taille",
+        modified: "Modifié",
+        status: "Statut",
+      },
+      states: {
+        loading: "Chargement...",
+        noFiles: "Aucun fichier à afficher.",
+      },
+      pagination: {
+        showing: "{{shown}} sur {{total}} affichés",
+      },
+      actions: {
+        loadMore: "Charger plus",
+        exportCsv: "Exporter CSV",
+        close: "Fermer",
+        deleteFiles: "Supprimer les fichiers",
+      },
+      csv: {
+        path: "Chemin",
+        size: "Taille",
+        sizeBytes: "Taille (octets)",
+        modified: "Modifié",
+      },
+      toasts: {
+        deletionStarted: {
+          title: "Suppression lancée",
+          description: "Les fichiers orphelins sont en cours de suppression.",
+        },
+        failedStartDeletion: {
+          title: "Échec du démarrage de la suppression",
+        },
+        unknownError: "Erreur inconnue",
+        exportedCsv: "{{count}} fichiers exportés en CSV",
+        failedExport: "Échec de l'export des fichiers",
+      },
+    },
+    reannounceSettingsDialog: {
+      title: "Configurer le réannonce",
+      instanceFallback: "Instance",
+      actions: {
+        saving: "Enregistrement...",
+        saveChanges: "Enregistrer les modifications",
+      },
+    },
+  },
+  ko: {
+    seedingLimitsForm: {
+      loading: "시딩 제한 불러오는 중...",
+      loadFailed: "설정을 불러오지 못했습니다",
+      toasts: {
+        updated: "시딩 제한을 업데이트했습니다",
+        failedUpdate: "시딩 제한 업데이트에 실패했습니다",
+      },
+      fields: {
+        enableShareRatioLimitLabel: "공유 비율 제한 활성화",
+        enableShareRatioLimitDescription: "이 비율에 도달하면 시딩을 중지합니다.",
+        maximumShareRatioLabel: "최대 공유 비율",
+        maximumShareRatioDescription: "이 업로드/다운로드 비율에서 시딩을 중지합니다.",
+        enableSeedingTimeLimitLabel: "시딩 시간 제한 활성화",
+        enableSeedingTimeLimitDescription: "시간 제한에 도달하면 시딩을 중지합니다.",
+        maximumSeedingTimeLabel: "최대 시딩 시간(분)",
+        maximumSeedingTimeDescription: "이 분 수에 도달하면 시딩을 중지합니다.",
+      },
+      actions: {
+        saving: "저장 중...",
+        saveChanges: "변경 사항 저장",
+      },
+    },
+    queueManagementForm: {
+      loading: "대기열 설정 불러오는 중...",
+      loadFailed: "설정을 불러오지 못했습니다",
+      toasts: {
+        updated: "대기열 설정을 업데이트했습니다",
+        failedUpdate: "대기열 설정 업데이트에 실패했습니다",
+      },
+      fields: {
+        enableQueueingLabel: "대기열 사용",
+        enableQueueingDescription: "동시에 활성화할 수 있는 토렌트 수를 제한합니다.",
+        maxActiveDownloadsLabel: "최대 활성 다운로드",
+        maxActiveDownloadsDescription: "동시에 다운로드 중인 토렌트의 최대 수.",
+        maxActiveUploadsLabel: "최대 활성 업로드",
+        maxActiveUploadsDescription: "동시에 업로드 중인 토렌트의 최대 수.",
+        maxActiveTorrentsLabel: "최대 활성 토렌트",
+        maxActiveTorrentsDescription: "전체 활성 토렌트 최대 수.",
+        maxCheckingTorrentsLabel: "최대 검사 중 토렌트",
+        maxCheckingTorrentsDescription: "동시에 검사할 수 있는 최대 토렌트 수.",
+      },
+      errors: {
+        maxActiveDownloadsMin: "최대 활성 다운로드는 -1보다 커야 합니다",
+        maxActiveUploadsMin: "최대 활성 업로드는 -1보다 커야 합니다",
+        maxActiveTorrentsMin: "최대 활성 토렌트는 -1보다 커야 합니다",
+      },
+      actions: {
+        saving: "저장 중...",
+        saveChanges: "변경 사항 저장",
+      },
+    },
+    orphanScanSettingsDialog: {
+      title: "고아 파일 스캔 설정",
+      instanceFallback: "인스턴스",
+      actions: {
+        saveChanges: "변경 사항 저장",
+      },
+    },
+    orphanScanPreviewDialog: {
+      title: "고아 파일 미리보기",
+      description: "삭제 전에 어떤 토렌트와도 연결되지 않은 파일을 확인하세요.",
+      summary: {
+        filesAndSize: "{{count}}개 파일 · {{size}}",
+        truncated: "(잘림)",
+      },
+      table: {
+        path: "경로",
+        size: "크기",
+        modified: "수정됨",
+        status: "상태",
+      },
+      states: {
+        loading: "불러오는 중...",
+        noFiles: "표시할 파일이 없습니다.",
+      },
+      pagination: {
+        showing: "{{total}}개 중 {{shown}}개 표시",
+      },
+      actions: {
+        loadMore: "더 불러오기",
+        exportCsv: "CSV 내보내기",
+        close: "닫기",
+        deleteFiles: "파일 삭제",
+      },
+      csv: {
+        path: "경로",
+        size: "크기",
+        sizeBytes: "크기 (바이트)",
+        modified: "수정됨",
+      },
+      toasts: {
+        deletionStarted: {
+          title: "삭제 시작됨",
+          description: "고아 파일을 제거하는 중입니다.",
+        },
+        failedStartDeletion: {
+          title: "삭제 시작 실패",
+        },
+        unknownError: "알 수 없는 오류",
+        exportedCsv: "{{count}}개 파일을 CSV로 내보냈습니다",
+        failedExport: "파일 내보내기에 실패했습니다",
+      },
+    },
+    reannounceSettingsDialog: {
+      title: "재공지 설정",
+      instanceFallback: "인스턴스",
+      actions: {
+        saving: "저장 중...",
+        saveChanges: "변경 사항 저장",
+      },
+    },
+  },
   de: {
     seedingLimitsForm: {
       loading: "Seed-Limits werden geladen...",

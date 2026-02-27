@@ -119,4 +119,76 @@ export const torrentFileTreeResources = {
       },
     },
   },
+  "es-419": {
+    file: {
+      checkbox: {
+        selectForDownload: "Seleccionar archivo para descargar",
+        skipDownload: "Omitir descarga del archivo",
+      },
+      actions: {
+        renameAria: "Renombrar archivo",
+        renameTitle: "Renombrar archivo",
+        rename: "Renombrar",
+        download: "Descargar",
+      },
+    },
+    folder: {
+      checkbox: {
+        selectAllInFolder: "Seleccionar todos los archivos en {{name}}",
+      },
+      actions: {
+        renameAria: "Renombrar carpeta",
+        renameTitle: "Renombrar carpeta",
+        rename: "Renombrar",
+      },
+    },
+  },
+  fr: {
+    file: {
+      checkbox: {
+        selectForDownload: "Sélectionner le fichier pour téléchargement",
+        skipDownload: "Ignorer le téléchargement du fichier",
+      },
+      actions: {
+        renameAria: "Renommer le fichier",
+        renameTitle: "Renommer le fichier",
+        rename: "Renommer",
+        download: "Télécharger",
+      },
+    },
+    folder: {
+      checkbox: {
+        selectAllInFolder: "Sélectionner tous les fichiers dans {{name}}",
+      },
+      actions: {
+        renameAria: "Renommer le dossier",
+        renameTitle: "Renommer le dossier",
+        rename: "Renommer",
+      },
+    },
+  },
+  ko: {
+    file: {
+      checkbox: {
+        selectForDownload: "다운로드할 파일 선택",
+        skipDownload: "파일 다운로드 건너뛰기",
+      },
+      actions: {
+        renameAria: "파일 이름 바꾸기",
+        renameTitle: "파일 이름 바꾸기",
+        rename: "이름 바꾸기",
+        download: "다운로드",
+      },
+    },
+    folder: {
+      checkbox: {
+        selectAllInFolder: "{{name}}의 모든 파일 선택",
+      },
+      actions: {
+        renameAria: "폴더 이름 바꾸기",
+        renameTitle: "폴더 이름 바꾸기",
+        rename: "이름 바꾸기",
+      },
+    },
+  },
 } as const

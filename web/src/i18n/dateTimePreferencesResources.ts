@@ -179,6 +179,141 @@ export const dateTimePreferencesResources = {
       savePreferences: "Salvar preferências",
     },
   },
+  "es-419": {
+    toasts: {
+      updated: "Preferencias de fecha y hora actualizadas",
+      failedUpdate: "No se pudieron actualizar las preferencias de fecha y hora",
+    },
+    sections: {
+      timezone: "Zona horaria",
+      timeFormat: "Formato de hora",
+      dateFormat: "Formato de fecha",
+    },
+    fields: {
+      timezoneLabel: "Zona horaria",
+      timezoneDescription: "Selecciona tu zona horaria local para mostrar la hora correctamente",
+      timezonePlaceholder: "Selecciona zona horaria",
+      use12HourLabel: "Usar formato de 12 horas (AM/PM)",
+      use12HourDescription: "Alterna entre formato de 12 y 24 horas",
+      dateFormatLabel: "Formato de fecha",
+      dateFormatDescription: "Elige cómo se muestran las fechas en toda la aplicación",
+      dateFormatPlaceholder: "Selecciona formato de fecha",
+    },
+    timezoneRegions: {
+      UTC: "UTC",
+      Americas: "Américas",
+      Europe: "Europa",
+      Asia: "Asia",
+      Africa: "África",
+      Oceania: "Oceanía",
+    },
+    values: {
+      detected: "(detectado)",
+    },
+    options: {
+      iso: "ISO 8601 (YYYY-MM-DD)",
+      us: "Formato de EE. UU. (MM/DD/YYYY)",
+      eu: "Formato europeo (DD/MM/YYYY)",
+      relative: "Relativo (p. ej., \"hace 2 horas\")",
+    },
+    preview: {
+      title: "Vista previa",
+      description: "Así se verán las fechas y horas en la aplicación",
+    },
+    actions: {
+      savePreferences: "Guardar preferencias",
+    },
+  },
+  fr: {
+    toasts: {
+      updated: "Préférences de date et d'heure mises à jour",
+      failedUpdate: "Échec de la mise à jour des préférences de date et d'heure",
+    },
+    sections: {
+      timezone: "Fuseau horaire",
+      timeFormat: "Format de l'heure",
+      dateFormat: "Format de date",
+    },
+    fields: {
+      timezoneLabel: "Fuseau horaire",
+      timezoneDescription: "Sélectionnez votre fuseau local pour un affichage correct de l'heure",
+      timezonePlaceholder: "Sélectionner un fuseau horaire",
+      use12HourLabel: "Utiliser le format 12 h (AM/PM)",
+      use12HourDescription: "Bascule entre l'affichage 12 h et 24 h",
+      dateFormatLabel: "Format de date",
+      dateFormatDescription: "Choisissez comment les dates s'affichent dans l'application",
+      dateFormatPlaceholder: "Sélectionner un format de date",
+    },
+    timezoneRegions: {
+      UTC: "UTC",
+      Americas: "Amériques",
+      Europe: "Europe",
+      Asia: "Asie",
+      Africa: "Afrique",
+      Oceania: "Océanie",
+    },
+    values: {
+      detected: "(détecté)",
+    },
+    options: {
+      iso: "ISO 8601 (YYYY-MM-DD)",
+      us: "Format US (MM/DD/YYYY)",
+      eu: "Format européen (DD/MM/YYYY)",
+      relative: "Relatif (ex. : \"il y a 2 heures\")",
+    },
+    preview: {
+      title: "Aperçu",
+      description: "Voici comment les dates et heures s'afficheront dans l'application",
+    },
+    actions: {
+      savePreferences: "Enregistrer les préférences",
+    },
+  },
+  ko: {
+    toasts: {
+      updated: "날짜 및 시간 설정을 업데이트했습니다",
+      failedUpdate: "날짜 및 시간 설정 업데이트에 실패했습니다",
+    },
+    sections: {
+      timezone: "시간대",
+      timeFormat: "시간 형식",
+      dateFormat: "날짜 형식",
+    },
+    fields: {
+      timezoneLabel: "시간대",
+      timezoneDescription: "정확한 시간 표시를 위해 로컬 시간대를 선택하세요",
+      timezonePlaceholder: "시간대 선택",
+      use12HourLabel: "12시간 형식(AM/PM) 사용",
+      use12HourDescription: "12시간/24시간 표시를 전환합니다",
+      dateFormatLabel: "날짜 형식",
+      dateFormatDescription: "앱 전체에서 날짜를 표시하는 방식을 선택하세요",
+      dateFormatPlaceholder: "날짜 형식 선택",
+    },
+    timezoneRegions: {
+      UTC: "UTC",
+      Americas: "아메리카",
+      Europe: "유럽",
+      Asia: "아시아",
+      Africa: "아프리카",
+      Oceania: "오세아니아",
+    },
+    values: {
+      detected: "(감지됨)",
+    },
+    options: {
+      iso: "ISO 8601 (YYYY-MM-DD)",
+      us: "미국식 형식 (MM/DD/YYYY)",
+      eu: "유럽식 형식 (DD/MM/YYYY)",
+      relative: "상대 시간 (예: \"2시간 전\")",
+    },
+    preview: {
+      title: "미리보기",
+      description: "앱에서 날짜와 시간이 이렇게 표시됩니다",
+    },
+    actions: {
+      savePreferences: "설정 저장",
+    },
+  },
   de: {
     toasts: {
       updated: "Datums- und Zeiteinstellungen aktualisiert",

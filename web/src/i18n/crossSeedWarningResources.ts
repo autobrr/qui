@@ -229,4 +229,142 @@ export const crossSeedWarningResources = {
       more: "mehr",
     },
   },
+  "es-419": {
+    idle: {
+      highRiskTitle: "Revisar cross-seeds",
+      defaultTitle: "Cross-seeds sin revisar",
+      checkAction: "Revisar",
+    },
+    searching: {
+      title: "Revisando cross-seeds",
+    },
+    error: {
+      title: "No se pudieron revisar los cross-seeds",
+      retryAction: "Reintentar",
+    },
+    complete: {
+      noneFound: "No se encontraron cross-seeds",
+    },
+    instances: {
+      fallback: "Instancia {{id}}",
+    },
+    warning: {
+      deleteCrossSeeds: "Estos cross-seeds también se eliminarán",
+      deleteFiles: "Si borras los archivos, estos cross-seeds se romperán",
+      preserveData: "Cross-seeds detectados: los datos se conservarán",
+    },
+    summary: {
+      shareSingle: "{{count}} torrent comparte estos archivos",
+      sharePlural: "{{count}} torrents comparten estos archivos",
+      acrossInstances: "en {{count}} instancias",
+      onSingleTracker: "en {{tracker}}",
+      onMultipleTrackers: "en {{count}} trackers",
+      tail: {
+        deleteCrossSeeds: " - se eliminarán junto con la selección",
+        deleteFiles: " - tendrán que volver a descargar",
+        preserve: " - no se verán afectados por esta eliminación",
+      },
+    },
+    options: {
+      deleteCrossSeedsLabel: "Eliminar también estos torrents cross-seeded",
+    },
+    list: {
+      hide: "Ocultar",
+      show: "Mostrar",
+      affectedTorrents: "torrents afectados",
+      more: "más",
+    },
+  },
+  fr: {
+    idle: {
+      highRiskTitle: "Vérifier les cross-seeds",
+      defaultTitle: "Cross-seeds non vérifiés",
+      checkAction: "Vérifier",
+    },
+    searching: {
+      title: "Vérification des cross-seeds en cours",
+    },
+    error: {
+      title: "Échec de la vérification des cross-seeds",
+      retryAction: "Réessayer",
+    },
+    complete: {
+      noneFound: "Aucun cross-seed trouvé",
+    },
+    instances: {
+      fallback: "Instance {{id}}",
+    },
+    warning: {
+      deleteCrossSeeds: "Ces cross-seeds seront aussi supprimés",
+      deleteFiles: "Supprimer les fichiers cassera ces cross-seeds",
+      preserveData: "Cross-seeds détectés - les données seront conservées",
+    },
+    summary: {
+      shareSingle: "{{count}} torrent partage ces fichiers",
+      sharePlural: "{{count}} torrents partagent ces fichiers",
+      acrossInstances: "sur {{count}} instances",
+      onSingleTracker: "sur {{tracker}}",
+      onMultipleTrackers: "sur {{count}} trackers",
+      tail: {
+        deleteCrossSeeds: " - seront retirés avec la sélection",
+        deleteFiles: " - devront être retéléchargés",
+        preserve: " - ne seront pas impactés par cette suppression",
+      },
+    },
+    options: {
+      deleteCrossSeedsLabel: "Supprimer aussi ces torrents cross-seeded",
+    },
+    list: {
+      hide: "Masquer",
+      show: "Afficher",
+      affectedTorrents: "torrents concernés",
+      more: "de plus",
+    },
+  },
+  ko: {
+    idle: {
+      highRiskTitle: "크로스시드 확인",
+      defaultTitle: "크로스시드 미확인",
+      checkAction: "확인",
+    },
+    searching: {
+      title: "크로스시드 확인 중",
+    },
+    error: {
+      title: "크로스시드 확인에 실패했습니다",
+      retryAction: "다시 시도",
+    },
+    complete: {
+      noneFound: "크로스시드를 찾지 못했습니다",
+    },
+    instances: {
+      fallback: "인스턴스 {{id}}",
+    },
+    warning: {
+      deleteCrossSeeds: "이 크로스시드들도 함께 삭제됩니다",
+      deleteFiles: "파일을 삭제하면 이 크로스시드들이 손상됩니다",
+      preserveData: "크로스시드 감지됨 - 데이터는 보존됩니다",
+    },
+    summary: {
+      shareSingle: "{{count}}개 토렌트가 이 파일을 공유합니다",
+      sharePlural: "{{count}}개 토렌트가 이 파일을 공유합니다",
+      acrossInstances: "{{count}}개 인스턴스에 걸쳐",
+      onSingleTracker: "{{tracker}}에서",
+      onMultipleTrackers: "{{count}}개 트래커에서",
+      tail: {
+        deleteCrossSeeds: " - 선택 항목과 함께 제거됩니다",
+        deleteFiles: " - 다시 다운로드해야 합니다",
+        preserve: " - 이번 삭제의 영향을 받지 않습니다",
+      },
+    },
+    options: {
+      deleteCrossSeedsLabel: "이 cross-seeded 토렌트도 함께 삭제",
+    },
+    list: {
+      hide: "숨기기",
+      show: "보기",
+      affectedTorrents: "영향받는 토렌트",
+      more: "더보기",
+    },
+  },
 } as const

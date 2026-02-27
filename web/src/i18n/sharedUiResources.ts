@@ -307,6 +307,237 @@ export const sharedUiResources = {
       },
     },
   },
+  "es-419": {
+    trackerStatus: {
+      disabled: "Deshabilitado",
+      notContacted: "Sin contacto",
+      working: "Funcionando",
+      updating: "Actualizando",
+      error: "Error",
+      unknown: "Desconocido",
+    },
+    magnetHandlerBanner: {
+      message: "Registrar qui como manejador de enlaces magnet",
+      actions: {
+        register: "Registrar",
+        dismiss: "Descartar",
+      },
+      toasts: {
+        registrationRequested: "Se solicitó el registro del manejador magnet",
+        failedRegister: "No se pudo registrar el manejador magnet",
+      },
+      guidance: {
+        standalone: "Abre qui en una pestaña normal del navegador para registrarlo. Las PWA pueden ocultar el aviso en la barra de direcciones.",
+        firefox: "Si el navegador te pide confirmación, acéptala para completar el registro.",
+        chromium: "En Chrome suele aparecer un ícono pequeño de manejador de protocolo en la barra de direcciones. Si no aparece, habilítalo en chrome://settings/handlers.",
+        default: "Si el navegador te pide confirmación, acéptala para completar el registro.",
+      },
+    },
+    fieldCombobox: {
+      title: "Seleccionar campo",
+      trigger: {
+        selectField: "Seleccionar campo",
+      },
+      searchPlaceholder: "Buscar campos...",
+      empty: "No se encontró ningún campo.",
+    },
+    dashboardSettingsDialog: {
+      actions: {
+        layoutSettings: "Configuración de diseño",
+      },
+      title: "Configuración del dashboard",
+      description: "Personaliza qué secciones se muestran y en qué orden.",
+      sectionsLabel: "Secciones",
+      sectionLabels: {
+        serverStats: "Estadísticas del servidor",
+        trackerBreakdown: "Desglose por tracker",
+        globalStatsCards: "Tarjetas de estadísticas globales",
+        instanceCards: "Tarjetas de instancia",
+        fallback: "{{sectionId}}",
+      },
+      trackerDefaultsLabel: "Valores predeterminados del desglose por tracker",
+      fields: {
+        defaultSort: "Orden predeterminado",
+        direction: "Dirección",
+        itemsPerPage: "Elementos por página",
+      },
+      direction: {
+        descending: "Descendente",
+        ascending: "Ascendente",
+      },
+      sortColumns: {
+        tracker: "Nombre del tracker",
+        uploaded: "Subido",
+        downloaded: "Descargado",
+        ratio: "Ratio",
+        buffer: "Buffer",
+        count: "Torrents",
+        size: "Tamaño",
+        performance: "Semeado",
+      },
+    },
+    queryBuilder: {
+      emptyState: {
+        title: "Sin condiciones",
+        description: "Coincide con todos los torrents (respetando la selección de trackers).",
+        action: "Agregar condición",
+      },
+    },
+  },
+  fr: {
+    trackerStatus: {
+      disabled: "Désactivé",
+      notContacted: "Non contacté",
+      working: "Fonctionnel",
+      updating: "Mise à jour",
+      error: "Erreur",
+      unknown: "Inconnu",
+    },
+    magnetHandlerBanner: {
+      message: "Enregistrer qui comme gestionnaire de liens magnet",
+      actions: {
+        register: "Enregistrer",
+        dismiss: "Ignorer",
+      },
+      toasts: {
+        registrationRequested: "Demande d'enregistrement du gestionnaire magnet envoyée",
+        failedRegister: "Échec de l'enregistrement du gestionnaire magnet",
+      },
+      guidance: {
+        standalone: "Ouvrez qui dans un onglet navigateur standard pour l'enregistrement. Les PWA masquent parfois l'invite de la barre d'adresse.",
+        firefox: "Si le navigateur vous le demande, acceptez pour terminer l'enregistrement.",
+        chromium: "Dans Chrome, cela apparaît souvent comme une petite icône de gestionnaire de protocole dans la barre d'adresse. Si rien n'apparaît, activez-le dans chrome://settings/handlers.",
+        default: "Si le navigateur vous le demande, acceptez pour terminer l'enregistrement.",
+      },
+    },
+    fieldCombobox: {
+      title: "Sélectionner un champ",
+      trigger: {
+        selectField: "Sélectionner un champ",
+      },
+      searchPlaceholder: "Rechercher des champs...",
+      empty: "Aucun champ trouvé.",
+    },
+    dashboardSettingsDialog: {
+      actions: {
+        layoutSettings: "Paramètres de mise en page",
+      },
+      title: "Paramètres du tableau de bord",
+      description: "Personnalisez les sections visibles et leur ordre.",
+      sectionsLabel: "Sections",
+      sectionLabels: {
+        serverStats: "Statistiques serveur",
+        trackerBreakdown: "Répartition par tracker",
+        globalStatsCards: "Cartes de statistiques globales",
+        instanceCards: "Cartes d'instance",
+        fallback: "{{sectionId}}",
+      },
+      trackerDefaultsLabel: "Valeurs par défaut de la répartition tracker",
+      fields: {
+        defaultSort: "Tri par défaut",
+        direction: "Direction",
+        itemsPerPage: "Éléments par page",
+      },
+      direction: {
+        descending: "Décroissant",
+        ascending: "Croissant",
+      },
+      sortColumns: {
+        tracker: "Nom du tracker",
+        uploaded: "Envoyé",
+        downloaded: "Téléchargé",
+        ratio: "Ratio",
+        buffer: "Tampon",
+        count: "Torrents",
+        size: "Taille",
+        performance: "Seedés",
+      },
+    },
+    queryBuilder: {
+      emptyState: {
+        title: "Aucune condition",
+        description: "Correspond à tous les torrents (selon la sélection des trackers).",
+        action: "Ajouter une condition",
+      },
+    },
+  },
+  ko: {
+    trackerStatus: {
+      disabled: "비활성화됨",
+      notContacted: "접촉 안 됨",
+      working: "정상",
+      updating: "업데이트 중",
+      error: "오류",
+      unknown: "알 수 없음",
+    },
+    magnetHandlerBanner: {
+      message: "qui를 magnet 링크 핸들러로 등록",
+      actions: {
+        register: "등록",
+        dismiss: "닫기",
+      },
+      toasts: {
+        registrationRequested: "magnet 핸들러 등록을 요청했습니다",
+        failedRegister: "magnet 핸들러 등록에 실패했습니다",
+      },
+      guidance: {
+        standalone: "등록하려면 일반 브라우저 탭에서 qui를 여세요. PWA에서는 주소창 안내가 숨겨질 수 있습니다.",
+        firefox: "브라우저에서 확인 요청이 뜨면 승인해 등록을 완료하세요.",
+        chromium: "Chrome에서는 주소창의 작은 프로토콜 핸들러 아이콘으로 표시되는 경우가 많습니다. 아무것도 보이지 않으면 chrome://settings/handlers 에서 활성화하세요.",
+        default: "브라우저에서 확인 요청이 뜨면 승인해 등록을 완료하세요.",
+      },
+    },
+    fieldCombobox: {
+      title: "필드 선택",
+      trigger: {
+        selectField: "필드 선택",
+      },
+      searchPlaceholder: "필드 검색...",
+      empty: "필드를 찾지 못했습니다.",
+    },
+    dashboardSettingsDialog: {
+      actions: {
+        layoutSettings: "레이아웃 설정",
+      },
+      title: "대시보드 설정",
+      description: "보이는 섹션과 순서를 사용자 지정합니다.",
+      sectionsLabel: "섹션",
+      sectionLabels: {
+        serverStats: "서버 통계",
+        trackerBreakdown: "트래커 분석",
+        globalStatsCards: "전역 통계 카드",
+        instanceCards: "인스턴스 카드",
+        fallback: "{{sectionId}}",
+      },
+      trackerDefaultsLabel: "트래커 분석 기본값",
+      fields: {
+        defaultSort: "기본 정렬",
+        direction: "방향",
+        itemsPerPage: "페이지당 항목 수",
+      },
+      direction: {
+        descending: "내림차순",
+        ascending: "오름차순",
+      },
+      sortColumns: {
+        tracker: "트래커 이름",
+        uploaded: "업로드",
+        downloaded: "다운로드",
+        ratio: "비율",
+        buffer: "버퍼",
+        count: "토렌트",
+        size: "크기",
+        performance: "시딩됨",
+      },
+    },
+    queryBuilder: {
+      emptyState: {
+        title: "조건 없음",
+        description: "모든 토렌트와 일치합니다 (트래커 선택은 적용됨).",
+        action: "조건 추가",
+      },
+    },
+  },
   de: {
     trackerStatus: {
       disabled: "Deaktiviert",

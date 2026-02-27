@@ -114,4 +114,73 @@ export const torrentFileTableResources = {
       renameFolder: "Ordner umbenennen",
     },
   },
+  "es-419": {
+    empty: {
+      noFiles: "Sin archivos",
+    },
+    toolbar: {
+      expandAll: "Expandir todo",
+      collapseAll: "Contraer todo",
+      searchPlaceholder: "Buscar archivos...",
+      filteredCount: "{{filtered}} de {{total}}",
+      fileCountOne: "{{count}} archivo",
+      fileCountOther: "{{count}} archivos",
+    },
+    header: {
+      name: "Nombre",
+      progress: "Progreso",
+      size: "Tamaño",
+    },
+    context: {
+      download: "Descargar",
+      renameFile: "Renombrar archivo",
+      renameFolder: "Renombrar carpeta",
+    },
+  },
+  fr: {
+    empty: {
+      noFiles: "Aucun fichier",
+    },
+    toolbar: {
+      expandAll: "Tout développer",
+      collapseAll: "Tout réduire",
+      searchPlaceholder: "Rechercher des fichiers...",
+      filteredCount: "{{filtered}} sur {{total}}",
+      fileCountOne: "{{count}} fichier",
+      fileCountOther: "{{count}} fichiers",
+    },
+    header: {
+      name: "Nom",
+      progress: "Progression",
+      size: "Taille",
+    },
+    context: {
+      download: "Télécharger",
+      renameFile: "Renommer le fichier",
+      renameFolder: "Renommer le dossier",
+    },
+  },
+  ko: {
+    empty: {
+      noFiles: "파일 없음",
+    },
+    toolbar: {
+      expandAll: "모두 펼치기",
+      collapseAll: "모두 접기",
+      searchPlaceholder: "파일 검색...",
+      filteredCount: "{{total}}개 중 {{filtered}}개",
+      fileCountOne: "파일 {{count}}개",
+      fileCountOther: "파일 {{count}}개",
+    },
+    header: {
+      name: "이름",
+      progress: "진행률",
+      size: "크기",
+    },
+    context: {
+      download: "다운로드",
+      renameFile: "파일 이름 바꾸기",
+      renameFolder: "폴더 이름 바꾸기",
+    },
+  },
 } as const

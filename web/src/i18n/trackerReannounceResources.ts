@@ -447,6 +447,342 @@ export const trackerReannounceResources = {
       hashCopied: "Hash copiado",
     },
   },
+  "es-419": {
+    header: {
+      title: "Reanuncio automático de trackers",
+      tooltip: "qBittorrent no reintenta rápido los announces fallidos. Cuando un tracker tarda en registrar una subida nueva o devuelve error, puedes quedarte esperando. qui lo maneja automáticamente sin hacer spam a los trackers.",
+      descriptionPrefix: "qui monitorea torrents",
+      stalled: "estancados",
+      descriptionSuffix: "y los reanuncia cuando no hay ningún tracker saludable.",
+      scanInterval: "El escaneo en segundo plano se ejecuta cada {{seconds}} segundos.",
+    },
+    tabs: {
+      settings: "Configuración",
+      activityLog: "Registro de actividad",
+    },
+    sections: {
+      timingAndBehavior: "Tiempos y comportamiento",
+      scopeAndFiltering: "Alcance y filtros",
+    },
+    values: {
+      enabled: "Habilitado",
+      disabled: "Deshabilitado",
+      include: "Incluir",
+      exclude: "Excluir",
+      instance: "Instancia",
+      notAvailable: "N/A",
+    },
+    placeholders: {
+      selectInstance: "Seleccionar instancia",
+      selectCategories: "Seleccionar categorías...",
+      selectTags: "Seleccionar etiquetas...",
+      selectTrackerDomains: "Seleccionar dominios de tracker...",
+    },
+    fields: {
+      initialWait: {
+        label: "Espera inicial",
+        description: "Segundos antes de la primera verificación",
+        tooltip: "Cuánto esperar después de agregar un torrent antes de revisar su estado. Esto le da tiempo al tracker para registrarlo de forma natural. Mínimo 5 segundos.",
+      },
+      retryInterval: {
+        label: "Intervalo de reintento",
+        description: "Segundos entre reintentos",
+        tooltip: "Frecuencia de reintento dentro de un mismo intento de reanuncio. Con Reintento rápido habilitado, también se usa como enfriamiento entre escaneos. Mínimo 5 segundos.",
+      },
+      maxTorrentAge: {
+        label: "Antigüedad máxima del torrent",
+        description: "Dejar de monitorear después de (s)",
+        tooltip: "Deja de monitorear torrents más viejos que este valor (en segundos). Ayuda a evitar revisar eternamente torrents antiguos muertos. Mínimo 60 segundos.",
+      },
+      maxRetries: {
+        label: "Máximo de reintentos",
+        description: "Intentos por torrent",
+        tooltip: "Máximo de reintentos consecutivos en un ciclo de escaneo. Cada escaneo puede reintentar hasta este límite antes de esperar al siguiente ciclo. Trackers lentos pueden requerir hasta 50 reintentos (intervalo de 7 s son ~6 minutos). Rango: 1-50.",
+      },
+      quickRetry: {
+        label: "Reintento rápido",
+        description: "Usar el intervalo de reintento como enfriamiento en lugar de 2 minutos",
+        tooltip: "Usa el intervalo de reintento como enfriamiento entre escaneos, en vez de los 2 minutos por defecto. Útil cuando los trackers tardan en registrar subidas. qui igual espera actualizaciones del tracker y no hace spam.",
+      },
+      monitorAll: {
+        label: "Monitorear todos los torrents estancados",
+        descriptionLine1: "Si se habilita, monitorea todo excepto los elementos excluidos.",
+        descriptionLine2: "Si se deshabilita, solo monitorea los elementos que coincidan con las reglas de inclusión de abajo.",
+      },
+      categories: {
+        label: "Categorías",
+      },
+      tags: {
+        label: "Etiquetas",
+      },
+      trackerDomains: {
+        label: "Dominios de tracker",
+      },
+    },
+    actions: {
+      saveChanges: "Guardar cambios",
+      saving: "Guardando...",
+      refresh: "Actualizar",
+    },
+    states: {
+      instanceNotFound: "No se encontró la instancia. Cierra y vuelve a abrir el diálogo.",
+      failedLoadActivity: "No se pudo cargar la actividad",
+      checkConnection: "Revisa la conexión con la instancia.",
+      loadingActivity: "Cargando actividad...",
+      noActivityYet: "Aún no hay actividad registrada.",
+      activityWillAppear: "Los eventos aparecerán aquí cuando se detecten torrents estancados.",
+    },
+    activity: {
+      title: "Actividad reciente",
+      enabledDescription: "Registro en tiempo real de intentos de reanuncio y resultados.",
+      disabledDescription: "El monitoreo está deshabilitado. No se registrará actividad nueva.",
+      hideSkipped: "Ocultar omitidos",
+      copyHash: "Copiar hash",
+      labels: {
+        trackers: "Trackers",
+        reason: "Motivo",
+      },
+      outcomes: {
+        succeeded: "exitoso",
+        failed: "fallido",
+        skipped: "omitido",
+      },
+    },
+    toasts: {
+      settingsSaved: "Configuración guardada correctamente.",
+      instanceMissingTitle: "Falta la instancia",
+      instanceMissingDescription: "Cierra y vuelve a abrir el diálogo.",
+      monitoringUpdated: "Monitoreo de trackers actualizado",
+      updateFailed: "Actualización fallida",
+      unableUpdateSettings: "No se pudieron actualizar los ajustes",
+      monitoringDisabled: "Monitoreo deshabilitado",
+      hashCopied: "Hash copiado",
+    },
+  },
+  fr: {
+    header: {
+      title: "Reannounce automatique des trackers",
+      tooltip: "qBittorrent ne réessaie pas rapidement les announces en échec. Quand un tracker met du temps à enregistrer un nouvel upload ou renvoie une erreur, vous pouvez rester bloqué à attendre. qui gère ça automatiquement sans spammer les trackers.",
+      descriptionPrefix: "qui surveille les torrents",
+      stalled: "bloqués",
+      descriptionSuffix: "et les réannonce quand aucun tracker n'est sain.",
+      scanInterval: "L'analyse en arrière-plan s'exécute toutes les {{seconds}} secondes.",
+    },
+    tabs: {
+      settings: "Paramètres",
+      activityLog: "Journal d'activité",
+    },
+    sections: {
+      timingAndBehavior: "Temporisation et comportement",
+      scopeAndFiltering: "Portée et filtres",
+    },
+    values: {
+      enabled: "Activé",
+      disabled: "Désactivé",
+      include: "Inclure",
+      exclude: "Exclure",
+      instance: "Instance",
+      notAvailable: "N/A",
+    },
+    placeholders: {
+      selectInstance: "Sélectionner une instance",
+      selectCategories: "Sélectionner des catégories...",
+      selectTags: "Sélectionner des tags...",
+      selectTrackerDomains: "Sélectionner des domaines de tracker...",
+    },
+    fields: {
+      initialWait: {
+        label: "Attente initiale",
+        description: "Secondes avant le premier contrôle",
+        tooltip: "Durée d'attente après l'ajout d'un torrent avant de vérifier son état. Cela laisse au tracker le temps de l'enregistrer normalement. Minimum 5 secondes.",
+      },
+      retryInterval: {
+        label: "Intervalle de relance",
+        description: "Secondes entre les relances",
+        tooltip: "Fréquence des relances dans une même tentative de reannounce. Avec Relance rapide activée, cette valeur devient aussi le délai entre analyses. Minimum 5 secondes.",
+      },
+      maxTorrentAge: {
+        label: "Âge max du torrent",
+        description: "Arrêter la surveillance après (s)",
+        tooltip: "Arrête la surveillance des torrents plus anciens que cette valeur (en secondes). Évite de vérifier indéfiniment de vieux torrents morts. Minimum 60 secondes.",
+      },
+      maxRetries: {
+        label: "Relances max",
+        description: "Tentatives par torrent",
+        tooltip: "Nombre maximal de relances consécutives dans un cycle d'analyse. Chaque cycle peut relancer jusqu'à cette limite avant d'attendre le cycle suivant. Les trackers lents peuvent demander jusqu'à 50 relances (7 s d'intervalle = environ 6 minutes). Plage : 1-50.",
+      },
+      quickRetry: {
+        label: "Relance rapide",
+        description: "Utiliser l'intervalle de relance comme délai au lieu de 2 minutes",
+        tooltip: "Utilise l'intervalle de relance comme délai entre analyses au lieu des 2 minutes par défaut. Utile quand les trackers sont lents à enregistrer les uploads. qui attend toujours les mises à jour tracker et ne spamme pas.",
+      },
+      monitorAll: {
+        label: "Surveiller tous les torrents bloqués",
+        descriptionLine1: "Si activé, surveille tout sauf les éléments exclus.",
+        descriptionLine2: "Si désactivé, surveille uniquement les éléments correspondant aux règles d'inclusion ci-dessous.",
+      },
+      categories: {
+        label: "Catégories",
+      },
+      tags: {
+        label: "Tags",
+      },
+      trackerDomains: {
+        label: "Domaines de tracker",
+      },
+    },
+    actions: {
+      saveChanges: "Enregistrer les modifications",
+      saving: "Enregistrement...",
+      refresh: "Actualiser",
+    },
+    states: {
+      instanceNotFound: "Instance introuvable. Fermez puis rouvrez la boîte de dialogue.",
+      failedLoadActivity: "Échec du chargement de l'activité",
+      checkConnection: "Vérifiez la connexion à l'instance.",
+      loadingActivity: "Chargement de l'activité...",
+      noActivityYet: "Aucune activité enregistrée pour l'instant.",
+      activityWillAppear: "Les événements apparaîtront ici lorsque des torrents bloqués seront détectés.",
+    },
+    activity: {
+      title: "Activité récente",
+      enabledDescription: "Journal en temps réel des tentatives de reannounce et de leurs résultats.",
+      disabledDescription: "La surveillance est désactivée. Aucune nouvelle activité ne sera enregistrée.",
+      hideSkipped: "Masquer les ignorés",
+      copyHash: "Copier le hash",
+      labels: {
+        trackers: "Trackers",
+        reason: "Raison",
+      },
+      outcomes: {
+        succeeded: "réussi",
+        failed: "échoué",
+        skipped: "ignoré",
+      },
+    },
+    toasts: {
+      settingsSaved: "Paramètres enregistrés avec succès.",
+      instanceMissingTitle: "Instance manquante",
+      instanceMissingDescription: "Fermez puis rouvrez la boîte de dialogue.",
+      monitoringUpdated: "Surveillance des trackers mise à jour",
+      updateFailed: "Échec de la mise à jour",
+      unableUpdateSettings: "Impossible de mettre à jour les paramètres",
+      monitoringDisabled: "Surveillance désactivée",
+      hashCopied: "Hash copié",
+    },
+  },
+  ko: {
+    header: {
+      title: "트래커 자동 재공지",
+      tooltip: "qBittorrent는 실패한 공지를 빠르게 재시도하지 않습니다. 트래커가 새 업로드를 등록하는 데 시간이 걸리거나 오류를 반환하면 오래 기다리게 될 수 있습니다. qui가 트래커를 스팸하지 않으면서 이를 자동으로 처리합니다.",
+      descriptionPrefix: "qui는",
+      stalled: "정체된",
+      descriptionSuffix: "토렌트를 모니터링하고 정상 트래커가 없으면 재공지합니다.",
+      scanInterval: "백그라운드 스캔은 {{seconds}}초마다 실행됩니다.",
+    },
+    tabs: {
+      settings: "설정",
+      activityLog: "활동 로그",
+    },
+    sections: {
+      timingAndBehavior: "타이밍 및 동작",
+      scopeAndFiltering: "범위 및 필터링",
+    },
+    values: {
+      enabled: "활성화",
+      disabled: "비활성화",
+      include: "포함",
+      exclude: "제외",
+      instance: "인스턴스",
+      notAvailable: "N/A",
+    },
+    placeholders: {
+      selectInstance: "인스턴스 선택",
+      selectCategories: "카테고리 선택...",
+      selectTags: "태그 선택...",
+      selectTrackerDomains: "트래커 도메인 선택...",
+    },
+    fields: {
+      initialWait: {
+        label: "초기 대기",
+        description: "첫 확인 전 대기 초",
+        tooltip: "토렌트를 추가한 뒤 상태를 확인하기까지 기다리는 시간입니다. 트래커가 자연스럽게 등록할 시간을 줍니다. 최소 5초입니다.",
+      },
+      retryInterval: {
+        label: "재시도 간격",
+        description: "재시도 사이의 초",
+        tooltip: "한 번의 재공지 시도 안에서 재시도하는 빈도입니다. 빠른 재시도를 켜면 스캔 사이 쿨다운에도 이 값이 적용됩니다. 최소 5초입니다.",
+      },
+      maxTorrentAge: {
+        label: "최대 토렌트 수명",
+        description: "(초) 이후 모니터링 중지",
+        tooltip: "이 값(초)보다 오래된 토렌트 모니터링을 중지합니다. 오래된 죽은 토렌트를 끝없이 확인하는 일을 줄입니다. 최소 60초입니다.",
+      },
+      maxRetries: {
+        label: "최대 재시도",
+        description: "토렌트당 재시도 횟수",
+        tooltip: "한 스캔 주기에서 연속으로 시도할 최대 횟수입니다. 이 횟수에 도달하면 다음 주기까지 대기합니다. 느린 트래커는 최대 50회가 필요할 수 있습니다(7초 간격이면 약 6분). 범위: 1-50.",
+      },
+      quickRetry: {
+        label: "빠른 재시도",
+        description: "2분 대신 재시도 간격을 쿨다운으로 사용",
+        tooltip: "기본 2분 대신 재시도 간격을 스캔 사이 쿨다운으로 사용합니다. 트래커 등록이 느릴 때 유용합니다. qui는 여전히 트래커 업데이트를 기다리며 스팸하지 않습니다.",
+      },
+      monitorAll: {
+        label: "모든 정체 토렌트 모니터링",
+        descriptionLine1: "활성화하면 제외 항목을 제외한 모든 항목을 모니터링합니다.",
+        descriptionLine2: "비활성화하면 아래 포함 규칙에 맞는 항목만 모니터링합니다.",
+      },
+      categories: {
+        label: "카테고리",
+      },
+      tags: {
+        label: "태그",
+      },
+      trackerDomains: {
+        label: "트래커 도메인",
+      },
+    },
+    actions: {
+      saveChanges: "변경 사항 저장",
+      saving: "저장 중...",
+      refresh: "새로고침",
+    },
+    states: {
+      instanceNotFound: "인스턴스를 찾을 수 없습니다. 대화상자를 닫았다가 다시 열어 주세요.",
+      failedLoadActivity: "활동을 불러오지 못했습니다",
+      checkConnection: "인스턴스 연결을 확인하세요.",
+      loadingActivity: "활동 불러오는 중...",
+      noActivityYet: "아직 기록된 활동이 없습니다.",
+      activityWillAppear: "정체된 토렌트가 감지되면 여기에 이벤트가 표시됩니다.",
+    },
+    activity: {
+      title: "최근 활동",
+      enabledDescription: "재공지 시도와 결과를 실시간으로 기록합니다.",
+      disabledDescription: "모니터링이 비활성화되어 새 활동이 기록되지 않습니다.",
+      hideSkipped: "건너뜀 숨기기",
+      copyHash: "해시 복사",
+      labels: {
+        trackers: "트래커",
+        reason: "사유",
+      },
+      outcomes: {
+        succeeded: "성공",
+        failed: "실패",
+        skipped: "건너뜀",
+      },
+    },
+    toasts: {
+      settingsSaved: "설정을 저장했습니다.",
+      instanceMissingTitle: "인스턴스 없음",
+      instanceMissingDescription: "대화상자를 닫았다가 다시 열어 주세요.",
+      monitoringUpdated: "트래커 모니터링이 업데이트되었습니다",
+      updateFailed: "업데이트 실패",
+      unableUpdateSettings: "설정을 업데이트할 수 없습니다",
+      monitoringDisabled: "모니터링이 비활성화되었습니다",
+      hashCopied: "해시를 복사했습니다",
+    },
+  },
   de: {
     header: {
       title: "Automatisches Tracker-Reannounce",

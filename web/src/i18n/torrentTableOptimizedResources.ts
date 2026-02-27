@@ -179,4 +179,112 @@ export const torrentTableOptimizedResources = {
       clearFilters: "Filter löschen",
     },
   },
+  "es-419": {
+    compactRow: {
+      selectTorrentAria: "Seleccionar torrent",
+      ratioLabel: "Ratio:",
+    },
+    controls: {
+      sort: {
+        changeField: "Cambiar campo de ordenamiento",
+        byLabel: "Ordenar por",
+        toggleAria: "Ordenar {{direction}}",
+        toggleTooltip: "Ordenar {{direction}}",
+        direction: {
+          ascending: "ascendente",
+          descending: "descendente",
+        },
+      },
+      filters: {
+        clearAllSr: "Limpiar todos los filtros de columna",
+        clearAllTooltip: "Limpiar todos los filtros de columna ({{count}})",
+      },
+      columns: {
+        toggleSr: "Alternar columnas",
+        toggleTooltip: "Alternar columnas",
+        toggleLabel: "Alternar columnas",
+      },
+    },
+    table: {
+      ariaLabel: "Tabla de torrents",
+    },
+    loading: {
+      torrents: "Cargando torrents...",
+    },
+    empty: {
+      clearFilters: "Limpiar filtros",
+    },
+  },
+  fr: {
+    compactRow: {
+      selectTorrentAria: "Sélectionner le torrent",
+      ratioLabel: "Ratio :",
+    },
+    controls: {
+      sort: {
+        changeField: "Changer le champ de tri",
+        byLabel: "Trier par",
+        toggleAria: "Trier {{direction}}",
+        toggleTooltip: "Trier {{direction}}",
+        direction: {
+          ascending: "croissant",
+          descending: "décroissant",
+        },
+      },
+      filters: {
+        clearAllSr: "Effacer tous les filtres de colonne",
+        clearAllTooltip: "Effacer tous les filtres de colonne ({{count}})",
+      },
+      columns: {
+        toggleSr: "Afficher/masquer les colonnes",
+        toggleTooltip: "Afficher/masquer les colonnes",
+        toggleLabel: "Afficher/masquer les colonnes",
+      },
+    },
+    table: {
+      ariaLabel: "Table des torrents",
+    },
+    loading: {
+      torrents: "Chargement des torrents...",
+    },
+    empty: {
+      clearFilters: "Effacer les filtres",
+    },
+  },
+  ko: {
+    compactRow: {
+      selectTorrentAria: "토렌트 선택",
+      ratioLabel: "비율:",
+    },
+    controls: {
+      sort: {
+        changeField: "정렬 필드 변경",
+        byLabel: "정렬 기준",
+        toggleAria: "{{direction}} 정렬",
+        toggleTooltip: "{{direction}} 정렬",
+        direction: {
+          ascending: "오름차순",
+          descending: "내림차순",
+        },
+      },
+      filters: {
+        clearAllSr: "모든 컬럼 필터 지우기",
+        clearAllTooltip: "모든 컬럼 필터 지우기 ({{count}})",
+      },
+      columns: {
+        toggleSr: "열 표시 전환",
+        toggleTooltip: "열 표시 전환",
+        toggleLabel: "열 표시 전환",
+      },
+    },
+    table: {
+      ariaLabel: "토렌트 테이블",
+    },
+    loading: {
+      torrents: "토렌트 로딩 중...",
+    },
+    empty: {
+      clearFilters: "필터 지우기",
+    },
+  },
 } as const

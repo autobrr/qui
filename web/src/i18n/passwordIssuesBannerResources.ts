@@ -19,4 +19,16 @@ export const passwordIssuesBannerResources = {
     title: "Passwortprobleme erkannt",
     description: "Einige Instanzen können gespeicherte Passwörter nicht entschlüsseln, wahrscheinlich wegen einer Konfigurationsänderung. Prüfe die betroffenen Instanzen unten, um das Problem zu beheben.",
   },
+  "es-419": {
+    title: "Se detectaron problemas de contraseña",
+    description: "Algunas instancias no pueden descifrar sus contraseñas guardadas, probablemente por un cambio de configuración. Revisa abajo las instancias afectadas para resolverlo.",
+  },
+  fr: {
+    title: "Problèmes de mot de passe détectés",
+    description: "Certaines instances ne parviennent pas à déchiffrer les mots de passe enregistrés, probablement à cause d'un changement de configuration. Vérifiez les instances concernées ci-dessous pour corriger le problème.",
+  },
+  ko: {
+    title: "비밀번호 문제 감지됨",
+    description: "일부 인스턴스가 저장된 비밀번호를 복호화하지 못하고 있습니다. 보통 설정 변경이 원인입니다. 아래 영향을 받은 인스턴스를 확인해 문제를 해결하세요.",
+  },
 } as const

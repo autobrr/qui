@@ -167,6 +167,132 @@ export const blocklistTabResources = {
       invalidInfohash: "O infohash deve ter 40 ou 64 caracteres hexadecimais",
     },
   },
+  "es-419": {
+    titles: {
+      main: "Lista de bloqueo de Cross-Seed",
+      blockedHashes: "Hashes bloqueados",
+    },
+    descriptions: {
+      noInstances: "Agrega instancias para gestionar infohashes de cross-seed bloqueados.",
+      main: "Evita que se inyecten infohashes específicos por instancia.",
+      blockedHashes: "Las entradas se aplican solo a la instancia seleccionada.",
+    },
+    labels: {
+      instance: "Instancia",
+      infohash: "Infohash",
+      noteOptional: "Nota (opcional)",
+    },
+    placeholders: {
+      selectInstance: "Selecciona una instancia",
+      infohash: "p. ej. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+      note: "¿Por qué está bloqueado este hash?",
+    },
+    actions: {
+      add: "Agregar",
+      removeAria: "Quitar {{infoHash}} de la lista de bloqueo",
+    },
+    columns: {
+      infohash: "Infohash",
+      note: "Nota",
+      added: "Agregado",
+    },
+    empty: {
+      noBlockedHashes: "No hay infohashes bloqueados.",
+    },
+    values: {
+      empty: "—",
+    },
+    toasts: {
+      added: "Agregado a la lista de bloqueo",
+      removed: "Quitado de la lista de bloqueo",
+      selectInstance: "Selecciona una instancia",
+      invalidInfohash: "El infohash debe tener 40 o 64 caracteres hexadecimales",
+    },
+  },
+  fr: {
+    titles: {
+      main: "Liste de blocage Cross-Seed",
+      blockedHashes: "Hashes bloqués",
+    },
+    descriptions: {
+      noInstances: "Ajoutez des instances pour gérer les infohashes cross-seed bloqués.",
+      main: "Empêche l'injection d'infohashes spécifiques par instance.",
+      blockedHashes: "Les entrées s'appliquent uniquement à l'instance sélectionnée.",
+    },
+    labels: {
+      instance: "Instance",
+      infohash: "Infohash",
+      noteOptional: "Note (optionnelle)",
+    },
+    placeholders: {
+      selectInstance: "Sélectionner une instance",
+      infohash: "ex. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+      note: "Pourquoi ce hash est-il bloqué ?",
+    },
+    actions: {
+      add: "Ajouter",
+      removeAria: "Retirer {{infoHash}} de la liste de blocage",
+    },
+    columns: {
+      infohash: "Infohash",
+      note: "Note",
+      added: "Ajouté",
+    },
+    empty: {
+      noBlockedHashes: "Aucun infohash bloqué.",
+    },
+    values: {
+      empty: "—",
+    },
+    toasts: {
+      added: "Ajouté à la liste de blocage",
+      removed: "Retiré de la liste de blocage",
+      selectInstance: "Sélectionnez une instance",
+      invalidInfohash: "L'infohash doit contenir 40 ou 64 caractères hexadécimaux",
+    },
+  },
+  ko: {
+    titles: {
+      main: "Cross-Seed 차단 목록",
+      blockedHashes: "차단된 해시",
+    },
+    descriptions: {
+      noInstances: "차단할 cross-seed infohash를 관리하려면 인스턴스를 추가하세요.",
+      main: "인스턴스별로 특정 infohash가 주입되는 것을 막습니다.",
+      blockedHashes: "항목은 선택한 인스턴스에만 적용됩니다.",
+    },
+    labels: {
+      instance: "인스턴스",
+      infohash: "Infohash",
+      noteOptional: "메모 (선택)",
+    },
+    placeholders: {
+      selectInstance: "인스턴스 선택",
+      infohash: "예: 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+      note: "이 해시를 차단하는 이유",
+    },
+    actions: {
+      add: "추가",
+      removeAria: "{{infoHash}}를 차단 목록에서 제거",
+    },
+    columns: {
+      infohash: "Infohash",
+      note: "메모",
+      added: "추가됨",
+    },
+    empty: {
+      noBlockedHashes: "차단된 infohash가 없습니다.",
+    },
+    values: {
+      empty: "—",
+    },
+    toasts: {
+      added: "차단 목록에 추가했습니다",
+      removed: "차단 목록에서 제거했습니다",
+      selectInstance: "인스턴스를 선택하세요",
+      invalidInfohash: "Infohash는 40자 또는 64자의 16진수여야 합니다",
+    },
+  },
   de: {
     titles: {
       main: "Cross-Seed-Blocklist",

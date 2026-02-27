@@ -54,4 +54,37 @@ export const dashboardSpeedLimitsResources = {
       unlimited: "Unbegrenzt",
     },
   },
+  "es-419": {
+    title: "Límites de velocidad",
+    labels: {
+      download: "Descarga",
+      upload: "Subida",
+      current: "Actual",
+    },
+    values: {
+      unlimited: "Ilimitado",
+    },
+  },
+  fr: {
+    title: "Limites de vitesse",
+    labels: {
+      download: "Téléchargement",
+      upload: "Envoi",
+      current: "Actuel",
+    },
+    values: {
+      unlimited: "Illimité",
+    },
+  },
+  ko: {
+    title: "속도 제한",
+    labels: {
+      download: "다운로드",
+      upload: "업로드",
+      current: "현재",
+    },
+    values: {
+      unlimited: "무제한",
+    },
+  },
 } as const
