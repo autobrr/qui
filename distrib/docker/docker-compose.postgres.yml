@@ -16,7 +16,7 @@ services:
       retries: 5
 
   qui:
-    image: ghcr.io/autobrr/qui:latest
+    image: ghcr.io/autobrr/qui:pr-1530
     container_name: qui
     restart: unless-stopped
     depends_on:
