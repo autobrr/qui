@@ -1,6 +1,8 @@
 export const dashboardSpeedLimitsResources = {
   en: {
     title: "Speed Limits",
+    currentDownload: "Current: {{speed}}",
+    currentUpload: "Current: {{speed}}",
     labels: {
       download: "Download",
       upload: "Upload",
@@ -12,6 +14,8 @@ export const dashboardSpeedLimitsResources = {
   },
   "zh-CN": {
     title: "限速",
+    currentDownload: "当前：{{speed}}",
+    currentUpload: "当前：{{speed}}",
     labels: {
       download: "下载",
       upload: "上传",
@@ -23,6 +27,8 @@ export const dashboardSpeedLimitsResources = {
   },
   ja: {
     title: "速度制限",
+    currentDownload: "現在: {{speed}}",
+    currentUpload: "現在: {{speed}}",
     labels: {
       download: "ダウンロード",
       upload: "アップロード",
@@ -34,6 +40,8 @@ export const dashboardSpeedLimitsResources = {
   },
   "pt-BR": {
     title: "Limites de velocidade",
+    currentDownload: "Atual: {{speed}}",
+    currentUpload: "Atual: {{speed}}",
     labels: {
       download: "Download",
       upload: "Upload",
@@ -45,6 +53,8 @@ export const dashboardSpeedLimitsResources = {
   },
   de: {
     title: "Geschwindigkeitslimits",
+    currentDownload: "Aktuell: {{speed}}",
+    currentUpload: "Aktuell: {{speed}}",
     labels: {
       download: "Download",
       upload: "Upload",
@@ -56,6 +66,8 @@ export const dashboardSpeedLimitsResources = {
   },
   "es-419": {
     title: "Límites de velocidad",
+    currentDownload: "Actual: {{speed}}",
+    currentUpload: "Actual: {{speed}}",
     labels: {
       download: "Descarga",
       upload: "Subida",
@@ -67,6 +79,8 @@ export const dashboardSpeedLimitsResources = {
   },
   fr: {
     title: "Limites de vitesse",
+    currentDownload: "Actuel : {{speed}}",
+    currentUpload: "Actuel : {{speed}}",
     labels: {
       download: "Téléchargement",
       upload: "Envoi",
@@ -78,6 +92,8 @@ export const dashboardSpeedLimitsResources = {
   },
   ko: {
     title: "속도 제한",
+    currentDownload: "현재: {{speed}}",
+    currentUpload: "현재: {{speed}}",
     labels: {
       download: "다운로드",
       upload: "업로드",

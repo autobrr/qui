@@ -66,14 +66,16 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
       max_active_torrents: 0,
       max_active_checking_torrents: 0,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(tr("queueManagementForm.toasts.updated"))
-        onSuccess?.()
-      } catch {
-        toast.error(tr("queueManagementForm.toasts.failedUpdate"))
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("queueManagementForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: () => {
+          toast.error(tr("queueManagementForm.toasts.failedUpdate"))
+        },
+      })
     },
   })
 

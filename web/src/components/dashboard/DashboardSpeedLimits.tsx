@@ -51,7 +51,9 @@ export function DashboardSpeedLimits({
               {formatLimit(preferences?.dl_limit || 0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {tr("dashboardSpeedLimits.labels.current")}: {formatSpeedWithUnit(currentDownloadSpeed, speedUnit)}
+              {tr("dashboardSpeedLimits.currentDownload", {
+                speed: formatSpeedWithUnit(currentDownloadSpeed, speedUnit),
+              })}
             </p>
           </div>
           <div className="space-y-1">
@@ -63,7 +65,9 @@ export function DashboardSpeedLimits({
               {formatLimit(preferences?.up_limit || 0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {tr("dashboardSpeedLimits.labels.current")}: {formatSpeedWithUnit(currentUploadSpeed, speedUnit)}
+              {tr("dashboardSpeedLimits.currentUpload", {
+                speed: formatSpeedWithUnit(currentUploadSpeed, speedUnit),
+              })}
             </p>
           </div>
         </div>

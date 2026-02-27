@@ -18,7 +18,7 @@ import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface CompletionFormState {
@@ -239,8 +239,16 @@ export function CompletionOverview() {
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px]">
               <p>
-                {tr("completionOverview.header.tooltipPrefix")} <span className="font-semibold">{tr("completionOverview.header.crossSeedTag")}</span>{" "}
-                {tr("completionOverview.header.tooltipSuffix")}
+                <Trans
+                  i18nKey="completionOverview.header.tooltip"
+                  ns="common"
+                  components={{
+                    tag: <span className="font-semibold" />,
+                  }}
+                  values={{
+                    tag: tr("completionOverview.header.crossSeedTag"),
+                  }}
+                />
               </p>
             </TooltipContent>
           </Tooltip>

@@ -28,7 +28,7 @@ import { cn, formatErrorMessage } from "@/lib/utils"
 import type { Instance } from "@/types"
 import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, RefreshCw, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
 import { Component, lazy, Suspense, useCallback, useMemo, useState, type ErrorInfo, type ReactNode } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 
 import { toast } from "sonner"
 
@@ -260,9 +260,14 @@ export function InstancePreferencesDialog({
               )}
             </DialogTitle>
             <DialogDescription>
-              {tr("instancePreferencesDialog.descriptionPrefix")}
-              {" "}
-              <strong className="truncate max-w-xs inline-block align-bottom" title={displayInstanceName}>{displayInstanceName}</strong>
+              <Trans
+                i18nKey="instancePreferencesDialog.description"
+                ns="common"
+                values={{ name: displayInstanceName }}
+                components={{
+                  name: <strong className="truncate max-w-xs inline-block align-bottom" title={displayInstanceName} />,
+                }}
+              />
             </DialogDescription>
           </DialogHeader>
 

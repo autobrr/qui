@@ -339,7 +339,10 @@ function LogEntry({
   onMute?: () => void
 }) {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
   const extraKeys = Object.keys(entry.extra)
   const isClickable = onSelect && entry.isJson
 
@@ -541,7 +544,10 @@ const LOG_HARD_CAP = 10000
 
 function LiveLogViewer({ configPath }: { configPath?: string }) {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
   const [lines, setLines] = useState<RawLogLine[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const [isConnected, setIsConnected] = useState(false)

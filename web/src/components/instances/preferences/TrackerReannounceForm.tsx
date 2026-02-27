@@ -29,7 +29,7 @@ import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceA
 import { useQuery } from "@tanstack/react-query"
 import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface TrackerReannounceFormProps {
@@ -319,9 +319,17 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           </div>
           {variant === "card" && (
             <p className="text-sm text-muted-foreground">
-              {tr("trackerReannounceForm.header.descriptionPrefix")} <strong>{tr("trackerReannounceForm.header.stalled")}</strong>{" "}
-              {tr("trackerReannounceForm.header.descriptionSuffix")}{" "}
-              {tr("trackerReannounceForm.header.scanInterval", { seconds: GLOBAL_SCAN_INTERVAL_SECONDS })}
+              <Trans
+                i18nKey="trackerReannounceForm.header.fullDescription"
+                t={t}
+                values={{
+                  stalledLabel: tr("trackerReannounceForm.header.stalled"),
+                  seconds: GLOBAL_SCAN_INTERVAL_SECONDS,
+                }}
+                components={{
+                  stalled: <strong />,
+                }}
+              />
             </p>
           )}
         </div>

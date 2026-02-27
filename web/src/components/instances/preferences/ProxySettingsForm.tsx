@@ -101,15 +101,17 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
       proxy_torrents_only: false,
       proxy_hostname_lookup: false,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(tr("proxySettingsForm.toasts.updated"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(tr("proxySettingsForm.toasts.failedUpdate"))
-        console.error("Failed to update proxy settings:", error)
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("proxySettingsForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: (error) => {
+          toast.error(tr("proxySettingsForm.toasts.failedUpdate"))
+          console.error("Failed to update proxy settings:", error)
+        },
+      })
     },
   })
 

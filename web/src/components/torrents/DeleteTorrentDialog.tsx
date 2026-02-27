@@ -56,7 +56,7 @@ export function DeleteTorrentDialog({
   crossSeedWarning,
   onConfirm,
 }: DeleteTorrentDialogProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation("common")
   const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   // Include cross-seeds in the displayed count when selected
   const crossSeedCount = deleteCrossSeeds ? (crossSeedWarning?.affectedTorrents.length ?? 0) : 0

@@ -182,32 +182,32 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
 
 // Hardlink scope values (matches backend wire format)
 export const HARDLINK_SCOPE_VALUES = [
-  { value: "none", label: "None" },
-  { value: "torrents_only", label: "Only other torrents" },
-  { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
+  { value: "none", label: "None", labelKey: "leafCondition.hardlinkScope.none" },
+  { value: "torrents_only", label: "Only other torrents", labelKey: "leafCondition.hardlinkScope.torrentsOnly" },
+  { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)", labelKey: "leafCondition.hardlinkScope.outsideQBittorrent" },
 ];
 
 // qBittorrent torrent states
 export const TORRENT_STATES = [
   // Status buckets (same as sidebar)
-  { value: "downloading", label: "Downloading" },
-  { value: "uploading", label: "Seeding" },
-  { value: "completed", label: "Completed" },
-  { value: "stopped", label: "Stopped" },
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-  { value: "running", label: "Running" },
-  { value: "stalled", label: "Stalled" },
-  { value: "stalled_uploading", label: "Stalled Up" },
-  { value: "stalled_downloading", label: "Stalled Down" },
-  { value: "errored", label: "Error" },
-  { value: "tracker_down", label: "Tracker Down" },
-  { value: "checking", label: "Checking" },
-  { value: "checkingResumeData", label: "Checking Resume Data" },
-  { value: "moving", label: "Moving" },
+  { value: "downloading", label: "Downloading", labelKey: "leafCondition.torrentState.downloading" },
+  { value: "uploading", label: "Seeding", labelKey: "leafCondition.torrentState.uploading" },
+  { value: "completed", label: "Completed", labelKey: "leafCondition.torrentState.completed" },
+  { value: "stopped", label: "Stopped", labelKey: "leafCondition.torrentState.stopped" },
+  { value: "active", label: "Active", labelKey: "leafCondition.torrentState.active" },
+  { value: "inactive", label: "Inactive", labelKey: "leafCondition.torrentState.inactive" },
+  { value: "running", label: "Running", labelKey: "leafCondition.torrentState.running" },
+  { value: "stalled", label: "Stalled", labelKey: "leafCondition.torrentState.stalled" },
+  { value: "stalled_uploading", label: "Stalled Up", labelKey: "leafCondition.torrentState.stalledUploading" },
+  { value: "stalled_downloading", label: "Stalled Down", labelKey: "leafCondition.torrentState.stalledDownloading" },
+  { value: "errored", label: "Error", labelKey: "leafCondition.torrentState.error" },
+  { value: "tracker_down", label: "Tracker Down", labelKey: "leafCondition.torrentState.trackerDown" },
+  { value: "checking", label: "Checking", labelKey: "leafCondition.torrentState.checking" },
+  { value: "checkingResumeData", label: "Checking Resume Data", labelKey: "leafCondition.torrentState.checkingResumeData" },
+  { value: "moving", label: "Moving", labelKey: "leafCondition.torrentState.moving" },
 
   // Specific qBittorrent state (kept for targeting missing-file issues)
-  { value: "missingFiles", label: "Missing Files" },
+  { value: "missingFiles", label: "Missing Files", labelKey: "leafCondition.torrentState.missingFiles" },
 ];
 
 // Delete mode options

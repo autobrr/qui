@@ -146,10 +146,6 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
   const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
 
-  useEffect(() => {
-    setAltSpeedOverride(null)
-  }, [instanceId])
-
   const { mutateAsync: toggleAltSpeedLimits, isPending: isTogglingAltSpeed } = useMutation({
     mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
     onSuccess: () => {
@@ -210,8 +206,12 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
           selectionInfo.effectiveSelectionCount > 0 ? (
             <>
               <span>
-                {selectionInfo.isAllSelected && selectionInfo.excludedFromSelectAllSize === 0? tr("globalStatusBar.selection.allSelected"): selectionInfo.effectiveSelectionCount} {tr("globalStatusBar.selection.selected")}
-                {selectionInfo.selectedFormattedSize && <> • {selectionInfo.selectedFormattedSize}</>}
+                {tr("globalStatusBar.selection.summary", {
+                  selection: selectionInfo.isAllSelected && selectionInfo.excludedFromSelectAllSize === 0
+                    ? tr("globalStatusBar.selection.allSelected")
+                    : String(selectionInfo.effectiveSelectionCount),
+                  size: selectionInfo.selectedFormattedSize ? ` • ${selectionInfo.selectedFormattedSize}` : "",
+                })}
               </span>
               {/* Keyboard shortcuts helper - only show on desktop */}
               <Tooltip>

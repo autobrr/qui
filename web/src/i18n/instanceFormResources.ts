@@ -13,6 +13,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "Instance name is required",
       basicAuthPasswordRequired: "Basic auth password is required when basic auth is enabled",
+      urlRequired: "URL is required",
+      urlInvalid: "Please enter a valid URL",
+      urlProtocol: "Only HTTP and HTTPS protocols are supported",
+      urlPortRequired: "Port is required when using an IP address (for example, :8080)",
     },
     fields: {
       instanceName: "Instance Name",
@@ -60,6 +64,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "实例名称不能为空",
       basicAuthPasswordRequired: "启用 Basic Auth 时必须填写 Basic Auth 密码",
+      urlRequired: "URL 为必填项",
+      urlInvalid: "请输入有效的 URL",
+      urlProtocol: "仅支持 HTTP 和 HTTPS 协议",
+      urlPortRequired: "使用 IP 地址时必须填写端口（例如 :8080）",
     },
     fields: {
       instanceName: "实例名称",
@@ -107,6 +115,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "インスタンス名は必須です",
       basicAuthPasswordRequired: "Basic Auth を有効にする場合、Basic Auth パスワードは必須です",
+      urlRequired: "URL は必須です",
+      urlInvalid: "有効な URL を入力してください",
+      urlProtocol: "HTTP と HTTPS のみ対応しています",
+      urlPortRequired: "IP アドレスを使用する場合はポートが必要です（例: :8080）",
     },
     fields: {
       instanceName: "インスタンス名",
@@ -154,6 +166,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "Nome da instância é obrigatório",
       basicAuthPasswordRequired: "A senha de Basic Auth é obrigatória quando o Basic Auth está ativado",
+      urlRequired: "URL é obrigatória",
+      urlInvalid: "Informe uma URL válida",
+      urlProtocol: "Apenas os protocolos HTTP e HTTPS são suportados",
+      urlPortRequired: "Ao usar um endereço IP, a porta é obrigatória (ex.: :8080)",
     },
     fields: {
       instanceName: "Nome da instância",
@@ -201,6 +217,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "El nombre de la instancia es obligatorio",
       basicAuthPasswordRequired: "La contraseña de Basic Auth es obligatoria cuando Basic Auth está activado",
+      urlRequired: "La URL es obligatoria",
+      urlInvalid: "Ingresa una URL válida",
+      urlProtocol: "Solo se admiten los protocolos HTTP y HTTPS",
+      urlPortRequired: "Cuando uses una dirección IP, el puerto es obligatorio (por ejemplo, :8080)",
     },
     fields: {
       instanceName: "Nombre de la instancia",
@@ -248,6 +268,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "Le nom de l'instance est requis",
       basicAuthPasswordRequired: "Le mot de passe Basic Auth est requis lorsque Basic Auth est activé",
+      urlRequired: "L'URL est obligatoire",
+      urlInvalid: "Veuillez saisir une URL valide",
+      urlProtocol: "Seuls les protocoles HTTP et HTTPS sont pris en charge",
+      urlPortRequired: "Un port est obligatoire lorsque vous utilisez une adresse IP (par ex. :8080)",
     },
     fields: {
       instanceName: "Nom de l'instance",
@@ -295,6 +319,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "인스턴스 이름은 필수입니다",
       basicAuthPasswordRequired: "Basic Auth가 활성화되어 있으면 Basic Auth 비밀번호가 필요합니다",
+      urlRequired: "URL은 필수입니다",
+      urlInvalid: "유효한 URL을 입력해 주세요",
+      urlProtocol: "HTTP 및 HTTPS 프로토콜만 지원합니다",
+      urlPortRequired: "IP 주소를 사용할 때는 포트가 필요합니다(예: :8080)",
     },
     fields: {
       instanceName: "인스턴스 이름",
@@ -342,6 +370,10 @@ export const instanceFormResources = {
     validation: {
       nameRequired: "Instanzname ist erforderlich",
       basicAuthPasswordRequired: "Basic-Auth-Passwort ist erforderlich, wenn Basic Auth aktiviert ist",
+      urlRequired: "URL ist erforderlich",
+      urlInvalid: "Bitte gib eine gültige URL ein",
+      urlProtocol: "Nur HTTP- und HTTPS-Protokolle werden unterstützt",
+      urlPortRequired: "Bei Verwendung einer IP-Adresse ist ein Port erforderlich (z. B. :8080)",
     },
     fields: {
       instanceName: "Instanzname",

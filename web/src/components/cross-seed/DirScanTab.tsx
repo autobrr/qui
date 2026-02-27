@@ -101,7 +101,7 @@ import type {
   Instance
 } from "@/types"
 import { useQueries } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 
 interface DirScanTabProps {
   instances: Instance[]
@@ -109,7 +109,7 @@ interface DirScanTabProps {
 
 function useCommonTr() {
   const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  return useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
 }
 
 // Helper to format relative time from a string or Date
@@ -1368,8 +1368,18 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              {tr("dirScanTab.directoryDialog.tagsHelpPrefix")} <span className="font-mono">{tr("dirScanTab.directoryDialog.examples.dirscanTag")}</span>,{" "}
-              <span className="font-mono">{tr("dirScanTab.directoryDialog.examples.needsReviewTag")}</span>.
+              <Trans
+                i18nKey="dirScanTab.directoryDialog.tagsHelp"
+                ns="common"
+                components={{
+                  dirscanTag: <span className="font-mono" />,
+                  needsReviewTag: <span className="font-mono" />,
+                }}
+                values={{
+                  dirscanTag: tr("dirScanTab.directoryDialog.examples.dirscanTag"),
+                  needsReviewTag: tr("dirScanTab.directoryDialog.examples.needsReviewTag"),
+                }}
+              />
             </p>
           </div>
 
@@ -1414,10 +1424,30 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                     {tr("dirScanTab.directoryDialog.regularMode.title")}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {tr("dirScanTab.directoryDialog.regularMode.bodyOnePrefix")} <span className="font-medium">{tr("dirScanTab.directoryDialog.regularMode.bodyOneEmphasis")}</span> {tr("dirScanTab.directoryDialog.regularMode.bodyOneSuffix")}
+                    <Trans
+                      i18nKey="dirScanTab.directoryDialog.regularMode.bodyOne"
+                      ns="common"
+                      components={{
+                        emphasis: <span className="font-medium" />,
+                      }}
+                      values={{
+                        emphasis: tr("dirScanTab.directoryDialog.regularMode.bodyOneEmphasis"),
+                      }}
+                    />
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {tr("dirScanTab.directoryDialog.regularMode.bodyTwoPrefix")} <span className="font-medium">{tr("dirScanTab.directoryDialog.regularMode.hardlinkLabel")}</span> {tr("dirScanTab.directoryDialog.regularMode.bodyTwoOr")} <span className="font-medium">{tr("dirScanTab.directoryDialog.regularMode.reflinkLabel")}</span> {tr("dirScanTab.directoryDialog.regularMode.bodyTwoSuffix")}
+                    <Trans
+                      i18nKey="dirScanTab.directoryDialog.regularMode.bodyTwo"
+                      ns="common"
+                      components={{
+                        hardlink: <span className="font-medium" />,
+                        reflink: <span className="font-medium" />,
+                      }}
+                      values={{
+                        hardlink: tr("dirScanTab.directoryDialog.regularMode.hardlinkLabel"),
+                        reflink: tr("dirScanTab.directoryDialog.regularMode.reflinkLabel"),
+                      }}
+                    />
                   </p>
                 </div>
               </div>

@@ -289,7 +289,7 @@ export function WorkflowPreviewDialog({
   isInitialLoading = false,
 }: WorkflowPreviewDialogProps) {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = (key: string, options?: Record<string, unknown>) => t(key as never, options as never) as unknown as string
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches

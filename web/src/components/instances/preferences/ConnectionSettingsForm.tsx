@@ -132,6 +132,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
   const [incognitoMode] = useIncognitoMode()
+  const validateUnlimitedRange = (value: number, errorKey: string) => (value < -1 ? tr(errorKey) : undefined)
 
   const form = useForm({
     defaultValues: {
@@ -156,15 +157,17 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       ip_filter_trackers: false,
       banned_IPs: "",
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(tr("connectionSettingsForm.toasts.updated"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(tr("connectionSettingsForm.toasts.failedUpdate"))
-        console.error("Failed to update connection settings:", error)
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("connectionSettingsForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: (error) => {
+          toast.error(tr("connectionSettingsForm.toasts.failedUpdate"))
+          console.error("Failed to update connection settings:", error)
+        },
+      })
     },
   })
 
@@ -471,14 +474,9 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field
             name="max_connec"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value !== -1 && value !== 0 && value <= 0) {
-                    return tr("connectionSettingsForm.errors.maxConnectionsRange")
-                  }
-                  return undefined
-                },
-              }}
+            validators={{
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxConnectionsRange"),
+            }}
             >
               {(field) => (
                 <div className="space-y-2">
@@ -488,6 +486,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     onChange={(value) => field.handleChange(value)}
                     allowUnlimited={true}
                     description={tr("connectionSettingsForm.fields.maxConnectionsDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
                   />
                   {field.state.meta.errors.length > 0 && (
                     <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -498,14 +498,9 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
           <form.Field
             name="max_connec_per_torrent"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value !== -1 && value !== 0 && value <= 0) {
-                    return tr("connectionSettingsForm.errors.maxConnectionsPerTorrentRange")
-                  }
-                  return undefined
-                },
-              }}
+            validators={{
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxConnectionsPerTorrentRange"),
+            }}
             >
               {(field) => (
                 <div className="space-y-2">
@@ -515,6 +510,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     onChange={(value) => field.handleChange(value)}
                     allowUnlimited={true}
                     description={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
                   />
                   {field.state.meta.errors.length > 0 && (
                     <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -525,14 +522,9 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
           <form.Field
             name="max_uploads"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value !== -1 && value !== 0 && value <= 0) {
-                    return tr("connectionSettingsForm.errors.maxUploadsRange")
-                  }
-                  return undefined
-                },
-              }}
+            validators={{
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxUploadsRange"),
+            }}
             >
               {(field) => (
                 <div className="space-y-2">
@@ -542,6 +534,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     onChange={(value) => field.handleChange(value)}
                     allowUnlimited={true}
                     description={tr("connectionSettingsForm.fields.maxUploadsDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
                   />
                   {field.state.meta.errors.length > 0 && (
                     <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -552,14 +546,9 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
           <form.Field
             name="max_uploads_per_torrent"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value !== -1 && value !== 0 && value <= 0) {
-                    return tr("connectionSettingsForm.errors.maxUploadsPerTorrentRange")
-                  }
-                  return undefined
-                },
-              }}
+            validators={{
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxUploadsPerTorrentRange"),
+            }}
             >
               {(field) => (
                 <div className="space-y-2">
@@ -569,6 +558,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     onChange={(value) => field.handleChange(value)}
                     allowUnlimited={true}
                     description={tr("connectionSettingsForm.fields.maxUploadsPerTorrentDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
                   />
                   {field.state.meta.errors.length > 0 && (
                     <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>

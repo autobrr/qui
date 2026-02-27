@@ -70,15 +70,17 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
       announce_to_all_trackers: false,
       resolve_peer_countries: false,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(tr("networkDiscoveryForm.toasts.updated"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(tr("networkDiscoveryForm.toasts.failedUpdate"))
-        console.error("Failed to update network discovery settings:", error)
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("networkDiscoveryForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: (error) => {
+          toast.error(tr("networkDiscoveryForm.toasts.failedUpdate"))
+          console.error("Failed to update network discovery settings:", error)
+        },
+      })
     },
   })
 

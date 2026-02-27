@@ -151,17 +151,17 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const dayOptions = React.useMemo(() => ([
-    { value: 0, label: tr("speedLimitsForm.dayOptions.everyDay") },
-    { value: 1, label: tr("speedLimitsForm.dayOptions.everyWeekday") },
-    { value: 2, label: tr("speedLimitsForm.dayOptions.everyWeekend") },
-    { value: 3, label: tr("speedLimitsForm.dayOptions.monday") },
-    { value: 4, label: tr("speedLimitsForm.dayOptions.tuesday") },
-    { value: 5, label: tr("speedLimitsForm.dayOptions.wednesday") },
-    { value: 6, label: tr("speedLimitsForm.dayOptions.thursday") },
-    { value: 7, label: tr("speedLimitsForm.dayOptions.friday") },
-    { value: 8, label: tr("speedLimitsForm.dayOptions.saturday") },
-    { value: 9, label: tr("speedLimitsForm.dayOptions.sunday") },
-  ]), [tr])
+    { value: 0, label: String(t("speedLimitsForm.dayOptions.everyDay")) },
+    { value: 1, label: String(t("speedLimitsForm.dayOptions.everyWeekday")) },
+    { value: 2, label: String(t("speedLimitsForm.dayOptions.everyWeekend")) },
+    { value: 3, label: String(t("speedLimitsForm.dayOptions.monday")) },
+    { value: 4, label: String(t("speedLimitsForm.dayOptions.tuesday")) },
+    { value: 5, label: String(t("speedLimitsForm.dayOptions.wednesday")) },
+    { value: 6, label: String(t("speedLimitsForm.dayOptions.thursday")) },
+    { value: 7, label: String(t("speedLimitsForm.dayOptions.friday")) },
+    { value: 8, label: String(t("speedLimitsForm.dayOptions.saturday")) },
+    { value: 9, label: String(t("speedLimitsForm.dayOptions.sunday")) },
+  ]), [t])
 
   // Track if form is being actively edited
   const [isFormDirty, setIsFormDirty] = React.useState(false)
@@ -184,15 +184,17 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       schedule_to_min: 0,
       scheduler_days: 0,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        setIsFormDirty(false) // Reset dirty flag after successful save
-        toast.success(tr("speedLimitsForm.toasts.updated"))
-        onSuccess?.()
-      } catch {
-        toast.error(tr("speedLimitsForm.toasts.failedUpdate"))
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          setIsFormDirty(false)
+          toast.success(tr("speedLimitsForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: () => {
+          toast.error(tr("speedLimitsForm.toasts.failedUpdate"))
+        },
+      })
     },
   })
 

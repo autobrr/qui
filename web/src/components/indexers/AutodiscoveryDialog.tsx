@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -30,7 +30,10 @@ interface AutodiscoveryDialogProps {
 
 function useCommonTr() {
   const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  return useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
 }
 
 export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
@@ -478,7 +481,6 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   ? tr("autodiscoveryDialog.actions.importing")
                   : tr("autodiscoveryDialog.actions.import", {
                     count: selectedIndexers.size,
-                    plural: selectedIndexers.size !== 1 ? "s" : "",
                   })}
               </Button>
             </DialogFooter>

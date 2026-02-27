@@ -55,14 +55,16 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
       max_seeding_time_enabled: false,
       max_seeding_time: 0,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(tr("seedingLimitsForm.toasts.updated"))
-        onSuccess?.()
-      } catch {
-        toast.error(tr("seedingLimitsForm.toasts.failedUpdate"))
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("seedingLimitsForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: () => {
+          toast.error(tr("seedingLimitsForm.toasts.failedUpdate"))
+        },
+      })
     },
   })
 

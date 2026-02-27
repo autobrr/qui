@@ -355,7 +355,7 @@ export function IndexerTable({
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-center">
                       <Badge variant="outline" className="capitalize">
-                        {indexer.backend}
+                        {getBackendLabel(indexer.backend)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
@@ -485,6 +485,7 @@ export function IndexerTable({
                           className="h-8 w-8"
                           onClick={() => onTest(indexer.id)}
                           title={tr("indexerTable.actions.testConnection")}
+                          aria-label={tr("indexerTable.actions.testConnection")}
                         >
                           <TestTube className="h-4 w-4" />
                         </Button>
@@ -494,6 +495,7 @@ export function IndexerTable({
                           className="h-8 w-8 hidden sm:inline-flex"
                           onClick={() => onSyncCaps(indexer.id)}
                           title={tr("indexerTable.actions.syncCapabilities")}
+                          aria-label={tr("indexerTable.actions.syncCapabilities")}
                         >
                           <RefreshCw className="h-4 w-4" />
                         </Button>
@@ -503,6 +505,7 @@ export function IndexerTable({
                           className="h-8 w-8"
                           onClick={() => onEdit(indexer)}
                           title={tr("indexerTable.actions.edit")}
+                          aria-label={tr("indexerTable.actions.edit")}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -512,6 +515,7 @@ export function IndexerTable({
                           className="h-8 w-8"
                           onClick={() => onDelete(indexer.id)}
                           title={tr("indexerTable.actions.delete")}
+                          aria-label={tr("indexerTable.actions.delete")}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

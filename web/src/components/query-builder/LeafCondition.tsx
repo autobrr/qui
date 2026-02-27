@@ -82,31 +82,6 @@ const DECIMALS_BY_SPEED_UNIT: Record<number, number> = {
 
 const DEFAULT_GROUP_ID = "cross_seed_content_save_path";
 
-const HARDLINK_SCOPE_LABEL_KEYS: Record<string, string> = {
-  none: "leafCondition.hardlinkScope.none",
-  torrents_only: "leafCondition.hardlinkScope.torrentsOnly",
-  outside_qbittorrent: "leafCondition.hardlinkScope.outsideQBittorrent",
-};
-
-const TORRENT_STATE_LABEL_KEYS: Record<string, string> = {
-  downloading: "leafCondition.torrentState.downloading",
-  uploading: "leafCondition.torrentState.uploading",
-  completed: "leafCondition.torrentState.completed",
-  stopped: "leafCondition.torrentState.stopped",
-  active: "leafCondition.torrentState.active",
-  inactive: "leafCondition.torrentState.inactive",
-  running: "leafCondition.torrentState.running",
-  stalled: "leafCondition.torrentState.stalled",
-  stalled_uploading: "leafCondition.torrentState.stalledUploading",
-  stalled_downloading: "leafCondition.torrentState.stalledDownloading",
-  errored: "leafCondition.torrentState.error",
-  tracker_down: "leafCondition.torrentState.trackerDown",
-  checking: "leafCondition.torrentState.checking",
-  checkingResumeData: "leafCondition.torrentState.checkingResumeData",
-  moving: "leafCondition.torrentState.moving",
-  missingFiles: "leafCondition.torrentState.missingFiles",
-};
-
 function isGroupingConditionField(field: ConditionField | undefined): boolean {
   return field === "GROUP_SIZE" || field === "IS_GROUPED";
 }
@@ -684,11 +659,7 @@ export function LeafCondition({
               {TORRENT_STATES.map((state) => {
                 const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
                 const isDisabled = disabledInfo !== undefined;
-                let translatedLabel = state.label;
-                const stateLabelKey = TORRENT_STATE_LABEL_KEYS[state.value];
-                if (stateLabelKey) {
-                  translatedLabel = tr(stateLabelKey);
-                }
+                const translatedLabel = state.labelKey ? tr(state.labelKey) : state.label;
 
                 if (isDisabled) {
                   return (
@@ -713,11 +684,7 @@ export function LeafCondition({
             </SelectTrigger>
             <SelectContent>
               {HARDLINK_SCOPE_VALUES.map((scope) => {
-                let scopeLabel = scope.label;
-                const scopeLabelKey = HARDLINK_SCOPE_LABEL_KEYS[scope.value];
-                if (scopeLabelKey) {
-                  scopeLabel = tr(scopeLabelKey);
-                }
+                const scopeLabel = scope.labelKey ? tr(scope.labelKey) : scope.label;
                 return (
                   <SelectItem key={scope.value} value={scope.value}>
                     {scopeLabel}

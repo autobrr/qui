@@ -24,6 +24,29 @@ interface InstanceFormProps {
   formId?: string
 }
 
+const URL_VALIDATION_MESSAGE_TO_KEY: Record<string, string> = {
+  "URL is required": "instanceForm.validation.urlRequired",
+  "Please enter a valid URL": "instanceForm.validation.urlInvalid",
+  "Only HTTP and HTTPS protocols are supported": "instanceForm.validation.urlProtocol",
+  "Port is required when using an IP address (e.g., :8080)": "instanceForm.validation.urlPortRequired",
+}
+
+function translateInstanceUrlValidationError(
+  message: string | undefined,
+  tr: (key: string, options?: Record<string, unknown>) => string
+) {
+  if (!message) {
+    return tr("instanceForm.validation.urlInvalid")
+  }
+
+  const key = URL_VALIDATION_MESSAGE_TO_KEY[message]
+  if (key) {
+    return tr(key)
+  }
+
+  return message
+}
+
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { t } = useTranslation("common")
   const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
@@ -159,7 +182,10 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           validators={{
             onChange: ({ value }) => {
               const result = instanceUrlSchema.safeParse(value)
-              return result.success ? undefined : result.error.issues[0]?.message
+              if (result.success) {
+                return undefined
+              }
+              return translateInstanceUrlValidationError(result.error.issues[0]?.message, tr)
             },
           }}
         >

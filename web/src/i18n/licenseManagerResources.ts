@@ -42,6 +42,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • Status: {{status}} • Added {{date}}",
     },
+    status: {
+      active: "Active",
+      inactive: "Inactive",
+      expired: "Expired",
+      revoked: "Revoked",
+      unknown: "Unknown",
+    },
     deleteDialog: {
       title: "Remove license?",
       description: "Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.",
@@ -66,6 +73,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "Card or local methods",
       cardMethodsDescription: "Pay directly in DodoPayments. You will return to qui after payment.",
+      cryptoLabel: "Crypto",
       cryptoDescription: "Crypto payment still completes in DodoPayments checkout.",
       cryptoSteps: {
         donatePrefix: "Donate using the addresses in the",
@@ -130,6 +138,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • 状态：{{status}} • 添加于 {{date}}",
     },
+    status: {
+      active: "有效",
+      inactive: "未激活",
+      expired: "已过期",
+      revoked: "已撤销",
+      unknown: "未知",
+    },
     deleteDialog: {
       title: "移除许可证？",
       description: "确定要从此设备移除该许可证吗？这会在本机停用该许可证，并释放一个激活名额。",
@@ -154,6 +169,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "银行卡或本地支付方式",
       cardMethodsDescription: "直接在 DodoPayments 完成支付。支付后会返回 qui。",
+      cryptoLabel: "加密货币",
       cryptoDescription: "加密货币支付同样在 DodoPayments 结账流程中完成。",
       cryptoSteps: {
         donatePrefix: "先使用 README 中的地址进行捐赠：",
@@ -218,6 +234,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • ステータス: {{status}} • 追加日 {{date}}",
     },
+    status: {
+      active: "有効",
+      inactive: "無効",
+      expired: "期限切れ",
+      revoked: "取り消し済み",
+      unknown: "不明",
+    },
     deleteDialog: {
       title: "ライセンスを削除しますか？",
       description: "このマシンからライセンスを削除してもよろしいですか？ここで無効化され、アクティベーション枠が1つ空きます。",
@@ -242,6 +265,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "カードまたはローカル決済",
       cardMethodsDescription: "DodoPayments で直接支払います。支払い後に qui へ戻ります。",
+      cryptoLabel: "暗号資産",
       cryptoDescription: "暗号資産での支払いも DodoPayments チェックアウトで完了します。",
       cryptoSteps: {
         donatePrefix: "README にあるアドレスへ寄付してください：",
@@ -306,6 +330,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • Status: {{status}} • Adicionada em {{date}}",
     },
+    status: {
+      active: "Ativa",
+      inactive: "Inativa",
+      expired: "Expirada",
+      revoked: "Revogada",
+      unknown: "Desconhecido",
+    },
     deleteDialog: {
       title: "Remover licença?",
       description: "Tem certeza de que deseja remover esta licença desta máquina? Ela será desativada aqui para liberar uma vaga de ativação.",
@@ -330,6 +361,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "Cartão ou métodos locais",
       cardMethodsDescription: "Pague direto na DodoPayments. Você retornará ao qui após o pagamento.",
+      cryptoLabel: "Cripto",
       cryptoDescription: "Pagamento em cripto também é concluído no checkout da DodoPayments.",
       cryptoSteps: {
         donatePrefix: "Doe usando os endereços no",
@@ -394,6 +426,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • Estado: {{status}} • Agregada {{date}}",
     },
+    status: {
+      active: "Activa",
+      inactive: "Inactiva",
+      expired: "Caducada",
+      revoked: "Revocada",
+      unknown: "Desconocido",
+    },
     deleteDialog: {
       title: "¿Eliminar licencia?",
       description: "¿Seguro que quieres eliminar esta licencia de este equipo? Se desactivará aquí para liberar una activación.",
@@ -418,6 +457,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "Tarjeta o métodos locales",
       cardMethodsDescription: "Paga directamente en DodoPayments. Volverás a qui después del pago.",
+      cryptoLabel: "Cripto",
       cryptoDescription: "El pago con cripto también se completa en el checkout de DodoPayments.",
       cryptoSteps: {
         donatePrefix: "Dona usando las direcciones del",
@@ -482,6 +522,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • Statut : {{status}} • Ajoutée {{date}}",
     },
+    status: {
+      active: "Active",
+      inactive: "Inactive",
+      expired: "Expirée",
+      revoked: "Révoquée",
+      unknown: "Inconnu",
+    },
     deleteDialog: {
       title: "Supprimer la licence ?",
       description: "Voulez-vous vraiment supprimer cette licence de cette machine ? Elle sera désactivée ici pour libérer un slot d'activation.",
@@ -506,6 +553,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "Carte ou moyens de paiement locaux",
       cardMethodsDescription: "Payez directement sur DodoPayments. Vous reviendrez sur qui après le paiement.",
+      cryptoLabel: "Crypto",
       cryptoDescription: "Le paiement crypto se finalise aussi dans le checkout DodoPayments.",
       cryptoSteps: {
         donatePrefix: "Faites un don avec les adresses du",
@@ -570,6 +618,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • 상태: {{status}} • 추가일 {{date}}",
     },
+    status: {
+      active: "활성",
+      inactive: "비활성",
+      expired: "만료됨",
+      revoked: "철회됨",
+      unknown: "알 수 없음",
+    },
     deleteDialog: {
       title: "라이선스를 제거할까요?",
       description: "이 기기에서 이 라이선스를 제거하시겠습니까? 여기서 비활성화되어 활성화 슬롯이 하나 비워집니다.",
@@ -594,6 +649,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "카드 또는 지역 결제 수단",
       cardMethodsDescription: "DodoPayments에서 바로 결제합니다. 결제 후 qui로 돌아옵니다.",
+      cryptoLabel: "암호화폐",
       cryptoDescription: "암호화폐 결제도 DodoPayments 결제 화면에서 완료됩니다.",
       cryptoSteps: {
         donatePrefix: "README의 주소로 기부하세요:",
@@ -658,6 +714,13 @@ export const licenseManagerResources = {
     labels: {
       licenseMeta: "{{productName}} • Status: {{status}} • Hinzugefügt am {{date}}",
     },
+    status: {
+      active: "Aktiv",
+      inactive: "Inaktiv",
+      expired: "Abgelaufen",
+      revoked: "Widerrufen",
+      unknown: "Unbekannt",
+    },
     deleteDialog: {
       title: "Lizenz entfernen?",
       description: "Möchtest du diese Lizenz wirklich von diesem Gerät entfernen? Sie wird hier deaktiviert und gibt einen Aktivierungsslot frei.",
@@ -682,6 +745,7 @@ export const licenseManagerResources = {
       },
       cardMethodsTitle: "Karte oder lokale Zahlungsmethoden",
       cardMethodsDescription: "Bezahle direkt in DodoPayments. Nach der Zahlung kehrst du zu qui zurück.",
+      cryptoLabel: "Krypto",
       cryptoDescription: "Krypto-Zahlungen werden ebenfalls im DodoPayments-Checkout abgeschlossen.",
       cryptoSteps: {
         donatePrefix: "Spende mit den Adressen aus der",

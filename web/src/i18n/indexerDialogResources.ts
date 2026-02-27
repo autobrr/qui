@@ -44,6 +44,7 @@ export const indexerDialogResources = {
       basicAuth: "Use HTTP basic authentication for Torznab behind a reverse proxy.",
       keepRedactedPrefix: "Leave as",
       keepRedactedSuffix: "to keep existing password.",
+      keepRedacted: "Leave as <token>{{token}}</token> to keep existing password.",
     },
     actions: {
       cancel: "Cancel",
@@ -108,6 +109,7 @@ export const indexerDialogResources = {
       basicAuth: "当 Torznab 位于反向代理后时，可使用 HTTP Basic 认证。",
       keepRedactedPrefix: "保留为",
       keepRedactedSuffix: "即可沿用现有密码。",
+      keepRedacted: "保留为 <token>{{token}}</token> 即可沿用现有密码。",
     },
     actions: {
       cancel: "取消",
@@ -172,6 +174,7 @@ export const indexerDialogResources = {
       basicAuth: "Torznab がリバースプロキシ配下にある場合は HTTP Basic 認証を使用します。",
       keepRedactedPrefix: "既存パスワードを維持するには",
       keepRedactedSuffix: "のままにしてください。",
+      keepRedacted: "既存パスワードを維持するには <token>{{token}}</token> のままにしてください。",
     },
     actions: {
       cancel: "キャンセル",
@@ -236,6 +239,7 @@ export const indexerDialogResources = {
       basicAuth: "Use autenticação HTTP básica para Torznab atrás de um proxy reverso.",
       keepRedactedPrefix: "Deixe como",
       keepRedactedSuffix: "para manter a senha atual.",
+      keepRedacted: "Deixe como <token>{{token}}</token> para manter a senha atual.",
     },
     actions: {
       cancel: "Cancelar",
@@ -300,6 +304,7 @@ export const indexerDialogResources = {
       basicAuth: "Usa autenticación HTTP básica para Torznab detrás de un proxy inverso.",
       keepRedactedPrefix: "Déjalo como",
       keepRedactedSuffix: "para conservar la contraseña actual.",
+      keepRedacted: "Déjalo como <token>{{token}}</token> para conservar la contraseña actual.",
     },
     actions: {
       cancel: "Cancelar",
@@ -364,6 +369,7 @@ export const indexerDialogResources = {
       basicAuth: "Utilisez l'authentification HTTP Basic pour Torznab derrière un proxy inverse.",
       keepRedactedPrefix: "Laissez",
       keepRedactedSuffix: "pour conserver le mot de passe actuel.",
+      keepRedacted: "Laissez <token>{{token}}</token> pour conserver le mot de passe actuel.",
     },
     actions: {
       cancel: "Annuler",
@@ -428,6 +434,7 @@ export const indexerDialogResources = {
       basicAuth: "Torznab가 리버스 프록시 뒤에 있으면 HTTP Basic 인증을 사용하세요.",
       keepRedactedPrefix: "기존 비밀번호를 유지하려면",
       keepRedactedSuffix: "를 그대로 두세요.",
+      keepRedacted: "기존 비밀번호를 유지하려면 <token>{{token}}</token> 를 그대로 두세요.",
     },
     actions: {
       cancel: "취소",
@@ -492,6 +499,7 @@ export const indexerDialogResources = {
       basicAuth: "HTTP Basic Auth für Torznab hinter einem Reverse Proxy verwenden.",
       keepRedactedPrefix: "Lass es auf",
       keepRedactedSuffix: "um das bestehende Passwort zu behalten.",
+      keepRedacted: "Lass es auf <token>{{token}}</token>, um das bestehende Passwort zu behalten.",
     },
     actions: {
       cancel: "Abbrechen",

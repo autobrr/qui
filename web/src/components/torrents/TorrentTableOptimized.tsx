@@ -1477,7 +1477,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const currentCompactSortLabel = useMemo(() => {
     const directOption = compactSortOptions.find(option => option.value === activeSortField)
     if (directOption) {
-      return directOption.label
+      return tr(directOption.labelKey, { defaultValue: directOption.fallbackLabel })
     }
 
     const columns = table.getAllLeafColumns()
@@ -1506,7 +1506,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     return activeSortField
-  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
+  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder, tr])
 
   const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
     if (activeSortField === value) {
@@ -2405,7 +2405,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             >
                               {compactSortOptions.map(option => (
                                 <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
-                                  {option.label}
+                                  {tr(option.labelKey, { defaultValue: option.fallbackLabel })}
                                 </DropdownMenuRadioItem>
                               ))}
                             </DropdownMenuRadioGroup>

@@ -36,6 +36,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
@@ -82,7 +83,6 @@ import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
 import { useMutation } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface FilterBadgeProps {
@@ -152,12 +152,6 @@ const arraysEqual = (a?: string[], b?: string[]) => {
   }
 
   return true
-}
-
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
 }
 
 // Define torrent states based on qBittorrent

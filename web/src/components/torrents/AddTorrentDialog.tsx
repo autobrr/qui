@@ -164,7 +164,7 @@ function createFileKey(file: File): string {
 
 export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange, dropPayload, onDropPayloadConsumed, torrents = [] }: AddTorrentDialogProps) {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
+  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
   const [selectedTags, setSelectedTags] = useState<string[]>([])

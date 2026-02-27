@@ -61,7 +61,10 @@ function buildCheckoutUrlWithReturn(returnUrl: string): string {
 
 export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onCheckoutConsumed }: LicenseManagerProps) {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
   const [showAddLicense, setShowAddLicense] = useState(false)
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const { formatDate } = useDateTimeFormatters()
@@ -81,6 +84,14 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
   const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar"
     ? tr("licenseManager.portalLabels.polar")
     : tr("licenseManager.portalLabels.dodo")
+  const localizeStatus = useCallback((status: string) => {
+    const normalized = status.trim().toLowerCase()
+    if (normalized === "active") return tr("licenseManager.status.active")
+    if (normalized === "inactive") return tr("licenseManager.status.inactive")
+    if (normalized === "expired") return tr("licenseManager.status.expired")
+    if (normalized === "revoked") return tr("licenseManager.status.revoked")
+    return tr("licenseManager.status.unknown")
+  }, [tr])
 
   // Check if we have an invalid license (exists but not active)
   const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
@@ -228,7 +239,7 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                       <div className="text-xs text-muted-foreground">
                         {tr("licenseManager.labels.licenseMeta", {
                           productName: primaryLicense.productName,
-                          status: primaryLicense.status,
+                          status: localizeStatus(primaryLicense.status),
                           date: formatDate(new Date(primaryLicense.createdAt)),
                         })}
                       </div>
@@ -504,7 +515,7 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
 
                 <li className="space-y-2">
                   <p className="inline-flex items-center gap-1 text-sm font-medium">
-                    Crypto
+                    {tr("licenseManager.paymentDialog.cryptoLabel")}
                     <Bitcoin className="h-4 w-4 text-orange-500" />
                   </p>
                   <p className="text-xs font-medium text-muted-foreground">

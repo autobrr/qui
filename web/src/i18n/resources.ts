@@ -376,12 +376,14 @@ export const resources = {
           title: "Remove Empty Categories",
           none: "There are no empty categories to remove.",
           confirm: "Are you sure you want to remove {{count}} empty categories?",
+          confirmWithCannotUndo: "Are you sure you want to remove {{count}} empty categories? This action cannot be undone.",
           action: "Remove {{count}} Categories",
         },
         deleteUnusedTags: {
           title: "Delete Unused Tags",
           none: "There are no unused tags to delete.",
           confirm: "Are you sure you want to delete {{count}} unused tags?",
+          confirmWithCannotUndo: "Are you sure you want to delete {{count}} unused tags? This action cannot be undone.",
           action: "Delete {{count}} Tags",
         },
       },
@@ -620,6 +622,8 @@ export const resources = {
         },
         values: {
           autoDetect: "Auto-detect",
+          unlimitedPlaceholder: "Unlimited",
+          unlimitedHint: " (use -1 for unlimited)",
         },
         fields: {
           listenPortLabel: "Port for incoming connections",
@@ -758,6 +762,7 @@ export const resources = {
         loadFailed: "Failed to load settings. Please try again.",
         title: "Instance Settings",
         descriptionPrefix: "Configure all settings and preferences for",
+        description: "Configure all settings and preferences for <name>{{name}}</name>",
         instanceDataUnavailable: "Instance data not available. Please close and reopen this dialog.",
         aria: {
           instanceActions: "Instance actions",
@@ -886,6 +891,8 @@ export const resources = {
           none: "No instances",
           offline: "Offline",
           offlineSuffix: " (offline)",
+          labelConnected: "{{name}}",
+          labelOffline: "{{name}} (offline)",
           target: "Target: {{name}}{{status}}",
         },
         form: {
@@ -1613,12 +1620,14 @@ export const resources = {
           title: "移除空分类",
           none: "没有可移除的空分类。",
           confirm: "确定要移除 {{count}} 个空分类吗？",
+          confirmWithCannotUndo: "确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
           action: "移除 {{count}} 个分类",
         },
         deleteUnusedTags: {
           title: "删除未使用标签",
           none: "没有可删除的未使用标签。",
           confirm: "确定要删除 {{count}} 个未使用标签吗？",
+          confirmWithCannotUndo: "确定要删除 {{count}} 个未使用标签吗？此操作无法撤销。",
           action: "删除 {{count}} 个标签",
         },
       },
@@ -1857,6 +1866,8 @@ export const resources = {
         },
         values: {
           autoDetect: "自动检测",
+          unlimitedPlaceholder: "不限",
+          unlimitedHint: "（使用 -1 表示不限）",
         },
         fields: {
           listenPortLabel: "传入连接端口",
@@ -1995,6 +2006,7 @@ export const resources = {
         loadFailed: "加载设置失败，请重试。",
         title: "实例设置",
         descriptionPrefix: "为以下实例配置全部设置与偏好：",
+        description: "为 <name>{{name}}</name> 配置全部设置与偏好",
         instanceDataUnavailable: "实例数据不可用，请关闭后重新打开此对话框。",
         aria: {
           instanceActions: "实例操作",
@@ -2123,6 +2135,8 @@ export const resources = {
           none: "无实例",
           offline: "离线",
           offlineSuffix: "（离线）",
+          labelConnected: "{{name}}",
+          labelOffline: "{{name}}（离线）",
           target: "目标：{{name}}{{status}}",
         },
         form: {
@@ -2850,12 +2864,14 @@ export const resources = {
           title: "空カテゴリを削除",
           none: "削除できる空カテゴリはありません。",
           confirm: "{{count}} 件の空カテゴリを削除してもよろしいですか？",
+          confirmWithCannotUndo: "{{count}} 件の空カテゴリを削除してもよろしいですか？この操作は元に戻せません。",
           action: "{{count}} 件のカテゴリを削除",
         },
         deleteUnusedTags: {
           title: "未使用タグを削除",
           none: "削除できる未使用タグはありません。",
           confirm: "{{count}} 件の未使用タグを削除してもよろしいですか？",
+          confirmWithCannotUndo: "{{count}} 件の未使用タグを削除してもよろしいですか？この操作は元に戻せません。",
           action: "{{count}} 件のタグを削除",
         },
       },
@@ -3094,6 +3110,8 @@ export const resources = {
         },
         values: {
           autoDetect: "自動検出",
+          unlimitedPlaceholder: "無制限",
+          unlimitedHint: "（無制限にするには -1）",
         },
         fields: {
           listenPortLabel: "受信接続ポート",
@@ -3232,6 +3250,7 @@ export const resources = {
         loadFailed: "設定の読み込みに失敗しました。再度お試しください。",
         title: "インスタンス設定",
         descriptionPrefix: "次のインスタンスの設定と環境設定を行います:",
+        description: "<name>{{name}}</name> の設定と環境設定を行います",
         instanceDataUnavailable: "インスタンス情報が利用できません。ダイアログを閉じて再度開いてください。",
         aria: {
           instanceActions: "インスタンス操作",
@@ -3360,6 +3379,8 @@ export const resources = {
           none: "インスタンスなし",
           offline: "オフライン",
           offlineSuffix: " (オフライン)",
+          labelConnected: "{{name}}",
+          labelOffline: "{{name}} (オフライン)",
           target: "対象: {{name}}{{status}}",
         },
         form: {
@@ -4087,12 +4108,14 @@ export const resources = {
           title: "Remover categorias vazias",
           none: "Não há categorias vazias para remover.",
           confirm: "Tem certeza de que deseja remover {{count}} categorias vazias?",
+          confirmWithCannotUndo: "Tem certeza de que deseja remover {{count}} categorias vazias? Esta ação não pode ser desfeita.",
           action: "Remover {{count}} categorias",
         },
         deleteUnusedTags: {
           title: "Excluir tags não utilizadas",
           none: "Não há tags não utilizadas para excluir.",
           confirm: "Tem certeza de que deseja excluir {{count}} tags não utilizadas?",
+          confirmWithCannotUndo: "Tem certeza de que deseja excluir {{count}} tags não utilizadas? Esta ação não pode ser desfeita.",
           action: "Excluir {{count}} tags",
         },
       },
@@ -4331,6 +4354,8 @@ export const resources = {
         },
         values: {
           autoDetect: "Detecção automática",
+          unlimitedPlaceholder: "Ilimitado",
+          unlimitedHint: " (use -1 para ilimitado)",
         },
         fields: {
           listenPortLabel: "Porta para conexões de entrada",
@@ -4469,6 +4494,7 @@ export const resources = {
         loadFailed: "Falha ao carregar as configurações. Tente novamente.",
         title: "Configurações da instância",
         descriptionPrefix: "Configure todas as opções e preferências para",
+        description: "Configure todas as opções e preferências para <name>{{name}}</name>",
         instanceDataUnavailable: "Dados da instância indisponíveis. Feche e abra este diálogo novamente.",
         aria: {
           instanceActions: "Ações da instância",
@@ -4597,6 +4623,8 @@ export const resources = {
           none: "Sem instâncias",
           offline: "Offline",
           offlineSuffix: " (offline)",
+          labelConnected: "{{name}}",
+          labelOffline: "{{name}} (offline)",
           target: "Destino: {{name}}{{status}}",
         },
         form: {
@@ -5324,12 +5352,14 @@ export const resources = {
           title: "Leere Kategorien entfernen",
           none: "Es gibt keine leeren Kategorien zum Entfernen.",
           confirm: "Möchtest du {{count}} leere Kategorien wirklich entfernen?",
+          confirmWithCannotUndo: "Möchtest du {{count}} leere Kategorien wirklich entfernen? Diese Aktion kann nicht rückgängig gemacht werden.",
           action: "{{count}} Kategorien entfernen",
         },
         deleteUnusedTags: {
           title: "Ungenutzte Tags löschen",
           none: "Es gibt keine ungenutzten Tags zum Löschen.",
           confirm: "Möchtest du {{count}} ungenutzte Tags wirklich löschen?",
+          confirmWithCannotUndo: "Möchtest du {{count}} ungenutzte Tags wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
           action: "{{count}} Tags löschen",
         },
       },
@@ -5568,6 +5598,8 @@ export const resources = {
         },
         values: {
           autoDetect: "Automatisch erkennen",
+          unlimitedPlaceholder: "Unbegrenzt",
+          unlimitedHint: " (für unbegrenzt -1 verwenden)",
         },
         fields: {
           listenPortLabel: "Port für eingehende Verbindungen",
@@ -5706,6 +5738,7 @@ export const resources = {
         loadFailed: "Einstellungen konnten nicht geladen werden. Bitte erneut versuchen.",
         title: "Instanz-Einstellungen",
         descriptionPrefix: "Konfiguriere alle Einstellungen und Präferenzen für",
+        description: "Konfiguriere alle Einstellungen und Präferenzen für <name>{{name}}</name>",
         instanceDataUnavailable: "Instanzdaten nicht verfügbar. Bitte den Dialog schließen und erneut öffnen.",
         aria: {
           instanceActions: "Instanzaktionen",
@@ -5834,6 +5867,8 @@ export const resources = {
           none: "Keine Instanzen",
           offline: "Offline",
           offlineSuffix: " (offline)",
+          labelConnected: "{{name}}",
+          labelOffline: "{{name}} (offline)",
           target: "Ziel: {{name}}{{status}}",
         },
         form: {

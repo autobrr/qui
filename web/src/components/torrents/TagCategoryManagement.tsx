@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
 import type { Category } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -28,9 +28,16 @@ interface CreateTagDialogProps {
   instanceId: number
 }
 
-export function CreateTagDialog({ open, onOpenChange, instanceId }: CreateTagDialogProps) {
+function useTr() {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  return useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
+}
+
+export function CreateTagDialog({ open, onOpenChange, instanceId }: CreateTagDialogProps) {
+  const tr = useTr()
   const [newTag, setNewTag] = useState("")
   const queryClient = useQueryClient()
 
@@ -102,8 +109,7 @@ interface DeleteTagDialogProps {
 }
 
 export function DeleteTagDialog({ open, onOpenChange, instanceId, tag }: DeleteTagDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useTr()
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
@@ -154,8 +160,7 @@ interface CreateCategoryDialogProps {
 }
 
 export function CreateCategoryDialog({ open, onOpenChange, instanceId, parent }: CreateCategoryDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useTr()
   const [name, setName] = useState("")
   const [savePath, setSavePath] = useState("")
   const queryClient = useQueryClient()
@@ -252,8 +257,7 @@ interface EditCategoryDialogProps {
 }
 
 export function EditCategoryDialog({ open, onOpenChange, instanceId, category }: EditCategoryDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useTr()
   const [newSavePath, setNewSavePath] = useState("")
   const queryClient = useQueryClient()
 
@@ -337,8 +341,7 @@ interface DeleteCategoryDialogProps {
 }
 
 export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryName }: DeleteCategoryDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useTr()
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
@@ -396,8 +399,7 @@ export function DeleteEmptyCategoriesDialog({
   categories,
   torrentCounts = {},
 }: DeleteEmptyCategoriesDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useTr()
   const queryClient = useQueryClient()
 
   const emptyCategories = Object.keys(categories).filter(categoryName => {
@@ -430,9 +432,7 @@ export function DeleteEmptyCategoriesDialog({
               tr("tagCategoryManagement.deleteEmptyCategories.none")
             ) : (
               <>
-                {tr("tagCategoryManagement.deleteEmptyCategories.confirm", { count: emptyCategories.length })}
-                {" "}
-                {tr("tagCategoryManagement.common.cannotUndo")}
+                {tr("tagCategoryManagement.deleteEmptyCategories.confirmWithCannotUndo", { count: emptyCategories.length })}
                 <div className="mt-3 max-h-40 overflow-y-auto">
                   <div className="text-sm space-y-1">
                     {emptyCategories.map(categoryName => (
@@ -478,8 +478,7 @@ export function DeleteUnusedTagsDialog({
   tags,
   torrentCounts = {},
 }: DeleteUnusedTagsDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useTr()
   const queryClient = useQueryClient()
 
   // Find unused tags (tags with 0 torrents)
@@ -514,9 +513,7 @@ export function DeleteUnusedTagsDialog({
               tr("tagCategoryManagement.deleteUnusedTags.none")
             ) : (
               <>
-                {tr("tagCategoryManagement.deleteUnusedTags.confirm", { count: unusedTags.length })}
-                {" "}
-                {tr("tagCategoryManagement.common.cannotUndo")}
+                {tr("tagCategoryManagement.deleteUnusedTags.confirmWithCannotUndo", { count: unusedTags.length })}
                 <div className="mt-3 max-h-40 overflow-y-auto">
                   <div className="text-sm space-y-1">
                     {unusedTags.map(tag => (

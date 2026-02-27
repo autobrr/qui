@@ -24,7 +24,7 @@ import {
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
 import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
@@ -54,22 +54,33 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
   const [indexersOpen, setIndexersOpen] = useState(true)
 
-  const loadIndexers = async () => {
+  const loadIndexers = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true)
-      const data = await api.listTorznabIndexers()
+      const data = await api.listTorznabIndexers({ signal })
+      if (signal?.aborted) {
+        return
+      }
       setIndexers(data || [])
     } catch (error) {
+      if (signal?.aborted) {
+        return
+      }
       toast.error(tr("indexersPage.toasts.loadFailed"))
       setIndexers([])
     } finally {
+      if (signal?.aborted) {
+        return
+      }
       setLoading(false)
     }
-  }
+  }, [tr])
 
   useEffect(() => {
-    loadIndexers()
-  }, [])
+    const controller = new AbortController()
+    loadIndexers(controller.signal)
+    return () => controller.abort()
+  }, [loadIndexers])
 
   const handleEdit = (indexer: TorznabIndexer) => {
     setEditingIndexer(indexer)

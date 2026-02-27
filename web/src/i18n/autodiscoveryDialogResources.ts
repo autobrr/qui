@@ -32,7 +32,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "Deselect All",
       back: "Back",
       importing: "Importing...",
-      import: "Import {{count}} indexer{{plural}}",
+      import_one: "Import {{count}} indexer",
+      import_other: "Import {{count}} indexers",
     },
     badges: {
       willUpdate: "Will Update",
@@ -96,7 +97,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "取消全选",
       back: "返回",
       importing: "导入中...",
-      import: "导入 {{count}} 个索引器",
+      import_one: "导入 {{count}} 个索引器",
+      import_other: "导入 {{count}} 个索引器",
     },
     badges: {
       willUpdate: "将更新",
@@ -160,7 +162,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "すべて解除",
       back: "戻る",
       importing: "インポート中...",
-      import: "{{count}} 件のインデクサーをインポート",
+      import_one: "{{count}} 件のインデクサーをインポート",
+      import_other: "{{count}} 件のインデクサーをインポート",
     },
     badges: {
       willUpdate: "更新予定",
@@ -224,7 +227,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "Desmarcar tudo",
       back: "Voltar",
       importing: "Importando...",
-      import: "Importar {{count}} indexador{{plural}}",
+      import_one: "Importar {{count}} indexador",
+      import_other: "Importar {{count}} indexadores",
     },
     badges: {
       willUpdate: "Será atualizado",
@@ -288,7 +292,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "Deseleccionar todo",
       back: "Volver",
       importing: "Importando...",
-      import: "Importar {{count}} indexador{{plural}}",
+      import_one: "Importar {{count}} indexador",
+      import_other: "Importar {{count}} indexadores",
     },
     badges: {
       willUpdate: "Se actualizará",
@@ -352,7 +357,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "Tout désélectionner",
       back: "Retour",
       importing: "Import en cours...",
-      import: "Importer {{count}} indexeur{{plural}}",
+      import_one: "Importer {{count}} indexeur",
+      import_other: "Importer {{count}} indexeurs",
     },
     badges: {
       willUpdate: "Sera mis à jour",
@@ -416,7 +422,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "전체 선택 해제",
       back: "뒤로",
       importing: "가져오는 중...",
-      import: "인덱서 {{count}}개 가져오기",
+      import_one: "인덱서 {{count}}개 가져오기",
+      import_other: "인덱서 {{count}}개 가져오기",
     },
     badges: {
       willUpdate: "업데이트 예정",
@@ -480,7 +487,8 @@ export const autodiscoveryDialogResources = {
       deselectAll: "Auswahl aufheben",
       back: "Zurück",
       importing: "Importiere...",
-      import: "{{count}} Indexer{{plural}} importieren",
+      import_one: "{{count}} Indexer importieren",
+      import_other: "{{count}} Indexer importieren",
     },
     badges: {
       willUpdate: "Wird aktualisiert",

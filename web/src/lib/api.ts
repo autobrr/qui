@@ -2129,8 +2129,8 @@ class ApiClient {
   }
 
   // Torznab Indexer endpoints
-  async listTorznabIndexers(): Promise<TorznabIndexer[]> {
-    return this.request<TorznabIndexer[]>("/torznab/indexers")
+  async listTorznabIndexers(options?: RequestInit): Promise<TorznabIndexer[]> {
+    return this.request<TorznabIndexer[]>("/torznab/indexers", options)
   }
 
   async getTorznabIndexer(id: number): Promise<TorznabIndexer> {

@@ -12,13 +12,9 @@ import { Activity, ChevronDown, Clock, Loader2, Pause, Zap } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-}
-
 export function IndexerActivityPanel() {
-  const tr = useCommonTr()
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [activity, setActivity] = useState<IndexerActivityStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOpen, setIsOpen] = useState(true)
@@ -96,7 +92,7 @@ export function IndexerActivityPanel() {
                 </div>
                 <div className="space-y-1">
                   {activity.scheduler.inFlightTasks.map((task) => (
-                    <TaskRow key={task.taskId} task={task} status="running" />
+                    <TaskRow key={task.taskId} task={task} status="running" tr={tr} />
                   ))}
                 </div>
               </div>
@@ -111,7 +107,7 @@ export function IndexerActivityPanel() {
                 </div>
                 <div className="space-y-1">
                   {activity.scheduler.queuedTasks.slice(0, 10).map((task) => (
-                    <TaskRow key={task.taskId} task={task} status="queued" />
+                    <TaskRow key={task.taskId} task={task} status="queued" tr={tr} />
                   ))}
                   {activity.scheduler.queuedTasks.length > 10 && (
                     <div className="text-xs text-muted-foreground pl-2">
@@ -131,7 +127,7 @@ export function IndexerActivityPanel() {
                 </div>
                 <div className="space-y-1">
                   {activity.cooldownIndexers.map((cooldown) => (
-                    <CooldownRow key={cooldown.indexerId} cooldown={cooldown} />
+                    <CooldownRow key={cooldown.indexerId} cooldown={cooldown} tr={tr} />
                   ))}
                 </div>
               </div>
@@ -150,8 +146,15 @@ export function IndexerActivityPanel() {
   )
 }
 
-function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running" | "queued" }) {
-  const tr = useCommonTr()
+function TaskRow({
+  task,
+  status,
+  tr,
+}: {
+  task: SchedulerTaskStatus
+  status: "running" | "queued"
+  tr: (key: string, options?: Record<string, unknown>) => string
+}) {
   const priorityColors: Record<string, string> = {
     interactive: "text-green-500",
     rss: "text-blue-500",
@@ -190,8 +193,13 @@ function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running
   )
 }
 
-function CooldownRow({ cooldown }: { cooldown: IndexerCooldownStatus }) {
-  const tr = useCommonTr()
+function CooldownRow({
+  cooldown,
+  tr,
+}: {
+  cooldown: IndexerCooldownStatus
+  tr: (key: string, options?: Record<string, unknown>) => string
+}) {
   const cooldownEnd = new Date(cooldown.cooldownEnd)
   const remaining = cooldownEnd.getTime() - Date.now()
   const isExpired = remaining <= 0

@@ -49,7 +49,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   currentCategory,
   useSubcategories = false,
 }: CategorySubmenuProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation("common")
   const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   // Store callback in ref so it doesn't trigger re-renders
   const onSetCategoryRef = useRef(onSetCategory)

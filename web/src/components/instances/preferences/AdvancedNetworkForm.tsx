@@ -150,15 +150,17 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       // Security & filtering
       block_peers_on_privileged_ports: false,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success(tr("advancedNetworkForm.toasts.updated"))
-        onSuccess?.()
-      } catch (error) {
-        toast.error(tr("advancedNetworkForm.toasts.failedUpdate"))
-        console.error("Failed to update advanced network settings:", error)
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("advancedNetworkForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: (error) => {
+          toast.error(tr("advancedNetworkForm.toasts.failedUpdate"))
+          console.error("Failed to update advanced network settings:", error)
+        },
+      })
     },
   })
 
@@ -583,28 +585,28 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <form.Field
             name="peer_turnover"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < 0 || value > 100) {
-                    return tr("advancedNetworkForm.errors.peerTurnoverRange")
-                  }
-                  return undefined
-                },
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInput
-                    label={tr("advancedNetworkForm.fields.peerTurnoverLabel")}
-                    unit={tr("advancedNetworkForm.units.percent")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={0}
-                    max={100}
-                    description={tr("advancedNetworkForm.fields.peerTurnoverDescription")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 100) {
+                  return tr("advancedNetworkForm.errors.peerTurnoverRange")
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInput
+                  label={tr("advancedNetworkForm.fields.peerTurnoverLabel")}
+                  unit={tr("advancedNetworkForm.units.percent")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={100}
+                  description={tr("advancedNetworkForm.fields.peerTurnoverDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -612,28 +614,28 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
 
           <form.Field
             name="peer_turnover_cutoff"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < 0 || value > 100) {
-                    return tr("advancedNetworkForm.errors.peerTurnoverCutoffRange")
-                  }
-                  return undefined
-                },
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInput
-                    label={tr("advancedNetworkForm.fields.turnoverCutoffLabel")}
-                    unit={tr("advancedNetworkForm.units.percent")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={0}
-                    max={100}
-                    description={tr("advancedNetworkForm.fields.turnoverCutoffDescription")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 100) {
+                  return tr("advancedNetworkForm.errors.peerTurnoverCutoffRange")
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInput
+                  label={tr("advancedNetworkForm.fields.turnoverCutoffLabel")}
+                  unit={tr("advancedNetworkForm.units.percent")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={100}
+                  description={tr("advancedNetworkForm.fields.turnoverCutoffDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -641,28 +643,28 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
 
           <form.Field
             name="peer_turnover_interval"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < 0 || value > 3600) {
-                    return tr("advancedNetworkForm.errors.peerTurnoverIntervalRange")
-                  }
-                  return undefined
-                },
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInput
-                    label={tr("advancedNetworkForm.fields.turnoverIntervalLabel")}
-                    unit={tr("advancedNetworkForm.units.seconds")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={0}
-                    max={3600}
-                    description={tr("advancedNetworkForm.fields.turnoverIntervalDescription")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 3600) {
+                  return tr("advancedNetworkForm.errors.peerTurnoverIntervalRange")
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInput
+                  label={tr("advancedNetworkForm.fields.turnoverIntervalLabel")}
+                  unit={tr("advancedNetworkForm.units.seconds")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={3600}
+                  description={tr("advancedNetworkForm.fields.turnoverIntervalDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}

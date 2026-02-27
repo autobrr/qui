@@ -134,7 +134,7 @@ const CrossSeedDialogComponent = ({
   onForceRefresh,
 }: CrossSeedDialogProps) => {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
+  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
   const excludedIndexerEntries = useMemo(() => {
     if (!sourceTorrent?.excludedIndexers) {
       return []
@@ -685,7 +685,7 @@ const CrossSeedScopeSelector = memo(({
   isSearching,
 }: CrossSeedScopeSelectorProps) => {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
+  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
   const excludedCount = excludedIndexerIds.length

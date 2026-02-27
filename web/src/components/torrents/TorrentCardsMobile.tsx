@@ -97,7 +97,10 @@ import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue 
 
 function useCommonTr() {
   const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  return useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
 }
 
 // Mobile-friendly Share Limits Dialog
@@ -1941,7 +1944,9 @@ export function TorrentCardsMobile({
                   size="sm"
                   className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
                 >
-                  {tr("torrentCardsMobile.sort.currentSort", { label: currentSortOption.label })}
+                  {tr("torrentCardsMobile.sort.currentSort", {
+                    label: tr(currentSortOption.labelKey, { defaultValue: currentSortOption.fallbackLabel }),
+                  })}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
@@ -1952,7 +1957,7 @@ export function TorrentCardsMobile({
                 >
                   {TORRENT_SORT_OPTIONS.map(option => (
                     <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
-                      {option.label}
+                      {tr(option.labelKey, { defaultValue: option.fallbackLabel })}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>

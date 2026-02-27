@@ -3,6 +3,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "All",
       selected: "selected",
+      summary: "{{selection}} selected{{size}}",
       shortcutsLabel: "Selection shortcuts",
       shiftRange: "Shift+click for range",
       multiSelect: "{{key}}+click for multiple",
@@ -61,6 +62,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "全部",
       selected: "已选",
+      summary: "{{selection}}{{size}} 已选",
       shortcutsLabel: "选择快捷键",
       shiftRange: "Shift+点击可进行范围选择",
       multiSelect: "{{key}}+点击可多选",
@@ -119,6 +121,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "すべて",
       selected: "選択中",
+      summary: "{{selection}} 件選択中{{size}}",
       shortcutsLabel: "選択ショートカット",
       shiftRange: "Shift+クリックで範囲選択",
       multiSelect: "{{key}}+クリックで複数選択",
@@ -177,6 +180,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "Todos",
       selected: "selecionados",
+      summary: "{{selection}} selecionados{{size}}",
       shortcutsLabel: "Atalhos de seleção",
       shiftRange: "Shift+clique para selecionar intervalo",
       multiSelect: "{{key}}+clique para seleção múltipla",
@@ -235,6 +239,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "Todos",
       selected: "seleccionados",
+      summary: "{{selection}} seleccionados{{size}}",
       shortcutsLabel: "Atajos de selección",
       shiftRange: "Shift+clic para rango",
       multiSelect: "{{key}}+clic para selección múltiple",
@@ -293,6 +298,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "Tous",
       selected: "sélectionnés",
+      summary: "{{selection}} sélectionnés{{size}}",
       shortcutsLabel: "Raccourcis de sélection",
       shiftRange: "Shift+clic pour une plage",
       multiSelect: "{{key}}+clic pour une sélection multiple",
@@ -351,6 +357,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "전체",
       selected: "선택됨",
+      summary: "{{selection}} 선택됨{{size}}",
       shortcutsLabel: "선택 단축키",
       shiftRange: "Shift+클릭으로 범위 선택",
       multiSelect: "{{key}}+클릭으로 다중 선택",
@@ -409,6 +416,7 @@ export const globalStatusBarResources = {
     selection: {
       allSelected: "Alle",
       selected: "ausgewählt",
+      summary: "{{selection}} ausgewählt{{size}}",
       shortcutsLabel: "Auswahl-Shortcuts",
       shiftRange: "Shift+Klick für Bereichsauswahl",
       multiSelect: "{{key}}+Klick für Mehrfachauswahl",

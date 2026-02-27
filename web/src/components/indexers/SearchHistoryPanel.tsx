@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
-import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
+import { formatRelativeTime, formatSearchDuration, formatTimeHMS } from "@/lib/dateTimeUtils"
 import type { SearchHistoryEntry } from "@/types"
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 // Torznab standard category mappings (synced with pkg/gojackett/constants.go)
@@ -83,11 +83,16 @@ const CATEGORY_KEY_MAP: Record<string, string> = {
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string
 
-function formatSearchDuration(durationMs: number, secondsPrecision: number): string {
-  if (durationMs < 1000) {
-    return `${durationMs}ms`
-  }
-  return `${(durationMs / 1000).toFixed(secondsPrecision)}s`
+const PRIORITY_LABEL_KEYS: Record<string, string> = {
+  interactive: "searchHistoryPanel.priority.interactive",
+  rss: "searchHistoryPanel.priority.rss",
+  completion: "searchHistoryPanel.priority.completion",
+  background: "searchHistoryPanel.priority.background",
+}
+
+function useCommonTr(): TranslateFn {
+  const { t } = useTranslation("common")
+  return useCallback((key, options) => String(t(key as never, options as never)), [t])
 }
 
 interface ParamBadge {
@@ -167,8 +172,7 @@ function transformParams(params: Record<string, string>, tr: TranslateFn): Param
 export function SearchHistoryPanel() {
   const [isOpen, setIsOpen] = useState(true)
   const [selectedEntry, setSelectedEntry] = useState<SearchHistoryEntry | null>(null)
-  const { t } = useTranslation()
-  const tr: TranslateFn = (key, options) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const { data, isLoading } = useSearchHistory({
     limit: 50,
     enabled: true,
@@ -258,8 +262,7 @@ interface HistoryRowProps {
 }
 
 function HistoryRow({ entry, onClick }: HistoryRowProps) {
-  const { t } = useTranslation()
-  const tr: TranslateFn = (key, options) => String(t(key as never, options as never))
+  const tr = useCommonTr()
 
   const statusIcons: Record<string, ReactNode> = {
     success: <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />,
@@ -267,16 +270,9 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
     skipped: <Clock className="h-3 w-3 text-muted-foreground shrink-0" />,
     rate_limited: <AlertCircle className="h-3 w-3 text-destructive shrink-0" />,
   }
-  const priorityLabelKeys: Record<string, string> = {
-    interactive: "searchHistoryPanel.priority.interactive",
-    rss: "searchHistoryPanel.priority.rss",
-    completion: "searchHistoryPanel.priority.completion",
-    background: "searchHistoryPanel.priority.background",
-  }
-
   const durationStr = formatSearchDuration(entry.durationMs, 1)
   let priorityLabel = entry.priority
-  const priorityLabelKey = priorityLabelKeys[entry.priority]
+  const priorityLabelKey = PRIORITY_LABEL_KEYS[entry.priority]
   if (priorityLabelKey) {
     priorityLabel = tr(priorityLabelKey)
   }
@@ -340,8 +336,7 @@ interface SearchDetailDialogProps {
 }
 
 function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
-  const { t } = useTranslation()
-  const tr: TranslateFn = (key, options) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   if (!entry) return null
 
   const statusLabelKeys: Record<string, string> = {
@@ -350,19 +345,12 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
     skipped: "searchHistoryPanel.status.skipped",
     rate_limited: "searchHistoryPanel.status.rateLimited",
   }
-  const priorityLabelKeys: Record<string, string> = {
-    interactive: "searchHistoryPanel.priority.interactive",
-    rss: "searchHistoryPanel.priority.rss",
-    completion: "searchHistoryPanel.priority.completion",
-    background: "searchHistoryPanel.priority.background",
-  }
-
   const isSuccess = entry.status === "success"
   const isError = entry.status === "error" || entry.status === "rate_limited"
 
   const durationStr = formatSearchDuration(entry.durationMs, 2)
   let priorityLabel = entry.priority
-  const priorityLabelKey = priorityLabelKeys[entry.priority]
+  const priorityLabelKey = PRIORITY_LABEL_KEYS[entry.priority]
   if (priorityLabelKey) {
     priorityLabel = tr(priorityLabelKey)
   }

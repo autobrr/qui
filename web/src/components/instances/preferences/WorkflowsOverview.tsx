@@ -1329,10 +1329,15 @@ export function WorkflowsOverview({
                                           <button
                                             type="button"
                                             className="hover:text-foreground transition-colors"
-                                            onClick={(clickEvent) => {
+                                            onClick={async (clickEvent) => {
                                               clickEvent.stopPropagation()
-                                              copyTextToClipboard(event.hash)
-                                              toast.success(tr("workflowDialog.activityRun.toasts.hashCopied"))
+                                              try {
+                                                await copyTextToClipboard(event.hash)
+                                                toast.success(tr("workflowDialog.activityRun.toasts.hashCopied"))
+                                              } catch (error) {
+                                                toast.error(tr("logSettingsPanel.toasts.failedCopyClipboard"))
+                                                console.error("Failed to copy workflow hash:", error)
+                                              }
                                             }}
                                             title={tr("workflowDialog.activityRun.copyHash")}
                                           >

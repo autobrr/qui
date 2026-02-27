@@ -24,6 +24,8 @@ export const searchPageResources = {
       none: "Sin instancias",
       offline: "Fuera de línea",
       offlineSuffix: " (fuera de línea)",
+      labelConnected: "{{name}}",
+      labelOffline: "{{name}} (fuera de línea)",
       target: "Destino: {{name}}{{status}}",
     },
     form: {
@@ -425,6 +427,8 @@ export const searchPageResources = {
       none: "Aucune instance",
       offline: "Hors ligne",
       offlineSuffix: " (hors ligne)",
+      labelConnected: "{{name}}",
+      labelOffline: "{{name}} (hors ligne)",
       target: "Cible : {{name}}{{status}}",
     },
     form: {
@@ -826,6 +830,8 @@ export const searchPageResources = {
       none: "인스턴스 없음",
       offline: "오프라인",
       offlineSuffix: " (오프라인)",
+      labelConnected: "{{name}}",
+      labelOffline: "{{name}} (오프라인)",
       target: "대상: {{name}}{{status}}",
     },
     form: {

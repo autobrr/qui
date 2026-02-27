@@ -29,12 +29,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { api } from "@/lib/api"
 import type { NotificationEventDefinition, NotificationTarget, NotificationTargetRequest } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bell, Edit, Loader2, Plus, Send, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -114,6 +114,33 @@ const normalizeNotificationUrl = (rawUrl: string) => {
   return converted ?? rawUrl
 }
 
+type EventGroupKey = "torrent" | "maintenance" | "crossSeed" | "automations" | "other"
+
+const EVENT_GROUP_ORDER: EventGroupKey[] = ["torrent", "maintenance", "crossSeed", "automations", "other"]
+
+function categorizeEventType(eventType: string): EventGroupKey {
+  if (eventType.startsWith("torrent_")) {
+    return "torrent"
+  }
+  if (
+    eventType === "backup_succeeded" ||
+    eventType === "backup_failed" ||
+    eventType === "dir_scan_completed" ||
+    eventType === "dir_scan_failed" ||
+    eventType === "orphan_scan_completed" ||
+    eventType === "orphan_scan_failed"
+  ) {
+    return "maintenance"
+  }
+  if (eventType.startsWith("cross_seed_")) {
+    return "crossSeed"
+  }
+  if (eventType.startsWith("automations_")) {
+    return "automations"
+  }
+  return "other"
+}
+
 interface NotificationTargetFormProps {
   initial?: NotificationTarget | null
   eventDefinitions: NotificationEventDefinition[]
@@ -123,8 +150,7 @@ interface NotificationTargetFormProps {
 }
 
 function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel, isPending }: NotificationTargetFormProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const [name, setName] = useState(initial?.name ?? "")
   const [url, setUrl] = useState(initial?.url ?? "")
   const [enabled, setEnabled] = useState(initial?.enabled ?? true)
@@ -194,8 +220,8 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
 
   const allSelected = eventDefinitions.length > 0 && eventTypes.length === eventDefinitions.length
   const groupedEvents = useMemo(() => {
-    const groups = new Map<string, NotificationEventDefinition[]>()
-    const addToGroup = (groupKey: string, event: NotificationEventDefinition) => {
+    const groups = new Map<EventGroupKey, NotificationEventDefinition[]>()
+    const addToGroup = (groupKey: EventGroupKey, event: NotificationEventDefinition) => {
       const existing = groups.get(groupKey)
       if (existing) {
         existing.push(event)
@@ -205,28 +231,10 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
     }
 
     for (const event of eventDefinitions) {
-      if (event.type.startsWith("torrent_")) {
-        addToGroup("torrent", event)
-      } else if (
-        event.type === "backup_succeeded" ||
-        event.type === "backup_failed" ||
-        event.type === "dir_scan_completed" ||
-        event.type === "dir_scan_failed" ||
-        event.type === "orphan_scan_completed" ||
-        event.type === "orphan_scan_failed"
-      ) {
-        addToGroup("maintenance", event)
-      } else if (event.type.startsWith("cross_seed_")) {
-        addToGroup("crossSeed", event)
-      } else if (event.type.startsWith("automations_")) {
-        addToGroup("automations", event)
-      } else {
-        addToGroup("other", event)
-      }
+      addToGroup(categorizeEventType(event.type), event)
     }
 
-    const ordered = ["torrent", "maintenance", "crossSeed", "automations", "other"]
-    return ordered
+    return EVENT_GROUP_ORDER
       .map((groupKey) => ({ groupKey, events: groups.get(groupKey) ?? [] }))
       .filter((group) => group.events.length > 0)
   }, [eventDefinitions])
@@ -384,8 +392,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
 }
 
 export function NotificationsManager() {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const queryClient = useQueryClient()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editTarget, setEditTarget] = useState<NotificationTarget | null>(null)
@@ -467,8 +474,8 @@ export function NotificationsManager() {
   const formatEventLabel = (type: string) => eventLabelMap.get(type) ?? formatFallbackLabel(type)
 
   const groupedSelectedEvents = useMemo(() => {
-    const groups = new Map<string, string[]>()
-    const addToGroup = (groupKey: string, eventType: string) => {
+    const groups = new Map<EventGroupKey, string[]>()
+    const addToGroup = (groupKey: EventGroupKey, eventType: string) => {
       const existing = groups.get(groupKey)
       if (existing) {
         existing.push(eventType)
@@ -477,38 +484,14 @@ export function NotificationsManager() {
       }
     }
 
-    const categorize = (eventType: string) => {
-      if (eventType.startsWith("torrent_")) {
-        return "torrent"
-      }
-      if (
-        eventType === "backup_succeeded" ||
-        eventType === "backup_failed" ||
-        eventType === "dir_scan_completed" ||
-        eventType === "dir_scan_failed" ||
-        eventType === "orphan_scan_completed" ||
-        eventType === "orphan_scan_failed"
-      ) {
-        return "maintenance"
-      }
-      if (eventType.startsWith("cross_seed_")) {
-        return "crossSeed"
-      }
-      if (eventType.startsWith("automations_")) {
-        return "automations"
-      }
-      return "other"
-    }
-
     const known = new Set(eventDefinitions.map((event) => event.type))
     for (const event of eventDefinitions) {
       if (known.has(event.type)) {
-        addToGroup(categorize(event.type), event.type)
+        addToGroup(categorizeEventType(event.type), event.type)
       }
     }
 
-    const ordered = ["torrent", "maintenance", "crossSeed", "automations", "other"]
-    return ordered
+    return EVENT_GROUP_ORDER
       .map((groupKey) => ({ groupKey, events: groups.get(groupKey) ?? [] }))
       .filter((group) => group.events.length > 0)
   }, [eventDefinitions])

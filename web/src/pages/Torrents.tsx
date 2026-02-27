@@ -574,6 +574,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             </ResizablePanelGroup>
             {/* Global status bar - at bottom of desktop layout */}
             <GlobalStatusBar
+              key={instanceId}
               instanceId={instanceId}
               serverState={serverState}
               instance={instance}

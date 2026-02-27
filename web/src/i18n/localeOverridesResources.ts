@@ -348,12 +348,14 @@ export const es419Overrides: LocaleNamespaceOverrides = {
         title: "Quitar categorías vacías",
         none: "No hay categorías vacías para quitar.",
         confirm: "¿Seguro que quieres quitar {{count}} categorías vacías?",
+        confirmWithCannotUndo: "¿Seguro que quieres quitar {{count}} categorías vacías? Esta acción no se puede deshacer.",
         action: "Quitar {{count}} categorías",
       },
       deleteUnusedTags: {
         title: "Eliminar etiquetas sin uso",
         none: "No hay etiquetas sin uso para eliminar.",
         confirm: "¿Seguro que quieres eliminar {{count}} etiquetas sin uso?",
+        confirmWithCannotUndo: "¿Seguro que quieres eliminar {{count}} etiquetas sin uso? Esta acción no se puede deshacer.",
         action: "Eliminar {{count}} etiquetas",
       },
     },
@@ -592,6 +594,8 @@ export const es419Overrides: LocaleNamespaceOverrides = {
       },
       values: {
         autoDetect: "Detección automática",
+        unlimitedPlaceholder: "Ilimitado",
+        unlimitedHint: " (usa -1 para ilimitado)",
       },
       fields: {
         listenPortLabel: "Puerto para conexiones entrantes",
@@ -730,6 +734,7 @@ export const es419Overrides: LocaleNamespaceOverrides = {
       loadFailed: "No se pudo cargar la configuración. Inténtalo de nuevo.",
       title: "Configuración de instancia",
       descriptionPrefix: "Configura todas las opciones y preferencias para",
+      description: "Configura todas las opciones y preferencias para <name>{{name}}</name>",
       instanceDataUnavailable: "Datos de instancia no disponibles. Cierra y vuelve a abrir este diálogo.",
       aria: {
         instanceActions: "Acciones de instancia",
@@ -1423,12 +1428,14 @@ export const frOverrides: LocaleNamespaceOverrides = {
         title: "Supprimer les catégories vides",
         none: "Aucune catégorie vide à supprimer.",
         confirm: "Voulez-vous vraiment supprimer {{count}} catégories vides ?",
+        confirmWithCannotUndo: "Voulez-vous vraiment supprimer {{count}} catégories vides ? Cette action est irréversible.",
         action: "Supprimer {{count}} catégories",
       },
       deleteUnusedTags: {
         title: "Supprimer les tags inutilisés",
         none: "Aucun tag inutilisé à supprimer.",
         confirm: "Voulez-vous vraiment supprimer {{count}} tags inutilisés ?",
+        confirmWithCannotUndo: "Voulez-vous vraiment supprimer {{count}} tags inutilisés ? Cette action est irréversible.",
         action: "Supprimer {{count}} tags",
       },
     },
@@ -1667,6 +1674,8 @@ export const frOverrides: LocaleNamespaceOverrides = {
       },
       values: {
         autoDetect: "Détection automatique",
+        unlimitedPlaceholder: "Illimité",
+        unlimitedHint: " (utilisez -1 pour illimité)",
       },
       fields: {
         listenPortLabel: "Port pour les connexions entrantes",
@@ -1805,6 +1814,7 @@ export const frOverrides: LocaleNamespaceOverrides = {
       loadFailed: "Échec du chargement des paramètres. Veuillez réessayer.",
       title: "Paramètres d'instance",
       descriptionPrefix: "Configurez tous les paramètres et préférences pour",
+      description: "Configurez tous les paramètres et préférences pour <name>{{name}}</name>",
       instanceDataUnavailable: "Données d'instance indisponibles. Fermez puis rouvrez cette boîte de dialogue.",
       aria: {
         instanceActions: "Actions d'instance",
@@ -2498,12 +2508,14 @@ export const koOverrides: LocaleNamespaceOverrides = {
         title: "빈 카테고리 제거",
         none: "제거할 빈 카테고리가 없습니다.",
         confirm: "빈 카테고리 {{count}}개를 제거할까요?",
+        confirmWithCannotUndo: "빈 카테고리 {{count}}개를 제거할까요? 이 작업은 되돌릴 수 없습니다.",
         action: "카테고리 {{count}}개 제거",
       },
       deleteUnusedTags: {
         title: "사용하지 않는 태그 삭제",
         none: "삭제할 사용하지 않는 태그가 없습니다.",
         confirm: "사용하지 않는 태그 {{count}}개를 삭제할까요?",
+        confirmWithCannotUndo: "사용하지 않는 태그 {{count}}개를 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
         action: "태그 {{count}}개 삭제",
       },
     },
@@ -2742,6 +2754,8 @@ export const koOverrides: LocaleNamespaceOverrides = {
       },
       values: {
         autoDetect: "자동 감지",
+        unlimitedPlaceholder: "무제한",
+        unlimitedHint: " (무제한은 -1 사용)",
       },
       fields: {
         listenPortLabel: "수신 연결 포트",
@@ -2880,6 +2894,7 @@ export const koOverrides: LocaleNamespaceOverrides = {
       loadFailed: "설정을 불러오지 못했습니다. 다시 시도해 주세요.",
       title: "인스턴스 설정",
       descriptionPrefix: "다음 인스턴스의 모든 설정과 기본값을 구성합니다:",
+      description: "<name>{{name}}</name> 인스턴스의 모든 설정과 기본값을 구성합니다",
       instanceDataUnavailable: "인스턴스 데이터를 사용할 수 없습니다. 이 대화상자를 닫았다가 다시 열어 주세요.",
       aria: {
         instanceActions: "인스턴스 작업",

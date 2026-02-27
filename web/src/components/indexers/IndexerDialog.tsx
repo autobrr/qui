@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import type { TorznabIndexer, TorznabIndexerFormData } from "@/types"
 import { useEffect, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface IndexerDialogProps {
@@ -333,7 +333,16 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   />
                   {mode === "edit" && (
                     <p className="text-xs text-muted-foreground">
-                      {tr("indexerDialog.help.keepRedactedPrefix")} <span className="font-mono">{REDACTED_TOKEN}</span> {tr("indexerDialog.help.keepRedactedSuffix")}
+                      <Trans
+                        i18nKey="indexerDialog.help.keepRedacted"
+                        ns="common"
+                        components={{
+                          token: <span className="font-mono" />,
+                        }}
+                        values={{
+                          token: REDACTED_TOKEN,
+                        }}
+                      />
                     </p>
                   )}
                 </div>

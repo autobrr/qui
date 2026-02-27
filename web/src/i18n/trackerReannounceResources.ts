@@ -7,6 +7,7 @@ export const trackerReannounceResources = {
       stalled: "stalled",
       descriptionSuffix: "torrents and reannounces them when no tracker is healthy.",
       scanInterval: "Background scan runs every {{seconds}} seconds.",
+      fullDescription: "qui monitors <stalled>{{stalledLabel}}</stalled> torrents and reannounces them when no tracker is healthy. Background scan runs every {{seconds}} seconds.",
     },
     tabs: {
       settings: "Settings",
@@ -119,6 +120,7 @@ export const trackerReannounceResources = {
       stalled: "卡住的",
       descriptionSuffix: "种子，并在没有健康 Tracker 时触发重新通告。",
       scanInterval: "后台扫描每 {{seconds}} 秒运行一次。",
+      fullDescription: "qui 会监控<stalled>{{stalledLabel}}</stalled>种子，并在没有健康 Tracker 时触发重新通告。后台扫描每 {{seconds}} 秒运行一次。",
     },
     tabs: {
       settings: "设置",
@@ -231,6 +233,7 @@ export const trackerReannounceResources = {
       stalled: "停滞中",
       descriptionSuffix: "のトレントを監視し、健全なトラッカーがない場合に再アナウンスします。",
       scanInterval: "バックグラウンドスキャンは {{seconds}} 秒ごとに実行されます。",
+      fullDescription: "qui は<stalled>{{stalledLabel}}</stalled>のトレントを監視し、健全なトラッカーがない場合に再アナウンスします。バックグラウンドスキャンは {{seconds}} 秒ごとに実行されます。",
     },
     tabs: {
       settings: "設定",
@@ -343,6 +346,7 @@ export const trackerReannounceResources = {
       stalled: "travados",
       descriptionSuffix: "e faz reannounce quando nenhum tracker está saudável.",
       scanInterval: "A varredura em segundo plano roda a cada {{seconds}} segundos.",
+      fullDescription: "O qui monitora torrents <stalled>{{stalledLabel}}</stalled> e faz reannounce quando nenhum tracker está saudável. A varredura em segundo plano roda a cada {{seconds}} segundos.",
     },
     tabs: {
       settings: "Configurações",
@@ -455,6 +459,7 @@ export const trackerReannounceResources = {
       stalled: "estancados",
       descriptionSuffix: "y los reanuncia cuando no hay ningún tracker saludable.",
       scanInterval: "El escaneo en segundo plano se ejecuta cada {{seconds}} segundos.",
+      fullDescription: "qui monitorea torrents <stalled>{{stalledLabel}}</stalled> y los reanuncia cuando no hay ningún tracker saludable. El escaneo en segundo plano se ejecuta cada {{seconds}} segundos.",
     },
     tabs: {
       settings: "Configuración",
@@ -567,6 +572,7 @@ export const trackerReannounceResources = {
       stalled: "bloqués",
       descriptionSuffix: "et les réannonce quand aucun tracker n'est sain.",
       scanInterval: "L'analyse en arrière-plan s'exécute toutes les {{seconds}} secondes.",
+      fullDescription: "qui surveille les torrents <stalled>{{stalledLabel}}</stalled> et les réannonce quand aucun tracker n'est sain. L'analyse en arrière-plan s'exécute toutes les {{seconds}} secondes.",
     },
     tabs: {
       settings: "Paramètres",
@@ -679,6 +685,7 @@ export const trackerReannounceResources = {
       stalled: "정체된",
       descriptionSuffix: "토렌트를 모니터링하고 정상 트래커가 없으면 재공지합니다.",
       scanInterval: "백그라운드 스캔은 {{seconds}}초마다 실행됩니다.",
+      fullDescription: "qui는 <stalled>{{stalledLabel}}</stalled> 토렌트를 모니터링하고 정상 트래커가 없으면 재공지합니다. 백그라운드 스캔은 {{seconds}}초마다 실행됩니다.",
     },
     tabs: {
       settings: "설정",
@@ -791,6 +798,7 @@ export const trackerReannounceResources = {
       stalled: "hängende",
       descriptionSuffix: "Torrents und reannounced sie, wenn kein Tracker gesund ist.",
       scanInterval: "Der Hintergrund-Scan läuft alle {{seconds}} Sekunden.",
+      fullDescription: "qui überwacht <stalled>{{stalledLabel}}</stalled> Torrents und reannounced sie, wenn kein Tracker gesund ist. Der Hintergrund-Scan läuft alle {{seconds}} Sekunden.",
     },
     tabs: {
       settings: "Einstellungen",
