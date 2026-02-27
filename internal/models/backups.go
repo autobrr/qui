@@ -745,7 +745,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	// Optimize for large bulk inserts (e.g., 180k+ torrents)
 	// Temporarily disable foreign key checks for massive performance boost
-	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 

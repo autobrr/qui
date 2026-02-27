@@ -10,6 +10,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -128,6 +130,7 @@ func parseLogExclusionPatterns(patternsJSON string) []string {
 
 	var patterns []string
 	if err := json.Unmarshal([]byte(patternsJSON), &patterns); err != nil {
+		log.Warn().Err(err).Str("patterns_json", patternsJSON).Msg("Failed to parse log exclusion patterns")
 		return []string{}
 	}
 	return patterns

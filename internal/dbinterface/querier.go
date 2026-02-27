@@ -62,12 +62,12 @@ func DialectOf(q any) string {
 // DeferForeignKeyChecks defers foreign key constraint checks for the given transaction
 // until the end of the transaction. This allows operations that would normally violate
 // foreign key constraints due to ordering.
-func DeferForeignKeyChecks(tx TxQuerier) error {
+func DeferForeignKeyChecks(ctx context.Context, tx TxQuerier) error {
 	if txWithCapabilities, ok := tx.(deferForeignKeysTx); ok {
-		return txWithCapabilities.DeferForeignKeyChecks(context.Background())
+		return txWithCapabilities.DeferForeignKeyChecks(ctx)
 	}
 
-	_, err := tx.ExecContext(context.Background(), "PRAGMA defer_foreign_keys = ON;")
+	_, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON;")
 	return err
 }
 
@@ -76,6 +76,9 @@ func DeferForeignKeyChecks(tx TxQuerier) error {
 // placeholdersPerRow is the number of ? per row (e.g., 12 for file inserts)
 // numRows is how many rows to repeat the placeholders for
 func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, numRows int) string {
+	if placeholdersPerRow <= 0 {
+		return fmt.Sprintf(queryTemplate, "")
+	}
 	if numRows <= 0 {
 		return fmt.Sprintf(queryTemplate, "")
 	}

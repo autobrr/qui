@@ -75,6 +75,7 @@ type ArrInstanceUpdateParams struct {
 }
 
 type arrInstanceCreateParams struct {
+	instanceType   ArrInstanceType
 	name           string
 	baseURL        string
 	apiKey         string
@@ -196,7 +197,7 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	`
 
 	var id int
-	err = tx.QueryRowContext(ctx, query, instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, prepared.timeoutSeconds).Scan(&id)
+	err = tx.QueryRowContext(ctx, query, prepared.instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, prepared.timeoutSeconds).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create arr instance: %w", err)
 	}
@@ -209,6 +210,10 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 }
 
 func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, timeoutSeconds int) (arrInstanceCreateParams, error) {
+	name = strings.TrimSpace(name)
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	apiKey = strings.TrimSpace(apiKey)
+
 	if name == "" {
 		return arrInstanceCreateParams{}, errors.New("name cannot be empty")
 	}
@@ -218,8 +223,9 @@ func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey str
 	if apiKey == "" {
 		return arrInstanceCreateParams{}, errors.New("API key cannot be empty")
 	}
-	if instanceType != ArrInstanceTypeSonarr && instanceType != ArrInstanceTypeRadarr {
-		return arrInstanceCreateParams{}, fmt.Errorf("invalid arr instance type: %s", instanceType)
+	normalizedType, err := ParseArrInstanceType(string(instanceType))
+	if err != nil {
+		return arrInstanceCreateParams{}, err
 	}
 
 	trimmedBasicUser := strings.TrimSpace(stringOrEmpty(basicUsername))
@@ -235,12 +241,12 @@ func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey str
 		basicPassword = &trimmedBasicPass
 	}
 
-	baseURL = strings.TrimRight(baseURL, "/")
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 15
 	}
 
 	return arrInstanceCreateParams{
+		instanceType:   normalizedType,
 		name:           name,
 		baseURL:        baseURL,
 		apiKey:         apiKey,
@@ -512,11 +518,19 @@ func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstan
 	}
 
 	// Apply updates
-	if params.Name != nil && *params.Name != "" {
-		existing.Name = *params.Name
+	if params.Name != nil {
+		normalizedName := strings.TrimSpace(*params.Name)
+		if normalizedName == "" {
+			return nil, errors.New("name cannot be empty")
+		}
+		existing.Name = normalizedName
 	}
-	if params.BaseURL != nil && *params.BaseURL != "" {
-		existing.BaseURL = strings.TrimRight(*params.BaseURL, "/")
+	if params.BaseURL != nil {
+		normalizedBaseURL := strings.TrimRight(strings.TrimSpace(*params.BaseURL), "/")
+		if normalizedBaseURL == "" {
+			return nil, errors.New("base URL cannot be empty")
+		}
+		existing.BaseURL = normalizedBaseURL
 	}
 	if params.Enabled != nil {
 		existing.Enabled = *params.Enabled
@@ -529,8 +543,12 @@ func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstan
 	}
 
 	// Handle API key update
-	if params.APIKey != nil && *params.APIKey != "" {
-		encryptedAPIKey, err := s.encrypt(*params.APIKey)
+	if params.APIKey != nil {
+		normalizedAPIKey := strings.TrimSpace(*params.APIKey)
+		if normalizedAPIKey == "" {
+			return nil, errors.New("API key cannot be empty")
+		}
+		encryptedAPIKey, err := s.encrypt(normalizedAPIKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 		}

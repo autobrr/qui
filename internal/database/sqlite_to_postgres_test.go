@@ -9,36 +9,60 @@ import (
 )
 
 func TestTopoSortSQLiteTables(t *testing.T) {
-	metas := []sqliteTableMeta{
-		{Name: "comments", Deps: map[string]struct{}{"posts": {}}},
-		{Name: "posts", Deps: map[string]struct{}{"users": {}}},
-		{Name: "users", Deps: map[string]struct{}{}},
+	tests := []struct {
+		name           string
+		metas          []sqliteTableMeta
+		wantNames      []string
+		wantErrorParts []string
+		wantErr        bool
+	}{
+		{
+			name: "happy path",
+			metas: []sqliteTableMeta{
+				{Name: "comments", Deps: map[string]struct{}{"posts": {}}},
+				{Name: "posts", Deps: map[string]struct{}{"users": {}}},
+				{Name: "users", Deps: map[string]struct{}{}},
+			},
+			wantNames: []string{"users", "posts", "comments"},
+		},
+		{
+			name: "cycle",
+			metas: []sqliteTableMeta{
+				{Name: "a", Deps: map[string]struct{}{"b": {}}},
+				{Name: "b", Deps: map[string]struct{}{"a": {}}},
+			},
+			wantErr:        true,
+			wantErrorParts: []string{"a", "b"},
+		},
 	}
 
-	sorted, err := topoSortSQLiteTables(metas)
-	if err != nil {
-		t.Fatalf("topoSortSQLiteTables failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sorted, err := topoSortSQLiteTables(tt.metas)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected cycle error, got nil")
+				}
+				for _, part := range tt.wantErrorParts {
+					if !strings.Contains(err.Error(), part) {
+						t.Fatalf("expected unresolved table name %q in error, got %q", part, err.Error())
+					}
+				}
+				return
+			}
 
-	if len(sorted) != 3 {
-		t.Fatalf("expected 3 tables, got %d", len(sorted))
-	}
-	if sorted[0].Name != "users" || sorted[1].Name != "posts" || sorted[2].Name != "comments" {
-		t.Fatalf("unexpected sort order: %#v", sorted)
-	}
-}
+			if err != nil {
+				t.Fatalf("topoSortSQLiteTables failed: %v", err)
+			}
 
-func TestTopoSortSQLiteTablesCycle(t *testing.T) {
-	metas := []sqliteTableMeta{
-		{Name: "a", Deps: map[string]struct{}{"b": {}}},
-		{Name: "b", Deps: map[string]struct{}{"a": {}}},
-	}
-
-	_, err := topoSortSQLiteTables(metas)
-	if err == nil {
-		t.Fatal("expected cycle error, got nil")
-	}
-	if !strings.Contains(err.Error(), "a, b") {
-		t.Fatalf("expected unresolved table names in error, got %q", err.Error())
+			if len(sorted) != len(tt.wantNames) {
+				t.Fatalf("expected %d tables, got %d", len(tt.wantNames), len(sorted))
+			}
+			for i, name := range tt.wantNames {
+				if sorted[i].Name != name {
+					t.Fatalf("unexpected sort order: %#v", sorted)
+				}
+			}
+		})
 	}
 }

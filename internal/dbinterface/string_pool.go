@@ -109,7 +109,7 @@ func internSingleString(ctx context.Context, tx TxQuerier, value string) ([]int6
 		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT(value) DO NOTHING",
 		value)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert into string pool: %w", err)
 	}
 
 	ids, err := GetStringID(ctx, tx, value)
