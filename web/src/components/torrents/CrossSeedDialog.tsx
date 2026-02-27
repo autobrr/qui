@@ -620,6 +620,8 @@ function getInstanceStatusDisplay(
       return { text: tr("searchPage.crossSeedDialog.instanceStatus.skippedRecheck"), variant: "destructive" }
     case "skipped_unsafe_pieces":
       return { text: tr("searchPage.crossSeedDialog.instanceStatus.skippedUnsafePieces"), variant: "destructive" }
+    case "requires_hardlink_reflink":
+      return { text: tr("searchPage.crossSeedDialog.instanceStatus.requiresHardlinkReflink"), variant: "destructive" }
     case "error":
       return { text: tr("searchPage.crossSeedDialog.instanceStatus.error"), variant: "destructive" }
     default:

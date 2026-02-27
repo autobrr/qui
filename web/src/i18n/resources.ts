@@ -1247,6 +1247,7 @@ export const resources = {
             invalidPath: "Invalid path",
             skippedRecheck: "Skipped - recheck required",
             skippedUnsafePieces: "Skipped - unsafe pieces",
+            requiresHardlinkReflink: "Skipped - hardlink/reflink mode required",
             error: "Error",
           },
           aria: {
@@ -2483,6 +2484,7 @@ export const resources = {
             invalidPath: "路径无效",
             skippedRecheck: "已跳过 - 需要校验",
             skippedUnsafePieces: "已跳过 - 分片不安全",
+            requiresHardlinkReflink: "已跳过 - 需要硬链接/重链接模式",
             error: "错误",
           },
           aria: {
@@ -3719,6 +3721,7 @@ export const resources = {
             invalidPath: "無効なパス",
             skippedRecheck: "スキップ - 再チェック必須",
             skippedUnsafePieces: "スキップ - 安全でないピース",
+            requiresHardlinkReflink: "スキップ - ハードリンク/リフリンクモードが必要",
             error: "エラー",
           },
           aria: {
@@ -4955,6 +4958,7 @@ export const resources = {
             invalidPath: "Caminho inválido",
             skippedRecheck: "Ignorado - requer rechecagem",
             skippedUnsafePieces: "Ignorado - peças inseguras",
+            requiresHardlinkReflink: "Ignorado - requer modo hardlink/reflink",
             error: "Erro",
           },
           aria: {
@@ -6191,6 +6195,7 @@ export const resources = {
             invalidPath: "Ungültiger Pfad",
             skippedRecheck: "Übersprungen - Recheck nötig",
             skippedUnsafePieces: "Übersprungen - unsichere Stücke",
+            requiresHardlinkReflink: "Übersprungen - Hardlink-/Reflink-Modus erforderlich",
             error: "Fehler",
           },
           aria: {

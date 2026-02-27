@@ -385,6 +385,7 @@ export const searchPageResources = {
         invalidPath: "Ruta inválida",
         skippedRecheck: "Omitido - requiere revalidación",
         skippedUnsafePieces: "Omitido - piezas inseguras",
+        requiresHardlinkReflink: "Omitido - requiere modo hardlink/reflink",
         error: "Error",
       },
       aria: {
@@ -785,6 +786,7 @@ export const searchPageResources = {
         invalidPath: "Chemin invalide",
         skippedRecheck: "Ignoré - revérification requise",
         skippedUnsafePieces: "Ignoré - pièces non sûres",
+        requiresHardlinkReflink: "Ignoré - mode hardlink/reflink requis",
         error: "Erreur",
       },
       aria: {
@@ -1185,6 +1187,7 @@ export const searchPageResources = {
         invalidPath: "잘못된 경로",
         skippedRecheck: "건너뜀 - 재검사 필요",
         skippedUnsafePieces: "건너뜀 - 안전하지 않은 피스",
+        requiresHardlinkReflink: "건너뜀 - 하드링크/리플링크 모드 필요",
         error: "오류",
       },
       aria: {
