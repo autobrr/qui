@@ -41,6 +41,7 @@ func (s *LogExclusionsStore) Get(ctx context.Context) (*LogExclusions, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, patterns, created_at, updated_at
 		FROM log_exclusions
+		ORDER BY id ASC
 		LIMIT 1
 	`)
 
@@ -100,21 +101,31 @@ func (s *LogExclusionsStore) Update(ctx context.Context, input *LogExclusionsInp
 
 // createDefault creates empty log exclusions
 func (s *LogExclusionsStore) createDefault(ctx context.Context) (*LogExclusions, error) {
-	var id int
-	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO log_exclusions (patterns)
-		VALUES ('[]')
-		RETURNING id
-	`).Scan(&id)
-	if err != nil {
-		return nil, err
+	switch dbinterface.DialectOf(s.db) {
+	case "postgres":
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO log_exclusions (id, patterns)
+			VALUES (1, '[]')
+			ON CONFLICT (id) DO NOTHING
+		`)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		_, err := s.db.ExecContext(ctx, `
+			INSERT OR IGNORE INTO log_exclusions (id, patterns)
+			VALUES (1, '[]')
+		`)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, patterns, created_at, updated_at
 		FROM log_exclusions
-		WHERE id = ?
-	`, id)
+		WHERE id = 1
+	`)
 
 	var le LogExclusions
 	var patternsJSON string
@@ -143,6 +154,9 @@ func parseLogExclusionPatterns(patternsJSON string) []string {
 			Int("patterns_json_len", len(patternsJSON)).
 			Str("patterns_json_sha256", patternsHash).
 			Msg("Failed to parse log exclusion patterns")
+		return []string{}
+	}
+	if patterns == nil {
 		return []string{}
 	}
 	return patterns

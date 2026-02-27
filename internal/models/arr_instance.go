@@ -90,6 +90,33 @@ type ArrInstanceStore struct {
 	encryptionKey []byte
 }
 
+func normalizeName(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func normalizeBaseURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
+}
+
+func normalizeAPIKey(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func validateBasicAuth(username *string, password *string) (*string, *string, error) {
+	trimmedUser := strings.TrimSpace(stringOrEmpty(username))
+	if trimmedUser == "" {
+		return nil, nil, nil
+	}
+	if password == nil {
+		return &trimmedUser, nil, nil
+	}
+	trimmedPass := strings.TrimSpace(*password)
+	if trimmedPass == "" {
+		return &trimmedUser, nil, ErrBasicAuthPasswordRequired
+	}
+	return &trimmedUser, &trimmedPass, nil
+}
+
 // NewArrInstanceStore creates a new ArrInstanceStore
 func NewArrInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*ArrInstanceStore, error) {
 	if len(encryptionKey) != 32 {
@@ -210,9 +237,9 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 }
 
 func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, timeoutSeconds int) (arrInstanceCreateParams, error) {
-	name = strings.TrimSpace(name)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	apiKey = strings.TrimSpace(apiKey)
+	name = normalizeName(name)
+	baseURL = normalizeBaseURL(baseURL)
+	apiKey = normalizeAPIKey(apiKey)
 
 	if name == "" {
 		return arrInstanceCreateParams{}, errors.New("name cannot be empty")
@@ -228,17 +255,19 @@ func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey str
 		return arrInstanceCreateParams{}, err
 	}
 
-	trimmedBasicUser := strings.TrimSpace(stringOrEmpty(basicUsername))
-	trimmedBasicPass := strings.TrimSpace(stringOrEmpty(basicPassword))
-	if trimmedBasicUser == "" {
+	normalizedBasicUser, normalizedBasicPass, err := validateBasicAuth(basicUsername, basicPassword)
+	if err != nil {
+		return arrInstanceCreateParams{}, err
+	}
+	if normalizedBasicUser == nil {
 		basicUsername = nil
 		basicPassword = nil
 	} else {
-		if trimmedBasicPass == "" {
+		if normalizedBasicPass == nil {
 			return arrInstanceCreateParams{}, ErrBasicAuthPasswordRequired
 		}
-		basicUsername = &trimmedBasicUser
-		basicPassword = &trimmedBasicPass
+		basicUsername = normalizedBasicUser
+		basicPassword = normalizedBasicPass
 	}
 
 	if timeoutSeconds <= 0 {
@@ -510,29 +539,18 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 	return instances, nil
 }
 
-// Update updates an existing ARR instance
-func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstanceUpdateParams) (*ArrInstance, error) {
-	if params == nil {
-		return nil, errors.New("params cannot be nil")
-	}
-
-	existing, err := s.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Apply updates
+func normalizeUpdateParams(_ context.Context, params *ArrInstanceUpdateParams, existing *ArrInstance) error {
 	if params.Name != nil {
-		normalizedName := strings.TrimSpace(*params.Name)
+		normalizedName := normalizeName(*params.Name)
 		if normalizedName == "" {
-			return nil, errors.New("name cannot be empty")
+			return errors.New("name cannot be empty")
 		}
 		existing.Name = normalizedName
 	}
 	if params.BaseURL != nil {
-		normalizedBaseURL := strings.TrimRight(strings.TrimSpace(*params.BaseURL), "/")
+		normalizedBaseURL := normalizeBaseURL(*params.BaseURL)
 		if normalizedBaseURL == "" {
-			return nil, errors.New("base URL cannot be empty")
+			return errors.New("base URL cannot be empty")
 		}
 		existing.BaseURL = normalizedBaseURL
 	}
@@ -545,59 +563,71 @@ func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstan
 	if params.TimeoutSeconds != nil {
 		existing.TimeoutSeconds = *params.TimeoutSeconds
 	}
+	return nil
+}
 
+func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, encryptFn func(string) (string, error)) error {
 	// Handle API key update
 	if params.APIKey != nil {
-		normalizedAPIKey := strings.TrimSpace(*params.APIKey)
+		normalizedAPIKey := normalizeAPIKey(*params.APIKey)
 		if normalizedAPIKey == "" {
-			return nil, errors.New("API key cannot be empty")
+			return errors.New("API key cannot be empty")
 		}
-		encryptedAPIKey, err := s.encrypt(normalizedAPIKey)
+		encryptedAPIKey, err := encryptFn(normalizedAPIKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
+			return fmt.Errorf("failed to encrypt API key: %w", err)
 		}
 		existing.APIKeyEncrypted = encryptedAPIKey
 	}
 
 	// Handle basic auth update
 	if params.BasicUsername != nil {
-		trimmed := strings.TrimSpace(*params.BasicUsername)
-		if trimmed == "" {
+		normalizedBasicUser, normalizedBasicPass, err := validateBasicAuth(params.BasicUsername, params.BasicPassword)
+		if err != nil {
+			return err
+		}
+
+		if normalizedBasicUser == nil {
 			existing.BasicUsername = nil
 			existing.BasicPasswordEncrypted = nil
-		} else {
-			existing.BasicUsername = &trimmed
-			// Only update password when explicitly provided.
-			if params.BasicPassword != nil {
-				trimmedPass := strings.TrimSpace(*params.BasicPassword)
-				if trimmedPass == "" {
-					existing.BasicPasswordEncrypted = nil
-				} else {
-					encrypted, err := s.encrypt(trimmedPass)
-					if err != nil {
-						return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
-					}
-					existing.BasicPasswordEncrypted = &encrypted
+			return nil
+		}
+
+		existing.BasicUsername = normalizedBasicUser
+
+		// Only update password when explicitly provided.
+		if params.BasicPassword != nil {
+			if normalizedBasicPass == nil {
+				existing.BasicPasswordEncrypted = nil
+			} else {
+				encrypted, err := encryptFn(*normalizedBasicPass)
+				if err != nil {
+					return fmt.Errorf("failed to encrypt basic auth password: %w", err)
 				}
+				existing.BasicPasswordEncrypted = &encrypted
 			}
-			// If enabling basic auth and no password exists, require it.
-			if existing.BasicPasswordEncrypted == nil || *existing.BasicPasswordEncrypted == "" {
-				return nil, ErrBasicAuthPasswordRequired
-			}
+		}
+		// If enabling basic auth and no password exists, require it.
+		if existing.BasicPasswordEncrypted == nil || *existing.BasicPasswordEncrypted == "" {
+			return ErrBasicAuthPasswordRequired
 		}
 	}
 
+	return nil
+}
+
+func persistUpdateWithIntern(ctx context.Context, txProvider dbinterface.Querier, existing *ArrInstance) error {
 	// Begin transaction for string interning and update
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := txProvider.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
 	// Intern strings into string_pool
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &existing.Name, &existing.BaseURL, existing.BasicUsername)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
+		return fmt.Errorf("failed to intern strings: %w", err)
 	}
 	nameID := allIDs[0].Int64
 	baseURLID := allIDs[1].Int64
@@ -617,14 +647,39 @@ func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstan
 		existing.Enabled,
 		existing.Priority,
 		existing.TimeoutSeconds,
-		id,
+		existing.ID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update arr instance: %w", err)
+		return fmt.Errorf("failed to update arr instance: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// Update updates an existing ARR instance
+func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstanceUpdateParams) (*ArrInstance, error) {
+	if params == nil {
+		return nil, errors.New("params cannot be nil")
+	}
+
+	existing, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := normalizeUpdateParams(ctx, params, existing); err != nil {
+		return nil, err
+	}
+
+	if err := encryptCredentials(existing, params, s.encrypt); err != nil {
+		return nil, err
+	}
+
+	if err := persistUpdateWithIntern(ctx, s.db, existing); err != nil {
+		return nil, err
 	}
 
 	return s.Get(ctx, id)
