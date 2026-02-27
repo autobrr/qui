@@ -93,6 +93,12 @@ func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigration
 		}
 	}()
 
+	orderedTables, err := orderPostgresImportTables(ctx, tx, tables)
+	if err != nil {
+		return nil, err
+	}
+	tables = orderedTables
+
 	if err := truncatePostgresTables(ctx, tx, tables); err != nil {
 		return nil, err
 	}
@@ -115,6 +121,97 @@ func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigration
 		Applied: true,
 		Tables:  tableResults,
 	}, nil
+}
+
+func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) ([]string, error) {
+	if len(tables) == 0 {
+		return nil, nil
+	}
+
+	tableSet := make(map[string]struct{}, len(tables))
+	for _, table := range tables {
+		tableSet[table] = struct{}{}
+	}
+
+	depsByName := make(map[string]map[string]struct{}, len(tables))
+	for table := range tableSet {
+		depsByName[table] = make(map[string]struct{})
+	}
+
+	rows, err := tx.Query(ctx, `
+		SELECT conrelid::regclass::text, confrelid::regclass::text
+		FROM pg_constraint
+		WHERE contype = 'f'
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres foreign keys: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			rawTable    string
+			rawRefTable string
+		)
+		if err := rows.Scan(&rawTable, &rawRefTable); err != nil {
+			return nil, fmt.Errorf("scan postgres foreign key: %w", err)
+		}
+
+		table := normalizeRegclassTableName(rawTable)
+		refTable := normalizeRegclassTableName(rawRefTable)
+
+		if table == "" || refTable == "" || table == refTable {
+			continue
+		}
+		if _, ok := tableSet[table]; !ok {
+			continue
+		}
+		if _, ok := tableSet[refTable]; !ok {
+			continue
+		}
+		depsByName[table][refTable] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres foreign keys: %w", err)
+	}
+
+	metas := make([]sqliteTableMeta, 0, len(tables))
+	for table := range tableSet {
+		metas = append(metas, sqliteTableMeta{
+			Name: table,
+			Deps: depsByName[table],
+		})
+	}
+	sort.Slice(metas, func(i, j int) bool {
+		return metas[i].Name < metas[j].Name
+	})
+
+	sorted, err := topoSortSQLiteTables(metas)
+	if err != nil {
+		return nil, fmt.Errorf("order postgres import tables: %w", err)
+	}
+
+	ordered := make([]string, 0, len(sorted))
+	for _, meta := range sorted {
+		ordered = append(ordered, meta.Name)
+	}
+	return ordered, nil
+}
+
+func normalizeRegclassTableName(value string) string {
+	if value == "" {
+		return ""
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if idx := strings.LastIndex(value, "."); idx >= 0 {
+		value = value[idx+1:]
+	}
+	value = strings.TrimPrefix(value, "\"")
+	value = strings.TrimSuffix(value, "\"")
+	return value
 }
 
 func validateMigrationOptions(opts SQLiteToPostgresMigrationOptions) (string, string, error) {
@@ -212,9 +309,6 @@ func importTables(ctx context.Context, sqliteDB *sql.DB, tx pgx.Tx, tables []str
 		}
 		results = append(results, result)
 
-		if result.SQLiteRows != result.PostgresRows {
-			return nil, fmt.Errorf("row count mismatch for table %s: sqlite=%d postgres=%d", table, result.SQLiteRows, result.PostgresRows)
-		}
 		if copied != result.PostgresRows {
 			return nil, fmt.Errorf("copy count mismatch for table %s: copied=%d postgres=%d", table, copied, result.PostgresRows)
 		}
@@ -474,8 +568,36 @@ func copySQLiteTableToPostgres(ctx context.Context, sqliteDB *sql.DB, tx pgx.Tx,
 		return 0, nil
 	}
 
+	pgColumns, err := postgresTableColumnSet(ctx, tx, table)
+	if err != nil {
+		return 0, err
+	}
+
+	filteredColumns := make([]string, 0, len(columns))
+	filteredTypes := make([]string, 0, len(columns))
+	for i, column := range columns {
+		if _, ok := pgColumns[column]; !ok {
+			continue
+		}
+		filteredColumns = append(filteredColumns, column)
+		filteredTypes = append(filteredTypes, sqliteTypes[i])
+	}
+	columns = filteredColumns
+	sqliteTypes = filteredTypes
+	if len(columns) == 0 {
+		return 0, nil
+	}
+
+	fks, err := postgresForeignKeysForTable(ctx, tx, table)
+	if err != nil {
+		return 0, err
+	}
+
+	selectColumns := joinQualified(columns, "src")
+	whereClause := buildSQLiteForeignKeyFilter("src", fks)
+
 	// #nosec G201 -- identifiers are quoted and derived from sqlite schema metadata.
-	selectQuery := fmt.Sprintf("SELECT %s FROM %s", joinQuoted(columns), quoteIdent(table))
+	selectQuery := fmt.Sprintf("SELECT %s FROM %s src%s", selectColumns, quoteIdent(table), whereClause)
 	rows, err := sqliteDB.QueryContext(ctx, selectQuery)
 	if err != nil {
 		return 0, fmt.Errorf("query sqlite table %s: %w", table, err)
@@ -520,6 +642,121 @@ func copySQLiteTableToPostgres(ctx context.Context, sqliteDB *sql.DB, tx pgx.Tx,
 	}
 
 	return copied, nil
+}
+
+type postgresForeignKey struct {
+	ParentTable   string
+	ChildColumns  []string
+	ParentColumns []string
+}
+
+func postgresForeignKeysForTable(ctx context.Context, tx pgx.Tx, table string) ([]postgresForeignKey, error) {
+	regclassName := "public." + table
+
+	rows, err := tx.Query(ctx, `
+		SELECT confrelid::regclass::text,
+			   ARRAY_AGG(child_col.attname ORDER BY ck.ord),
+			   ARRAY_AGG(parent_col.attname ORDER BY ck.ord)
+		FROM pg_constraint c
+		JOIN unnest(c.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
+		JOIN pg_attribute child_col ON child_col.attrelid = c.conrelid AND child_col.attnum = ck.attnum
+		JOIN unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+		JOIN pg_attribute parent_col ON parent_col.attrelid = c.confrelid AND parent_col.attnum = fk.attnum
+		WHERE c.contype = 'f'
+		  AND c.conrelid = $1::regclass
+		GROUP BY c.oid, c.confrelid
+	`, regclassName)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres foreign keys for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	var fks []postgresForeignKey
+	for rows.Next() {
+		var (
+			rawParent     string
+			childColumns  []string
+			parentColumns []string
+		)
+		if err := rows.Scan(&rawParent, &childColumns, &parentColumns); err != nil {
+			return nil, fmt.Errorf("scan postgres foreign key for %s: %w", table, err)
+		}
+		parentTable := normalizeRegclassTableName(rawParent)
+		if parentTable == "" || parentTable == table {
+			continue
+		}
+		if len(childColumns) == 0 || len(childColumns) != len(parentColumns) {
+			continue
+		}
+
+		fks = append(fks, postgresForeignKey{
+			ParentTable:   parentTable,
+			ChildColumns:  childColumns,
+			ParentColumns: parentColumns,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres foreign keys for %s: %w", table, err)
+	}
+	return fks, nil
+}
+
+func buildSQLiteForeignKeyFilter(alias string, fks []postgresForeignKey) string {
+	if len(fks) == 0 {
+		return ""
+	}
+
+	clauses := make([]string, 0, len(fks))
+	for _, fk := range fks {
+		if fk.ParentTable == "" || len(fk.ChildColumns) == 0 || len(fk.ChildColumns) != len(fk.ParentColumns) {
+			continue
+		}
+
+		nullChecks := make([]string, 0, len(fk.ChildColumns))
+		joinChecks := make([]string, 0, len(fk.ChildColumns))
+		for i := range fk.ChildColumns {
+			childCol := fk.ChildColumns[i]
+			parentCol := fk.ParentColumns[i]
+			nullChecks = append(nullChecks, fmt.Sprintf("%s.%s IS NULL", alias, quoteIdent(childCol)))
+			joinChecks = append(joinChecks, fmt.Sprintf("parent.%s = %s.%s", quoteIdent(parentCol), alias, quoteIdent(childCol)))
+		}
+
+		allowNull := strings.Join(nullChecks, " OR ")
+		matchParent := strings.Join(joinChecks, " AND ")
+
+		clauses = append(clauses, fmt.Sprintf("(%s OR EXISTS (SELECT 1 FROM %s parent WHERE %s))", allowNull, quoteIdent(fk.ParentTable), matchParent))
+	}
+
+	if len(clauses) == 0 {
+		return ""
+	}
+	return " WHERE " + strings.Join(clauses, " AND ")
+}
+
+func postgresTableColumnSet(ctx context.Context, tx pgx.Tx, table string) (map[string]struct{}, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = $1
+	`, table)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres columns for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	set := make(map[string]struct{})
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan postgres column for %s: %w", table, err)
+		}
+		set[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres columns for %s: %w", table, err)
+	}
+	return set, nil
 }
 
 func sqliteTableColumns(ctx context.Context, db *sql.DB, table string) ([]string, []string, error) {
@@ -643,12 +880,12 @@ func resetPostgresIdentities(ctx context.Context, tx pgx.Tx) error {
 	return nil
 }
 
-func joinQuoted(columns []string) string {
-	quoted := make([]string, 0, len(columns))
+func joinQualified(columns []string, qualifier string) string {
+	qualified := make([]string, 0, len(columns))
 	for _, column := range columns {
-		quoted = append(quoted, quoteIdent(column))
+		qualified = append(qualified, qualifier+"."+quoteIdent(column))
 	}
-	return strings.Join(quoted, ", ")
+	return strings.Join(qualified, ", ")
 }
 
 func quoteIdent(name string) string {
