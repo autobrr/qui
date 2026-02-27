@@ -155,16 +155,14 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 
 // CreateRun creates a new orphan scan run.
 func (s *OrphanScanStore) CreateRun(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by)
 		VALUES (?, 'pending', ?)
-	`, instanceID, triggeredBy)
+		RETURNING id
+	`, instanceID, triggeredBy).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert orphan scan run: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
 	}
 	return id, nil
 }
@@ -175,7 +173,8 @@ var ErrRunAlreadyActive = errors.New("an active run already exists for this inst
 // CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
 // This prevents race conditions between HasActiveRun and CreateRun.
 func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by)
 		SELECT ?, 'pending', ?
 		WHERE NOT EXISTS (
@@ -184,22 +183,13 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 			  AND (status IN ('pending', 'scanning', 'deleting')
 			       OR (status = 'preview_ready' AND files_found > 0))
 		)
-	`, instanceID, triggeredBy, instanceID)
+		RETURNING id
+	`, instanceID, triggeredBy, instanceID).Scan(&id)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrRunAlreadyActive
+		}
 		return 0, fmt.Errorf("insert orphan scan run: %w", err)
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("get rows affected: %w", err)
-	}
-	if rows == 0 {
-		return 0, ErrRunAlreadyActive
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
 	}
 	return id, nil
 }

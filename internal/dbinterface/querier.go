@@ -34,10 +34,39 @@ type Querier interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (TxQuerier, error)
 }
 
+type dialectProvider interface {
+	Dialect() string
+}
+
+type deferForeignKeysTx interface {
+	DeferForeignKeyChecks(ctx context.Context) error
+}
+
+// DialectOf returns the SQL dialect for a querier when available.
+// Defaults to sqlite for backward compatibility with legacy implementations.
+func DialectOf(q any) string {
+	if q == nil {
+		return "sqlite"
+	}
+	provider, ok := q.(dialectProvider)
+	if !ok {
+		return "sqlite"
+	}
+	dialect := strings.TrimSpace(provider.Dialect())
+	if dialect == "" {
+		return "sqlite"
+	}
+	return strings.ToLower(dialect)
+}
+
 // DeferForeignKeyChecks defers foreign key constraint checks for the given transaction
 // until the end of the transaction. This allows operations that would normally violate
 // foreign key constraints due to ordering.
 func DeferForeignKeyChecks(tx TxQuerier) error {
+	if txWithCapabilities, ok := tx.(deferForeignKeysTx); ok {
+		return txWithCapabilities.DeferForeignKeyChecks(context.Background())
+	}
+
 	_, err := tx.ExecContext(context.Background(), "PRAGMA defer_foreign_keys = ON;")
 	return err
 }
@@ -51,12 +80,12 @@ func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, nu
 	// Estimate size: each row has 2*placeholdersPerRow chars for ?, plus 2 for (), plus comma space
 	totalLen := numRows*(2*placeholdersPerRow+2) + (numRows-1)*2
 	sb.Grow(totalLen)
-	for i := 0; i < numRows; i++ {
+	for i := range numRows {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
 		sb.WriteByte('(')
-		for j := 0; j < placeholdersPerRow; j++ {
+		for j := range placeholdersPerRow {
 			if j > 0 {
 				sb.WriteString(", ")
 			}

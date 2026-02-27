@@ -215,23 +215,20 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	query := `
 		INSERT INTO arr_instances (type, name_id, base_url_id, basic_username_id, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := tx.ExecContext(ctx, query, instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, timeoutSeconds)
+	var id int
+	err = tx.QueryRowContext(ctx, query, instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, timeoutSeconds).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create arr instance: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last insert ID: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return s.Get(ctx, int(id))
+	return s.Get(ctx, id)
 }
 
 // Get retrieves an ARR instance by ID using the view

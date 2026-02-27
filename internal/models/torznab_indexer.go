@@ -331,23 +331,20 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	query := `
 		INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, basic_username_id, basic_password_encrypted, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, basicUserID, encryptedBasicPassword, backend, encryptedAPIKey, enabled, priority, timeoutSeconds, limitDefault, limitMax)
+	var id int
+	err = tx.QueryRowContext(ctx, query, nameID, baseURLID, indexerIDStringID, basicUserID, encryptedBasicPassword, backend, encryptedAPIKey, enabled, priority, timeoutSeconds, limitDefault, limitMax).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last insert ID: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return s.Get(ctx, int(id))
+	return s.Get(ctx, id)
 }
 
 // Get retrieves a Torznab indexer by ID using the view
@@ -1265,10 +1262,11 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 
 // CleanupOldLatency removes latency records older than the specified duration
 func (s *TorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().UTC().Add(-olderThan)
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM torznab_indexer_latency
-		WHERE measured_at < datetime('now', ?)
-	`, fmt.Sprintf("-%d seconds", int(olderThan.Seconds())))
+		WHERE measured_at < ?
+	`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup old latency: %w", err)
 	}

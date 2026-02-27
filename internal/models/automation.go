@@ -286,22 +286,19 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		freeSpaceSourceJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
-	res, err := s.db.ExecContext(ctx, `
+	var id int
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO automations
 			(instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON)
+		RETURNING id
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-
-	return s.Get(ctx, automation.InstanceID, int(id))
+	return s.Get(ctx, automation.InstanceID, id)
 }
 
 func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*Automation, error) {

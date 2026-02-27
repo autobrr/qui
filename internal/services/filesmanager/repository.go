@@ -130,7 +130,7 @@ func (r *Repository) GetFilesTx(ctx context.Context, tx dbinterface.TxQuerier, i
 // getFiles is the internal implementation that works with any querier (db or tx)
 func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, hash string) ([]CachedFile, error) {
 	query := `
-		SELECT id, instance_id, torrent_hash, file_index, name, size, progress, 
+		SELECT id, instance_id, torrent_hash, file_index, name, size, progress,
 		       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
 		FROM torrent_files_cache_view
 		WHERE instance_id = ? AND torrent_hash = ?
@@ -288,8 +288,8 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	// Pre-build the full query for full batches
 	queryTemplate := `
-			INSERT INTO torrent_files_cache 
-			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
+			INSERT INTO torrent_files_cache
+			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority,
 			 is_seed, piece_range_start, piece_range_end, availability, cached_at)
 			VALUES %s
 			ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
@@ -503,7 +503,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	hashID := ids[0]
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO torrent_files_sync 
+		INSERT INTO torrent_files_sync
 		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
@@ -713,7 +713,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	}
 
 	// Insert current hashes into temp table in batches
-	queryTemplate := `INSERT OR IGNORE INTO current_hashes (hash) VALUES %s`
+	queryTemplate := `INSERT INTO current_hashes (hash) VALUES %s ON CONFLICT(hash) DO NOTHING`
 	const hashBatchSize = 900 // Keep under SQLite's 999 variable limit
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, hashBatchSize)
 
@@ -784,28 +784,54 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 
 // GetCacheStats returns statistics about the cache for an instance
 func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
-	query := `
-		SELECT 
-			COUNT(DISTINCT torrent_hash) as cached_torrents,
-			COUNT(*) as total_files,
-			MIN(julianday('now') - julianday(last_synced_at)) * 86400 as oldest_seconds,
-			MAX(julianday('now') - julianday(last_synced_at)) * 86400 as newest_seconds,
-			AVG(julianday('now') - julianday(last_synced_at)) * 86400 as avg_seconds
-		FROM torrent_files_sync_view
-		WHERE instance_id = ?
-	`
-
 	var stats CacheStats
-	var oldestSecs, newestSecs, avgSecs sql.NullFloat64
-
-	err := r.db.QueryRowContext(ctx, query, instanceID).Scan(
-		&stats.CachedTorrents,
-		&stats.TotalFiles,
-		&oldestSecs,
-		&newestSecs,
-		&avgSecs,
+	var (
+		oldestSecs sql.NullFloat64
+		newestSecs sql.NullFloat64
+		avgSecs    sql.NullFloat64
+		err        error
 	)
 
+	switch dbinterface.DialectOf(r.db) {
+	case "postgres":
+		now := time.Now().UTC()
+		query := `
+			SELECT
+				COUNT(DISTINCT torrent_hash) as cached_torrents,
+				COUNT(*) as total_files,
+				MIN(EXTRACT(EPOCH FROM (? - last_synced_at))) as oldest_seconds,
+				MAX(EXTRACT(EPOCH FROM (? - last_synced_at))) as newest_seconds,
+				AVG(EXTRACT(EPOCH FROM (? - last_synced_at))) as avg_seconds
+			FROM torrent_files_sync_view
+			WHERE instance_id = ?
+		`
+		err = r.db.QueryRowContext(ctx, query, now, now, now, instanceID).Scan(
+			&stats.CachedTorrents,
+			&stats.TotalFiles,
+			&oldestSecs,
+			&newestSecs,
+			&avgSecs,
+		)
+	default:
+		nowJulian := float64(time.Now().UTC().UnixNano())/86400e9 + 2440587.5
+		query := `
+			SELECT
+				COUNT(DISTINCT torrent_hash) as cached_torrents,
+				COUNT(*) as total_files,
+				MIN((? - julianday(last_synced_at)) * 86400) as oldest_seconds,
+				MAX((? - julianday(last_synced_at)) * 86400) as newest_seconds,
+				AVG((? - julianday(last_synced_at)) * 86400) as avg_seconds
+			FROM torrent_files_sync_view
+			WHERE instance_id = ?
+		`
+		err = r.db.QueryRowContext(ctx, query, nowJulian, nowJulian, nowJulian, instanceID).Scan(
+			&stats.CachedTorrents,
+			&stats.TotalFiles,
+			&oldestSecs,
+			&newestSecs,
+			&avgSecs,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -814,12 +840,10 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 		dur := time.Duration(oldestSecs.Float64 * float64(time.Second))
 		stats.OldestCacheAge = &dur
 	}
-
 	if newestSecs.Valid {
 		dur := time.Duration(newestSecs.Float64 * float64(time.Second))
 		stats.NewestCacheAge = &dur
 	}
-
 	if avgSecs.Valid {
 		dur := time.Duration(avgSecs.Float64 * float64(time.Second))
 		stats.AverageCacheAge = &dur

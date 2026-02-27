@@ -70,6 +70,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunServeCommand())
 	rootCmd.AddCommand(RunVersionCommand(buildinfo.Version))
 	rootCmd.AddCommand(RunGenerateConfigCommand())
+	rootCmd.AddCommand(RunDBCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
 	rootCmd.AddCommand(RunUpdateCommand())
@@ -214,7 +215,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				cfg.SetDataDir(dataDir)
 			}
 
-			db, err := database.New(cfg.GetDatabasePath())
+			db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
@@ -301,11 +302,13 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			dbPath := cfg.GetDatabasePath()
-			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-				return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+			if strings.EqualFold(strings.TrimSpace(cfg.Config.DatabaseEngine), "sqlite") {
+				if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+					return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+				}
 			}
 
-			db, err := database.New(dbPath)
+			db, err := database.OpenFromConfig(cfg.Config, dbPath)
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
@@ -494,7 +497,7 @@ func (app *Application) runServer() {
 		Msg("Initialized Dodo Payments client")
 
 	// Initialize database
-	db, err := database.New(cfg.GetDatabasePath())
+	db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}

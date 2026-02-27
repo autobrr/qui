@@ -74,3 +74,27 @@ Keep your qui installation up-to-date:
 # Specify data directory for database and other data files
 ./qui serve --data-dir /path/to/data/
 ```
+
+## Database Migration
+
+Offline SQLite to Postgres migration:
+
+```bash
+# Validate source and destination without importing rows
+./qui db migrate \
+  --from-sqlite /path/to/qui.db \
+  --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
+  --dry-run
+
+# Apply migration (schema bootstrap + table copy + identity reset + row-count validation)
+./qui db migrate \
+  --from-sqlite /path/to/qui.db \
+  --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
+  --apply
+```
+
+Notes:
+
+- Run this while qui is stopped (offline cutover).
+- `--dry-run` and `--apply` are mutually exclusive.
+- The command copies all runtime tables except migration history.

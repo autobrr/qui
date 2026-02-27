@@ -278,22 +278,17 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return err
 	}
 
-	res, err := tx.ExecContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		INSERT INTO instance_backup_runs (
 			instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
 			archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`, run.InstanceID, allIDs[0], allIDs[1], allIDs[2], run.RequestedAt, run.StartedAt, run.CompletedAt,
-		allIDs[3], allIDs[4], run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, allIDs[5])
+		allIDs[3], allIDs[4], run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, allIDs[5]).Scan(&run.ID)
 	if err != nil {
 		return err
 	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return err
-	}
-	run.ID = id
 
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -848,7 +843,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	// Pre-build the query template for full chunks to avoid repeated string building in hot path
 	queryTemplate := `INSERT INTO instance_backup_items (
-		run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+		run_id, torrent_hash_id, name_id, category_id, size_bytes,
 		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
 	) VALUES %s`
 	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, chunkSize)
@@ -1233,9 +1228,9 @@ func (s *BackupStore) countBlobReferencesChunk(ctx context.Context, relPaths []s
 func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
 	var name string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT sp.value 
-		FROM instances i 
-		JOIN string_pool sp ON i.name_id = sp.id 
+		SELECT sp.value
+		FROM instances i
+		JOIN string_pool sp ON i.name_id = sp.id
 		WHERE i.id = ?
 	`, instanceID).Scan(&name)
 	if err != nil {

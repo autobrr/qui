@@ -103,21 +103,18 @@ func (s *LogExclusionsStore) Update(ctx context.Context, input *LogExclusionsInp
 
 // createDefault creates empty log exclusions
 func (s *LogExclusionsStore) createDefault(ctx context.Context) (*LogExclusions, error) {
-	res, err := s.db.ExecContext(ctx, `
+	var id int
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO log_exclusions (patterns)
 		VALUES ('[]')
-	`)
-	if err != nil {
-		return nil, err
-	}
-
-	id, err := res.LastInsertId()
+		RETURNING id
+	`).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 
 	return &LogExclusions{
-		ID:        int(id),
+		ID:        id,
 		Patterns:  []string{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),

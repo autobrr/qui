@@ -22,6 +22,18 @@ type Config struct {
 	LogMaxSize               int    `toml:"logMaxSize" mapstructure:"logMaxSize"`
 	LogMaxBackups            int    `toml:"logMaxBackups" mapstructure:"logMaxBackups"`
 	DataDir                  string `toml:"dataDir" mapstructure:"dataDir"`
+	DatabaseEngine           string `toml:"databaseEngine" mapstructure:"databaseEngine"`
+	DatabaseDSN              string `toml:"databaseDsn" mapstructure:"databaseDsn"`
+	DatabaseHost             string `toml:"databaseHost" mapstructure:"databaseHost"`
+	DatabasePort             int    `toml:"databasePort" mapstructure:"databasePort"`
+	DatabaseUser             string `toml:"databaseUser" mapstructure:"databaseUser"`
+	DatabasePassword         string `toml:"databasePassword" mapstructure:"databasePassword"`
+	DatabaseName             string `toml:"databaseName" mapstructure:"databaseName"`
+	DatabaseSSLMode          string `toml:"databaseSSLMode" mapstructure:"databaseSSLMode"`
+	DatabaseConnectTimeout   int    `toml:"databaseConnectTimeout" mapstructure:"databaseConnectTimeout"`
+	DatabaseMaxOpenConns     int    `toml:"databaseMaxOpenConns" mapstructure:"databaseMaxOpenConns"`
+	DatabaseMaxIdleConns     int    `toml:"databaseMaxIdleConns" mapstructure:"databaseMaxIdleConns"`
+	DatabaseConnMaxLifetime  int    `toml:"databaseConnMaxLifetime" mapstructure:"databaseConnMaxLifetime"`
 	CheckForUpdates          bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled             bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	MetricsEnabled           bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
