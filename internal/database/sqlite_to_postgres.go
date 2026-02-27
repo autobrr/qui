@@ -39,22 +39,17 @@ type sqliteTableMeta struct {
 	Deps map[string]struct{}
 }
 
+const postgresImportAdvisoryLockID int64 = 922337203685477001
+
 func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigrationOptions) (*SQLiteToPostgresMigrationReport, error) {
-	sqlitePath := strings.TrimSpace(opts.SQLitePath)
-	pgDSN := strings.TrimSpace(opts.PostgresDSN)
-	if sqlitePath == "" {
-		return nil, errors.New("sqlite path is required")
-	}
-	if pgDSN == "" {
-		return nil, errors.New("postgres dsn is required")
-	}
-	if _, err := os.Stat(sqlitePath); err != nil {
-		return nil, fmt.Errorf("stat sqlite file: %w", err)
+	sqlitePath, pgDSN, err := validateMigrationOptions(opts)
+	if err != nil {
+		return nil, err
 	}
 
-	sqliteDB, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", sqlitePath))
+	sqliteDB, err := openSQLiteDB(sqlitePath)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, err
 	}
 	defer sqliteDB.Close()
 
@@ -71,45 +66,26 @@ func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigration
 		return nil, err
 	}
 
-	pool, err := pgxpool.New(ctx, pgDSN)
+	pool, err := openPostgresPool(ctx, pgDSN)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres pool: %w", err)
+		return nil, err
 	}
 	defer pool.Close()
 
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("ping postgres: %w", err)
-	}
-
 	if !opts.Apply {
-		report, err := buildDryRunReport(ctx, pool, tables, sqliteCounts)
-		if err != nil {
-			return nil, err
-		}
-		return report, nil
+		return runDryRunReport(ctx, pool, tables, sqliteCounts)
 	}
 
-	bootstrapDB, err := Open(OpenOptions{
-		Engine:      string(DialectPostgres),
-		PostgresDSN: pgDSN,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("bootstrap postgres schema: %w", err)
-	}
-	if closeErr := bootstrapDB.Close(); closeErr != nil {
-		return nil, fmt.Errorf("close bootstrap postgres connection: %w", closeErr)
+	if err := bootstrapPostgresSchema(pgDSN); err != nil {
+		return nil, err
 	}
 
-	conn, err := pool.Acquire(ctx)
+	conn, tx, err := beginImportTx(ctx, pool)
 	if err != nil {
-		return nil, fmt.Errorf("acquire postgres connection: %w", err)
+		return nil, err
 	}
 	defer conn.Release()
 
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin postgres import transaction: %w", err)
-	}
 	committed := false
 	defer func() {
 		if !committed {
@@ -117,18 +93,106 @@ func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigration
 		}
 	}()
 
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(922337203685477001)"); err != nil {
-		return nil, fmt.Errorf("acquire postgres import lock: %w", err)
-	}
-
 	if err := truncatePostgresTables(ctx, tx, tables); err != nil {
 		return nil, err
 	}
 
-	report := &SQLiteToPostgresMigrationReport{
-		Applied: true,
-		Tables:  make([]TableMigrationResult, 0, len(tables)),
+	tableResults, err := importTables(ctx, sqliteDB, tx, tables, sqliteCounts)
+	if err != nil {
+		return nil, err
 	}
+
+	if err := resetPostgresIdentities(ctx, tx); err != nil {
+		return nil, err
+	}
+
+	if err := commitImportTx(ctx, tx); err != nil {
+		return nil, err
+	}
+	committed = true
+
+	return &SQLiteToPostgresMigrationReport{
+		Applied: true,
+		Tables:  tableResults,
+	}, nil
+}
+
+func validateMigrationOptions(opts SQLiteToPostgresMigrationOptions) (string, string, error) {
+	sqlitePath := strings.TrimSpace(opts.SQLitePath)
+	pgDSN := strings.TrimSpace(opts.PostgresDSN)
+	if sqlitePath == "" {
+		return "", "", errors.New("sqlite path is required")
+	}
+	if pgDSN == "" {
+		return "", "", errors.New("postgres dsn is required")
+	}
+	if _, err := os.Stat(sqlitePath); err != nil {
+		return "", "", fmt.Errorf("stat sqlite file: %w", err)
+	}
+	return sqlitePath, pgDSN, nil
+}
+
+func openSQLiteDB(sqlitePath string) (*sql.DB, error) {
+	sqliteDB, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", sqlitePath))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	return sqliteDB, nil
+}
+
+func openPostgresPool(ctx context.Context, pgDSN string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, pgDSN)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres pool: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+	return pool, nil
+}
+
+func runDryRunReport(ctx context.Context, pool *pgxpool.Pool, tables []string, sqliteCounts map[string]int64) (*SQLiteToPostgresMigrationReport, error) {
+	return buildDryRunReport(ctx, pool, tables, sqliteCounts)
+}
+
+func bootstrapPostgresSchema(pgDSN string) error {
+	bootstrapDB, err := Open(OpenOptions{
+		Engine:      string(DialectPostgres),
+		PostgresDSN: pgDSN,
+	})
+	if err != nil {
+		return fmt.Errorf("bootstrap postgres schema: %w", err)
+	}
+	if closeErr := bootstrapDB.Close(); closeErr != nil {
+		return fmt.Errorf("close bootstrap postgres connection: %w", closeErr)
+	}
+	return nil
+}
+
+func beginImportTx(ctx context.Context, pool *pgxpool.Pool) (*pgxpool.Conn, pgx.Tx, error) {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("acquire postgres connection: %w", err)
+	}
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		conn.Release()
+		return nil, nil, fmt.Errorf("begin postgres import transaction: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", postgresImportAdvisoryLockID); err != nil {
+		_ = tx.Rollback(ctx)
+		conn.Release()
+		return nil, nil, fmt.Errorf("acquire postgres import lock: %w", err)
+	}
+
+	return conn, tx, nil
+}
+
+func importTables(ctx context.Context, sqliteDB *sql.DB, tx pgx.Tx, tables []string, sqliteCounts map[string]int64) ([]TableMigrationResult, error) {
+	results := make([]TableMigrationResult, 0, len(tables))
 
 	for _, table := range tables {
 		copied, err := copySQLiteTableToPostgres(ctx, sqliteDB, tx, table)
@@ -141,30 +205,29 @@ func MigrateSQLiteToPostgres(ctx context.Context, opts SQLiteToPostgresMigration
 			return nil, fmt.Errorf("count postgres rows for %s: %w", table, err)
 		}
 
-		report.Tables = append(report.Tables, TableMigrationResult{
+		result := TableMigrationResult{
 			Table:        table,
 			SQLiteRows:   sqliteCounts[table],
 			PostgresRows: pgRows,
-		})
-
-		if sqliteCounts[table] != pgRows {
-			return nil, fmt.Errorf("row count mismatch for table %s: sqlite=%d postgres=%d", table, sqliteCounts[table], pgRows)
 		}
-		if copied != pgRows {
-			return nil, fmt.Errorf("copy count mismatch for table %s: copied=%d postgres=%d", table, copied, pgRows)
+		results = append(results, result)
+
+		if result.SQLiteRows != result.PostgresRows {
+			return nil, fmt.Errorf("row count mismatch for table %s: sqlite=%d postgres=%d", table, result.SQLiteRows, result.PostgresRows)
+		}
+		if copied != result.PostgresRows {
+			return nil, fmt.Errorf("copy count mismatch for table %s: copied=%d postgres=%d", table, copied, result.PostgresRows)
 		}
 	}
 
-	if err := resetPostgresIdentities(ctx, tx); err != nil {
-		return nil, err
-	}
+	return results, nil
+}
 
+func commitImportTx(ctx context.Context, tx pgx.Tx) error {
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit postgres import: %w", err)
+		return fmt.Errorf("commit postgres import: %w", err)
 	}
-	committed = true
-
-	return report, nil
+	return nil
 }
 
 func buildDryRunReport(ctx context.Context, pool *pgxpool.Pool, tables []string, sqliteCounts map[string]int64) (*SQLiteToPostgresMigrationReport, error) {
@@ -206,7 +269,10 @@ func listSQLiteTables(ctx context.Context, db *sql.DB) ([]string, error) {
 		return nil, err
 	}
 
-	sorted := topoSortSQLiteTables(metas)
+	sorted, err := topoSortSQLiteTables(metas)
+	if err != nil {
+		return nil, err
+	}
 	tables := make([]string, 0, len(sorted))
 	for _, meta := range sorted {
 		tables = append(tables, meta.Name)
@@ -279,9 +345,9 @@ func sqliteTableDependencies(ctx context.Context, db *sql.DB, table string) (map
 	return deps, nil
 }
 
-func topoSortSQLiteTables(metas []sqliteTableMeta) []sqliteTableMeta {
+func topoSortSQLiteTables(metas []sqliteTableMeta) ([]sqliteTableMeta, error) {
 	if len(metas) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	metaByName := make(map[string]sqliteTableMeta, len(metas))
@@ -327,7 +393,7 @@ func topoSortSQLiteTables(metas []sqliteTableMeta) []sqliteTableMeta {
 	}
 
 	if len(result) == len(metas) {
-		return result
+		return result, nil
 	}
 
 	seen := make(map[string]struct{}, len(result))
@@ -342,11 +408,7 @@ func topoSortSQLiteTables(metas []sqliteTableMeta) []sqliteTableMeta {
 		}
 	}
 	sort.Strings(remaining)
-	for _, name := range remaining {
-		result = append(result, metaByName[name])
-	}
-
-	return result
+	return nil, fmt.Errorf("cycle detected in sqlite table dependencies: %s", strings.Join(remaining, ", "))
 }
 
 func countSQLiteRows(ctx context.Context, db *sql.DB, tables []string) (map[string]int64, error) {
@@ -565,7 +627,7 @@ func resetPostgresIdentities(ctx context.Context, tx pgx.Tx) error {
 	rows.Close()
 
 	for _, identity := range identityColumns {
-		fullTable := "public." + identity.table
+		fullTable := quoteIdent("public") + "." + quoteIdent(identity.table)
 		query := fmt.Sprintf(`
 			SELECT setval(
 				pg_get_serial_sequence($1, $2),

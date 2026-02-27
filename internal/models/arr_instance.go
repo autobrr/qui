@@ -74,6 +74,15 @@ type ArrInstanceUpdateParams struct {
 	TimeoutSeconds *int
 }
 
+type arrInstanceCreateParams struct {
+	name           string
+	baseURL        string
+	apiKey         string
+	basicUsername  *string
+	basicPassword  *string
+	timeoutSeconds int
+}
+
 // ArrInstanceStore manages ARR instances in the database
 type ArrInstanceStore struct {
 	db            dbinterface.Querier
@@ -145,56 +154,24 @@ func (s *ArrInstanceStore) decrypt(ciphertext string) (string, error) {
 
 // Create creates a new ARR instance
 func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, enabled bool, priority, timeoutSeconds int) (*ArrInstance, error) {
-	if name == "" {
-		return nil, errors.New("name cannot be empty")
-	}
-	if baseURL == "" {
-		return nil, errors.New("base URL cannot be empty")
-	}
-	if apiKey == "" {
-		return nil, errors.New("API key cannot be empty")
+	prepared, err := prepareCreateParams(instanceType, name, baseURL, apiKey, basicUsername, basicPassword, timeoutSeconds)
+	if err != nil {
+		return nil, err
 	}
 
-	trimmedBasicUser := strings.TrimSpace(stringOrEmpty(basicUsername))
-	trimmedBasicPass := strings.TrimSpace(stringOrEmpty(basicPassword))
-	if trimmedBasicUser == "" {
-		basicUsername = nil
-		basicPassword = nil
-	} else {
-		if trimmedBasicPass == "" {
-			return nil, ErrBasicAuthPasswordRequired
-		}
-		basicUsername = &trimmedBasicUser
-		basicPassword = &trimmedBasicPass
-	}
-
-	// Validate instance type
-	if instanceType != ArrInstanceTypeSonarr && instanceType != ArrInstanceTypeRadarr {
-		return nil, fmt.Errorf("invalid arr instance type: %s", instanceType)
-	}
-
-	// Normalize base URL (remove trailing slash)
-	baseURL = strings.TrimRight(baseURL, "/")
-
-	// Encrypt API key
-	encryptedAPIKey, err := s.encrypt(apiKey)
+	encryptedAPIKey, err := s.encrypt(prepared.apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 	}
 
 	// Encrypt basic auth password if provided
 	var encryptedBasicPassword *string
-	if basicPassword != nil && *basicPassword != "" {
-		encrypted, err := s.encrypt(*basicPassword)
+	if prepared.basicPassword != nil && *prepared.basicPassword != "" {
+		encrypted, err := s.encrypt(*prepared.basicPassword)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
 		}
 		encryptedBasicPassword = &encrypted
-	}
-
-	// Set defaults
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 15
 	}
 
 	// Begin transaction for string interning and insert
@@ -205,7 +182,7 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	defer tx.Rollback()
 
 	// Intern strings into string_pool
-	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &baseURL, basicUsername)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &prepared.name, &prepared.baseURL, prepared.basicUsername)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
@@ -219,7 +196,7 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	`
 
 	var id int
-	err = tx.QueryRowContext(ctx, query, instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, timeoutSeconds).Scan(&id)
+	err = tx.QueryRowContext(ctx, query, instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, prepared.timeoutSeconds).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create arr instance: %w", err)
 	}
@@ -229,6 +206,48 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	}
 
 	return s.Get(ctx, id)
+}
+
+func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, timeoutSeconds int) (arrInstanceCreateParams, error) {
+	if name == "" {
+		return arrInstanceCreateParams{}, errors.New("name cannot be empty")
+	}
+	if baseURL == "" {
+		return arrInstanceCreateParams{}, errors.New("base URL cannot be empty")
+	}
+	if apiKey == "" {
+		return arrInstanceCreateParams{}, errors.New("API key cannot be empty")
+	}
+	if instanceType != ArrInstanceTypeSonarr && instanceType != ArrInstanceTypeRadarr {
+		return arrInstanceCreateParams{}, fmt.Errorf("invalid arr instance type: %s", instanceType)
+	}
+
+	trimmedBasicUser := strings.TrimSpace(stringOrEmpty(basicUsername))
+	trimmedBasicPass := strings.TrimSpace(stringOrEmpty(basicPassword))
+	if trimmedBasicUser == "" {
+		basicUsername = nil
+		basicPassword = nil
+	} else {
+		if trimmedBasicPass == "" {
+			return arrInstanceCreateParams{}, ErrBasicAuthPasswordRequired
+		}
+		basicUsername = &trimmedBasicUser
+		basicPassword = &trimmedBasicPass
+	}
+
+	baseURL = strings.TrimRight(baseURL, "/")
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 15
+	}
+
+	return arrInstanceCreateParams{
+		name:           name,
+		baseURL:        baseURL,
+		apiKey:         apiKey,
+		basicUsername:  basicUsername,
+		basicPassword:  basicPassword,
+		timeoutSeconds: timeoutSeconds,
+	}, nil
 }
 
 // Get retrieves an ARR instance by ID using the view

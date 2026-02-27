@@ -6,6 +6,7 @@ package dbinterface
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -27,28 +28,9 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 		return []int64{}, nil
 	}
 
-	// Fast path for single string - avoid RETURNING overhead
+	// Fast path for single string.
 	if len(values) == 1 {
-		if values[0] == "" {
-			return nil, fmt.Errorf("value at index 0 is empty")
-		}
-
-		_, err := tx.ExecContext(ctx,
-			"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT(value) DO NOTHING",
-			values[0])
-		if err != nil {
-			return nil, err
-		}
-
-		// Then get the ID (fast with unique index)
-		ids, err := GetStringID(ctx, tx, values[0])
-		if err != nil {
-			return nil, err
-		}
-		if !ids[0].Valid {
-			return nil, fmt.Errorf("failed to get ID for interned string %q", values[0])
-		}
-		return []int64{ids[0].Int64}, nil
+		return internSingleString(ctx, tx, values[0])
 	}
 
 	// Batch path for multiple strings
@@ -116,6 +98,28 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 	}
 
 	return result, nil
+}
+
+func internSingleString(ctx context.Context, tx TxQuerier, value string) ([]int64, error) {
+	if value == "" {
+		return nil, errors.New("value at index 0 is empty")
+	}
+
+	_, err := tx.ExecContext(ctx,
+		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT(value) DO NOTHING",
+		value)
+	if err != nil {
+		return nil, err
+	}
+
+	ids, err := GetStringID(ctx, tx, value)
+	if err != nil {
+		return nil, err
+	}
+	if !ids[0].Valid {
+		return nil, fmt.Errorf("failed to get ID for interned string %q", value)
+	}
+	return []int64{ids[0].Int64}, nil
 }
 
 // InternStringNullable interns one or more optional string values and returns their IDs as sql.NullInt64.

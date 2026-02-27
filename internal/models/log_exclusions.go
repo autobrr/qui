@@ -52,14 +52,7 @@ func (s *LogExclusionsStore) Get(ctx context.Context) (*LogExclusions, error) {
 		return nil, err
 	}
 
-	// Parse JSON field
-	if patternsJSON != "" && patternsJSON != "[]" {
-		if err := json.Unmarshal([]byte(patternsJSON), &le.Patterns); err != nil {
-			le.Patterns = []string{}
-		}
-	} else {
-		le.Patterns = []string{}
-	}
+	le.Patterns = parseLogExclusionPatterns(patternsJSON)
 
 	return &le, nil
 }
@@ -113,10 +106,29 @@ func (s *LogExclusionsStore) createDefault(ctx context.Context) (*LogExclusions,
 		return nil, err
 	}
 
-	return &LogExclusions{
-		ID:        id,
-		Patterns:  []string{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}, nil
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, patterns, created_at, updated_at
+		FROM log_exclusions
+		WHERE id = ?
+	`, id)
+
+	var le LogExclusions
+	var patternsJSON string
+	if err := row.Scan(&le.ID, &patternsJSON, &le.CreatedAt, &le.UpdatedAt); err != nil {
+		return nil, err
+	}
+	le.Patterns = parseLogExclusionPatterns(patternsJSON)
+	return &le, nil
+}
+
+func parseLogExclusionPatterns(patternsJSON string) []string {
+	if patternsJSON == "" || patternsJSON == "[]" {
+		return []string{}
+	}
+
+	var patterns []string
+	if err := json.Unmarshal([]byte(patternsJSON), &patterns); err != nil {
+		return []string{}
+	}
+	return patterns
 }

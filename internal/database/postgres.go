@@ -22,6 +22,12 @@ import (
 //go:embed postgres_migrations/*.sql
 var postgresMigrationsFS embed.FS
 
+const (
+	// postgresMigrationAdvisoryLockID prevents concurrent migration runners on the same database.
+	// Keep this as a stable, app-specific 64-bit key shared by all qui migration processes.
+	postgresMigrationAdvisoryLockID int64 = 922337203685477000
+)
+
 func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	log.Info().Msg("Initializing postgres database")
 
@@ -116,7 +122,7 @@ func (db *DB) migratePostgres() error {
 		_ = tx.Rollback()
 	}()
 
-	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(922337203685477000)"); err != nil {
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", postgresMigrationAdvisoryLockID); err != nil {
 		return fmt.Errorf("acquire migration lock: %w", err)
 	}
 

@@ -76,6 +76,10 @@ func DeferForeignKeyChecks(tx TxQuerier) error {
 // placeholdersPerRow is the number of ? per row (e.g., 12 for file inserts)
 // numRows is how many rows to repeat the placeholders for
 func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, numRows int) string {
+	if numRows <= 0 {
+		return fmt.Sprintf(queryTemplate, "")
+	}
+
 	var sb strings.Builder
 	// Estimate size: each row has 2*placeholdersPerRow chars for ?, plus 2 for (), plus comma space
 	totalLen := numRows*(2*placeholdersPerRow+2) + (numRows-1)*2
