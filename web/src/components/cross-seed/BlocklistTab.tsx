@@ -6,7 +6,6 @@
 import { useCallback, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2, Plus, Trash2 } from "lucide-react"
-import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import {
@@ -34,6 +33,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import type { CrossSeedBlocklistEntry, Instance } from "@/types"
@@ -50,11 +50,6 @@ function normalizeInfoHash(value: string): string {
 
 function isValidInfoHash(value: string): boolean {
   return infoHashRegex.test(value)
-}
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
 }
 
 export function BlocklistTab({ instances }: BlocklistTabProps) {

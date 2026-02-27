@@ -84,8 +84,7 @@ function NumberInput({
 }
 
 export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const { t: tr } = useTranslation("common")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [incognitoMode] = useIncognitoMode()
 

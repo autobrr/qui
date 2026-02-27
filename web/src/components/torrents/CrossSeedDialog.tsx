@@ -464,7 +464,9 @@ const CrossSeedDialogComponent = ({
                               <span className="shrink-0">{formatBytes(result.size)}</span>
                               <span className="shrink-0">{tr("searchPage.crossSeedDialog.seeders", { count: result.seeders })}</span>
                               {result.matchReason && <span className="min-w-0 truncate">{tr("searchPage.crossSeedDialog.matchReason", { reason: result.matchReason })}</span>}
-                              <span className="shrink-0">{formatCrossSeedPublishDate(result.publishDate)}</span>
+                              <span className="shrink-0">
+                                {formatCrossSeedPublishDate(result.publishDate, i18n.resolvedLanguage ?? i18n.language)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -613,12 +615,12 @@ const CrossSeedDialogComponent = ({
 export const CrossSeedDialog = memo(CrossSeedDialogComponent)
 CrossSeedDialog.displayName = "CrossSeedDialog"
 
-function formatCrossSeedPublishDate(value: string): string {
+function formatCrossSeedPublishDate(value: string, locale?: string): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
     return value
   }
-  return parsed.toLocaleString()
+  return parsed.toLocaleString(locale)
 }
 
 // Maps instance status codes to user-friendly display information

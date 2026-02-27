@@ -21,11 +21,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
 import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
 import { IndexerActivityPanel } from "./IndexerActivityPanel"
@@ -35,14 +35,6 @@ import { IndexerTable } from "./IndexerTable"
 
 interface IndexersPageProps {
   withContainer?: boolean
-}
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return useCallback(
-    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
-    [t],
-  )
 }
 
 export function IndexersPage({ withContainer = true }: IndexersPageProps) {
