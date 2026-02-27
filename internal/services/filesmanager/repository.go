@@ -799,8 +799,8 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 			SELECT
 				COUNT(DISTINCT torrent_hash) as cached_torrents,
 				COUNT(*) as total_files,
-				MIN(EXTRACT(EPOCH FROM (? - last_synced_at))) as oldest_seconds,
-				MAX(EXTRACT(EPOCH FROM (? - last_synced_at))) as newest_seconds,
+				MAX(EXTRACT(EPOCH FROM (? - last_synced_at))) as oldest_seconds,
+				MIN(EXTRACT(EPOCH FROM (? - last_synced_at))) as newest_seconds,
 				AVG(EXTRACT(EPOCH FROM (? - last_synced_at))) as avg_seconds
 			FROM torrent_files_sync_view
 			WHERE instance_id = ?
@@ -818,8 +818,8 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 			SELECT
 				COUNT(DISTINCT torrent_hash) as cached_torrents,
 				COUNT(*) as total_files,
-				MIN((? - julianday(last_synced_at)) * 86400) as oldest_seconds,
-				MAX((? - julianday(last_synced_at)) * 86400) as newest_seconds,
+				MAX((? - julianday(last_synced_at)) * 86400) as oldest_seconds,
+				MIN((? - julianday(last_synced_at)) * 86400) as newest_seconds,
 				AVG((? - julianday(last_synced_at)) * 86400) as avg_seconds
 			FROM torrent_files_sync_view
 			WHERE instance_id = ?

@@ -5,7 +5,9 @@ package models
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
@@ -130,7 +132,17 @@ func parseLogExclusionPatterns(patternsJSON string) []string {
 
 	var patterns []string
 	if err := json.Unmarshal([]byte(patternsJSON), &patterns); err != nil {
-		log.Warn().Err(err).Str("patterns_json", patternsJSON).Msg("Failed to parse log exclusion patterns")
+		sum := sha256.Sum256([]byte(patternsJSON))
+		patternsHash := hex.EncodeToString(sum[:])
+		if len(patternsHash) > 12 {
+			patternsHash = patternsHash[:12]
+		}
+
+		log.Warn().
+			Err(err).
+			Int("patterns_json_len", len(patternsJSON)).
+			Str("patterns_json_sha256", patternsHash).
+			Msg("Failed to parse log exclusion patterns")
 		return []string{}
 	}
 	return patterns

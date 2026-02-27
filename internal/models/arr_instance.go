@@ -512,6 +512,10 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 
 // Update updates an existing ARR instance
 func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstanceUpdateParams) (*ArrInstance, error) {
+	if params == nil {
+		return nil, errors.New("params cannot be nil")
+	}
+
 	existing, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
