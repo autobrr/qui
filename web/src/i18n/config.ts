@@ -14,6 +14,13 @@ type LanguageOptionKey =
   | "languageSwitcher.option.fr"
   | "languageSwitcher.option.ko"
 
+export interface LanguageOption {
+  code: AppLanguage
+  labelKey: LanguageOptionKey
+  nativeName: string
+  locale: string
+}
+
 const languageAliases: Record<string, AppLanguage> = {
   en: "en",
   "en-us": "en",
@@ -38,18 +45,15 @@ const languageAliases: Record<string, AppLanguage> = {
   "ko-kr": "ko",
 }
 
-export const languageOptions: ReadonlyArray<{
-  code: AppLanguage
-  labelKey: LanguageOptionKey
-}> = [
-  { code: "en", labelKey: "languageSwitcher.option.en" },
-  { code: "zh-CN", labelKey: "languageSwitcher.option.zhCN" },
-  { code: "ja", labelKey: "languageSwitcher.option.ja" },
-  { code: "pt-BR", labelKey: "languageSwitcher.option.ptBR" },
-  { code: "de", labelKey: "languageSwitcher.option.de" },
-  { code: "es-419", labelKey: "languageSwitcher.option.es419" },
-  { code: "fr", labelKey: "languageSwitcher.option.fr" },
-  { code: "ko", labelKey: "languageSwitcher.option.ko" },
+export const languageOptions: ReadonlyArray<LanguageOption> = [
+  { code: "en", labelKey: "languageSwitcher.option.en", nativeName: "English", locale: "en" },
+  { code: "zh-CN", labelKey: "languageSwitcher.option.zhCN", nativeName: "简体中文", locale: "zh-CN" },
+  { code: "ja", labelKey: "languageSwitcher.option.ja", nativeName: "日本語", locale: "ja" },
+  { code: "pt-BR", labelKey: "languageSwitcher.option.ptBR", nativeName: "Português (Brasil)", locale: "pt-BR" },
+  { code: "de", labelKey: "languageSwitcher.option.de", nativeName: "Deutsch", locale: "de" },
+  { code: "es-419", labelKey: "languageSwitcher.option.es419", nativeName: "Español (Latinoamérica)", locale: "es-419" },
+  { code: "fr", labelKey: "languageSwitcher.option.fr", nativeName: "Français", locale: "fr" },
+  { code: "ko", labelKey: "languageSwitcher.option.ko", nativeName: "한국어", locale: "ko" },
 ]
 
 export function normalizeLanguage(language?: string | null): AppLanguage {

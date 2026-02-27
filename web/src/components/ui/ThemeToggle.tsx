@@ -14,16 +14,21 @@ import {
   type ThemeMode
 } from "@/utils/theme";
 import { themes, isThemePremium } from "@/config/themes";
-import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
+import { Sun, Moon, Monitor, Check, Palette, CornerDownRight, Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuLabel
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
@@ -82,6 +87,16 @@ export const ThemeToggle: React.FC = () => {
       return aIsPremium ? 1 : -1;
     });
   }, []);
+
+  const sortedLanguageOptions = useMemo(() => {
+    const collator = new Intl.Collator(activeLanguage, { sensitivity: "base", usage: "sort" });
+    return [...languageOptions].sort((a, b) => collator.compare(t(a.labelKey), t(b.labelKey)));
+  }, [activeLanguage, t]);
+
+  const activeLanguageOption = useMemo(
+    () => languageOptions.find(option => option.code === activeLanguage) ?? languageOptions[0],
+    [activeLanguage]
+  );
 
   const previewColorsCache = useMemo(() => new Map<string, {
     primary: string;
@@ -180,8 +195,12 @@ export const ThemeToggle: React.FC = () => {
   }, [canSwitchPremium, isError, t]);
 
   const handleLanguageSelect = useCallback(async (language: AppLanguage) => {
-    await i18n.changeLanguage(language)
-  }, [])
+    if (language === activeLanguage) {
+      return;
+    }
+    await i18n.changeLanguage(language);
+    setOpen(false);
+  }, [activeLanguage]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -228,17 +247,41 @@ export const ThemeToggle: React.FC = () => {
 
         <DropdownMenuSeparator />
 
-        <div className="px-2 py-1.5 text-sm font-medium">{t("languageSwitcher.menuLabel")}</div>
-        {languageOptions.map((languageOption) => (
-          <DropdownMenuItem
-            key={languageOption.code}
-            onClick={() => handleLanguageSelect(languageOption.code)}
-            className="flex items-center gap-2"
-          >
-            <span className="flex-1">{t(languageOption.labelKey)}</span>
-            {activeLanguage === languageOption.code && <Check className="h-4 w-4" />}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="flex items-center gap-2">
+            <Languages className="h-4 w-4" />
+            <span className="flex-1">{t("languageSwitcher.menuLabel")}</span>
+            <span
+              className="text-xs text-muted-foreground"
+              lang={activeLanguageOption.locale}
+            >
+              {activeLanguageOption.nativeName}
+            </span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-80">
+            <DropdownMenuLabel>{t("languageSwitcher.menuLabel")}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioGroup
+              value={activeLanguage}
+              onValueChange={(value: string) => {
+                void handleLanguageSelect(value as AppLanguage)
+              }}
+            >
+              {sortedLanguageOptions.map((languageOption) => (
+                <DropdownMenuRadioItem
+                  key={languageOption.code}
+                  value={languageOption.code}
+                  className="items-start"
+                >
+                  <div className="flex flex-1 flex-col leading-tight">
+                    <span lang={languageOption.locale}>{languageOption.nativeName}</span>
+                    <span className="text-xs text-muted-foreground">{t(languageOption.labelKey)}</span>
+                  </div>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
 
         <DropdownMenuSeparator />
 

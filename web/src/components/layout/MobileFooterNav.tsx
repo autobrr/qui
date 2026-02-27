@@ -16,6 +16,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
@@ -61,6 +63,7 @@ import {
   Home,
   Loader2,
   LogOut,
+  Languages,
   Monitor,
   Moon,
   Palette,
@@ -114,6 +117,14 @@ export function MobileFooterNav() {
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
   const activeLanguage = normalizeLanguage(i18n.resolvedLanguage || i18n.language)
+  const sortedLanguageOptions = useMemo(() => {
+    const collator = new Intl.Collator(activeLanguage, { sensitivity: "base", usage: "sort" })
+    return [...languageOptions].sort((a, b) => collator.compare(t(a.labelKey), t(b.labelKey)))
+  }, [activeLanguage, t])
+  const activeLanguageOption = useMemo(
+    () => languageOptions.find(option => option.code === activeLanguage) ?? languageOptions[0],
+    [activeLanguage]
+  )
 
   const { data: instances, isPending: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
@@ -238,8 +249,11 @@ export function MobileFooterNav() {
   }, [canSwitchPremium, isError, t])
 
   const handleLanguageSelect = useCallback(async (language: AppLanguage) => {
+    if (language === activeLanguage) {
+      return
+    }
     await i18n.changeLanguage(language)
-  }, [])
+  }, [activeLanguage])
 
   if (isSelectionMode) {
     return null
@@ -581,19 +595,32 @@ export function MobileFooterNav() {
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>{t("languageSwitcher.menuLabel")}</DropdownMenuLabel>
-            {languageOptions.map((languageOption) => (
-              <DropdownMenuCheckboxItem
-                key={`mobile-lang-${languageOption.code}`}
-                checked={activeLanguage === languageOption.code}
-                onSelect={(event) => {
-                  event.preventDefault()
-                  void handleLanguageSelect(languageOption.code)
-                }}
-              >
-                {t(languageOption.labelKey)}
-              </DropdownMenuCheckboxItem>
-            ))}
+            <DropdownMenuLabel className="flex items-center gap-2">
+              <Languages className="h-4 w-4" />
+              <span className="flex-1">{t("languageSwitcher.menuLabel")}</span>
+              <span className="text-xs text-muted-foreground" lang={activeLanguageOption.locale}>
+                {activeLanguageOption.nativeName}
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={activeLanguage}
+              onValueChange={(value: string) => {
+                void handleLanguageSelect(value as AppLanguage)
+              }}
+            >
+              {sortedLanguageOptions.map((languageOption) => (
+                <DropdownMenuRadioItem
+                  key={`mobile-lang-${languageOption.code}`}
+                  value={languageOption.code}
+                  className="items-start"
+                >
+                  <div className="flex flex-1 flex-col leading-tight">
+                    <span lang={languageOption.locale}>{languageOption.nativeName}</span>
+                    <span className="text-xs text-muted-foreground">{t(languageOption.labelKey)}</span>
+                  </div>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
 
             <DropdownMenuSeparator />
 
