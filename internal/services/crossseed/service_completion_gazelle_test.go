@@ -415,26 +415,16 @@ func TestExecuteCompletionSearch_NonGazelleSourceSkipsGazellePresearch(t *testin
 		Progress: 1.0,
 	}
 	syncMock := &completionGazelleSyncMock{torrent: src}
-
-	indexers := []*models.TorznabIndexer{
-		{
-			ID:             999,
-			Name:           "Test Indexer",
-			BaseURL:        "http://127.0.0.1:1",
-			Enabled:        true,
-			TimeoutSeconds: 1,
-			Backend:        models.TorznabBackendProwlarr,
-		},
-	}
+	const expectedTorznabErr = "expected torznab non-gazelle path"
 
 	svc := &Service{
 		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "main"}},
 		syncManager:    syncMock,
-		jackettService: newJackettServiceWithIndexers(indexers),
+		jackettService: newFailingJackettService(errors.New(expectedTorznabErr)),
 		releaseCache:   NewReleaseCache(),
 	}
 
-	_ = svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
+	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
 		GazelleEnabled:         true,
 		OrpheusAPIKey:          "ops-key",
 		FindIndividualEpisodes: true,
@@ -443,6 +433,12 @@ func TestExecuteCompletionSearch_NonGazelleSourceSkipsGazellePresearch(t *testin
 		Enabled:    true,
 		IndexerIDs: []int{999},
 	})
+	if err == nil {
+		t.Fatalf("expected torznab failure to verify non-gazelle completion path execution")
+	}
+	if !strings.Contains(err.Error(), expectedTorznabErr) {
+		t.Fatalf("expected torznab error %q, got: %v", expectedTorznabErr, err)
+	}
 
 	if syncMock.exportHits != 0 {
 		t.Fatalf("expected non-gazelle completion path to skip gazelle pre-search, got %d export attempts", syncMock.exportHits)
