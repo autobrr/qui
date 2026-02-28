@@ -27,11 +27,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import type { Category, Torrent } from "@/types"
+import type { Category, InstanceCapabilities, Torrent } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { cn } from "@/lib/utils"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface SetTagsDialogProps {
@@ -565,6 +567,8 @@ interface SetLocationDialogProps {
   onConfirm: (location: string) => void
   isPending?: boolean
   initialLocation?: string
+  instanceId?: number
+  capabilities?: InstanceCapabilities | null
 }
 
 export const SetLocationDialog = memo(function SetLocationDialog({
@@ -574,20 +578,40 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   onConfirm,
   isPending = false,
   initialLocation = "",
+  instanceId = 0,
+  capabilities,
 }: SetLocationDialogProps) {
   const [location, setLocation] = useState("")
   const wasOpen = useRef(false)
+
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
+
+  const {
+    suggestions,
+    handleInputChange: handleAutocompleteChange,
+    handleSelect,
+    handleKeyDown: handleAutocompleteKeyDown,
+    handleBlur: handleAutocompleteBlur,
+    highlightedIndex,
+    showSuggestions,
+    inputRef: autocompleteInputRef,
+  } = usePathAutocomplete(setLocation, instanceId)
+
   const inputRef = useRef<HTMLInputElement>(null)
+  const effectiveInputRef = supportsPathAutocomplete ? autocompleteInputRef : inputRef
 
   // Initialize location only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
       setLocation(initialLocation)
+      if (supportsPathAutocomplete) {
+        handleAutocompleteChange(initialLocation)
+      }
       // Focus the input when dialog opens
-      setTimeout(() => inputRef.current?.focus(), 0)
+      setTimeout(() => effectiveInputRef.current?.focus(), 0)
     }
     wasOpen.current = open
-  }, [open, initialLocation])
+  }, [open, initialLocation, supportsPathAutocomplete, handleAutocompleteChange, effectiveInputRef])
 
   const handleConfirm = useCallback(() => {
     if (location.trim()) {
@@ -602,11 +626,14 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   }, [onOpenChange])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !isPending && location.trim()) {
+    if (supportsPathAutocomplete) {
+      handleAutocompleteKeyDown(e)
+    }
+    if (e.key === "Enter" && !e.defaultPrevented && !isPending && location.trim()) {
       e.preventDefault()
       handleConfirm()
     }
-  }, [isPending, location, handleConfirm])
+  }, [isPending, location, handleConfirm, supportsPathAutocomplete, handleAutocompleteKeyDown])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -621,15 +648,48 @@ export const SetLocationDialog = memo(function SetLocationDialog({
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
             <Input
-              ref={inputRef}
+              ref={effectiveInputRef}
               id="location"
               type="text"
+              autoComplete="off"
+              spellCheck={false}
               value={location}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setLocation(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                setLocation(e.target.value)
+                if (supportsPathAutocomplete) {
+                  handleAutocompleteChange(e.target.value)
+                }
+              }}
               onKeyDown={handleKeyDown}
+              onBlur={supportsPathAutocomplete ? handleAutocompleteBlur : undefined}
               placeholder="/path/to/save/location"
               disabled={isPending}
             />
+            {supportsPathAutocomplete && showSuggestions && suggestions.length > 0 && (
+              <div className="relative">
+                <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                  <div className="max-h-55 overflow-y-auto py-1">
+                    {suggestions.map((entry, idx) => (
+                      <button
+                        key={entry}
+                        type="button"
+                        title={entry}
+                        className={cn(
+                          "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                          highlightedIndex === idx
+                            ? "bg-accent text-accent-foreground"
+                            : "hover:bg-accent/70",
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSelect(entry)}
+                      >
+                        <span className="block truncate text-left">{entry}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
