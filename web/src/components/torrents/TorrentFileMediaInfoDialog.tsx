@@ -147,9 +147,6 @@ export function TorrentFileMediaInfoDialog({
                           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                             {label}
                           </h3>
-                          <span className="text-[10px] text-muted-foreground">
-                            {fields.length} field{fields.length !== 1 ? "s" : ""}
-                          </span>
                         </div>
 
                         {fields.length === 0 ? (
