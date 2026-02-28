@@ -5,11 +5,10 @@
 
 import { createFileRoute } from "@tanstack/react-router"
 import { Dashboard } from "@/pages/Dashboard"
-import i18n from "@/i18n"
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
   staticData: {
-    title: i18n.t("nav.dashboard"),
+    titleKey: "nav.dashboard",
   },
 })

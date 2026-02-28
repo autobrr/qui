@@ -4,7 +4,6 @@
  */
 
 import { Badge } from "@/components/ui/badge"
-import i18n from "@/i18n"
 
 /**
  * Check if a tracker URL is a valid HTTP/HTTPS URL.
@@ -22,10 +21,10 @@ export function isValidTrackerUrl(url: string): boolean {
 /**
  * Get a status badge for a tracker based on its status code.
  * @param status - The tracker status code (0-4)
+ * @param tr - Translation function from useTranslation
  * @param compact - Whether to use compact styling (for tables)
  */
-export function getTrackerStatusBadge(status: number, compact = false) {
-  const tr = (key: string) => String(i18n.t(key as never))
+export function getTrackerStatusBadge(status: number, tr: (key: string) => string, compact = false) {
   const compactClass = compact ? "text-[10px] px-1.5 py-0" : ""
   const workingClass = compact ? `${compactClass} bg-green-500` : ""
 

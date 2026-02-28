@@ -1172,7 +1172,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                                     <div className="flex-1 space-y-1">
                                       <div className="flex items-center gap-2">
-                                        {getTrackerStatusBadge(tracker.status)}
+                                        {getTrackerStatusBadge(tracker.status, tr)}
                                       </div>
                                       <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
                                     </div>
