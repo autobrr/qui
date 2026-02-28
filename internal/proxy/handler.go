@@ -840,27 +840,8 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	hashesParam := queryParams.Get("hashes")
-	var hashes []string
-	var uniqueHashCount int
-	if hashesParam != "" && !strings.EqualFold(hashesParam, "all") {
-		hashSet := make(map[string]struct{})
-		for rawHash := range strings.SplitSeq(hashesParam, "|") {
-			trimmed := strings.TrimSpace(rawHash)
-			if trimmed == "" {
-				continue
-			}
-
-			normalized := strings.ToUpper(trimmed)
-			if _, exists := hashSet[normalized]; exists {
-				continue
-			}
-
-			hashSet[normalized] = struct{}{}
-			hashes = append(hashes, normalized)
-		}
-		uniqueHashCount = len(hashSet)
-	}
+	hashes := parseHashesQueryValues(queryParams)
+	uniqueHashCount := len(hashes)
 
 	// Build basic filter options (standard qBittorrent parameters only)
 	filters := qbittorrent.FilterOptions{}
