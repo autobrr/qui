@@ -77,6 +77,7 @@ func (s *staticInstanceStore) List(_ context.Context) ([]*models.Instance, error
 type completionGazelleSyncMock struct {
 	torrent         qbt.Torrent
 	getTorrentsHits int
+	exportHits      int
 }
 
 func (m *completionGazelleSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -101,6 +102,7 @@ func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ in
 }
 
 func (m *completionGazelleSyncMock) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	m.exportHits++
 	return nil, "", "", nil
 }
 
@@ -400,5 +402,49 @@ func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUnd
 	}
 	if !strings.Contains(err.Error(), fallbackErrMsg) {
 		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
+	}
+}
+
+func TestExecuteCompletionSearch_NonGazelleSourceSkipsGazellePresearch(t *testing.T) {
+	t.Parallel()
+
+	src := qbt.Torrent{
+		Hash:     "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+		Name:     "Formula.1.Drive.to.Survive.S08.1080p.ATVP.WEB-DL.DDP5.1.H.264-NTb",
+		Tracker:  "https://tracker.example/announce",
+		Progress: 1.0,
+	}
+	syncMock := &completionGazelleSyncMock{torrent: src}
+
+	indexers := []*models.TorznabIndexer{
+		{
+			ID:             999,
+			Name:           "Test Indexer",
+			BaseURL:        "http://127.0.0.1:1",
+			Enabled:        true,
+			TimeoutSeconds: 1,
+			Backend:        models.TorznabBackendProwlarr,
+		},
+	}
+
+	svc := &Service{
+		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "main"}},
+		syncManager:    syncMock,
+		jackettService: newJackettServiceWithIndexers(indexers),
+		releaseCache:   NewReleaseCache(),
+	}
+
+	_ = svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:         true,
+		OrpheusAPIKey:          "ops-key",
+		FindIndividualEpisodes: true,
+	}, &models.InstanceCrossSeedCompletionSettings{
+		InstanceID: 1,
+		Enabled:    true,
+		IndexerIDs: []int{999},
+	})
+
+	if syncMock.exportHits != 0 {
+		t.Fatalf("expected non-gazelle completion path to skip gazelle pre-search, got %d export attempts", syncMock.exportHits)
 	}
 }
