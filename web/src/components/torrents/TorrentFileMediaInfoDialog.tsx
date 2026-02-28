@@ -57,6 +57,26 @@ function formatSummary(data: TorrentFileMediaInfoResponse, streamLabels: string[
   return lines.join("\n").trimEnd()
 }
 
+function ErrorRetryBlock({
+  error,
+  onRetry,
+}: {
+  error: unknown
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex flex-col items-start gap-3 py-8">
+      <p className="text-sm text-muted-foreground">
+        {error instanceof Error ? error.message : "Failed to fetch MediaInfo"}
+      </p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RotateCw className="h-4 w-4 mr-2" />
+        Retry
+      </Button>
+    </div>
+  )
+}
+
 export function TorrentFileMediaInfoDialog({
   open,
   onOpenChange,
@@ -65,6 +85,13 @@ export function TorrentFileMediaInfoDialog({
   file,
 }: TorrentFileMediaInfoDialogProps) {
   const [tab, setTab] = useState<"summary" | "raw">("summary")
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setTab("summary")
+    }
+    onOpenChange(nextOpen)
+  }
 
   const query = useQuery({
     queryKey: ["torrent-file-mediainfo", instanceId, torrentHash, file?.index],
@@ -98,7 +125,7 @@ export function TorrentFileMediaInfoDialog({
   const copyText = tab === "summary" ? summaryText : (query.data?.rawJSON ?? "")
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg md:max-w-5xl max-h-[85vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>MediaInfo</DialogTitle>
@@ -138,15 +165,7 @@ export function TorrentFileMediaInfoDialog({
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : query.isError ? (
-                <div className="flex flex-col items-start gap-3 py-8">
-                  <p className="text-sm text-muted-foreground">
-                    {query.error instanceof Error ? query.error.message : "Failed to fetch MediaInfo"}
-                  </p>
-                  <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-                    <RotateCw className="h-4 w-4 mr-2" />
-                    Retry
-                  </Button>
-                </div>
+                <ErrorRetryBlock error={query.error} onRetry={() => void query.refetch()} />
               ) : query.data ? (
                 <div className="space-y-6">
                   {query.data.streams.map((stream, idx) => {
@@ -195,15 +214,7 @@ export function TorrentFileMediaInfoDialog({
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : query.isError ? (
-                <div className="flex flex-col items-start gap-3 py-8">
-                  <p className="text-sm text-muted-foreground">
-                    {query.error instanceof Error ? query.error.message : "Failed to fetch MediaInfo"}
-                  </p>
-                  <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-                    <RotateCw className="h-4 w-4 mr-2" />
-                    Retry
-                  </Button>
-                </div>
+                <ErrorRetryBlock error={query.error} onRetry={() => void query.refetch()} />
               ) : (
                 <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">
                   {prettyRawJSON}
