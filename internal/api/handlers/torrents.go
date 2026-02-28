@@ -2655,10 +2655,20 @@ func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candid
 }
 
 // filePathCandidates returns resolved absolute paths to try, preferring
-// contentPath, then savePath, then downloadPath.
+// real-time save/download paths before potentially stale cached contentPath.
 func filePathCandidates(savePath, downloadPath, contentPath, relativePath string, singleFile bool) []string {
 	var candidates []string
 	seen := make(map[string]struct{})
+	if savePath != "" {
+		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+	if downloadPath != "" {
+		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
 	if contentPath != "" {
 		cleanContentPath := filepath.Clean(filepath.FromSlash(contentPath))
 		if singleFile {
@@ -2668,16 +2678,6 @@ func filePathCandidates(savePath, downloadPath, contentPath, relativePath string
 				candidates = appendUniqueCandidate(candidates, seen, p)
 			}
 		} else if p, err := resolveTorrentFilePath(cleanContentPath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-	}
-	if savePath != "" {
-		if p, err := resolveTorrentFilePath(savePath, relativePath); err == nil {
-			candidates = appendUniqueCandidate(candidates, seen, p)
-		}
-	}
-	if downloadPath != "" {
-		if p, err := resolveTorrentFilePath(downloadPath, relativePath); err == nil {
 			candidates = appendUniqueCandidate(candidates, seen, p)
 		}
 	}
@@ -2824,5 +2824,26 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	w.Header().Set("Content-Disposition", disposition)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	// Fast path for full-file downloads: avoid ServeContent's small-copy behavior
+	// when middleware wrappers prevent optimized ReaderFrom/sendfile paths.
+	// Keep conditional GET handling on ServeContent to preserve 304/412 semantics.
+	if r.Method == http.MethodGet &&
+		r.Header.Get("Range") == "" &&
+		r.Header.Get("If-Range") == "" &&
+		r.Header.Get("If-Modified-Since") == "" &&
+		r.Header.Get("If-Unmodified-Since") == "" &&
+		r.Header.Get("If-Match") == "" &&
+		r.Header.Get("If-None-Match") == "" {
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = file.Seek(0, io.SeekStart)
+		_, _ = io.CopyBuffer(w, struct{ io.Reader }{file}, make([]byte, 1<<20))
+		return
+	}
+
 	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
