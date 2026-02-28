@@ -109,3 +109,21 @@ Notes:
 - `--dry-run` and `--apply` are mutually exclusive.
 - The command copies all runtime tables except migration history.
 - The output includes per-table row counts for SQLite and Postgres.
+
+### FAQ
+
+**Q: Why is `cross_seed_feed_items` row count lower in Postgres after migration?**
+
+This is expected when the SQLite file contains historical rows whose `indexer_id` no longer exists in `torznab_indexers`.
+Postgres enforces the foreign key strictly, so migration keeps only rows that still have valid parent records.
+
+You can verify this in SQLite:
+
+```sql
+SELECT COUNT(*) AS orphaned_rows
+FROM cross_seed_feed_items f
+LEFT JOIN torznab_indexers i ON i.id = f.indexer_id
+WHERE i.id IS NULL;
+```
+
+If `orphaned_rows` matches the migration delta (`sqlite_count - postgres_count`), migration behavior is working as intended.
