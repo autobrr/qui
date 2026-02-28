@@ -105,7 +105,7 @@ export function TorrentFileMediaInfoDialog({
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)} className="w-full">
-          <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-2 min-w-0 mb-4">
             <TabsList className="min-w-0">
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="raw">Raw JSON</TabsTrigger>
