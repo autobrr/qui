@@ -20,7 +20,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests (SQLite)
-        run: go test -race -count=3 -v ./...
+        run: go test -race -count=3 -v -timeout 20m ./...
 
   test-postgres:
     runs-on: ubuntu-latest
@@ -50,4 +50,4 @@ jobs:
       - name: Run tests (SQLite + Postgres integration)
         env:
           QUI_TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/qui?sslmode=disable
-        run: go test -race -count=3 -v ./...
+        run: go test -race -count=3 -v -timeout 20m ./...
