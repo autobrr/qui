@@ -29,6 +29,20 @@ func newMediaInfoRequest(t *testing.T, instanceID int, hash, fileIndex string) *
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
 }
 
+func testMakeMediaInfoHandler(t *testing.T, hasLocalAccess bool, resolver *mockContentResolver) (int, *mockContentResolver, *TorrentsHandler) {
+	t.Helper()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, hasLocalAccess)
+	if resolver == nil {
+		resolver = &mockContentResolver{}
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+	return instanceID, resolver, handler
+}
+
 func TestGetTorrentFileMediaInfo_ReturnsServerErrorWithoutInstanceStore(t *testing.T) {
 	t.Parallel()
 
@@ -57,12 +71,7 @@ func TestGetTorrentFileMediaInfo_RejectsInvalidFileIndex(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
-			resolver := &mockContentResolver{}
-			handler := &TorrentsHandler{
-				instanceStore:   instanceStore,
-				contentResolver: resolver,
-			}
+			instanceID, resolver, handler := testMakeMediaInfoHandler(t, true, nil)
 
 			rec := httptest.NewRecorder()
 			req := newMediaInfoRequest(t, instanceID, "hash123", tc.fileIndex)
@@ -79,12 +88,7 @@ func TestGetTorrentFileMediaInfo_RejectsInvalidFileIndex(t *testing.T) {
 func TestGetTorrentFileMediaInfo_ReturnsNotFoundForMissingInstance(t *testing.T) {
 	t.Parallel()
 
-	instanceStore, _ := createInstanceStoreWithInstance(t, true)
-	resolver := &mockContentResolver{}
-	handler := &TorrentsHandler{
-		instanceStore:   instanceStore,
-		contentResolver: resolver,
-	}
+	_, resolver, handler := testMakeMediaInfoHandler(t, true, nil)
 
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, 999999, "hash123", "0")
@@ -99,12 +103,7 @@ func TestGetTorrentFileMediaInfo_ReturnsNotFoundForMissingInstance(t *testing.T)
 func TestGetTorrentFileMediaInfo_ReturnsForbiddenWithoutLocalAccess(t *testing.T) {
 	t.Parallel()
 
-	instanceStore, instanceID := createInstanceStoreWithInstance(t, false)
-	resolver := &mockContentResolver{}
-	handler := &TorrentsHandler{
-		instanceStore:   instanceStore,
-		contentResolver: resolver,
-	}
+	instanceID, resolver, handler := testMakeMediaInfoHandler(t, false, nil)
 
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, instanceID, "hash123", "0")
@@ -119,15 +118,11 @@ func TestGetTorrentFileMediaInfo_ReturnsForbiddenWithoutLocalAccess(t *testing.T
 func TestGetTorrentFileMediaInfo_ReturnsNotFoundForUnknownFileIndex(t *testing.T) {
 	t.Parallel()
 
-	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
 	files := qbt.TorrentFiles{
 		{Index: 1, Name: "known.mkv"},
 	}
 	resolver := &mockContentResolver{files: &files}
-	handler := &TorrentsHandler{
-		instanceStore:   instanceStore,
-		contentResolver: resolver,
-	}
+	instanceID, resolver, handler := testMakeMediaInfoHandler(t, true, resolver)
 
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, instanceID, "hash123", "9")
@@ -143,7 +138,6 @@ func TestGetTorrentFileMediaInfo_ReturnsNotFoundForUnknownFileIndex(t *testing.T
 func TestGetTorrentFileMediaInfo_RejectsTraversalPaths(t *testing.T) {
 	t.Parallel()
 
-	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
 	files := qbt.TorrentFiles{
 		{Index: 5, Name: "../escape.txt"},
 	}
@@ -151,10 +145,7 @@ func TestGetTorrentFileMediaInfo_RejectsTraversalPaths(t *testing.T) {
 		files:      &files,
 		properties: &qbt.TorrentProperties{SavePath: "/downloads"},
 	}
-	handler := &TorrentsHandler{
-		instanceStore:   instanceStore,
-		contentResolver: resolver,
-	}
+	instanceID, _, handler := testMakeMediaInfoHandler(t, true, resolver)
 
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, instanceID, "hash123", "5")
@@ -168,7 +159,6 @@ func TestGetTorrentFileMediaInfo_RejectsTraversalPaths(t *testing.T) {
 func TestGetTorrentFileMediaInfo_ReturnsNotFoundWhenFileMissingOnDisk(t *testing.T) {
 	t.Parallel()
 
-	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
 	files := qbt.TorrentFiles{
 		{Index: 2, Name: "movie.bin"},
 	}
@@ -176,10 +166,7 @@ func TestGetTorrentFileMediaInfo_ReturnsNotFoundWhenFileMissingOnDisk(t *testing
 		files:      &files,
 		properties: &qbt.TorrentProperties{SavePath: t.TempDir()},
 	}
-	handler := &TorrentsHandler{
-		instanceStore:   instanceStore,
-		contentResolver: resolver,
-	}
+	instanceID, _, handler := testMakeMediaInfoHandler(t, true, resolver)
 
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, instanceID, "hash123", "2")
@@ -193,7 +180,6 @@ func TestGetTorrentFileMediaInfo_ReturnsNotFoundWhenFileMissingOnDisk(t *testing
 func TestGetTorrentFileMediaInfo_ReturnsReport(t *testing.T) {
 	t.Parallel()
 
-	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
 	baseDir := t.TempDir()
 	relativePath := "folder/file.bin"
 	fullPath := filepath.Join(baseDir, relativePath)
@@ -205,10 +191,7 @@ func TestGetTorrentFileMediaInfo_ReturnsReport(t *testing.T) {
 		files:      &files,
 		properties: &qbt.TorrentProperties{SavePath: baseDir},
 	}
-	handler := &TorrentsHandler{
-		instanceStore:   instanceStore,
-		contentResolver: resolver,
-	}
+	instanceID, _, handler := testMakeMediaInfoHandler(t, true, resolver)
 
 	rec := httptest.NewRecorder()
 	req := newMediaInfoRequest(t, instanceID, "hash123", "3")

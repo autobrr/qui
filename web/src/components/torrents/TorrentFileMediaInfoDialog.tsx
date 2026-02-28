@@ -51,7 +51,7 @@ export function TorrentFileMediaInfoDialog({
   const query = useQuery({
     queryKey: ["torrent-file-mediainfo", instanceId, torrentHash, file?.index],
     queryFn: () => api.getTorrentFileMediaInfo(instanceId, torrentHash, file!.index),
-    enabled: open && !!file,
+    enabled: open && !!file && !!torrentHash,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
   })

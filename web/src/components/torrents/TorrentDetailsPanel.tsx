@@ -664,16 +664,20 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const [showMediaInfoDialog, setShowMediaInfoDialog] = useState(false)
   const [mediaInfoFile, setMediaInfoFile] = useState<TorrentFile | null>(null)
+  const [mediaInfoTorrentHash, setMediaInfoTorrentHash] = useState<string | null>(null)
 
   const handleShowMediaInfo = useCallback((file: TorrentFile) => {
+    if (!torrent) return
     setMediaInfoFile(file)
+    setMediaInfoTorrentHash(torrent.hash)
     setShowMediaInfoDialog(true)
-  }, [])
+  }, [torrent])
 
   const handleMediaInfoDialogOpenChange = useCallback((open: boolean) => {
     setShowMediaInfoDialog(open)
     if (!open) {
       setMediaInfoFile(null)
+      setMediaInfoTorrentHash(null)
     }
   }, [])
 
@@ -2071,7 +2075,7 @@ tracker.example.com:8080
         open={showMediaInfoDialog}
         onOpenChange={handleMediaInfoDialogOpenChange}
         instanceId={instanceId}
-        torrentHash={torrent.hash}
+        torrentHash={mediaInfoTorrentHash ?? ""}
         file={mediaInfoFile}
       />
     </div>
