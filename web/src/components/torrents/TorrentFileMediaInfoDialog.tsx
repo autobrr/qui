@@ -47,7 +47,7 @@ function formatSummary(data: TorrentFileMediaInfoResponse, streamLabels: string[
   data.streams.forEach((stream, idx) => {
     const label = streamLabels[idx] ?? stream.kind
     const fields = stream.fields.filter((field) => field.value.trim() !== "")
-    lines.push(`[${label}]`)
+    lines.push(label)
     for (const field of fields) {
       lines.push(`${field.name}: ${field.value}`)
     }
