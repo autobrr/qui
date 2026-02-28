@@ -777,7 +777,7 @@ func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions
 		legacyStatusFilters,
 	)
 	excludeStatusFilters := mergeUniqueStringSlices(
-		normalizeStatusFilters(parseCSVQueryValues(queryParams, "excludeStatus")),
+		normalizeStatusFilters(parseCSVQueryValues(queryParams, "excludeStatus", "excludestatus")),
 		legacyExcludeStatusFilters,
 	)
 
@@ -786,11 +786,11 @@ func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions
 		Status:            statusFilters,
 		ExcludeStatus:     excludeStatusFilters,
 		Categories:        parseCSVQueryValues(queryParams, "category", "categories"),
-		ExcludeCategories: parseCSVQueryValues(queryParams, "excludeCategories"),
+		ExcludeCategories: parseCSVQueryValues(queryParams, "excludeCategories", "excludecategories"),
 		Tags:              parseCSVQueryValues(queryParams, "tag", "tags"),
-		ExcludeTags:       parseCSVQueryValues(queryParams, "excludeTags"),
+		ExcludeTags:       parseCSVQueryValues(queryParams, "excludeTags", "excludetags"),
 		Trackers:          parseCSVQueryValues(queryParams, "trackers"),
-		ExcludeTrackers:   parseCSVQueryValues(queryParams, "excludeTrackers"),
+		ExcludeTrackers:   parseCSVQueryValues(queryParams, "excludeTrackers", "excludetrackers"),
 		Expr:              strings.TrimSpace(queryParams.Get("expr")),
 	}
 
