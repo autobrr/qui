@@ -77,6 +77,34 @@ function ErrorRetryBlock({
   )
 }
 
+function QueryStateWrapper({
+  isLoading,
+  isError,
+  error,
+  onRetry,
+  children,
+}: {
+  isLoading: boolean
+  isError: boolean
+  error: unknown
+  onRetry: () => void
+  children: React.ReactNode
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return <ErrorRetryBlock error={error} onRetry={onRetry} />
+  }
+
+  return children
+}
+
 export function TorrentFileMediaInfoDialog({
   open,
   onOpenChange,
@@ -123,6 +151,7 @@ export function TorrentFileMediaInfoDialog({
 
   const copyLabel = tab === "summary" ? "Copy Summary" : "Copy JSON"
   const copyText = tab === "summary" ? summaryText : prettyRawJSON
+  const canCopy = !!copyText && !query.isLoading && !query.isError && !query.isFetching
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -143,7 +172,7 @@ export function TorrentFileMediaInfoDialog({
               variant="outline"
               size="sm"
               onClick={async () => {
-                if (!copyText) return
+                if (!canCopy) return
                 try {
                   await copyTextToClipboard(copyText)
                   toast.success(`${copyLabel} copied to clipboard`)
@@ -151,7 +180,7 @@ export function TorrentFileMediaInfoDialog({
                   toast.error("Failed to copy to clipboard")
                 }
               }}
-              disabled={!copyText}
+              disabled={!canCopy}
             >
               <Copy className="h-4 w-4 mr-2" />
               {copyLabel}
@@ -160,66 +189,66 @@ export function TorrentFileMediaInfoDialog({
 
           <TabsContent value="summary" className="m-0">
             <ScrollArea className="h-[65vh] pr-4">
-              {query.isLoading ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                </div>
-              ) : query.isError ? (
-                <ErrorRetryBlock error={query.error} onRetry={() => void query.refetch()} />
-              ) : query.data ? (
-                <div className="space-y-6">
-                  {query.data.streams.map((stream, idx) => {
-                    const label = streamLabels[idx] ?? stream.kind
-                    const fields = stream.fields.filter((field) => field.value.trim() !== "")
+              <QueryStateWrapper
+                isLoading={query.isLoading}
+                isError={query.isError}
+                error={query.error}
+                onRetry={() => void query.refetch()}
+              >
+                {query.data ? (
+                  <div className="space-y-6">
+                    {query.data.streams.map((stream, idx) => {
+                      const label = streamLabels[idx] ?? stream.kind
+                      const fields = stream.fields.filter((field) => field.value.trim() !== "")
 
-                    return (
-                      <section key={`${stream.kind}-${idx}`} className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            {label}
-                          </h3>
-                        </div>
-
-                        {fields.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No fields</p>
-                        ) : (
-                          <div className="grid grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1">
-                            {fields.map((field, fieldIdx) => (
-                              <div
-                                key={`${field.name}-${fieldIdx}`}
-                                className="contents"
-                              >
-                                <div className="text-xs text-muted-foreground">
-                                  {field.name}
-                                </div>
-                                <div className="text-xs break-words">
-                                  {field.value}
-                                </div>
-                              </div>
-                            ))}
+                      return (
+                        <section key={`${stream.kind}-${idx}`} className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              {label}
+                            </h3>
                           </div>
-                        )}
-                      </section>
-                    )
-                  })}
-                </div>
-              ) : null}
+
+                          {fields.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No fields</p>
+                          ) : (
+                            <div className="grid grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1">
+                              {fields.map((field, fieldIdx) => (
+                                <div
+                                  key={`${field.name}-${fieldIdx}`}
+                                  className="contents"
+                                >
+                                  <div className="text-xs text-muted-foreground">
+                                    {field.name}
+                                  </div>
+                                  <div className="text-xs break-words">
+                                    {field.value}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </QueryStateWrapper>
             </ScrollArea>
           </TabsContent>
 
           <TabsContent value="raw" className="m-0">
             <ScrollArea className="h-[65vh] pr-4">
-              {query.isLoading ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                </div>
-              ) : query.isError ? (
-                <ErrorRetryBlock error={query.error} onRetry={() => void query.refetch()} />
-              ) : (
+              <QueryStateWrapper
+                isLoading={query.isLoading}
+                isError={query.isError}
+                error={query.error}
+                onRetry={() => void query.refetch()}
+              >
                 <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">
                   {prettyRawJSON}
                 </pre>
-              )}
+              </QueryStateWrapper>
             </ScrollArea>
           </TabsContent>
         </Tabs>
