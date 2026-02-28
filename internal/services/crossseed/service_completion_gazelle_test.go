@@ -410,7 +410,7 @@ func TestExecuteCompletionSearch_NonGazelleSourceSkipsGazellePresearch(t *testin
 
 	src := qbt.Torrent{
 		Hash:     "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-		Name:     "Formula.1.Drive.to.Survive.S08.1080p.ATVP.WEB-DL.DDP5.1.H.264-NTb",
+		Name:     "Velocity.Circuit.Chronicles.S03.1080p.WEB-DL.DDP5.1.H.264-TESTGRP",
 		Tracker:  "https://tracker.example/announce",
 		Progress: 1.0,
 	}
