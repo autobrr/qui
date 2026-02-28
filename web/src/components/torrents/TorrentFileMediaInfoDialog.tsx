@@ -99,7 +99,7 @@ export function TorrentFileMediaInfoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg md:max-w-3xl max-h-[85vh] overflow-hidden">
+      <DialogContent className="sm:max-w-lg md:max-w-5xl max-h-[85vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>MediaInfo</DialogTitle>
         </DialogHeader>
