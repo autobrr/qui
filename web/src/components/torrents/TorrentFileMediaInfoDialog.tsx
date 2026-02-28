@@ -122,7 +122,7 @@ export function TorrentFileMediaInfoDialog({
   }, [query.data?.rawJSON])
 
   const copyLabel = tab === "summary" ? "Copy Summary" : "Copy JSON"
-  const copyText = tab === "summary" ? summaryText : (query.data?.rawJSON ?? "")
+  const copyText = tab === "summary" ? summaryText : prettyRawJSON
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
