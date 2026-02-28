@@ -4,7 +4,7 @@
  */
 
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
@@ -12,7 +12,7 @@ import { copyTextToClipboard } from "@/lib/utils"
 import type { TorrentFile, TorrentFileMediaInfoResponse } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2, RotateCw } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TorrentFileMediaInfoDialogProps {
@@ -64,6 +64,8 @@ export function TorrentFileMediaInfoDialog({
   torrentHash,
   file,
 }: TorrentFileMediaInfoDialogProps) {
+  const [tab, setTab] = useState<"summary" | "raw">("summary")
+
   const query = useQuery({
     queryKey: ["torrent-file-mediainfo", instanceId, torrentHash, file?.index],
     queryFn: () => api.getTorrentFileMediaInfo(instanceId, torrentHash, file!.index),
@@ -82,42 +84,54 @@ export function TorrentFileMediaInfoDialog({
     return formatSummary(query.data, streamLabels)
   }, [query.data, streamLabels])
 
+  const prettyRawJSON = useMemo(() => {
+    const raw = query.data?.rawJSON
+    if (!raw) return ""
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2)
+    } catch {
+      return raw
+    }
+  }, [query.data?.rawJSON])
+
+  const copyLabel = tab === "summary" ? "Copy Summary" : "Copy JSON"
+  const copyText = tab === "summary" ? summaryText : (query.data?.rawJSON ?? "")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg md:max-w-3xl max-h-[85vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>MediaInfo</DialogTitle>
-          <DialogDescription className="font-mono text-xs break-all">
-            {query.data?.relativePath ?? file?.name ?? ""}
-          </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="summary" className="w-full">
-          <TabsList>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="raw">Raw JSON</TabsTrigger>
-          </TabsList>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)} className="w-full">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <TabsList className="min-w-0">
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+              <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+            </TabsList>
+
+            <Button
+              className="shrink-0"
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if (!copyText) return
+                try {
+                  await copyTextToClipboard(copyText)
+                  toast.success(`${copyLabel} copied to clipboard`)
+                } catch {
+                  toast.error("Failed to copy to clipboard")
+                }
+              }}
+              disabled={!copyText}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              {copyLabel}
+            </Button>
+          </div>
 
           <TabsContent value="summary" className="m-0">
-            <div className="flex items-center justify-end gap-2 mb-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (!summaryText) return
-                  try {
-                    await copyTextToClipboard(summaryText)
-                    toast.success("Summary copied to clipboard")
-                  } catch {
-                    toast.error("Failed to copy to clipboard")
-                  }
-                }}
-                disabled={!summaryText}
-              >
-                <Copy className="h-4 w-4 mr-2" />
-                Copy Summary
-              </Button>
-            </div>
             <ScrollArea className="h-[65vh] pr-4">
               {query.isLoading ? (
                 <div className="flex items-center justify-center py-16">
@@ -175,27 +189,6 @@ export function TorrentFileMediaInfoDialog({
           </TabsContent>
 
           <TabsContent value="raw" className="m-0">
-            <div className="flex items-center justify-end gap-2 mb-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const raw = query.data?.rawJSON
-                  if (!raw) return
-                  try {
-                    await copyTextToClipboard(raw)
-                    toast.success("Raw JSON copied to clipboard")
-                  } catch {
-                    toast.error("Failed to copy to clipboard")
-                  }
-                }}
-                disabled={!query.data?.rawJSON}
-              >
-                <Copy className="h-4 w-4 mr-2" />
-                Copy JSON
-              </Button>
-            </div>
-
             <ScrollArea className="h-[65vh] pr-4">
               {query.isLoading ? (
                 <div className="flex items-center justify-center py-16">
@@ -212,8 +205,8 @@ export function TorrentFileMediaInfoDialog({
                   </Button>
                 </div>
               ) : (
-                <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-words">
-                  {query.data?.rawJSON ?? ""}
+                <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">
+                  {prettyRawJSON}
                 </pre>
               )}
             </ScrollArea>
