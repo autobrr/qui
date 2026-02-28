@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -72,13 +73,11 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 	}
 
 	for _, baseCase := range baseCases {
-
 		t.Run(baseCase.name, func(t *testing.T) {
 			h := NewHandler(nil, nil, nil, nil, nil, nil, baseCase.baseURL)
 			require.NotNil(t, h)
 
 			for _, tc := range instanceCases {
-
 				t.Run(tc.name, func(t *testing.T) {
 					req := httptest.NewRequest("GET", baseCase.requestPath, nil)
 
@@ -223,4 +222,85 @@ func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
 	require.NotNil(t, resp)
 	require.True(t, selectedCalled.Load(), "expected instance transport to be used")
 	require.NoError(t, resp.Body.Close())
+}
+
+func TestParseCSVQueryValues(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("filter", "unregistered, tracker_down")
+	queryParams.Add("filter", "downloading")
+	queryParams.Add("filter", "tracker_down")
+	queryParams.Add("filter", "")
+
+	parsed := parseCSVQueryValues(queryParams, "filter")
+	require.True(t, slices.Equal([]string{"unregistered", "tracker_down", "downloading"}, parsed))
+}
+
+func TestParseCSVQueryValues_PreservesCategoryCasing(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("category", "TV, Movies")
+	queryParams.Add("category", "Movies")
+
+	parsed := parseCSVQueryValues(queryParams, "category")
+	require.True(t, slices.Equal([]string{"TV", "Movies"}, parsed))
+}
+
+func TestSplitStatusFilters(t *testing.T) {
+	t.Helper()
+
+	status, excludeStatus := splitStatusFilters([]string{"Unregistered", "downloading", "tracker_down", "active", "TRACKER_DOWN", "active"})
+	require.True(t, slices.Equal([]string{"downloading", "active"}, status))
+	require.True(t, slices.Equal([]string{"unregistered", "tracker_down"}, excludeStatus))
+}
+
+func TestParseHashesQueryValues(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("hashes", "abc|def, ghi")
+	queryParams.Add("hashes", "all")
+	queryParams.Add("hashes", "DEF|jkl")
+
+	hashes := parseHashesQueryValues(queryParams)
+	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI", "JKL"}, hashes))
+}
+
+func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("status", "active, downloading")
+	queryParams.Add("excludeStatus", "paused")
+	queryParams.Add("excludestatus", "stalledDL")
+	queryParams.Add("filter", "unregistered,tracker_down,seeding")
+	queryParams.Add("category", "Anime")
+	queryParams.Add("categories", "TV, Movies")
+	queryParams.Add("excludeCategories", "archive")
+	queryParams.Add("excludecategories", "temp")
+	queryParams.Add("tag", "manual")
+	queryParams.Add("tags", "autobrr")
+	queryParams.Add("excludeTags", "skip")
+	queryParams.Add("excludetags", "hold")
+	queryParams.Add("trackers", "tracker-a,tracker-b")
+	queryParams.Add("excludeTrackers", "tracker-c")
+	queryParams.Add("excludetrackers", "tracker-d")
+	queryParams.Add("hashes", "abc|def")
+	queryParams.Add("hashes", "DEF|ghi")
+	queryParams.Set("expr", " ratio > 1 ")
+
+	filters := buildTorrentSearchFilters(queryParams)
+
+	require.True(t, slices.Equal([]string{"active", "downloading", "seeding"}, filters.Status))
+	require.True(t, slices.Equal([]string{"paused", "stalleddl", "unregistered", "tracker_down"}, filters.ExcludeStatus))
+	require.True(t, slices.Equal([]string{"Anime", "TV", "Movies"}, filters.Categories))
+	require.True(t, slices.Equal([]string{"archive", "temp"}, filters.ExcludeCategories))
+	require.True(t, slices.Equal([]string{"manual", "autobrr"}, filters.Tags))
+	require.True(t, slices.Equal([]string{"skip", "hold"}, filters.ExcludeTags))
+	require.True(t, slices.Equal([]string{"tracker-a", "tracker-b"}, filters.Trackers))
+	require.True(t, slices.Equal([]string{"tracker-c", "tracker-d"}, filters.ExcludeTrackers))
+	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI"}, filters.Hashes))
+	require.Equal(t, "ratio > 1", filters.Expr)
 }
