@@ -107,6 +107,18 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxSize", 50)
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("databaseEngine", "sqlite")
+	c.viper.SetDefault("databaseDsn", "")
+	c.viper.SetDefault("databaseHost", "localhost")
+	c.viper.SetDefault("databasePort", 5432)
+	c.viper.SetDefault("databaseUser", "")
+	c.viper.SetDefault("databasePassword", "")
+	c.viper.SetDefault("databaseName", "qui")
+	c.viper.SetDefault("databaseSSLMode", "disable")
+	c.viper.SetDefault("databaseConnectTimeout", 10)
+	c.viper.SetDefault("databaseMaxOpenConns", 25)
+	c.viper.SetDefault("databaseMaxIdleConns", 5)
+	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
@@ -197,6 +209,18 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("databaseEngine", envPrefix+"DATABASE_ENGINE")
+	c.bindOrReadFromFile("databaseDsn", envPrefix+"DATABASE_DSN")
+	c.viper.BindEnv("databaseHost", envPrefix+"DATABASE_HOST")
+	c.viper.BindEnv("databasePort", envPrefix+"DATABASE_PORT")
+	c.viper.BindEnv("databaseUser", envPrefix+"DATABASE_USER")
+	c.bindOrReadFromFile("databasePassword", envPrefix+"DATABASE_PASSWORD")
+	c.viper.BindEnv("databaseName", envPrefix+"DATABASE_NAME")
+	c.viper.BindEnv("databaseSSLMode", envPrefix+"DATABASE_SSL_MODE")
+	c.viper.BindEnv("databaseConnectTimeout", envPrefix+"DATABASE_CONNECT_TIMEOUT")
+	c.viper.BindEnv("databaseMaxOpenConns", envPrefix+"DATABASE_MAX_OPEN_CONNS")
+	c.viper.BindEnv("databaseMaxIdleConns", envPrefix+"DATABASE_MAX_IDLE_CONNS")
+	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
@@ -291,6 +315,18 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
 
 	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.DatabaseEngine = c.viper.GetString("databaseEngine")
+	c.Config.DatabaseDSN = c.viper.GetString("databaseDsn")
+	c.Config.DatabaseHost = c.viper.GetString("databaseHost")
+	c.Config.DatabasePort = c.viper.GetInt("databasePort")
+	c.Config.DatabaseUser = c.viper.GetString("databaseUser")
+	c.Config.DatabasePassword = c.viper.GetString("databasePassword")
+	c.Config.DatabaseName = c.viper.GetString("databaseName")
+	c.Config.DatabaseSSLMode = c.viper.GetString("databaseSSLMode")
+	c.Config.DatabaseConnectTimeout = c.viper.GetInt("databaseConnectTimeout")
+	c.Config.DatabaseMaxOpenConns = c.viper.GetInt("databaseMaxOpenConns")
+	c.Config.DatabaseMaxIdleConns = c.viper.GetInt("databaseMaxIdleConns")
+	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
@@ -441,6 +477,24 @@ sessionSecret = "{{ .sessionSecret }}"
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Database engine
+# Options: "sqlite" (default), "postgres"
+#databaseEngine = "sqlite"
+
+# Postgres connection settings (used when databaseEngine = "postgres")
+# Preferred: provide a DSN and ignore host/user/password fields.
+#databaseDsn = "postgres://user:password@localhost:5432/qui?sslmode=disable"
+#databaseHost = "localhost"
+#databasePort = 5432
+#databaseUser = ""
+#databasePassword = ""
+#databaseName = "qui"
+#databaseSSLMode = "disable"
+#databaseConnectTimeout = 10
+#databaseMaxOpenConns = 25
+#databaseMaxIdleConns = 5
+#databaseConnMaxLifetime = 300
 
 # Check for new releases via api.autobrr.com
 # Default: true

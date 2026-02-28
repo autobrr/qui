@@ -950,9 +950,11 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 			torrents_failed, torrents_skipped, message,
 			error_message, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := s.db.ExecContext(ctx, query,
+	var runID int64
+	err = s.db.QueryRowContext(ctx, query,
 		run.TriggeredBy,
 		run.Mode,
 		run.Status,
@@ -965,14 +967,9 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		run.Message,
 		run.ErrorMessage,
 		resultsJSON,
-	)
+	).Scan(&runID)
 	if err != nil {
 		return nil, fmt.Errorf("insert run: %w", err)
-	}
-
-	runID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get inserted run id: %w", err)
 	}
 
 	// Prune old runs, keeping only the 10 most recent
@@ -1144,9 +1141,11 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 			error_message, filters_json, indexer_ids_json, interval_seconds,
 			cooldown_minutes, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := s.db.ExecContext(ctx, query,
+	var insertedID int64
+	err = s.db.QueryRowContext(ctx, query,
 		run.InstanceID,
 		run.Status,
 		run.StartedAt,
@@ -1162,14 +1161,9 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 		run.IntervalSeconds,
 		run.CooldownMinutes,
 		resultsJSON,
-	)
+	).Scan(&insertedID)
 	if err != nil {
 		return nil, fmt.Errorf("insert search run: %w", err)
-	}
-
-	insertedID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get inserted search run id: %w", err)
 	}
 
 	// Prune old runs for this instance, keeping only the 10 most recent

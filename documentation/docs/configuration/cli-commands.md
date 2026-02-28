@@ -74,3 +74,56 @@ Keep your qui installation up-to-date:
 # Specify data directory for database and other data files
 ./qui serve --data-dir /path/to/data/
 ```
+
+## Database Migration
+
+Offline SQLite to Postgres migration:
+
+```bash
+# 0) Stop qui first (no writes during migration)
+#    (example) docker compose stop qui
+
+# 1) Optional: backup the SQLite file
+cp /path/to/qui.db /path/to/qui.db.bak
+
+# 2) Validate source + destination without importing rows
+./qui db migrate \
+  --from-sqlite /path/to/qui.db \
+  --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
+  --dry-run
+
+# 3) Apply migration (schema bootstrap + table copy + identity reset)
+./qui db migrate \
+  --from-sqlite /path/to/qui.db \
+  --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
+  --apply
+
+# 4) Point qui at Postgres and start it again
+#    - config.toml: databaseEngine=postgres + databaseDsn=...
+#    - or env: QUI__DATABASE_ENGINE=postgres + QUI__DATABASE_DSN=...
+```
+
+Notes:
+
+- Run this while qui is stopped.
+- `--dry-run` and `--apply` are mutually exclusive.
+- The command copies all runtime tables except migration history.
+- The output includes per-table row counts for SQLite and Postgres.
+
+### FAQ
+
+**Q: Why is `cross_seed_feed_items` row count lower in Postgres after migration?**
+
+This is expected when the SQLite file contains historical rows whose `indexer_id` no longer exists in `torznab_indexers`.
+Postgres enforces the foreign key strictly, so migration keeps only rows that still have valid parent records.
+
+You can verify this in SQLite:
+
+```sql
+SELECT COUNT(*) AS orphaned_rows
+FROM cross_seed_feed_items f
+LEFT JOIN torznab_indexers i ON i.id = f.indexer_id
+WHERE i.id IS NULL;
+```
+
+If `orphaned_rows` matches the migration delta (`sqlite_count - postgres_count`), migration behavior is working as intended.

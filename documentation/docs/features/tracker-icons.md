@@ -6,7 +6,7 @@ description: Automatic favicon caching for tracker hosts.
 
 # Tracker Icons
 
-Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as 16×16 PNGs; anything larger than 1024×1024 is rejected.
+Cached icons live in your data directory under `tracker-icons/`. With the default SQLite engine this is next to `qui.db`; with Postgres it's still in the same data directory. Icons are stored as 16×16 PNGs; anything larger than 1024×1024 is rejected.
 
 qui automatically downloads a favicon the first time it encounters a tracker host and caches it for future sessions. Failed downloads are retried automatically.
 

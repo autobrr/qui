@@ -100,7 +100,7 @@ clean: themes-clean
 # Run tests
 test:
 	@echo "Running tests..."
-	go test -race -count=3 -v ./...
+	go test -race -v ./...
 
 # Validate OpenAPI specification
 test-openapi:
