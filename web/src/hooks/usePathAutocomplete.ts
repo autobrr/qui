@@ -68,9 +68,10 @@ export function usePathAutocomplete(
 
   const selectSuggestion = useCallback(
     (entry: string) => {
-      setInputValue(entry);
-      onSuggestionSelect(entry);
-      setDismissed(true);
+      const pathWithSlash = entry.endsWith("/") ? entry : entry + "/";
+      setInputValue(pathWithSlash);
+      onSuggestionSelect(pathWithSlash);
+      setDismissed(false);
       setHighlightedIndex(-1);
       inputRef.current?.focus();
     },
