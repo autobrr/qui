@@ -2693,52 +2693,53 @@ type resolvedTorrentContentFile struct {
 	ResolvedPath string
 }
 
-func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *http.Request, unavailableMessage, context string) (resolvedTorrentContentFile, bool) {
+func parseTorrentContentFileParams(w http.ResponseWriter, r *http.Request) (int, string, int, bool) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return resolvedTorrentContentFile{}, false
+		return 0, "", 0, false
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if strings.TrimSpace(hash) == "" {
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
 		RespondError(w, http.StatusBadRequest, "Missing torrent hash")
-		return resolvedTorrentContentFile{}, false
+		return 0, "", 0, false
 	}
 
 	fileIndex, err := strconv.Atoi(chi.URLParam(r, "fileIndex"))
 	if err != nil || fileIndex < 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid file index")
-		return resolvedTorrentContentFile{}, false
+		return 0, "", 0, false
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
-		return resolvedTorrentContentFile{}, false
-	}
+	return instanceID, hash, fileIndex, true
+}
 
-	var resolver torrentContentResolver
+func chooseTorrentContentResolver(h *TorrentsHandler, w http.ResponseWriter, unavailableMessage string) (torrentContentResolver, bool) {
 	switch {
 	case h.contentResolver != nil:
-		resolver = h.contentResolver
+		return h.contentResolver, true
 	case h.syncManager != nil:
-		resolver = h.syncManager
+		return h.syncManager, true
 	default:
 		RespondError(w, http.StatusInternalServerError, unavailableMessage)
-		return resolvedTorrentContentFile{}, false
+		return nil, false
 	}
+}
 
-	files, err := resolver.GetTorrentFiles(r.Context(), instanceID, hash)
+func fetchTorrentFilesAndPropsForContentFile(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, fileIndex int, context string, w http.ResponseWriter) (string, int, *qbt.TorrentProperties, bool) {
+	files, err := resolver.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, context) {
-			return resolvedTorrentContentFile{}, false
+			return "", 0, nil, false
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
-		return resolvedTorrentContentFile{}, false
+		return "", 0, nil, false
 	}
 	if files == nil {
 		RespondError(w, http.StatusNotFound, "Torrent files not found")
-		return resolvedTorrentContentFile{}, false
+		return "", 0, nil, false
 	}
 
 	var targetFileName string
@@ -2752,38 +2753,41 @@ func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *ht
 	}
 	if !found {
 		RespondError(w, http.StatusNotFound, "File index not found in torrent")
-		return resolvedTorrentContentFile{}, false
+		return "", 0, nil, false
 	}
 
-	props, err := resolver.GetTorrentProperties(r.Context(), instanceID, hash)
+	props, err := resolver.GetTorrentProperties(ctx, instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, context) {
-			return resolvedTorrentContentFile{}, false
+			return "", 0, nil, false
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent properties")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
-		return resolvedTorrentContentFile{}, false
+		return "", 0, nil, false
 	}
 	if props == nil {
 		log.Error().Int("instanceID", instanceID).Str("hash", hash).Msg("Torrent properties are nil")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
-		return resolvedTorrentContentFile{}, false
+		return "", 0, nil, false
 	}
 
+	return targetFileName, len(*files), props, true
+}
+
+func resolveTorrentContentFilePathOnDisk(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, props *qbt.TorrentProperties, targetFileName string, filesLen int, w http.ResponseWriter) (string, bool) {
 	contentPath := ""
-	if torrents, err := resolver.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
+	if torrents, err := resolver.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
 	} else if len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
 	}
 
-	candidates := filePathCandidates(props.SavePath, props.DownloadPath, contentPath, targetFileName, len(*files) == 1)
+	candidates := filePathCandidates(props.SavePath, props.DownloadPath, contentPath, targetFileName, filesLen == 1)
 	if len(candidates) == 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid file path")
-		return resolvedTorrentContentFile{}, false
+		return "", false
 	}
 
-	resolvedPath := ""
 	for _, candidate := range candidates {
 		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
 		f, err := os.Open(candidate)
@@ -2802,11 +2806,35 @@ func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *ht
 		}
 		_ = f.Close()
 
-		resolvedPath = candidate
-		break
+		return candidate, true
 	}
-	if resolvedPath == "" {
-		RespondError(w, http.StatusNotFound, "File not found on disk")
+
+	RespondError(w, http.StatusNotFound, "File not found on disk")
+	return "", false
+}
+
+func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *http.Request, unavailableMessage, context string) (resolvedTorrentContentFile, bool) {
+	instanceID, hash, fileIndex, ok := parseTorrentContentFileParams(w, r)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	if !h.requireLocalAccess(w, r, instanceID) {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	resolver, ok := chooseTorrentContentResolver(h, w, unavailableMessage)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	targetFileName, filesLen, props, ok := fetchTorrentFilesAndPropsForContentFile(r.Context(), resolver, instanceID, hash, fileIndex, context, w)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	resolvedPath, ok := resolveTorrentContentFilePathOnDisk(r.Context(), resolver, instanceID, hash, props, targetFileName, filesLen, w)
+	if !ok {
 		return resolvedTorrentContentFile{}, false
 	}
 
