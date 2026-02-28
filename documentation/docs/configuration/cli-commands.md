@@ -77,24 +77,35 @@ Keep your qui installation up-to-date:
 
 ## Database Migration
 
-Offline SQLite to Postgres migration:
+Offline SQLite to Postgres migration (hard cutover):
 
 ```bash
-# Validate source and destination without importing rows
+# 0) Stop qui first (no writes during migration)
+#    (example) docker compose stop qui
+
+# 1) Optional: backup the SQLite file
+cp /path/to/qui.db /path/to/qui.db.bak
+
+# 2) Validate source + destination without importing rows
 ./qui db migrate \
   --from-sqlite /path/to/qui.db \
   --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
   --dry-run
 
-# Apply migration (schema bootstrap + table copy + identity reset + row-count validation)
+# 3) Apply migration (schema bootstrap + table copy + identity reset)
 ./qui db migrate \
   --from-sqlite /path/to/qui.db \
   --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
   --apply
+
+# 4) Point qui at Postgres and start it again
+#    - config.toml: databaseEngine=postgres + databaseDsn=...
+#    - or env: QUI__DATABASE_ENGINE=postgres + QUI__DATABASE_DSN=...
 ```
 
 Notes:
 
-- Run this while qui is stopped (offline cutover).
+- Run this while qui is stopped.
 - `--dry-run` and `--apply` are mutually exclusive.
 - The command copies all runtime tables except migration history.
+- The output includes per-table row counts for SQLite and Postgres.
