@@ -9,7 +9,7 @@ import { getLinuxFileName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronRight, Download, FilePen, FolderPen, Loader2 } from "lucide-react"
+import { ChevronRight, Download, FilePen, FolderPen, Info, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -24,6 +24,7 @@ interface TorrentFileTreeProps {
   onRenameFile: (filePath: string) => void
   onRenameFolder: (folderPath: string) => void
   onDownloadFile?: (file: TorrentFile) => void
+  onShowMediaInfo?: (file: TorrentFile) => void
 }
 
 interface FileTreeNode {
@@ -183,6 +184,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   onRenameFile,
   onRenameFolder,
   onDownloadFile,
+  onShowMediaInfo,
 }: TorrentFileTreeProps) {
   const { t } = useTranslation()
   const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
@@ -368,6 +370,15 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     >
                       <Download className="h-4 w-4 mr-2" />
                       {tr("torrentFileTree.file.actions.download")}
+                    </ContextMenuItem>
+                  )}
+                  {onShowMediaInfo && file && (
+                    <ContextMenuItem
+                      onClick={() => onShowMediaInfo(file)}
+                      disabled={incognitoMode}
+                    >
+                      <Info className="h-4 w-4 mr-2" />
+                      MediaInfo
                     </ContextMenuItem>
                   )}
                   <ContextMenuItem

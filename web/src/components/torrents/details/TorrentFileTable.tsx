@@ -12,7 +12,7 @@ import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronDown, ChevronRight, Download, File, Folder, Loader2, Pencil, Search, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -28,6 +28,7 @@ interface TorrentFileTableProps {
   onRenameFile?: (filePath: string) => void
   onRenameFolder?: (folderPath: string) => void
   onDownloadFile?: (file: TorrentFile) => void
+  onShowMediaInfo?: (file: TorrentFile) => void
 }
 
 interface FileTreeNode {
@@ -173,6 +174,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   onRenameFile,
   onRenameFolder,
   onDownloadFile,
+  onShowMediaInfo,
 }: TorrentFileTableProps) {
   const { t } = useTranslation()
   const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
@@ -461,7 +463,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
               )
 
               // Wrap with context menu if any file action handlers are provided
-              if (onRenameFile || onRenameFolder || onDownloadFile) {
+              if (onRenameFile || onRenameFolder || onDownloadFile || onShowMediaInfo) {
                 return (
                   <ContextMenu key={node.id}>
                     <ContextMenuTrigger asChild>
@@ -475,6 +477,15 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                         >
                           <Download className="h-3.5 w-3.5 mr-2" />
                           {tr("torrentFileTable.context.download")}
+                        </ContextMenuItem>
+                      )}
+                      {isFile && onShowMediaInfo && node.file && (
+                        <ContextMenuItem
+                          onClick={() => onShowMediaInfo(node.file!)}
+                          disabled={incognitoMode}
+                        >
+                          <Info className="h-3.5 w-3.5 mr-2" />
+                          MediaInfo
                         </ContextMenuItem>
                       )}
                       {isFile && onRenameFile && (
