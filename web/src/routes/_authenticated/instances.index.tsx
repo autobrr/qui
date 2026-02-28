@@ -4,7 +4,6 @@
  */
 
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
-import i18n from "@/i18n"
 import { ALL_INSTANCES_ID } from "@/lib/instances"
 import { Torrents } from "@/pages/Torrents"
 import { createFileRoute } from "@tanstack/react-router"
@@ -23,7 +22,7 @@ export const Route = createFileRoute("/_authenticated/instances/")({
   validateSearch: unifiedSearchSchema,
   component: UnifiedInstanceTorrents,
   staticData: {
-    title: i18n.t("header.unified"),
+    titleKey: "header.unified",
   },
 })
 

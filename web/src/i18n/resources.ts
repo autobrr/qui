@@ -44,6 +44,7 @@ import { searchHistoryPanelResources } from "./searchHistoryPanelResources"
 import { leafConditionResources } from "./leafConditionResources"
 import { torrentFileTreeResources } from "./torrentFileTreeResources"
 import { torrentFileTableResources } from "./torrentFileTableResources"
+import { torrentFileMediaInfoDialogResources } from "./torrentFileMediaInfoDialogResources"
 import { torrentTableOptimizedResources } from "./torrentTableOptimizedResources"
 import { instanceErrorDisplayResources } from "./instanceErrorDisplayResources"
 import { torrentTableColumnsResources } from "./torrentTableColumnsResources"
@@ -121,6 +122,7 @@ export const resources = {
       leafCondition: leafConditionResources.en,
       torrentFileTree: torrentFileTreeResources.en,
       torrentFileTable: torrentFileTableResources.en,
+      torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources.en,
       torrentTableOptimized: torrentTableOptimizedResources.en,
       torrentTableColumns: torrentTableColumnsResources.en,
       crossSeedWarning: crossSeedWarningResources.en,
@@ -1365,6 +1367,7 @@ export const resources = {
       leafCondition: leafConditionResources["zh-CN"],
       torrentFileTree: torrentFileTreeResources["zh-CN"],
       torrentFileTable: torrentFileTableResources["zh-CN"],
+      torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources["zh-CN"],
       torrentTableOptimized: torrentTableOptimizedResources["zh-CN"],
       torrentTableColumns: torrentTableColumnsResources["zh-CN"],
       crossSeedWarning: crossSeedWarningResources["zh-CN"],
@@ -2609,6 +2612,7 @@ export const resources = {
       leafCondition: leafConditionResources.ja,
       torrentFileTree: torrentFileTreeResources.ja,
       torrentFileTable: torrentFileTableResources.ja,
+      torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources.ja,
       torrentTableOptimized: torrentTableOptimizedResources.ja,
       torrentTableColumns: torrentTableColumnsResources.ja,
       crossSeedWarning: crossSeedWarningResources.ja,
@@ -3853,6 +3857,7 @@ export const resources = {
       leafCondition: leafConditionResources["pt-BR"],
       torrentFileTree: torrentFileTreeResources["pt-BR"],
       torrentFileTable: torrentFileTableResources["pt-BR"],
+      torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources["pt-BR"],
       torrentTableOptimized: torrentTableOptimizedResources["pt-BR"],
       torrentTableColumns: torrentTableColumnsResources["pt-BR"],
       crossSeedWarning: crossSeedWarningResources["pt-BR"],
@@ -5097,6 +5102,7 @@ export const resources = {
       leafCondition: leafConditionResources.de,
       torrentFileTree: torrentFileTreeResources.de,
       torrentFileTable: torrentFileTableResources.de,
+      torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources.de,
       torrentTableOptimized: torrentTableOptimizedResources.de,
       torrentTableColumns: torrentTableColumnsResources.de,
       crossSeedWarning: crossSeedWarningResources.de,

@@ -6,7 +6,6 @@
 import { Button } from "@/components/ui/button"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
-import i18n from "@/i18n"
 import { Torrents } from "@/pages/Torrents"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { Power } from "lucide-react"
@@ -25,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
   staticData: {
-    title: i18n.t("nav.torrents"),
+    titleKey: "nav.torrents",
   },
 })
 

@@ -485,7 +485,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                           disabled={incognitoMode}
                         >
                           <Info className="h-3.5 w-3.5 mr-2" />
-                          MediaInfo
+                          {tr("torrentFileTable.context.mediaInfo")}
                         </ContextMenuItem>
                       )}
                       {isFile && onRenameFile && (

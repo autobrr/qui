@@ -40,6 +40,7 @@ import { trackerReannounceResources } from "./trackerReannounceResources"
 import { dashboardPageResources } from "./dashboardPageResources"
 import { torrentFileTableResources } from "./torrentFileTableResources"
 import { torrentFileTreeResources } from "./torrentFileTreeResources"
+import { torrentFileMediaInfoDialogResources } from "./torrentFileMediaInfoDialogResources"
 import { torrentDetailsPanelResources } from "./torrentDetailsPanelResources"
 import { torrentDialogsResources } from "./torrentDialogsResources"
 import { torrentCreationTasksResources } from "./torrentCreationTasksResources"
@@ -233,6 +234,7 @@ export const es419Overrides: LocaleNamespaceOverrides = {
     crossSeedWarning: crossSeedWarningResources["es-419"],
     torrentFileTree: torrentFileTreeResources["es-419"],
     torrentFileTable: torrentFileTableResources["es-419"],
+    torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources["es-419"],
     torrentTableColumns: torrentTableColumnsResources["es-419"],
     torrentTableOptimized: torrentTableOptimizedResources["es-419"],
     instanceSettingsPanel: instanceSettingsPanelResources["es-419"],
@@ -1313,6 +1315,7 @@ export const frOverrides: LocaleNamespaceOverrides = {
     crossSeedWarning: crossSeedWarningResources.fr,
     torrentFileTree: torrentFileTreeResources.fr,
     torrentFileTable: torrentFileTableResources.fr,
+    torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources.fr,
     torrentTableColumns: torrentTableColumnsResources.fr,
     torrentTableOptimized: torrentTableOptimizedResources.fr,
     instanceSettingsPanel: instanceSettingsPanelResources.fr,
@@ -2393,6 +2396,7 @@ export const koOverrides: LocaleNamespaceOverrides = {
     crossSeedWarning: crossSeedWarningResources.ko,
     torrentFileTree: torrentFileTreeResources.ko,
     torrentFileTable: torrentFileTableResources.ko,
+    torrentFileMediaInfoDialog: torrentFileMediaInfoDialogResources.ko,
     torrentTableColumns: torrentTableColumnsResources.ko,
     torrentTableOptimized: torrentTableOptimizedResources.ko,
     instanceSettingsPanel: instanceSettingsPanelResources.ko,

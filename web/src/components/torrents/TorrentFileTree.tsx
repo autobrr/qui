@@ -378,7 +378,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       disabled={incognitoMode}
                     >
                       <Info className="h-4 w-4 mr-2" />
-                      MediaInfo
+                      {tr("torrentFileTree.file.actions.mediaInfo")}
                     </ContextMenuItem>
                   )}
                   <ContextMenuItem

@@ -10,6 +10,7 @@ export const torrentFileTreeResources = {
         renameTitle: "Rename file",
         rename: "Rename",
         download: "Download",
+        mediaInfo: "MediaInfo",
       },
     },
     folder: {
@@ -34,6 +35,7 @@ export const torrentFileTreeResources = {
         renameTitle: "重命名文件",
         rename: "重命名",
         download: "下载",
+        mediaInfo: "媒体信息",
       },
     },
     folder: {
@@ -58,6 +60,7 @@ export const torrentFileTreeResources = {
         renameTitle: "ファイル名を変更",
         rename: "名前を変更",
         download: "ダウンロード",
+        mediaInfo: "メディア情報",
       },
     },
     folder: {
@@ -82,6 +85,7 @@ export const torrentFileTreeResources = {
         renameTitle: "Renomear arquivo",
         rename: "Renomear",
         download: "Baixar",
+        mediaInfo: "MediaInfo",
       },
     },
     folder: {
@@ -106,6 +110,7 @@ export const torrentFileTreeResources = {
         renameTitle: "Datei umbenennen",
         rename: "Umbenennen",
         download: "Herunterladen",
+        mediaInfo: "MediaInfo",
       },
     },
     folder: {
@@ -130,6 +135,7 @@ export const torrentFileTreeResources = {
         renameTitle: "Renombrar archivo",
         rename: "Renombrar",
         download: "Descargar",
+        mediaInfo: "MediaInfo",
       },
     },
     folder: {
@@ -154,6 +160,7 @@ export const torrentFileTreeResources = {
         renameTitle: "Renommer le fichier",
         rename: "Renommer",
         download: "Télécharger",
+        mediaInfo: "Infos média",
       },
     },
     folder: {
@@ -178,6 +185,7 @@ export const torrentFileTreeResources = {
         renameTitle: "파일 이름 바꾸기",
         rename: "이름 바꾸기",
         download: "다운로드",
+        mediaInfo: "미디어 정보",
       },
     },
     folder: {

@@ -18,6 +18,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "Download",
+      mediaInfo: "MediaInfo",
       renameFile: "Rename File",
       renameFolder: "Rename Folder",
     },
@@ -41,6 +42,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "下载",
+      mediaInfo: "媒体信息",
       renameFile: "重命名文件",
       renameFolder: "重命名文件夹",
     },
@@ -64,6 +66,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "ダウンロード",
+      mediaInfo: "メディア情報",
       renameFile: "ファイル名を変更",
       renameFolder: "フォルダー名を変更",
     },
@@ -87,6 +90,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "Baixar",
+      mediaInfo: "MediaInfo",
       renameFile: "Renomear arquivo",
       renameFolder: "Renomear pasta",
     },
@@ -110,6 +114,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "Herunterladen",
+      mediaInfo: "MediaInfo",
       renameFile: "Datei umbenennen",
       renameFolder: "Ordner umbenennen",
     },
@@ -133,6 +138,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "Descargar",
+      mediaInfo: "MediaInfo",
       renameFile: "Renombrar archivo",
       renameFolder: "Renombrar carpeta",
     },
@@ -156,6 +162,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "Télécharger",
+      mediaInfo: "Infos média",
       renameFile: "Renommer le fichier",
       renameFolder: "Renommer le dossier",
     },
@@ -179,6 +186,7 @@ export const torrentFileTableResources = {
     },
     context: {
       download: "다운로드",
+      mediaInfo: "미디어 정보",
       renameFile: "파일 이름 바꾸기",
       renameFolder: "폴더 이름 바꾸기",
     },
