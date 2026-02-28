@@ -77,7 +77,7 @@ Keep your qui installation up-to-date:
 
 ## Database Migration
 
-Offline SQLite to Postgres migration (hard cutover):
+Offline SQLite to Postgres migration:
 
 ```bash
 # 0) Stop qui first (no writes during migration)
