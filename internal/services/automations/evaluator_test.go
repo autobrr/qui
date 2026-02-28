@@ -459,8 +459,8 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldProgress,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(50),
-				MaxValue: float64Ptr(100),
+				MinValue: new(float64(50)),
+				MaxValue: new(float64(100)),
 			},
 			torrent:  qbt.Torrent{Progress: 0.6},
 			expected: true,
@@ -470,8 +470,8 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldProgress,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(50),
-				MaxValue: float64Ptr(100),
+				MinValue: new(float64(50)),
+				MaxValue: new(float64(100)),
 			},
 			torrent:  qbt.Torrent{Progress: 0.2},
 			expected: false,
@@ -523,8 +523,8 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(1.0),
-				MaxValue: float64Ptr(3.0),
+				MinValue: new(1.0),
+				MaxValue: new(3.0),
 			},
 			torrent:  qbt.Torrent{Ratio: 2.0},
 			expected: true,
@@ -534,8 +534,8 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(1.0),
-				MaxValue: float64Ptr(2.0),
+				MinValue: new(1.0),
+				MaxValue: new(2.0),
 			},
 			torrent:  qbt.Torrent{Ratio: 3.0},
 			expected: false,
@@ -950,7 +950,7 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 
 	// Build 25 levels of nesting (exceeds maxConditionDepth of 20)
 	current := cond
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		nested := &RuleCondition{
 			Operator: OperatorAnd,
 			Conditions: []*RuleCondition{
@@ -1023,8 +1023,9 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 	})
 }
 
+//go:fix inline
 func float64Ptr(v float64) *float64 {
-	return &v
+	return new(v)
 }
 
 func TestEvaluateCondition_ExistsIn(t *testing.T) {
@@ -1431,7 +1432,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
 				MinValue: nil,
-				MaxValue: float64Ptr(5.0),
+				MaxValue: new(5.0),
 			},
 			expected: false,
 		},
@@ -1440,7 +1441,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(1.0),
+				MinValue: new(1.0),
 				MaxValue: nil,
 			},
 			expected: false,
@@ -1461,7 +1462,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 				Field:    FieldSeedingTime,
 				Operator: OperatorBetween,
 				MinValue: nil,
-				MaxValue: float64Ptr(7200),
+				MaxValue: new(float64(7200)),
 			},
 			expected: false,
 		},
@@ -1563,8 +1564,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600), // 1 hour
-				MaxValue: float64Ptr(7200), // 2 hours
+				MinValue: new(float64(3600)), // 1 hour
+				MaxValue: new(float64(7200)), // 2 hours
 			},
 			torrent:  qbt.Torrent{AddedOn: nowUnix - 5400}, // added 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1575,8 +1576,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600), // 1 hour
-				MaxValue: float64Ptr(7200), // 2 hours
+				MinValue: new(float64(3600)), // 1 hour
+				MaxValue: new(float64(7200)), // 2 hours
 			},
 			torrent:  qbt.Torrent{AddedOn: nowUnix - 10800}, // added 3 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1644,8 +1645,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600),
-				MaxValue: float64Ptr(7200),
+				MinValue: new(float64(3600)),
+				MaxValue: new(float64(7200)),
 			},
 			torrent:  qbt.Torrent{CompletionOn: nowUnix - 5400}, // completed 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1691,8 +1692,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldLastActivityAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600),
-				MaxValue: float64Ptr(7200),
+				MinValue: new(float64(3600)),
+				MaxValue: new(float64(7200)),
 			},
 			torrent:  qbt.Torrent{LastActivity: nowUnix - 5400}, // active 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -2005,8 +2006,8 @@ func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(400000000000), // 400GB
-				MaxValue: float64Ptr(600000000000), // 600GB
+				MinValue: new(float64(400000000000)), // 400GB
+				MaxValue: new(float64(600000000000)), // 600GB
 			},
 			evalCtx: &EvalContext{
 				FreeSpace:    300000000000, // 300GB actual
@@ -2020,8 +2021,8 @@ func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(400000000000), // 400GB
-				MaxValue: float64Ptr(500000000000), // 500GB
+				MinValue: new(float64(400000000000)), // 400GB
+				MaxValue: new(float64(500000000000)), // 500GB
 			},
 			evalCtx: &EvalContext{
 				FreeSpace:    300000000000, // 300GB actual
@@ -2478,7 +2479,7 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 		},
 		{
 			name:     "seen complete timestamp evaluated as age duration",
-			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorBetween, MinValue: float64Ptr(3600), MaxValue: float64Ptr(7200)},
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorBetween, MinValue: new(float64(3600)), MaxValue: new(float64(7200))},
 			torrent:  qbt.Torrent{SeenComplete: nowUnix - 5400},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,

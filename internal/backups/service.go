@@ -232,9 +232,7 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	// Check for missed backups and queue exactly one if applicable
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		if err := s.checkMissedBackups(ctx); err != nil {
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 				log.Debug().Msg("Missed-backup check canceled")
@@ -242,7 +240,7 @@ func (s *Service) Start(ctx context.Context) {
 				log.Warn().Err(err).Msg("Failed to check for missed backups")
 			}
 		}
-	}()
+	})
 
 	s.wg.Add(1)
 	go s.scheduler(ctx)
@@ -276,10 +274,7 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	totalChunks := (len(runIDs) + chunkSize - 1) / chunkSize
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 		chunkNum := (i / chunkSize) + 1
 
@@ -1504,11 +1499,9 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		}
 		s.progressMu.Unlock()
 		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
+		s.wg.Go(func() {
 			s.downloadMissingTorrents(run.ID, instanceID, missing)
-		}()
+		})
 	} else {
 		// No missing torrents, mark as completed immediately
 		now := s.now()

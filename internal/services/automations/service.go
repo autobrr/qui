@@ -3689,10 +3689,7 @@ func limitHashBatch(hashes []string, max int) [][]string {
 	}
 	var batches [][]string
 	for len(hashes) > 0 {
-		end := max
-		if len(hashes) < max {
-			end = len(hashes)
-		}
+		end := min(len(hashes), max)
 		batches = append(batches, slices.Clone(hashes[:end]))
 		hashes = hashes[end:]
 	}
@@ -3936,7 +3933,7 @@ func torrentHasTag(tags string, candidate string) bool {
 	if tags == "" {
 		return false
 	}
-	for _, tag := range strings.Split(tags, ",") {
+	for tag := range strings.SplitSeq(tags, ",") {
 		if strings.EqualFold(strings.TrimSpace(tag), candidate) {
 			return true
 		}
@@ -4150,10 +4147,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	}
 
 	// Calculate overlap percentage based on bytes of the smaller torrent
-	smallerBytes := totalBytes1
-	if totalBytes2 < smallerBytes {
-		smallerBytes = totalBytes2
-	}
+	smallerBytes := min(totalBytes2, totalBytes1)
 	if smallerBytes == 0 {
 		return false, fmt.Errorf("cannot compute overlap: zero-size torrents")
 	}

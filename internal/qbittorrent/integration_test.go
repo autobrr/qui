@@ -461,21 +461,19 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Pre-populate sets with hashes
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		sm.trackerHealthCache[1].UnregisteredSet[fmt.Sprintf("hash%d", i)] = struct{}{}
 	}
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		sm.trackerHealthCache[1].TrackerDownSet[fmt.Sprintf("down%d", i)] = struct{}{}
 	}
 
 	var wg sync.WaitGroup
 
 	// Launch concurrent readers
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
+	for range 10 {
+		wg.Go(func() {
+			for range 100 {
 				counts := sm.GetTrackerHealthCounts(1)
 				if counts != nil {
 					// Access the returned copy to ensure it's safe
@@ -485,15 +483,15 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 					_ = len(counts.TrackerDownSet)
 				}
 			}
-		}()
+		})
 	}
 
 	// Launch concurrent writers
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < 20; j++ {
+			for j := range 20 {
 				hash := fmt.Sprintf("hash%d", id*20+j)
 				sm.RemoveHashesFromTrackerHealthCache(1, []string{hash})
 			}
@@ -1298,11 +1296,9 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Launch concurrent readers
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
+	for range 10 {
+		wg.Go(func() {
+			for range 100 {
 				mapping := sm.getValidatedTrackerMapping(1)
 				if mapping != nil {
 					// Access the returned copy to ensure it's safe
@@ -1313,15 +1309,15 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	// Launch concurrent writers (add)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < 20; j++ {
+			for j := range 20 {
 				hash := fmt.Sprintf("hash%d_%d", id, j)
 				sm.addHashToTrackerMapping(1, hash, "tracker1.com")
 			}
@@ -1329,11 +1325,11 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Launch concurrent writers (remove)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < 10; j++ {
+			for j := range 10 {
 				hash := fmt.Sprintf("hash%d_%d", id, j)
 				sm.removeHashFromTrackerMapping(1, hash, "tracker1.com")
 			}
@@ -1341,11 +1337,9 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Launch concurrent full updates (setValidatedTrackerMapping)
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 5; j++ {
+	for range 2 {
+		wg.Go(func() {
+			for range 5 {
 				newMapping := &ValidatedTrackerMapping{
 					HashToDomains:  make(map[string]map[string]struct{}),
 					DomainToHashes: make(map[string]map[string]struct{}),
@@ -1353,7 +1347,7 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 				}
 				sm.setValidatedTrackerMapping(1, newMapping)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

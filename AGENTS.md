@@ -36,8 +36,13 @@ make test-openapi       # Validate OpenAPI spec after touching internal/web/swag
 make lint               # Changed files only (fast, use during iteration)
 make lint-json          # JSON output to lint-report.json
 
+# Pre-commit
+make precommit          # fmt + gofix + lint on changed files
+
 # Formatting
-make fmt                # gofmt + pnpm format
+make fmt                # gofmt + frontend eslint --fix on changed files
+make gofix-changed      # Apply go fix on changed Go files only
+make gofix-check-changed # Check go fix drift on changed Go files only
 ```
 
 ## Linting Strategy
@@ -54,7 +59,7 @@ The project uses golangci-lint v2 with strict configuration targeting AI-generat
 | gocritic | Non-idiomatic patterns | diagnostic + style + performance |
 
 **Workflow:**
-1. During implementation: `make lint` (changed files only, fast feedback)
+1. During implementation: `make precommit` (changed files only, fast feedback)
 2. To fix issues: `make lint-fix` then address remaining manually
 
 **Guardrail (web formatting):** avoid repo-wide `pnpm format` / `eslint --fix` sweeps unless explicitly requested. Prefer fixing only the files reported by lint for the current task/PR.
@@ -102,7 +107,7 @@ PRs need a clear summary, testing checklist, and UI screenshots for visual tweak
 
 ## Pre-Commit Checklist
 
-1. `make lint` passes
+1. `make precommit` passes (`fmt` + `gofix-changed` + `lint`, changed files only)
 2. `make test` passes
 3. `make build` succeeds
 4. If touched `internal/web/swagger`, run `make test-openapi`

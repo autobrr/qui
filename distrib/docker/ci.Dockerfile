@@ -2,7 +2,7 @@
 
 # Build stage for Go binary
 # Use BUILDPLATFORM to build on native architecture (fast)
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine3.22 AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.22 AS go-builder
 
 # Install build dependencies
 RUN apk add --no-cache git make

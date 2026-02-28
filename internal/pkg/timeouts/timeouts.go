@@ -23,10 +23,7 @@ func AdaptiveSearchTimeout(indexerCount int) time.Duration {
 	if indexerCount <= 1 {
 		return DefaultSearchTimeout
 	}
-	extra := time.Duration(indexerCount-1) * PerIndexerSearchTimeout
-	if extra < 0 {
-		extra = 0
-	}
+	extra := max(time.Duration(indexerCount-1)*PerIndexerSearchTimeout, 0)
 	timeout := DefaultSearchTimeout + extra
 	if timeout > MaxSearchTimeout {
 		return MaxSearchTimeout

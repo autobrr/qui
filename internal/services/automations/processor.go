@@ -794,7 +794,7 @@ func getTrackerDisplayName(domains []string, evalCtx *EvalContext) (displayName 
 // parseTorrentTags parses the comma-separated tag string into a set.
 func parseTorrentTags(tags string) map[string]struct{} {
 	result := make(map[string]struct{})
-	for _, t := range strings.Split(tags, ",") {
+	for t := range strings.SplitSeq(tags, ",") {
 		if t = strings.TrimSpace(t); t != "" {
 			result[t] = struct{}{}
 		}

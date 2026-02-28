@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
@@ -444,9 +445,7 @@ func (fm *aliasingFilesManager) CacheFiles(_ context.Context, _ int, hash string
 }
 
 func (fm *aliasingFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[string]qbt.TorrentFiles) error {
-	for hash, torrentFiles := range files {
-		fm.cached[hash] = torrentFiles
-	}
+	maps.Copy(fm.cached, files)
 	return nil
 }
 

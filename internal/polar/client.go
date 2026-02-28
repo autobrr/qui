@@ -78,7 +78,7 @@ type ValidateResp struct {
 		Label        string         `json:"label"`
 		Meta         map[string]any `json:"meta"`
 		CreatedAt    time.Time      `json:"created_at"`
-		ModifiedAt   interface{}    `json:"modified_at"`
+		ModifiedAt   any            `json:"modified_at"`
 	} `json:"activation"`
 }
 
