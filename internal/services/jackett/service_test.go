@@ -1582,6 +1582,82 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 	}
 }
 
+func TestSearch_AllIndexersSkippedByRateLimitWaitReturnsError(t *testing.T) {
+	service := NewService(&mockTorznabIndexerStore{})
+	indexers := []*models.TorznabIndexer{
+		{ID: 1, Name: "A", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "a"},
+		{ID: 2, Name: "B", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "b"},
+	}
+
+	// Prime both indexers so wait exceeds MaxWait for every task.
+	service.rateLimiter.RecordRequest(1, time.Now())
+	service.rateLimiter.RecordRequest(2, time.Now())
+
+	done := make(chan struct{})
+	completeErrs := make(chan error, len(indexers))
+	var callbackErr error
+	var callbackResults []Result
+	var callbackCoverage []int
+	opts := &RateLimitOptions{
+		Priority:    RateLimitPriorityBackground,
+		MinInterval: 5 * time.Second,
+		MaxWait:     10 * time.Millisecond,
+	}
+	if wait := service.rateLimiter.NextWait(indexers[0], opts); wait <= opts.MaxWait {
+		t.Fatalf("test setup invalid: expected wait > maxWait for indexer 1, got wait=%v maxWait=%v", wait, opts.MaxWait)
+	}
+	if wait := service.rateLimiter.NextWait(indexers[1], opts); wait <= opts.MaxWait {
+		t.Fatalf("test setup invalid: expected wait > maxWait for indexer 2, got wait=%v maxWait=%v", wait, opts.MaxWait)
+	}
+
+	err := service.searchIndexersWithScheduler(
+		context.Background(),
+		indexers,
+		url.Values{"q": {"test"}},
+		&searchContext{
+			rateLimit: opts,
+		},
+		func(_ uint64, _ int, err error) {
+			completeErrs <- err
+		},
+		func(_ uint64, results []Result, coverage []int, err error) {
+			callbackResults = results
+			callbackCoverage = coverage
+			callbackErr = err
+			close(done)
+		},
+	)
+	if err != nil {
+		t.Fatalf("scheduler setup error: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for scheduler callback")
+	}
+
+	close(completeErrs)
+	for err := range completeErrs {
+		if err == nil {
+			t.Fatal("expected per-indexer wait error, got nil")
+		}
+	}
+
+	if callbackErr == nil {
+		t.Fatal("expected rate-limit wait error when all indexers are skipped")
+	}
+	if !strings.Contains(strings.ToLower(callbackErr.Error()), "rate limit") {
+		t.Fatalf("expected rate-limit error, got: %v", callbackErr)
+	}
+	if len(callbackResults) != 0 {
+		t.Fatalf("expected no results when all indexers are skipped, got %d", len(callbackResults))
+	}
+	if len(callbackCoverage) != 0 {
+		t.Fatalf("expected no coverage when all indexers are skipped, got %v", callbackCoverage)
+	}
+}
+
 func TestProwlarrYearParameterWorkaround(t *testing.T) {
 	tests := []struct {
 		name        string
