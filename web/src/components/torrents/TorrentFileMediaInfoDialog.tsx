@@ -43,8 +43,6 @@ function buildStreamLabels(streams: TorrentFileMediaInfoResponse["streams"]): st
 
 function formatSummary(data: TorrentFileMediaInfoResponse, streamLabels: string[]): string {
   const lines: string[] = []
-  lines.push(data.relativePath)
-  lines.push("")
 
   data.streams.forEach((stream, idx) => {
     const label = streamLabels[idx] ?? stream.kind
