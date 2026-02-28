@@ -390,7 +390,7 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	return nil
 }
 
-func encodeNullableBoolAsInt(value *bool) interface{} {
+func encodeNullableBoolAsInt(value *bool) any {
 	if value == nil {
 		return nil
 	}
