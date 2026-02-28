@@ -41,6 +41,24 @@ function buildStreamLabels(streams: TorrentFileMediaInfoResponse["streams"]): st
   })
 }
 
+function formatSummary(data: TorrentFileMediaInfoResponse, streamLabels: string[]): string {
+  const lines: string[] = []
+  lines.push(data.relativePath)
+  lines.push("")
+
+  data.streams.forEach((stream, idx) => {
+    const label = streamLabels[idx] ?? stream.kind
+    const fields = stream.fields.filter((field) => field.value.trim() !== "")
+    lines.push(`[${label}]`)
+    for (const field of fields) {
+      lines.push(`${field.name}: ${field.value}`)
+    }
+    lines.push("")
+  })
+
+  return lines.join("\n").trimEnd()
+}
+
 export function TorrentFileMediaInfoDialog({
   open,
   onOpenChange,
@@ -61,9 +79,14 @@ export function TorrentFileMediaInfoDialog({
     return buildStreamLabels(streams)
   }, [query.data?.streams])
 
+  const summaryText = useMemo(() => {
+    if (!query.data) return ""
+    return formatSummary(query.data, streamLabels)
+  }, [query.data, streamLabels])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden">
+      <DialogContent className="sm:max-w-lg md:max-w-3xl max-h-[85vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>MediaInfo</DialogTitle>
           <DialogDescription className="font-mono text-xs break-all">
@@ -78,6 +101,25 @@ export function TorrentFileMediaInfoDialog({
           </TabsList>
 
           <TabsContent value="summary" className="m-0">
+            <div className="flex items-center justify-end gap-2 mb-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (!summaryText) return
+                  try {
+                    await copyTextToClipboard(summaryText)
+                    toast.success("Summary copied to clipboard")
+                  } catch {
+                    toast.error("Failed to copy to clipboard")
+                  }
+                }}
+                disabled={!summaryText}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Summary
+              </Button>
+            </div>
             <ScrollArea className="h-[65vh] pr-4">
               {query.isLoading ? (
                 <div className="flex items-center justify-center py-16">
@@ -97,7 +139,7 @@ export function TorrentFileMediaInfoDialog({
                 <div className="space-y-6">
                   {query.data.streams.map((stream, idx) => {
                     const label = streamLabels[idx] ?? stream.kind
-                    const fields = stream.fields.filter(f => f.value.trim() !== "")
+                    const fields = stream.fields.filter((field) => field.value.trim() !== "")
 
                     return (
                       <section key={`${stream.kind}-${idx}`} className="space-y-3">
@@ -138,7 +180,7 @@ export function TorrentFileMediaInfoDialog({
           </TabsContent>
 
           <TabsContent value="raw" className="m-0">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 mb-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -155,11 +197,11 @@ export function TorrentFileMediaInfoDialog({
                 disabled={!query.data?.rawJSON}
               >
                 <Copy className="h-4 w-4 mr-2" />
-                Copy
+                Copy JSON
               </Button>
             </div>
 
-            <ScrollArea className="h-[60vh] mt-3 pr-4">
+            <ScrollArea className="h-[65vh] pr-4">
               {query.isLoading ? (
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="h-6 w-6 animate-spin" />
@@ -175,7 +217,7 @@ export function TorrentFileMediaInfoDialog({
                   </Button>
                 </div>
               ) : (
-                <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-words">
                   {query.data?.rawJSON ?? ""}
                 </pre>
               )}
