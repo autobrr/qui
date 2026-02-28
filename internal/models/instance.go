@@ -486,11 +486,16 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 }
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
-	query := `
+	orderByName := "name COLLATE NOCASE"
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		orderByName = "LOWER(name)"
+	}
+
+	query := fmt.Sprintf(`
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
-		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
-	`
+		ORDER BY sort_order ASC, %s ASC, id ASC
+	`, orderByName)
 
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {

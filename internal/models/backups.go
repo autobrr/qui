@@ -891,12 +891,17 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 }
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	orderByName := "name COLLATE NOCASE"
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		orderByName = "LOWER(name)"
+	}
+
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id = ?
-		ORDER BY name COLLATE NOCASE
-	`, runID)
+		ORDER BY %s
+	`, orderByName), runID)
 	if err != nil {
 		return nil, err
 	}
@@ -984,17 +989,22 @@ func (s *BackupStore) ListItemsForRuns(ctx context.Context, runIDs []int64) ([]*
 }
 
 func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64) ([]*BackupItem, error) {
+	orderByName := "name COLLATE NOCASE"
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		orderByName = "LOWER(name)"
+	}
+
 	args := make([]interface{}, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id IN `+buildInPlaceholders(len(runIDs))+`
-		ORDER BY run_id, name COLLATE NOCASE
-	`, args...)
+		ORDER BY run_id, %s
+	`, orderByName), args...)
 	if err != nil {
 		return nil, err
 	}
