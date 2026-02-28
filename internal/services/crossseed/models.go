@@ -226,6 +226,9 @@ type TorrentSearchOptions struct {
 	CacheMode string `json:"cache_mode,omitempty"`
 	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
 	DisableTorznab bool `json:"disable_torznab,omitempty"`
+	// SkipGazelle disables Gazelle pre-search in mixed search mode.
+	// Internal-only (not exposed in API payloads).
+	SkipGazelle bool `json:"-"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.

@@ -1715,19 +1715,13 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				}
 
 				searchCtx := ctx
-				var searchCancel context.CancelFunc
-				searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
-				if searchTimeout > 0 {
-					searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
-				}
-				if searchCancel != nil {
-					defer searchCancel()
-				}
 				searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
 				resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 					IndexerIDs:             allowedIndexerIDs,
 					FindIndividualEpisodes: settings.FindIndividualEpisodes,
+					// Completion search should prioritize Torznab for non-Gazelle sources.
+					SkipGazelle: !isGazelleSource,
 				})
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
@@ -1735,7 +1729,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 							Int("instanceID", instanceID).
 							Str("hash", torrent.Hash).
 							Str("name", torrent.Name).
-							Dur("timeout", searchTimeout).
 							Msg("[CROSSSEED-COMPLETION] Search timed out, no cross-seeds found")
 						return nil
 					}
@@ -5818,7 +5811,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(sourceTorrent)
-	gazelleResults, _ := s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
+	gazelleResults := []TorrentSearchResult{}
+	if !opts.SkipGazelle {
+		gazelleResults, _ = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
+	}
 
 	if opts.DisableTorznab {
 		if gazelleClients == nil || len(gazelleClients.byHost) == 0 {
