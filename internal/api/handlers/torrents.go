@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -2825,4 +2826,175 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, filename, info.ModTime(), file)
+}
+
+type torrentFileMediaInfoField struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type torrentFileMediaInfoStream struct {
+	Kind   string                      `json:"kind"`
+	Fields []torrentFileMediaInfoField `json:"fields"`
+}
+
+type torrentFileMediaInfoResponse struct {
+	FileIndex    int                          `json:"fileIndex"`
+	RelativePath string                       `json:"relativePath"`
+	Streams      []torrentFileMediaInfoStream `json:"streams"`
+	RawJSON      string                       `json:"rawJSON"`
+}
+
+// GetTorrentFileMediaInfo returns MediaInfo output for a single torrent content file on disk.
+// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/mediainfo
+func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if strings.TrimSpace(hash) == "" {
+		RespondError(w, http.StatusBadRequest, "Missing torrent hash")
+		return
+	}
+
+	fileIndex, err := strconv.Atoi(chi.URLParam(r, "fileIndex"))
+	if err != nil || fileIndex < 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid file index")
+		return
+	}
+
+	if !h.requireLocalAccess(w, r, instanceID) {
+		return
+	}
+
+	var resolver torrentContentResolver
+	switch {
+	case h.contentResolver != nil:
+		resolver = h.contentResolver
+	case h.syncManager != nil:
+		resolver = h.syncManager
+	default:
+		RespondError(w, http.StatusInternalServerError, "MediaInfo service unavailable")
+		return
+	}
+
+	files, err := resolver.GetTorrentFiles(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getFileMediaInfo") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
+		return
+	}
+	if files == nil {
+		RespondError(w, http.StatusNotFound, "Torrent files not found")
+		return
+	}
+
+	var targetFileName string
+	found := false
+	for _, f := range *files {
+		if f.Index == fileIndex {
+			targetFileName = f.Name
+			found = true
+			break
+		}
+	}
+	if !found {
+		RespondError(w, http.StatusNotFound, "File index not found in torrent")
+		return
+	}
+
+	props, err := resolver.GetTorrentProperties(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getFileMediaInfo") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent properties")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
+		return
+	}
+	if props == nil {
+		log.Error().Int("instanceID", instanceID).Str("hash", hash).Msg("Torrent properties are nil")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
+		return
+	}
+
+	contentPath := ""
+	if torrents, err := resolver.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
+	} else if len(torrents) > 0 {
+		contentPath = torrents[0].ContentPath
+	}
+
+	candidates := filePathCandidates(props.SavePath, props.DownloadPath, contentPath, targetFileName, len(*files) == 1)
+	if len(candidates) == 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid file path")
+		return
+	}
+
+	resolvedPath := ""
+	for _, candidate := range candidates {
+		// #nosec G703 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
+		info, err := os.Stat(candidate)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			continue
+		}
+		resolvedPath = candidate
+		break
+	}
+	if resolvedPath == "" {
+		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+
+	// #nosec G304 -- resolvedPath is constructed from validated base paths via resolveTorrentFilePath.
+	report, err := mediainfo.AnalyzeFile(resolvedPath, mediainfo.WithParseSpeed(0.5))
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Int("fileIndex", fileIndex).Msg("Failed to analyze file with MediaInfo")
+		RespondError(w, http.StatusInternalServerError, "Failed to analyze file")
+		return
+	}
+
+	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Int("fileIndex", fileIndex).Msg("Failed to render MediaInfo JSON")
+		RespondError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
+		return
+	}
+
+	streams := make([]torrentFileMediaInfoStream, 0, 1+len(report.Streams))
+	generalFields := make([]torrentFileMediaInfoField, 0, len(report.General.Fields))
+	for _, field := range report.General.Fields {
+		generalFields = append(generalFields, torrentFileMediaInfoField{Name: field.Name, Value: field.Value})
+	}
+	streams = append(streams, torrentFileMediaInfoStream{
+		Kind:   string(report.General.Kind),
+		Fields: generalFields,
+	})
+
+	for _, stream := range report.Streams {
+		fields := make([]torrentFileMediaInfoField, 0, len(stream.Fields))
+		for _, field := range stream.Fields {
+			fields = append(fields, torrentFileMediaInfoField{Name: field.Name, Value: field.Value})
+		}
+		streams = append(streams, torrentFileMediaInfoStream{
+			Kind:   string(stream.Kind),
+			Fields: fields,
+		})
+	}
+
+	RespondJSON(w, http.StatusOK, torrentFileMediaInfoResponse{
+		FileIndex:    fileIndex,
+		RelativePath: targetFileName,
+		Streams:      streams,
+		RawJSON:      rawJSON,
+	})
 }
