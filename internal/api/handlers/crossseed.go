@@ -1512,36 +1512,39 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 
 // instanceCompletionSettingsResponse is the API response for per-instance completion settings.
 type instanceCompletionSettingsResponse struct {
-	InstanceID        int      `json:"instanceId"`
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
-	IndexerIDs        []int    `json:"indexerIds"`
+	InstanceID         int      `json:"instanceId"`
+	Enabled            bool     `json:"enabled"`
+	Categories         []string `json:"categories"`
+	Tags               []string `json:"tags"`
+	ExcludeCategories  []string `json:"excludeCategories"`
+	ExcludeTags        []string `json:"excludeTags"`
+	IndexerIDs         []int    `json:"indexerIds"`
+	BypassTorznabCache bool     `json:"bypassTorznabCache"`
 }
 
 // toInstanceCompletionSettingsResponse converts model to API response.
 func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
 	return instanceCompletionSettingsResponse{
-		InstanceID:        s.InstanceID,
-		Enabled:           s.Enabled,
-		Categories:        s.Categories,
-		Tags:              s.Tags,
-		ExcludeCategories: s.ExcludeCategories,
-		ExcludeTags:       s.ExcludeTags,
-		IndexerIDs:        s.IndexerIDs,
+		InstanceID:         s.InstanceID,
+		Enabled:            s.Enabled,
+		Categories:         s.Categories,
+		Tags:               s.Tags,
+		ExcludeCategories:  s.ExcludeCategories,
+		ExcludeTags:        s.ExcludeTags,
+		IndexerIDs:         s.IndexerIDs,
+		BypassTorznabCache: s.BypassTorznabCache,
 	}
 }
 
 // instanceCompletionSettingsRequest is the API request for updating per-instance completion settings.
 type instanceCompletionSettingsRequest struct {
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
-	IndexerIDs        []int    `json:"indexerIds"`
+	Enabled            bool     `json:"enabled"`
+	Categories         []string `json:"categories"`
+	Tags               []string `json:"tags"`
+	ExcludeCategories  []string `json:"excludeCategories"`
+	ExcludeTags        []string `json:"excludeTags"`
+	IndexerIDs         []int    `json:"indexerIds"`
+	BypassTorznabCache bool     `json:"bypassTorznabCache"`
 }
 
 // GetInstanceCompletionSettings returns the completion settings for a specific instance.
@@ -1622,13 +1625,14 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 	}
 
 	settings := &models.InstanceCrossSeedCompletionSettings{
-		InstanceID:        instanceID,
-		Enabled:           req.Enabled,
-		Categories:        req.Categories,
-		Tags:              req.Tags,
-		ExcludeCategories: req.ExcludeCategories,
-		ExcludeTags:       req.ExcludeTags,
-		IndexerIDs:        req.IndexerIDs,
+		InstanceID:         instanceID,
+		Enabled:            req.Enabled,
+		Categories:         req.Categories,
+		Tags:               req.Tags,
+		ExcludeCategories:  req.ExcludeCategories,
+		ExcludeTags:        req.ExcludeTags,
+		IndexerIDs:         req.IndexerIDs,
+		BypassTorznabCache: req.BypassTorznabCache,
 	}
 
 	saved, err := h.completionStore.Upsert(r.Context(), settings)
