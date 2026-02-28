@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CONDITION_FIELDS, FIELD_GROUPS, type DisabledField } from "./constants";
 import { DisabledOption } from "./DisabledOption";
 
@@ -27,6 +28,8 @@ interface FieldComboboxProps {
 }
 
 export function FieldCombobox({ value, onChange, disabledFields }: FieldComboboxProps) {
+  const { t } = useTranslation("common");
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never));
   const [open, setOpen] = useState(false);
 
   const selectedField = value ? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS] : null;
@@ -45,7 +48,7 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
       aria-expanded={open}
       className="h-8 w-fit min-w-[120px] justify-between px-2 text-xs font-normal"
     >
-      <span>{selectedField?.label ?? "Select field"}</span>
+      <span>{selectedField?.label ?? tr("fieldCombobox.trigger.selectField")}</span>
       <ChevronsUpDown className="ml-1 size-3 shrink-0 opacity-50" />
     </Button>
   );
@@ -55,7 +58,7 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
       open={open}
       onOpenChange={setOpen}
       trigger={triggerButton}
-      title="Select Field"
+      title={tr("fieldCombobox.title")}
       popoverWidth="200px"
     >
       <FieldComboboxContent
@@ -79,13 +82,15 @@ function FieldComboboxContent({
   setOpen: (open: boolean) => void;
   getDisabledReason: (field: string) => string | null;
 }) {
+  const { t } = useTranslation("common");
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never));
   const isMobile = useResponsiveMobile();
 
   return (
     <ResponsiveCommand>
-      <ResponsiveCommandInput placeholder="Search fields..." />
+      <ResponsiveCommandInput placeholder={tr("fieldCombobox.searchPlaceholder")} />
       <ResponsiveCommandList>
-        <ResponsiveCommandEmpty>No field found.</ResponsiveCommandEmpty>
+        <ResponsiveCommandEmpty>{tr("fieldCombobox.empty")}</ResponsiveCommandEmpty>
         {FIELD_GROUPS.map((group) => (
           <ResponsiveCommandGroup key={group.label} heading={group.label}>
             {group.fields.map((field) => {

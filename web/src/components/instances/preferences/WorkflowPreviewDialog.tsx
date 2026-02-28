@@ -24,16 +24,49 @@ import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Download, Loader2 } from "lucide-react"
 import { useMemo } from "react"
+import { useTranslation } from "react-i18next"
 import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
-
-// Tabs component for needed/eligible toggle
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-// Helper to get human-readable label from value/label arrays
-function getLabelFromValues(values: Array<{ value: string; label: string }>, value: string): string {
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string
+
+const STATE_LABEL_KEYS: Record<string, string> = {
+  downloading: "workflowDialog.preview.stateValues.downloading",
+  uploading: "workflowDialog.preview.stateValues.uploading",
+  completed: "workflowDialog.preview.stateValues.completed",
+  stopped: "workflowDialog.preview.stateValues.stopped",
+  active: "workflowDialog.preview.stateValues.active",
+  inactive: "workflowDialog.preview.stateValues.inactive",
+  running: "workflowDialog.preview.stateValues.running",
+  stalled: "workflowDialog.preview.stateValues.stalled",
+  stalled_uploading: "workflowDialog.preview.stateValues.stalledUploading",
+  stalled_downloading: "workflowDialog.preview.stateValues.stalledDownloading",
+  errored: "workflowDialog.preview.stateValues.errored",
+  tracker_down: "workflowDialog.preview.stateValues.trackerDown",
+  checking: "workflowDialog.preview.stateValues.checking",
+  checkingResumeData: "workflowDialog.preview.stateValues.checkingResumeData",
+  moving: "workflowDialog.preview.stateValues.moving",
+  missingFiles: "workflowDialog.preview.stateValues.missingFiles",
+}
+
+const HARDLINK_SCOPE_LABEL_KEYS: Record<string, string> = {
+  none: "workflowDialog.preview.hardlinkValues.none",
+  torrents_only: "workflowDialog.preview.hardlinkValues.torrentsOnly",
+  outside_qbittorrent: "workflowDialog.preview.hardlinkValues.outsideQbittorrent",
+}
+
+function getLabelFromValues(
+  values: Array<{ value: string; label: string }>,
+  value: string,
+  tr: TranslateFn,
+  labelKeys?: Record<string, string>,
+): string {
+  const labelKey = labelKeys?.[value]
+  if (labelKey) return tr(labelKey)
+
   const found = values.find(v => v.value === value)
   if (found) return found.label
-  // Fallback: capitalize and humanize
+
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
 }
 
@@ -93,141 +126,140 @@ function extractConditionFields(cond: RuleCondition | null | undefined): Set<str
 // Column definitions for dynamic columns
 type ColumnDef = {
   key: string
-  header: string
+  headerKey: string
   align: "left" | "right" | "center"
-  // Fields that trigger this column to appear
   triggerFields: string[]
-  render: (t: AutomationPreviewTorrent) => React.ReactNode
+  render: (torrent: AutomationPreviewTorrent, tr: TranslateFn) => React.ReactNode
 }
 
 const DYNAMIC_COLUMNS: ColumnDef[] = [
   {
     key: "numComplete",
-    header: "Seeders",
+    headerKey: "workflowDialog.preview.columns.numComplete",
     align: "right",
     triggerFields: ["NUM_COMPLETE", "NUM_SEEDS"],
-    render: (t) => (
+    render: (torrent) => (
       <span className="font-mono text-muted-foreground">
-        {t.numComplete}
-        {t.numSeeds > 0 && <span className="text-xs ml-1">({t.numSeeds})</span>}
+        {torrent.numComplete}
+        {torrent.numSeeds > 0 && <span className="text-xs ml-1">({torrent.numSeeds})</span>}
       </span>
     ),
   },
   {
     key: "numIncomplete",
-    header: "Leechers",
+    headerKey: "workflowDialog.preview.columns.numIncomplete",
     align: "right",
     triggerFields: ["NUM_INCOMPLETE", "NUM_LEECHS"],
-    render: (t) => (
+    render: (torrent) => (
       <span className="font-mono text-muted-foreground">
-        {t.numIncomplete}
-        {t.numLeechs > 0 && <span className="text-xs ml-1">({t.numLeechs})</span>}
+        {torrent.numIncomplete}
+        {torrent.numLeechs > 0 && <span className="text-xs ml-1">({torrent.numLeechs})</span>}
       </span>
     ),
   },
   {
     key: "progress",
-    header: "Progress",
+    headerKey: "workflowDialog.preview.columns.progress",
     align: "right",
     triggerFields: ["PROGRESS"],
-    render: (t) => (
+    render: (torrent) => (
       <span className="font-mono text-muted-foreground">
-        {(t.progress * 100).toFixed(1)}%
+        {(torrent.progress * 100).toFixed(1)}%
       </span>
     ),
   },
   {
     key: "availability",
-    header: "Avail",
+    headerKey: "workflowDialog.preview.columns.availability",
     align: "right",
     triggerFields: ["AVAILABILITY"],
-    render: (t) => (
+    render: (torrent) => (
       <span className="font-mono text-muted-foreground">
-        {t.availability.toFixed(2)}
+        {torrent.availability.toFixed(2)}
       </span>
     ),
   },
   {
     key: "addedAge",
-    header: "Added",
+    headerKey: "workflowDialog.preview.columns.addedAge",
     align: "right",
     triggerFields: ["ADDED_ON", "ADDED_ON_AGE"],
-    render: (t) => (
+    render: (torrent) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {formatDurationCompact(Math.floor(Date.now() / 1000) - t.addedOn)}
+        {formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.addedOn)}
       </span>
     ),
   },
   {
     key: "completedAge",
-    header: "Completed",
+    headerKey: "workflowDialog.preview.columns.completedAge",
     align: "right",
     triggerFields: ["COMPLETION_ON", "COMPLETION_ON_AGE"],
-    render: (t) => (
+    render: (torrent, tr) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {t.completionOn > 0
-          ? formatDurationCompact(Math.floor(Date.now() / 1000) - t.completionOn)
-          : "-"}
+        {torrent.completionOn > 0
+          ? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.completionOn)
+          : tr("workflowDialog.activityRun.values.none")}
       </span>
     ),
   },
   {
     key: "lastActivityAge",
-    header: "Inactive",
+    headerKey: "workflowDialog.preview.columns.lastActivityAge",
     align: "right",
     triggerFields: ["LAST_ACTIVITY", "LAST_ACTIVITY_AGE"],
-    render: (t) => (
+    render: (torrent, tr) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {t.lastActivity > 0
-          ? formatDurationCompact(Math.floor(Date.now() / 1000) - t.lastActivity)
-          : "-"}
+        {torrent.lastActivity > 0
+          ? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.lastActivity)
+          : tr("workflowDialog.activityRun.values.none")}
       </span>
     ),
   },
   {
     key: "timeActive",
-    header: "Active",
+    headerKey: "workflowDialog.preview.columns.timeActive",
     align: "right",
     triggerFields: ["TIME_ACTIVE"],
-    render: (t) => (
+    render: (torrent) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {formatDurationCompact(t.timeActive)}
+        {formatDurationCompact(torrent.timeActive)}
       </span>
     ),
   },
   {
     key: "state",
-    header: "State",
+    headerKey: "workflowDialog.preview.columns.state",
     align: "center",
     triggerFields: ["STATE"],
-    render: (t) => (
+    render: (torrent, tr) => (
       <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-        {getLabelFromValues(TORRENT_STATES, t.state)}
+        {getLabelFromValues(TORRENT_STATES, torrent.state, tr, STATE_LABEL_KEYS)}
       </span>
     ),
   },
   {
     key: "hardlinkScope",
-    header: "Hardlinks",
+    headerKey: "workflowDialog.preview.columns.hardlinkScope",
     align: "center",
     triggerFields: ["HARDLINK_SCOPE"],
-    render: (t) => (
-      t.hardlinkScope ? (
+    render: (torrent, tr) => (
+      torrent.hardlinkScope ? (
         <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-          {getLabelFromValues(HARDLINK_SCOPE_VALUES, t.hardlinkScope)}
+          {getLabelFromValues(HARDLINK_SCOPE_VALUES, torrent.hardlinkScope, tr, HARDLINK_SCOPE_LABEL_KEYS)}
         </span>
       ) : null
     ),
   },
   {
     key: "status",
-    header: "Status",
+    headerKey: "workflowDialog.preview.columns.status",
     align: "center",
     triggerFields: ["IS_UNREGISTERED"],
-    render: (t) => (
-      t.isUnregistered ? (
+    render: (torrent, tr) => (
+      torrent.isUnregistered ? (
         <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
-          Unregistered
+          {tr("workflowDialog.preview.badges.unregistered")}
         </span>
       ) : null
     ),
@@ -256,29 +288,29 @@ export function WorkflowPreviewDialog({
   isExporting = false,
   isInitialLoading = false,
 }: WorkflowPreviewDialogProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => t(key as never, options as never) as unknown as string
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
 
-  // Determine which dynamic columns to show based on condition fields
   const visibleDynamicColumns = useMemo(() => {
     const fields = extractConditionFields(condition)
-    return DYNAMIC_COLUMNS.filter(col =>
+    return DYNAMIC_COLUMNS.filter((col) =>
       col.triggerFields.some(f => fields.has(f))
     )
   }, [condition])
 
-  // Show loading state when initial preview is being fetched
   if (isInitialLoading) {
     return (
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent className="sm:max-w-md">
           <div className="flex flex-col items-center justify-center py-12 gap-4">
             <AnimatedLogo className="h-16 w-16" />
-            <p className="text-sm text-muted-foreground">Loading preview. This might take a while...</p>
+            <p className="text-sm text-muted-foreground">{tr("workflowDialog.preview.loadingInitial")}</p>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tr("workflowDialog.actions.cancel")}</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -302,17 +334,17 @@ export function WorkflowPreviewDialog({
                   >
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="needed" disabled={isLoadingPreview}>
-                        Needed to reach target
+                        {tr("workflowDialog.preview.tabs.needed")}
                       </TabsTrigger>
                       <TabsTrigger value="eligible" disabled={isLoadingPreview}>
-                        All eligible
+                        {tr("workflowDialog.preview.tabs.eligible")}
                       </TabsTrigger>
                     </TabsList>
                   </Tabs>
                   <p className="text-xs text-muted-foreground">
                     {previewView === "needed"
-                      ? "These are the torrents that would be removed now to reach your free-space target."
-                      : "These are all torrents this rule could remove while free space is low."}
+                      ? tr("workflowDialog.preview.tabDescriptions.needed")
+                      : tr("workflowDialog.preview.tabDescriptions.eligible")}
                   </p>
                 </div>
               )}
@@ -331,21 +363,21 @@ export function WorkflowPreviewDialog({
               <table className="w-full text-sm">
                 <thead className="sticky top-0">
                   <tr className="border-b">
-                    <th className="text-left p-2 font-medium bg-muted">Tracker</th>
-                    <th className="text-left p-2 font-medium bg-muted">Name</th>
-                    <th className="text-right p-2 font-medium bg-muted">Size</th>
-                    <th className="text-right p-2 font-medium bg-muted">Ratio</th>
-                    <th className="text-right p-2 font-medium bg-muted">Seed Time</th>
+                    <th className="text-left p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.tracker")}</th>
+                    <th className="text-left p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.name")}</th>
+                    <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.size")}</th>
+                    <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.ratio")}</th>
+                    <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.seedTime")}</th>
                     {visibleDynamicColumns.map(col => (
                       <th
                         key={col.key}
                         className={`p-2 font-medium bg-muted text-${col.align}`}
                       >
-                        {col.header}
+                        {tr(col.headerKey)}
                       </th>
                     ))}
-                    <th className="text-left p-2 font-medium bg-muted">Category</th>
-                    <th className="text-left p-2 font-medium bg-muted">Path</th>
+                    <th className="text-left p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.category")}</th>
+                    <th className="text-left p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.path")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -371,14 +403,15 @@ export function WorkflowPreviewDialog({
                             <TruncatedText className="block flex-1 min-w-0">
                               {t.name}
                             </TruncatedText>
-                            {/* Single cross-seed badge with appropriate variant based on expansion type */}
                             {(t.isCrossSeed || t.isHardlinkCopy) && (
                               <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
                                 t.isHardlinkCopy
                                   ? "bg-violet-500/10 text-violet-600"
                                   : "bg-blue-500/10 text-blue-600"
                               }`}>
-                                {t.isHardlinkCopy ? "Cross-seed (hardlinked)" : "Cross-seed (same files)"}
+                                {t.isHardlinkCopy
+                                  ? tr("workflowDialog.preview.badges.crossSeedHardlinked")
+                                  : tr("workflowDialog.preview.badges.crossSeedSameFiles")}
                               </span>
                             )}
                           </div>
@@ -390,19 +423,19 @@ export function WorkflowPreviewDialog({
                           className="p-2 text-right font-mono whitespace-nowrap font-medium"
                           style={{ color: getRatioColor(t.ratio) }}
                         >
-                          {t.ratio === -1 ? "∞" : t.ratio.toFixed(2)}
+                          {t.ratio === -1 ? tr("workflowDialog.values.infinity") : t.ratio.toFixed(2)}
                         </td>
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatDurationCompact(t.seedingTime)}
                         </td>
                         {visibleDynamicColumns.map(col => (
                           <td key={col.key} className={`p-2 text-${col.align}`}>
-                            {col.render(t)}
+                            {col.render(t, tr)}
                           </td>
                         ))}
                         <td className="p-2">
                           <TruncatedText className="block max-w-[80px] text-muted-foreground">
-                            {t.category || "-"}
+                            {t.category || tr("workflowDialog.activityRun.values.none")}
                           </TruncatedText>
                         </td>
                         <td className="p-2 max-w-[200px]">
@@ -416,7 +449,7 @@ export function WorkflowPreviewDialog({
             </div>
             {hasMore && (
               <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
-                <span>... and {preview.totalMatches - preview.examples.length} more torrents</span>
+                <span>{tr("workflowDialog.preview.moreTorrents", { count: preview.totalMatches - preview.examples.length })}</span>
                 {onLoadMore && (
                   <Button
                     size="sm"
@@ -425,7 +458,7 @@ export function WorkflowPreviewDialog({
                     disabled={isLoadingMore}
                   >
                     {isLoadingMore && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Load more
+                    {tr("workflowDialog.preview.loadMore")}
                   </Button>
                 )}
               </div>
@@ -448,12 +481,12 @@ export function WorkflowPreviewDialog({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Export CSV
+                {tr("workflowDialog.preview.exportCsv")}
               </Button>
             )}
           </div>
           <div className="flex gap-2">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tr("workflowDialog.actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={onConfirm}
               disabled={isConfirming}

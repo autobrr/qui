@@ -43,9 +43,29 @@ export default defineConfig(() => ({
         // Use development mode on Node 24+ to keep builds working without changing runtime behavior elsewhere.
         mode: workboxMode,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
+        // Keep installation fast/reliable by excluding the massive main app chunk from precache.
+        // It is cached at runtime (stale-while-revalidate) below.
+        globIgnores: ["assets/index-*.js"],
         disableDevLogs: true,
-        // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
+        // Keep Workbox's precache size guardrail for all other assets.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            // Cache JS bundles on demand; avoids precache blowups from large app chunks.
+            urlPattern: /\/assets\/.*\.js$/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "js-assets-runtime",
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
         sourcemap: true,
         // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
         // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its

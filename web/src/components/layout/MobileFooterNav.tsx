@@ -16,6 +16,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
@@ -28,6 +30,7 @@ import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import i18n, { languageOptions, normalizeLanguage, type AppLanguage } from "@/i18n"
 import {
   encodeUnifiedInstanceIds,
   normalizeUnifiedInstanceIds,
@@ -60,6 +63,7 @@ import {
   Home,
   Loader2,
   LogOut,
+  Languages,
   Monitor,
   Moon,
   Palette,
@@ -72,6 +76,7 @@ import {
   Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 
@@ -100,6 +105,7 @@ const useThemeChange = () => {
 }
 
 export function MobileFooterNav() {
+  const { t } = useTranslation(["common", "footer"])
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
@@ -110,6 +116,15 @@ export function MobileFooterNav() {
   const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
+  const activeLanguage = normalizeLanguage(i18n.resolvedLanguage || i18n.language)
+  const sortedLanguageOptions = useMemo(() => {
+    const collator = new Intl.Collator(activeLanguage, { sensitivity: "base", usage: "sort" })
+    return [...languageOptions].sort((a, b) => collator.compare(t(a.labelKey), t(b.labelKey)))
+  }, [activeLanguage, t])
+  const activeLanguageOption = useMemo(
+    () => languageOptions.find(option => option.code === activeLanguage) ?? languageOptions[0],
+    [activeLanguage]
+  )
 
   const { data: instances, isPending: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
@@ -180,42 +195,48 @@ export function MobileFooterNav() {
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = isOnAllInstancesPage? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance && currentInstance.isActive ? currentInstance.name : null)
-  const activeInstancesSummary = `${activeInstances.length} active instance${activeInstances.length === 1 ? "" : "s"}`
+  const currentInstanceLabel = isOnAllInstancesPage
+    ? (hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null))
+    : (currentInstance && currentInstance.isActive ? currentInstance.name : null)
+  const activeInstancesSummary = t("header.activeInstancesSummary", { count: activeInstances.length })
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" }
-    toast.success(`Switched to ${modeNames[mode]} mode`)
-  }, [])
+    const modeNames = {
+      light: t("theme.light"),
+      dark: t("theme.dark"),
+      auto: t("theme.system"),
+    }
+    toast.success(t("theme.switchedMode", { mode: modeNames[mode] }))
+  }, [t])
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId)
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("theme.unableVerifyLicense"), {
+          description: t("theme.verifyLicenseDescription"),
         })
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+        toast.error(t("theme.premiumThemeLocked"))
       }
       return
     }
 
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
-    toast.success(`Switched to ${theme?.name || themeId} theme`)
-  }, [canSwitchPremium, isError])
+    toast.success(t("theme.switchedTheme", { theme: theme?.name || themeId }))
+  }, [canSwitchPremium, isError, t])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     const isPremium = isThemePremium(themeId)
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("theme.unableVerifyLicense"), {
+          description: t("theme.verifyLicenseDescription"),
         })
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+        toast.error(t("theme.premiumThemeLocked"))
       }
       return false
     }
@@ -223,9 +244,16 @@ export function MobileFooterNav() {
     await setTheme(themeId)
     await setThemeVariation(variationId)
     const theme = themes.find(t => t.id === themeId)
-    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
+    toast.success(t("theme.switchedThemeVariation", { theme: theme?.name || themeId, variation: variationId }))
     return true
-  }, [canSwitchPremium, isError])
+  }, [canSwitchPremium, isError, t])
+
+  const handleLanguageSelect = useCallback(async (language: AppLanguage) => {
+    if (language === activeLanguage) {
+      return
+    }
+    await i18n.changeLanguage(language)
+  }, [activeLanguage])
 
   if (isSelectionMode) {
     return null
@@ -252,7 +280,7 @@ export function MobileFooterNav() {
             "h-5 w-5",
             location.pathname === "/dashboard" && "text-primary"
           )} />
-          <span className="truncate">Dashboard</span>
+          <span className="truncate">{t("nav.dashboard")}</span>
         </Link>
 
         {/* Clients access */}
@@ -280,14 +308,14 @@ export function MobileFooterNav() {
                 </div>
                 <span
                   className="block max-w-[7.5rem] truncate text-center"
-                  title={currentInstanceLabel ?? "Clients"}
+                  title={currentInstanceLabel ?? t("mobile.clients")}
                 >
-                  {currentInstanceLabel ?? "Clients"}
+                  {currentInstanceLabel ?? t("mobile.clients")}
                 </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
-              <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("mobile.qbittorrentClients")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {hasMultipleActiveInstances && (
                 <>
@@ -298,7 +326,7 @@ export function MobileFooterNav() {
                       className="flex items-center gap-2 min-w-0"
                     >
                       <HardDrive className="h-4 w-4" />
-                      <span className="flex-1 min-w-0 truncate font-medium">Unified</span>
+                      <span className="flex-1 min-w-0 truncate font-medium">{t("header.unified")}</span>
                       <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
                         {activeInstancesSummary}
                       </span>
@@ -311,7 +339,7 @@ export function MobileFooterNav() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Unified Scope
+                    {t("header.unifiedScope")}
                   </DropdownMenuLabel>
                   <DropdownMenuItem
                     onSelect={(event) => {
@@ -320,7 +348,7 @@ export function MobileFooterNav() {
                     }}
                     className="cursor-pointer text-xs"
                   >
-                    All active ({activeInstances.length})
+                    {t("header.allActive", { count: activeInstances.length })}
                   </DropdownMenuItem>
                   {activeInstances.map((instance) => {
                     const checked = effectiveUnifiedInstanceIds.includes(instance.id)
@@ -383,7 +411,7 @@ export function MobileFooterNav() {
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="left" className="text-xs">
-                                RSS {csState?.rssRunning ? "running" : "enabled"}
+                                {csState?.rssRunning ? t("header.rssRunning") : t("header.rssEnabled")}
                               </TooltipContent>
                             </Tooltip>
                           )}
@@ -395,7 +423,7 @@ export function MobileFooterNav() {
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="left" className="text-xs">
-                                Scan running
+                                {t("header.scanRunning")}
                               </TooltipContent>
                             </Tooltip>
                           )}
@@ -412,7 +440,7 @@ export function MobileFooterNav() {
                 })
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                  No active instances
+                  {t("header.noActiveInstances")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -424,7 +452,7 @@ export function MobileFooterNav() {
             disabled
           >
             <HardDrive className="h-5 w-5 animate-pulse" />
-            <span className="block max-w-[7.5rem] truncate text-center text-xs">Loading...</span>
+            <span className="block max-w-[7.5rem] truncate text-center text-xs">{t("loading")}</span>
           </button>
         ) : (
           <button
@@ -433,7 +461,7 @@ export function MobileFooterNav() {
             disabled
           >
             <HardDrive className="h-5 w-5" />
-            <span className="block max-w-[7.5rem] truncate text-center">No active clients</span>
+            <span className="block max-w-[7.5rem] truncate text-center">{t("header.noActiveInstances")}</span>
           </button>
         )}
 
@@ -460,7 +488,7 @@ export function MobileFooterNav() {
                   </Badge>
                 )}
               </div>
-              <span className="truncate">Settings</span>
+              <span className="truncate">{t("nav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
@@ -475,8 +503,8 @@ export function MobileFooterNav() {
                   >
                     <Download className="h-4 w-4" />
                     <div className="flex flex-col">
-                      <span className="font-medium">Update Available</span>
-                      <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                      <span className="font-medium">{t("update.available")}</span>
+                      <span className="text-[10px] opacity-80">{t("update.version", { version: updateInfo.tag_name })}</span>
                     </div>
                   </a>
                 </DropdownMenuItem>
@@ -489,7 +517,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <SearchIcon className="h-4 w-4" />
-                Search
+                {t("nav.search")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -499,7 +527,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <GitBranch className="h-4 w-4" />
-                Cross-Seed
+                {t("nav.crossSeed")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -508,7 +536,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Zap className="h-4 w-4" />
-                Automations
+                {t("nav.automations")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -517,7 +545,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Archive className="h-4 w-4" />
-                Instance Backups
+                {t("nav.backups")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -526,7 +554,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Rss className="h-4 w-4" />
-                RSS
+                {t("nav.rss")}
               </Link>
             </DropdownMenuItem>
 
@@ -538,7 +566,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
-                General Settings
+                {t("mobile.generalSettings")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -548,7 +576,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Server className="h-4 w-4" />
-                Manage Instances
+                {t("instanceRoute.manageInstances")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -558,19 +586,47 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <FileText className="h-4 w-4" />
-                Logs
+                {t("nav.logs")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
-              Appearance
+              {t("theme.appearance")}
             </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="flex items-center gap-2">
+              <Languages className="h-4 w-4" />
+              <span className="flex-1">{t("languageSwitcher.menuLabel")}</span>
+              <span className="text-xs text-muted-foreground" lang={activeLanguageOption.locale}>
+                {activeLanguageOption.nativeName}
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={activeLanguage}
+              onValueChange={(value: string) => {
+                void handleLanguageSelect(value as AppLanguage)
+              }}
+            >
+              {sortedLanguageOptions.map((languageOption) => (
+                <DropdownMenuRadioItem
+                  key={`mobile-lang-${languageOption.code}`}
+                  value={languageOption.code}
+                  className="items-start"
+                >
+                  <div className="flex flex-1 flex-col leading-tight">
+                    <span lang={languageOption.locale}>{languageOption.nativeName}</span>
+                    <span className="text-xs text-muted-foreground">{t(languageOption.labelKey)}</span>
+                  </div>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
 
             <DropdownMenuSeparator />
 
             <div className="flex items-center justify-between px-3 py-2">
               <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground/60 select-none">
-                <span className="font-medium text-muted-foreground/70">Version {appVersion}</span>
+                <span className="font-medium text-muted-foreground/70">{t("update.version", { version: appVersion })}</span>
                 <div className="flex items-center gap-1">
                   <Copyright className="h-2.5 w-2.5 flex-shrink-0" />
                   <span>{new Date().getFullYear()} autobrr</span>
@@ -580,7 +636,7 @@ export function MobileFooterNav() {
                 href="https://github.com/autobrr/qui"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="View on GitHub"
+                aria-label={t("footer:githubAriaLabel")}
                 className="h-6 w-6 flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 <Github className="h-3.5 w-3.5" />
@@ -592,7 +648,7 @@ export function MobileFooterNav() {
               className="text-destructive focus:text-destructive flex items-center gap-2"
             >
               <LogOut className="h-4 w-4 text-destructive" />
-              Logout
+              {t("actions.logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -602,13 +658,13 @@ export function MobileFooterNav() {
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Appearance</DialogTitle>
+            <DialogTitle>{t("theme.appearance")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Mode Selection */}
             <div>
-              <div className="text-sm font-medium mb-2">Mode</div>
+              <div className="text-sm font-medium mb-2">{t("theme.mode")}</div>
               <div className="space-y-1">
                 <button
                   onClick={() => {
@@ -621,7 +677,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Sun className="h-4 w-4" />
-                  <span className="flex-1 text-left">Light</span>
+                  <span className="flex-1 text-left">{t("theme.light")}</span>
                   {currentMode === "light" && <Check className="h-4 w-4" />}
                 </button>
                 <button
@@ -635,7 +691,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Moon className="h-4 w-4" />
-                  <span className="flex-1 text-left">Dark</span>
+                  <span className="flex-1 text-left">{t("theme.dark")}</span>
                   {currentMode === "dark" && <Check className="h-4 w-4" />}
                 </button>
                 <button
@@ -649,7 +705,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Monitor className="h-4 w-4" />
-                  <span className="flex-1 text-left">System</span>
+                  <span className="flex-1 text-left">{t("theme.system")}</span>
                   {currentMode === "auto" && <Check className="h-4 w-4" />}
                 </button>
               </div>
@@ -657,7 +713,7 @@ export function MobileFooterNav() {
 
             {/* Theme Selection */}
             <div>
-              <div className="text-sm font-medium mb-2">Theme</div>
+              <div className="text-sm font-medium mb-2">{t("theme.theme")}</div>
               <div className="space-y-1">
                 {themes
                   .sort((a, b) => {
@@ -702,7 +758,7 @@ export function MobileFooterNav() {
                               <span className="truncate">{theme.name}</span>
                               {isPremium && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                                  Premium
+                                  {t("theme.premium")}
                                 </span>
                               )}
                             </div>

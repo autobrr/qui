@@ -14,20 +14,27 @@ import {
   type ThemeMode
 } from "@/utils/theme";
 import { themes, isThemePremium } from "@/config/themes";
-import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
+import { Sun, Moon, Monitor, Check, Palette, CornerDownRight, Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuLabel
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
+import { useTranslation } from "react-i18next";
+import i18n, { languageOptions, normalizeLanguage, type AppLanguage } from "@/i18n";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -59,10 +66,12 @@ const useThemeChange = () => {
 };
 
 export const ThemeToggle: React.FC = () => {
+  const { t } = useTranslation()
   const { currentMode, currentTheme, isDark } = useThemeChange();
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
   const [open, setOpen] = useState(false);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
+  const activeLanguage = normalizeLanguage(i18n.resolvedLanguage || i18n.language)
 
   const canSwitchPremium = canSwitchToPremiumTheme({
     hasPremiumAccess,
@@ -78,6 +87,16 @@ export const ThemeToggle: React.FC = () => {
       return aIsPremium ? 1 : -1;
     });
   }, []);
+
+  const sortedLanguageOptions = useMemo(() => {
+    const collator = new Intl.Collator(activeLanguage, { sensitivity: "base", usage: "sort" });
+    return [...languageOptions].sort((a, b) => collator.compare(t(a.labelKey), t(b.labelKey)));
+  }, [activeLanguage, t]);
+
+  const activeLanguageOption = useMemo(
+    () => languageOptions.find(option => option.code === activeLanguage) ?? languageOptions[0],
+    [activeLanguage]
+  );
 
   const previewColorsCache = useMemo(() => new Map<string, {
     primary: string;
@@ -125,19 +144,23 @@ export const ThemeToggle: React.FC = () => {
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);
 
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" };
-    toast.success(`Switched to ${modeNames[mode]} mode`);
-  }, []);
+    const modeNames = {
+      light: t("theme.light"),
+      dark: t("theme.dark"),
+      auto: t("theme.system"),
+    }
+    toast.success(t("theme.switchedMode", { mode: modeNames[mode] }))
+  }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("theme.unableVerifyLicense"), {
+          description: t("theme.verifyLicenseDescription"),
         });
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
+        toast.error(t("theme.premiumThemeLocked"));
       }
       return;
     }
@@ -146,18 +169,18 @@ export const ThemeToggle: React.FC = () => {
     await setTheme(themeId);
 
     const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme`);
-  }, [canSwitchPremium, isError]);
+    toast.success(t("theme.switchedTheme", { theme: theme?.name || themeId }));
+  }, [canSwitchPremium, isError, t]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("theme.unableVerifyLicense"), {
+          description: t("theme.verifyLicenseDescription"),
         });
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
+        toast.error(t("theme.premiumThemeLocked"));
       }
       return;
     }
@@ -166,10 +189,18 @@ export const ThemeToggle: React.FC = () => {
     await setThemeVariation(variationId);
 
     const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`);
+    toast.success(t("theme.switchedThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
     setOpen(false);
-  }, [canSwitchPremium, isError]);
+  }, [canSwitchPremium, isError, t]);
+
+  const handleLanguageSelect = useCallback(async (language: AppLanguage) => {
+    if (language === activeLanguage) {
+      return;
+    }
+    await i18n.changeLanguage(language);
+    setOpen(false);
+  }, [activeLanguage]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -180,21 +211,21 @@ export const ThemeToggle: React.FC = () => {
           className={cn("transition-transform duration-300")}
         >
           <Palette className={cn("h-5 w-5 transition-transform duration-200")} />
-          <span className="sr-only">Change theme</span>
+          <span className="sr-only">{t("theme.changeTheme")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("theme.appearance")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {/* Mode Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Mode</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("theme.mode")}</div>
         <DropdownMenuItem
           onClick={() => handleModeSelect("light")}
           className="flex items-center gap-2"
         >
           <Sun className="h-4 w-4" />
-          <span className="flex-1">Light</span>
+          <span className="flex-1">{t("theme.light")}</span>
           {currentMode === "light" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -202,7 +233,7 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Moon className="h-4 w-4" />
-          <span className="flex-1">Dark</span>
+          <span className="flex-1">{t("theme.dark")}</span>
           {currentMode === "dark" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -210,14 +241,52 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Monitor className="h-4 w-4" />
-          <span className="flex-1">System</span>
+          <span className="flex-1">{t("theme.system")}</span>
           {currentMode === "auto" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="flex items-center gap-2">
+            <Languages className="h-4 w-4" />
+            <span className="flex-1">{t("languageSwitcher.menuLabel")}</span>
+            <span
+              className="text-xs text-muted-foreground"
+              lang={activeLanguageOption.locale}
+            >
+              {activeLanguageOption.nativeName}
+            </span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-80">
+            <DropdownMenuLabel>{t("languageSwitcher.menuLabel")}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioGroup
+              value={activeLanguage}
+              onValueChange={(value: string) => {
+                void handleLanguageSelect(value as AppLanguage)
+              }}
+            >
+              {sortedLanguageOptions.map((languageOption) => (
+                <DropdownMenuRadioItem
+                  key={languageOption.code}
+                  value={languageOption.code}
+                  className="items-start"
+                >
+                  <div className="flex flex-1 flex-col leading-tight">
+                    <span lang={languageOption.locale}>{languageOption.nativeName}</span>
+                    <span className="text-xs text-muted-foreground">{t(languageOption.labelKey)}</span>
+                  </div>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        <DropdownMenuSeparator />
+
         {/* Theme Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("theme.theme")}</div>
         {sortedThemes.map((theme) => {
           const isPremium = isThemePremium(theme.id);
           const isLocked = isPremium && !canSwitchPremium;
@@ -259,7 +328,7 @@ export const ThemeToggle: React.FC = () => {
                     <span>{theme.name}</span>
                     {isPremium && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                        Premium
+                        {t("theme.premium")}
                       </span>
                     )}
                   </div>

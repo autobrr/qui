@@ -7,6 +7,7 @@ import { Link } from "@tanstack/react-router"
 import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import {
@@ -123,13 +124,21 @@ type ExcludedTorrentMeta = {
   action: "add" | "update" | "delete"
 }
 
-const runKindLabels: Record<BackupRunKind, string> = {
-  manual: "Manual",
-  hourly: "Hourly",
-  daily: "Daily",
-  weekly: "Weekly",
-  monthly: "Monthly",
-  import: "Import",
+const runKindLabelKeys: Record<BackupRunKind, string> = {
+  manual: "manual",
+  hourly: "hourly",
+  daily: "daily",
+  weekly: "weekly",
+  monthly: "monthly",
+  import: "import",
+}
+
+const statusLabelKeys: Record<BackupRunStatus, string> = {
+  pending: "pending",
+  running: "running",
+  success: "success",
+  failed: "failed",
+  canceled: "canceled",
 }
 
 const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -141,8 +150,12 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
 }
 
 export function InstanceBackups() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { instances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("backups")
+  const getRunKindLabel = (kind: BackupRunKind) => tr(`instanceBackups.runKinds.${runKindLabelKeys[kind]}`)
+  const getRunStatusLabel = (status: BackupRunStatus) => tr(`instanceBackups.runStatuses.${statusLabelKeys[status]}`)
 
   // Fetch capabilities for all instances to filter out unsupported ones
   const instanceCapabilitiesQueries = useQueries({
@@ -378,7 +391,7 @@ export function InstanceBackups() {
     if (settingsLoading || !formState) {
       return {
         state: "loading",
-        status: "Loading schedule…",
+        status: tr("instanceBackups.nextSchedule.loadingSchedule"),
       }
     }
 
@@ -386,7 +399,7 @@ export function InstanceBackups() {
       return {
         state: "ready",
         timestamp: "—",
-        status: "Automatic backups are turned off for this instance.",
+        status: tr("instanceBackups.nextSchedule.disabled"),
       }
     }
 
@@ -406,7 +419,7 @@ export function InstanceBackups() {
       return {
         state: "ready",
         timestamp: "—",
-        status: "Enable at least one automatic cadence to schedule backups.",
+        status: tr("instanceBackups.nextSchedule.selectCadence"),
       }
     }
 
@@ -421,7 +434,9 @@ export function InstanceBackups() {
         state: "ready",
         kind: activeRun.kind,
         timestamp: formatDateSafe(activeRun.startedAt ?? activeRun.requestedAt, formatDate),
-        status: activeRun.status === "running"? "Backup is currently running.": "Backup is queued and will start shortly.",
+        status: activeRun.status === "running"
+          ? tr("instanceBackups.nextSchedule.running")
+          : tr("instanceBackups.nextSchedule.queued"),
       }
     }
 
@@ -460,7 +475,7 @@ export function InstanceBackups() {
       return {
         state: "ready",
         timestamp: "—",
-        status: "Waiting for the scheduler to pick up the next backup.",
+        status: tr("instanceBackups.nextSchedule.waitingScheduler"),
       }
     }
 
@@ -469,7 +484,7 @@ export function InstanceBackups() {
         state: "ready",
         kind: best.kind,
         timestamp: "—",
-        status: "Waiting for the first backup; scheduler will run ASAP.",
+        status: tr("instanceBackups.nextSchedule.waitingFirstBackup"),
       }
     }
 
@@ -478,7 +493,7 @@ export function InstanceBackups() {
         state: "ready",
         kind: best.kind,
         timestamp: "—",
-        status: "Waiting for scheduler information.",
+        status: tr("instanceBackups.nextSchedule.waitingInfo"),
       }
     }
 
@@ -488,9 +503,9 @@ export function InstanceBackups() {
       state: "ready",
       kind: best.kind,
       timestamp: formatDate(best.nextDate),
-      status: overdue ? "Should have already run; scheduler will retry automatically." : "",
+      status: overdue ? tr("instanceBackups.nextSchedule.overdueRetry") : "",
     }
-  }, [formatDate, formState, settingsLoading, summaryRuns])
+  }, [formatDate, formState, settingsLoading, summaryRuns, tr])
 
   // Pagination helpers
   const hasMoreBackups = runsResponse?.hasMore ?? false
@@ -573,9 +588,9 @@ export function InstanceBackups() {
       await updateSettings.mutateAsync({
         ...formState,
       })
-      toast.success("Backup settings updated")
+      toast.success(tr("instanceBackups.toasts.settingsUpdated"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to update backup settings"
+      const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedUpdateSettings")
       toast.error(message)
     }
   }
@@ -583,9 +598,9 @@ export function InstanceBackups() {
   const handleTrigger = async (kind: BackupRunKind = "manual") => {
     try {
       await triggerBackup.mutateAsync({ kind, requestedBy: "ui" })
-      toast.success("Backup queued")
+      toast.success(tr("instanceBackups.toasts.backupQueued"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to queue backup"
+      const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedQueueBackup")
       toast.error(message)
     }
   }
@@ -593,9 +608,9 @@ export function InstanceBackups() {
   const handleDelete = async (run: BackupRun) => {
     try {
       await deleteRun.mutateAsync(run.id)
-      toast.success("Backup run deleted")
+      toast.success(tr("instanceBackups.toasts.backupDeleted"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to delete backup run"
+      const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedDeleteBackup")
       toast.error(message)
     }
   }
@@ -603,9 +618,9 @@ export function InstanceBackups() {
   const handleDeleteAll = async () => {
     try {
       await deleteAllRuns.mutateAsync()
-      toast.success("Deleted all backups")
+      toast.success(tr("instanceBackups.toasts.deletedAllBackups"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to delete backups"
+      const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedDeleteBackups")
       toast.error(message)
     }
   }
@@ -631,7 +646,7 @@ export function InstanceBackups() {
       const plan = await previewRestore.mutateAsync({ runId: run.id, mode, excludeHashes: payloadExclude })
       setRestorePlan(plan)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load restore plan"
+      const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedLoadRestorePlan")
       setRestorePlanError(message)
     } finally {
       setRestorePlanLoading(false)
@@ -674,7 +689,7 @@ export function InstanceBackups() {
     setRestoreExcludedHashes(nextExcludes)
 
     const label = meta.name?.trim() ? meta.name : normalizedHash
-    toast.info(`Excluded ${label} from restore`)
+    toast.info(tr("instanceBackups.toasts.excludedFromRestore", { label }))
   }
 
   const handleIncludeTorrent = async (hash: string, meta?: ExcludedTorrentMeta) => {
@@ -689,7 +704,7 @@ export function InstanceBackups() {
     setRestoreExcludedHashes(nextExcludes)
 
     const label = meta?.name?.trim() || normalizedHash
-    toast.success(`Included ${label}`)
+    toast.success(tr("instanceBackups.toasts.includedInRestore", { label }))
   }
 
   const handleResetExcluded = async () => {
@@ -697,7 +712,7 @@ export function InstanceBackups() {
       return
     }
     setRestoreExcludedHashes([])
-    toast.success("Included all torrents")
+    toast.success(tr("instanceBackups.toasts.includedAllTorrents"))
   }
 
   const handleExecuteRestore = async () => {
@@ -715,10 +730,12 @@ export function InstanceBackups() {
       setRestoreResult(result)
       setRestorePlan(result.plan)
       setRestorePlanError(null)
-      const message = restoreDryRun ? "Restore dry-run completed" : "Restore executed"
+      const message = restoreDryRun
+        ? tr("instanceBackups.toasts.restoreDryRunCompleted")
+        : tr("instanceBackups.toasts.restoreExecuted")
       toast.success(message)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to execute restore"
+      const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedExecuteRestore")
       toast.error(message)
     }
   }
@@ -739,18 +756,26 @@ export function InstanceBackups() {
 
   // Show instance selector when no instance is selected
   if (!instanceId) {
-    const selectionHeading = hasSupportedInstances? "Select an instance to manage backups": hasInstances? "No compatible instances found": "Connect a qBittorrent instance"
+    const selectionHeading = hasSupportedInstances
+      ? tr("instanceBackups.selection.heading.selectInstance")
+      : hasInstances
+        ? tr("instanceBackups.selection.heading.noCompatibleInstances")
+        : tr("instanceBackups.selection.heading.connectInstance")
 
-    const selectionMessage = !hasInstances? "No qBittorrent instances configured. Add an instance first to use the backup feature.": hasSupportedInstances? "Choose a qBittorrent instance from the dropdown above to view and manage its backups.": "None of your qBittorrent instances support torrent backups yet. Upgrade to qBittorrent 4.5.0+ (Web API 2.8.11+) to enable this feature."
+    const selectionMessage = !hasInstances
+      ? tr("instanceBackups.selection.message.noInstancesConfigured")
+      : hasSupportedInstances
+        ? tr("instanceBackups.selection.message.chooseFromDropdown")
+        : tr("instanceBackups.selection.message.noSupportedInstances")
 
     return (
       <TooltipProvider>
         <div className="space-y-6 p-4 lg:p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex-1 space-y-2">
-              <h1 className="text-2xl font-semibold">Backups</h1>
+              <h1 className="text-2xl font-semibold">{tr("instanceBackups.page.title")}</h1>
               <p className="text-sm text-muted-foreground">
-                Manage torrent backups for your instances
+                {tr("instanceBackups.page.description")}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -763,7 +788,7 @@ export function InstanceBackups() {
                     <div className="flex items-center gap-2 min-w-0 overflow-hidden">
                       <HardDrive className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">
-                        <SelectValue placeholder="Select instance" />
+                        <SelectValue placeholder={tr("instanceBackups.selection.selectInstancePlaceholder")} />
                       </span>
                     </div>
                   </SelectTrigger>
@@ -795,7 +820,7 @@ export function InstanceBackups() {
               {!hasSupportedInstances && (
                 <Button variant="outline" asChild>
                   <Link to="/instances">
-                    Go to Instances
+                    {tr("instanceBackups.selection.actions.goToInstances")}
                   </Link>
                 </Button>
               )}
@@ -807,25 +832,27 @@ export function InstanceBackups() {
   }
 
   if (capabilitiesLoading) {
-    return <div className="p-6">Loading instance capabilities...</div>
+    return <div className="p-6">{tr("instanceBackups.states.loadingCapabilities")}</div>
   }
 
   if (!supportsTorrentExport) {
     const versionRaw = capabilities?.webAPIVersion?.trim()
-    const reportedVersion = versionRaw && versionRaw.length > 0 ? versionRaw : "an older web API version"
+    const reportedVersion = versionRaw && versionRaw.length > 0
+      ? versionRaw
+      : tr("instanceBackups.capabilities.olderApiVersion")
 
     return (
       <div className="p-6 space-y-4">
         <Alert variant="destructive">
-          <AlertTitle>Backups unavailable for this instance</AlertTitle>
+          <AlertTitle>{tr("instanceBackups.capabilities.unsupportedTitle")}</AlertTitle>
           <AlertDescription>
-            {`qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+) is required to export .torrent files for backups. This instance reports ${reportedVersion}, so torrent exports are disabled.`}
+            {tr("instanceBackups.capabilities.unsupportedDescription", { reportedVersion })}
           </AlertDescription>
         </Alert>
         {instanceId && (
           <Button variant="outline" asChild>
             <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-              Return to instance overview
+              {tr("instanceBackups.capabilities.actions.returnToInstanceOverview")}
             </Link>
           </Button>
         )}
@@ -838,9 +865,9 @@ export function InstanceBackups() {
       <div className="space-y-6 p-4 lg:p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex-1 space-y-2">
-            <h1 className="text-2xl font-semibold">Backups</h1>
+            <h1 className="text-2xl font-semibold">{tr("instanceBackups.page.title")}</h1>
             <p className="text-sm text-muted-foreground">
-              Manage torrent backups for your instances
+              {tr("instanceBackups.page.description")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -854,7 +881,7 @@ export function InstanceBackups() {
                   <div className="flex items-center gap-2 min-w-0 overflow-hidden">
                     <HardDrive className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate">
-                      <SelectValue placeholder="Select instance" />
+                      <SelectValue placeholder={tr("instanceBackups.selection.selectInstancePlaceholder")} />
                     </span>
                   </div>
                 </SelectTrigger>
@@ -877,7 +904,7 @@ export function InstanceBackups() {
             {instanceId && (
               <Button variant="outline" asChild>
                 <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-                  Back to Torrents
+                  {tr("instanceBackups.page.actions.backToTorrents")}
                 </Link>
               </Button>
             )}
@@ -887,16 +914,16 @@ export function InstanceBackups() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr">
           <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Last backup</CardTitle>
+              <CardTitle className="text-sm font-medium">{tr("instanceBackups.summary.lastBackupTitle")}</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               {runsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
+                <p className="text-sm text-muted-foreground">{tr("instanceBackups.states.loading")}</p>
               ) : lastRun ? (
                 <div className="flex flex-col flex-1">
                   <div className="space-y-2">
-                    <Badge variant={statusVariants[lastRun.status]}>{runKindLabels[lastRun.kind]}</Badge>
+                    <Badge variant={statusVariants[lastRun.status]}>{getRunKindLabel(lastRun.kind)}</Badge>
                     <p className="text-sm">
                       {formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}
                     </p>
@@ -906,32 +933,38 @@ export function InstanceBackups() {
                       <div className="space-y-1 w-full">
                         <Progress value={lastRun.progressPercentage ?? 0} className="h-2" />
                         <p className="text-xs text-muted-foreground">
-                          {lastRun.progressCurrent ?? 0} of {lastRun.progressTotal} torrents ({(lastRun.progressPercentage ?? 0).toFixed(1)}%)
+                          {tr("instanceBackups.summary.progressLabel", {
+                            current: lastRun.progressCurrent ?? 0,
+                            total: lastRun.progressTotal,
+                            percentage: (lastRun.progressPercentage ?? 0).toFixed(1),
+                          })}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {tr("instanceBackups.summary.statusLabel", { status: getRunStatusLabel(lastRun.status) })}
+                      </p>
                     )}
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No backups yet</p>
+                <p className="text-sm text-muted-foreground">{tr("instanceBackups.summary.noBackupsYet")}</p>
               )}
             </CardContent>
           </Card>
 
           <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Next scheduled backup</CardTitle>
+              <CardTitle className="text-sm font-medium">{tr("instanceBackups.summary.nextScheduledTitle")}</CardTitle>
               <RefreshCw className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               {nextScheduleInfo.state === "loading" ? (
-                <p className="text-sm text-muted-foreground">Loading schedule...</p>
+                <p className="text-sm text-muted-foreground">{tr("instanceBackups.summary.loadingSchedule")}</p>
               ) : nextScheduleInfo.kind ? (
                 <div className="flex flex-col flex-1">
                   <div className="space-y-2">
-                    <Badge variant="default">{runKindLabels[nextScheduleInfo.kind]}</Badge>
+                    <Badge variant="default">{getRunKindLabel(nextScheduleInfo.kind)}</Badge>
                     <p className="text-sm">{nextScheduleInfo.timestamp ?? "—"}</p>
                   </div>
                   {nextScheduleInfo.status && (
@@ -948,11 +981,13 @@ export function InstanceBackups() {
 
           <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Instance</CardTitle>
+              <CardTitle className="text-sm font-medium">{tr("instanceBackups.summary.instanceTitle")}</CardTitle>
               <Download className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <p className="text-sm truncate font-semibold">{instance?.name ?? `Instance ${instanceId}`}</p>
+              <p className="text-sm truncate font-semibold">
+                {instance?.name ?? tr("instanceBackups.summary.instanceFallback", { id: instanceId })}
+              </p>
               <p className="text-xs text-muted-foreground break-all">{instance?.host}</p>
             </CardContent>
           </Card>
@@ -960,29 +995,29 @@ export function InstanceBackups() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Backup settings</CardTitle>
+            <CardTitle>{tr("instanceBackups.settings.title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             {settingsLoading || !formState ? (
-              <p className="text-sm text-muted-foreground">Loading settings...</p>
+              <p className="text-sm text-muted-foreground">{tr("instanceBackups.settings.loading")}</p>
             ) : (
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   <SettingToggle
-                    label="Enable backups"
-                    description="Turn on automatic backups for this instance. Pick at least one cadence below; leave this off for manual-only backups."
+                    label={tr("instanceBackups.settings.toggles.enableBackups.label")}
+                    description={tr("instanceBackups.settings.toggles.enableBackups.description")}
                     checked={formState.enabled}
                     onCheckedChange={handleToggle("enabled")}
                   />
                   <SettingToggle
-                    label="Include categories"
-                    description="Group torrents inside the archive by their category"
+                    label={tr("instanceBackups.settings.toggles.includeCategories.label")}
+                    description={tr("instanceBackups.settings.toggles.includeCategories.description")}
                     checked={formState.includeCategories}
                     onCheckedChange={handleToggle("includeCategories")}
                   />
                   <SettingToggle
-                    label="Include tags"
-                    description="Store torrent tags in the manifest"
+                    label={tr("instanceBackups.settings.toggles.includeTags.label")}
+                    description={tr("instanceBackups.settings.toggles.includeTags.description")}
                     checked={formState.includeTags}
                     onCheckedChange={handleToggle("includeTags")}
                   />
@@ -992,47 +1027,47 @@ export function InstanceBackups() {
 
                 <div className="space-y-4">
                   <div className="space-y-1">
-                    <p className="text-sm font-medium">Automatic cadences</p>
+                    <p className="text-sm font-medium">{tr("instanceBackups.settings.cadences.title")}</p>
                     <p className="text-xs text-muted-foreground">
-                      Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually.
+                      {tr("instanceBackups.settings.cadences.description")}
                     </p>
                   </div>
                   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     <ScheduleControl
-                      label="Hourly"
+                      label={tr("instanceBackups.runKinds.hourly")}
                       checked={formState.hourlyEnabled}
                       onCheckedChange={handleToggle("hourlyEnabled")}
                       value={formState.keepHourly}
                       onValueChange={handleNumberChange("keepHourly")}
-                      description="How many hourly snapshots to keep before older ones are pruned."
-                      tooltip="Runs roughly once per hour when backups are enabled and at least an hour has passed since the last run."
+                      description={tr("instanceBackups.settings.cadences.hourly.description")}
+                      tooltip={tr("instanceBackups.settings.cadences.hourly.tooltip")}
                     />
                     <ScheduleControl
-                      label="Daily"
+                      label={tr("instanceBackups.runKinds.daily")}
                       checked={formState.dailyEnabled}
                       onCheckedChange={handleToggle("dailyEnabled")}
                       value={formState.keepDaily}
                       onValueChange={handleNumberChange("keepDaily")}
-                      description="How many daily snapshots to keep before rotation."
-                      tooltip="Runs about once every 24 hours after the previous job finishes."
+                      description={tr("instanceBackups.settings.cadences.daily.description")}
+                      tooltip={tr("instanceBackups.settings.cadences.daily.tooltip")}
                     />
                     <ScheduleControl
-                      label="Weekly"
+                      label={tr("instanceBackups.runKinds.weekly")}
                       checked={formState.weeklyEnabled}
                       onCheckedChange={handleToggle("weeklyEnabled")}
                       value={formState.keepWeekly}
                       onValueChange={handleNumberChange("keepWeekly")}
-                      description="How many weekly snapshots to keep before rotation."
-                      tooltip="Runs once the last backup is at least seven days old."
+                      description={tr("instanceBackups.settings.cadences.weekly.description")}
+                      tooltip={tr("instanceBackups.settings.cadences.weekly.tooltip")}
                     />
                     <ScheduleControl
-                      label="Monthly"
+                      label={tr("instanceBackups.runKinds.monthly")}
                       checked={formState.monthlyEnabled}
                       onCheckedChange={handleToggle("monthlyEnabled")}
                       value={formState.keepMonthly}
                       onValueChange={handleNumberChange("keepMonthly")}
-                      description="How many monthly snapshots to keep before rotation."
-                      tooltip="Runs when the previous run is from an earlier calendar month."
+                      description={tr("instanceBackups.settings.cadences.monthly.description")}
+                      tooltip={tr("instanceBackups.settings.cadences.monthly.tooltip")}
                     />
                   </div>
                 </div>
@@ -1040,24 +1075,24 @@ export function InstanceBackups() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                      <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
+                      <ArrowDownToLine className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.runManualBackup")}
                     </Button>
                     <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" /> Import backup
+                      <FileText className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.importBackup")}
                     </Button>
                     <Button
                       variant="outline"
                       onClick={handleSave}
                       disabled={saveDisabled}
-                      title={requiresCadenceSelection ? "Select at least one cadence to enable automatic backups." : undefined}
+                      title={requiresCadenceSelection ? tr("instanceBackups.settings.validation.selectCadenceTitle") : undefined}
                     >
-                      Save changes
+                      {tr("instanceBackups.settings.actions.saveChanges")}
                     </Button>
                   </div>
                   {requiresCadenceSelection ? (
-                    <p className="text-xs text-destructive">Select at least one cadence (hourly, daily, weekly, or monthly) before saving.</p>
+                    <p className="text-xs text-destructive">{tr("instanceBackups.settings.validation.selectCadenceBody")}</p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Changes apply to future backups as soon as you save.</p>
+                    <p className="text-xs text-muted-foreground">{tr("instanceBackups.settings.validation.changesApply")}</p>
                   )}
                 </div>
               </div>
@@ -1070,17 +1105,22 @@ export function InstanceBackups() {
             closeRestoreDialog()
           }
         }}>
-          <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>Restore backup</DialogTitle>
+              <DialogTitle>{tr("instanceBackups.restore.title")}</DialogTitle>
               <DialogDescription>
-                {restoreTargetRun ? `Run #${restoreTargetRun.id} (${runKindLabels[restoreTargetRun.kind]})` : "Select a backup to restore"}
+                {restoreTargetRun
+                  ? tr("instanceBackups.restore.runDescription", {
+                    id: restoreTargetRun.id,
+                    kind: getRunKindLabel(restoreTargetRun.kind),
+                  })
+                  : tr("instanceBackups.restore.selectBackup")}
               </DialogDescription>
             </DialogHeader>
 
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Mode</span>
+                <span className="text-sm font-medium">{tr("instanceBackups.restore.modeLabel")}</span>
                 <div className="flex items-center gap-2">
                   <Select
                     value={restoreMode}
@@ -1088,12 +1128,12 @@ export function InstanceBackups() {
                     disabled={restorePlanLoading || !restoreTargetRun}
                   >
                     <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Select restore mode" />
+                      <SelectValue placeholder={tr("instanceBackups.restore.modePlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="incremental">Incremental</SelectItem>
-                      <SelectItem value="overwrite">Overwrite</SelectItem>
-                      <SelectItem value="complete">Complete</SelectItem>
+                      <SelectItem value="incremental">{tr("instanceBackups.restore.modes.incremental")}</SelectItem>
+                      <SelectItem value="overwrite">{tr("instanceBackups.restore.modes.overwrite")}</SelectItem>
+                      <SelectItem value="complete">{tr("instanceBackups.restore.modes.complete")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <Tooltip>
@@ -1105,12 +1145,12 @@ export function InstanceBackups() {
                       </span>
                     </TooltipTrigger>
                     <TooltipContent align="start" className="max-w-sm text-xs">
-                      <p className="font-bold">Incremental</p>
-                      <p className="mb-2">Adds missing categories, tags, and torrents without touching existing data.</p>
-                      <p className="font-bold">Overwrite</p>
-                      <p className="mb-2">Adds missing items and updates existing categories/torrents to match the snapshot.</p>
-                      <p className="font-bold">Complete</p>
-                      <p>Same as overwrite, then removes anything not recorded in the backup.</p>
+                      <p className="font-bold">{tr("instanceBackups.restore.modes.incremental")}</p>
+                      <p className="mb-2">{tr("instanceBackups.restore.modeHelp.incremental")}</p>
+                      <p className="font-bold">{tr("instanceBackups.restore.modes.overwrite")}</p>
+                      <p className="mb-2">{tr("instanceBackups.restore.modeHelp.overwrite")}</p>
+                      <p className="font-bold">{tr("instanceBackups.restore.modes.complete")}</p>
+                      <p>{tr("instanceBackups.restore.modeHelp.complete")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -1122,7 +1162,7 @@ export function InstanceBackups() {
                   checked={restoreDryRun}
                   onCheckedChange={setRestoreDryRun}
                 />
-                <Label htmlFor="restore-dry-run">Dry run</Label>
+                <Label htmlFor="restore-dry-run">{tr("instanceBackups.restore.options.dryRun")}</Label>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1131,7 +1171,7 @@ export function InstanceBackups() {
                   checked={restoreStartPaused}
                   onCheckedChange={setRestoreStartPaused}
                 />
-                <Label htmlFor="restore-start-paused">Start paused</Label>
+                <Label htmlFor="restore-start-paused">{tr("instanceBackups.restore.options.startPaused")}</Label>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1140,7 +1180,7 @@ export function InstanceBackups() {
                   checked={restoreSkipHashCheck}
                   onCheckedChange={setRestoreSkipHashCheck}
                 />
-                <Label htmlFor="restore-skip-hash-check">Skip recheck</Label>
+                <Label htmlFor="restore-skip-hash-check">{tr("instanceBackups.restore.options.skipRecheck")}</Label>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1155,7 +1195,7 @@ export function InstanceBackups() {
                     htmlFor="restore-auto-resume"
                     className={!restoreSkipHashCheck ? "text-muted-foreground" : undefined}
                   >
-                    Auto-resume completed torrents
+                    {tr("instanceBackups.restore.options.autoResumeCompleted")}
                   </Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1167,8 +1207,7 @@ export function InstanceBackups() {
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs text-xs">
                       <p>
-                        When enabled, torrents resume automatically if qBittorrent reports the restored data as
-                        fully checked. In other words; no data is missing.
+                        {tr("instanceBackups.restore.options.autoResumeHelp")}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -1177,11 +1216,11 @@ export function InstanceBackups() {
 
               <div className="basis-full text-xs text-muted-foreground">
                 {restoreSkipHashCheck && restoreAutoResume ? (
-                  <span>Torrents will resume automatically once qBittorrent reports the restored data as fully checked.</span>
+                  <span>{tr("instanceBackups.restore.options.autoResumeEnabledSummary")}</span>
                 ) : restoreSkipHashCheck ? (
-                  <span>Auto resume is off. Torrents stay paused until you start them manually.</span>
+                  <span>{tr("instanceBackups.restore.options.autoResumeDisabledSummary")}</span>
                 ) : (
-                  <span>Enable skip recheck to allow automatic resume after verification.</span>
+                  <span>{tr("instanceBackups.restore.options.enableSkipRecheckSummary")}</span>
                 )}
               </div>
 
@@ -1193,7 +1232,7 @@ export function InstanceBackups() {
                     onClick={handleResetExcluded}
                     disabled={restorePlanLoading}
                   >
-                    <Undo2 className="mr-2 h-4 w-4" /> Re-include all
+                    <Undo2 className="mr-2 h-4 w-4" /> {tr("instanceBackups.restore.actions.reincludeAll")}
                   </Button>
                 ) : null}
                 <Button
@@ -1202,13 +1241,17 @@ export function InstanceBackups() {
                   onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun, restoreExcludedHashes)}
                   disabled={restorePlanLoading || !restoreTargetRun}
                 >
-                  <ListChecks className="mr-2 h-4 w-4" /> Refresh plan
+                  <ListChecks className="mr-2 h-4 w-4" /> {tr("instanceBackups.restore.actions.refreshPlan")}
                 </Button>
                 <Button
                   onClick={handleExecuteRestore}
                   disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
                 >
-                  {executeRestore.isPending ? "Executing..." : restoreDryRun ? "Run dry-run" : "Execute restore"}
+                  {executeRestore.isPending
+                    ? tr("instanceBackups.restore.actions.executing")
+                    : restoreDryRun
+                      ? tr("instanceBackups.restore.actions.runDryRun")
+                      : tr("instanceBackups.restore.actions.executeRestore")}
                 </Button>
               </div>
             </div>
@@ -1219,7 +1262,7 @@ export function InstanceBackups() {
 
             <div className="flex-1 overflow-y-auto space-y-6">
               {!restorePlan && restorePlanLoading ? (
-                <p className="text-sm text-muted-foreground">Loading restore plan...</p>
+                <p className="text-sm text-muted-foreground">{tr("instanceBackups.restore.loadingPlan")}</p>
               ) : !restorePlan && restorePlanError ? (
                 <p className="text-sm text-destructive">{restorePlanError}</p>
               ) : restorePlan ? (
@@ -1231,31 +1274,35 @@ export function InstanceBackups() {
                   {restoreExcludedHashes.length > 0 ? (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted-foreground/40 bg-muted/20 px-3 py-2">
                       <div className="flex items-center gap-2 text-sm">
-                        <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
-                        <span>{restoreExcludedHashes.length} torrent{restoreExcludedHashes.length === 1 ? "" : "s"} excluded from this restore.</span>
+                        <Badge variant="secondary" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.excluded")}</Badge>
+                        <span>
+                          {tr("instanceBackups.restore.excludedSummary", {
+                            count: restoreExcludedHashes.length,
+                          })}
+                        </span>
                       </div>
                     </div>
                   ) : null}
 
                   {restorePlanLoading && restorePlan ? (
-                    <p className="text-xs text-muted-foreground">Refreshing plan...</p>
+                    <p className="text-xs text-muted-foreground">{tr("instanceBackups.restore.refreshingPlan")}</p>
                   ) : null}
 
                   {restorePlanHasActions ? (
                     <>
                       <section className="space-y-2">
-                        <h4 className="text-sm font-semibold">Categories</h4>
+                        <h4 className="text-sm font-semibold">{tr("instanceBackups.restore.sections.categories")}</h4>
                         {(restorePlan.categories.create?.length ||
                         restorePlan.categories.update?.length ||
                         restorePlan.categories.delete?.length) ? (
                             <div className="space-y-3">
                               {restorePlan.categories.create?.length ? (
                                 <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{tr("instanceBackups.restore.labels.create")}</p>
                                   <ul className="space-y-1 text-sm">
                                     {restorePlan.categories.create.map(item => (
                                       <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] uppercase">create</Badge>
+                                        <Badge variant="outline" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.create")}</Badge>
                                         <span>{item.name}</span>
                                         {item.savePath ? (
                                           <span className="text-xs text-muted-foreground">({item.savePath})</span>
@@ -1267,11 +1314,11 @@ export function InstanceBackups() {
                               ) : null}
                               {restorePlan.categories.update?.length ? (
                                 <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">Update</p>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{tr("instanceBackups.restore.labels.update")}</p>
                                   <ul className="space-y-1 text-sm">
                                     {restorePlan.categories.update.map(item => (
                                       <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="secondary" className="text-[10px] uppercase">update</Badge>
+                                        <Badge variant="secondary" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.update")}</Badge>
                                         <span>{item.name}</span>
                                         <span className="text-xs text-muted-foreground">
                                           {item.currentPath || "—"} → {item.desiredPath || "—"}
@@ -1283,11 +1330,11 @@ export function InstanceBackups() {
                               ) : null}
                               {restorePlan.categories.delete?.length ? (
                                 <div>
-                                  <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">{tr("instanceBackups.restore.labels.delete")}</p>
                                   <ul className="space-y-1 text-sm">
                                     {restorePlan.categories.delete.map(name => (
                                       <li key={`cat-delete-${name}`} className="flex items-center gap-2">
-                                        <Badge variant="destructive" className="text-[10px] uppercase">delete</Badge>
+                                        <Badge variant="destructive" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.delete")}</Badge>
                                         <span>{name}</span>
                                       </li>
                                     ))}
@@ -1296,17 +1343,17 @@ export function InstanceBackups() {
                               ) : null}
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground">No category changes.</p>
+                            <p className="text-sm text-muted-foreground">{tr("instanceBackups.restore.states.noCategoryChanges")}</p>
                           )}
                       </section>
 
                       <section className="space-y-2">
-                        <h4 className="text-sm font-semibold">Tags</h4>
+                        <h4 className="text-sm font-semibold">{tr("instanceBackups.restore.sections.tags")}</h4>
                         {(restorePlan.tags.create?.length || restorePlan.tags.delete?.length) ? (
                           <div className="space-y-3">
                             {restorePlan.tags.create?.length ? (
                               <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">{tr("instanceBackups.restore.labels.create")}</p>
                                 <ul className="flex flex-wrap gap-2 text-sm">
                                   {restorePlan.tags.create.map(item => (
                                     <li key={`tag-create-${item.name}`}>
@@ -1318,7 +1365,7 @@ export function InstanceBackups() {
                             ) : null}
                             {restorePlan.tags.delete?.length ? (
                               <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">{tr("instanceBackups.restore.labels.delete")}</p>
                                 <ul className="flex flex-wrap gap-2 text-sm">
                                   {restorePlan.tags.delete.map(name => (
                                     <li key={`tag-delete-${name}`}>
@@ -1330,12 +1377,12 @@ export function InstanceBackups() {
                             ) : null}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">No tag changes.</p>
+                          <p className="text-sm text-muted-foreground">{tr("instanceBackups.restore.states.noTagChanges")}</p>
                         )}
                       </section>
 
                       <section className="space-y-2">
-                        <h4 className="text-sm font-semibold">Torrents</h4>
+                        <h4 className="text-sm font-semibold">{tr("instanceBackups.restore.sections.torrents")}</h4>
                         {(restorePlan.torrents.add?.length ||
                         restorePlan.torrents.update?.length ||
                         restorePlan.torrents.delete?.length) ? (
@@ -1343,7 +1390,7 @@ export function InstanceBackups() {
                               {restorePlan.torrents.add?.length ? (
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground mb-1">
-                                    Add ({restorePlan.torrents.add.length})
+                                    {tr("instanceBackups.restore.counts.add", { count: restorePlan.torrents.add.length })}
                                   </p>
                                   <ul className="space-y-1 text-sm">
                                     {restorePlan.torrents.add.map(item => {
@@ -1355,7 +1402,7 @@ export function InstanceBackups() {
                                           className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
                                         >
                                           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                            <Badge variant="outline" className="text-[10px] uppercase">add</Badge>
+                                            <Badge variant="outline" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.add")}</Badge>
                                             <span className="font-medium truncate">
                                               {item.manifest.name || hash}
                                             </span>
@@ -1364,7 +1411,7 @@ export function InstanceBackups() {
                                               <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
                                             ) : null}
                                             {isExcluded ? (
-                                              <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                                              <Badge variant="secondary" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.excluded")}</Badge>
                                             ) : null}
                                           </div>
                                           <Button
@@ -1383,15 +1430,20 @@ export function InstanceBackups() {
                                             })
                                             )}
                                             disabled={restorePlanLoading}
-                                            aria-label={`${isExcluded ? "Include" : "Exclude"} ${item.manifest.name || hash} from restore`}
+                                            aria-label={tr("instanceBackups.restore.actions.toggleTorrentInRestoreAria", {
+                                              action: isExcluded
+                                                ? tr("instanceBackups.restore.actions.include")
+                                                : tr("instanceBackups.restore.actions.exclude"),
+                                              name: item.manifest.name || hash,
+                                            })}
                                           >
                                             {isExcluded ? (
                                               <>
-                                                <Undo2 className="mr-1 h-3 w-3" /> Include
+                                                <Undo2 className="mr-1 h-3 w-3" /> {tr("instanceBackups.restore.actions.include")}
                                               </>
                                             ) : (
                                               <>
-                                                <CircleX className="mr-1 h-3 w-3" /> Exclude
+                                                <CircleX className="mr-1 h-3 w-3" /> {tr("instanceBackups.restore.actions.exclude")}
                                               </>
                                             )}
                                           </Button>
@@ -1404,7 +1456,7 @@ export function InstanceBackups() {
                               {restorePlan.torrents.update?.length ? (
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground mb-1">
-                                    Update ({restorePlan.torrents.update.length})
+                                    {tr("instanceBackups.restore.counts.update", { count: restorePlan.torrents.update.length })}
                                   </p>
                                   <div className="space-y-3">
                                     {restorePlan.torrents.update.map(update => {
@@ -1419,11 +1471,13 @@ export function InstanceBackups() {
                                               <div className="flex items-center gap-2">
                                                 <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
                                                 {isExcluded ? (
-                                                  <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                                                  <Badge variant="secondary" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.excluded")}</Badge>
                                                 ) : null}
                                               </div>
                                               <span className="text-xs text-muted-foreground">
-                                                Current category: {update.current.category || "—"}
+                                                {tr("instanceBackups.restore.currentCategory", {
+                                                  category: update.current.category || "—",
+                                                })}
                                               </span>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -1444,15 +1498,20 @@ export function InstanceBackups() {
                                                 })
                                                 )}
                                                 disabled={restorePlanLoading}
-                                                aria-label={`${isExcluded ? "Include" : "Exclude"} ${update.desired.name || update.current.name || update.hash} from restore`}
+                                                aria-label={tr("instanceBackups.restore.actions.toggleTorrentInRestoreAria", {
+                                                  action: isExcluded
+                                                    ? tr("instanceBackups.restore.actions.include")
+                                                    : tr("instanceBackups.restore.actions.exclude"),
+                                                  name: update.desired.name || update.current.name || update.hash,
+                                                })}
                                               >
                                                 {isExcluded ? (
                                                   <>
-                                                    <Undo2 className="mr-1 h-3 w-3" /> Include
+                                                    <Undo2 className="mr-1 h-3 w-3" /> {tr("instanceBackups.restore.actions.include")}
                                                   </>
                                                 ) : (
                                                   <>
-                                                    <CircleX className="mr-1 h-3 w-3" /> Exclude
+                                                    <CircleX className="mr-1 h-3 w-3" /> {tr("instanceBackups.restore.actions.exclude")}
                                                   </>
                                                 )}
                                               </Button>
@@ -1465,9 +1524,11 @@ export function InstanceBackups() {
                                                   variant={change.supported ? "secondary" : "outline"}
                                                   className="text-[10px] uppercase"
                                                 >
-                                                  {change.supported ? "auto" : "manual"}
+                                                  {change.supported
+                                                    ? tr("instanceBackups.restore.labels.auto")
+                                                    : tr("instanceBackups.restore.labels.manual")}
                                                 </Badge>
-                                                <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
+                                                <span className="font-medium capitalize">{humanizeChangeField(change.field, tr)}</span>
                                                 <span className="text-xs text-muted-foreground">
                                                   {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
                                                 </span>
@@ -1486,7 +1547,7 @@ export function InstanceBackups() {
                               {restorePlan.torrents.delete?.length ? (
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground mb-1">
-                                    Delete ({restorePlan.torrents.delete.length})
+                                    {tr("instanceBackups.restore.counts.delete", { count: restorePlan.torrents.delete.length })}
                                   </p>
                                   <ul className="space-y-1 text-sm">
                                     {restorePlan.torrents.delete.map(hash => {
@@ -1496,10 +1557,10 @@ export function InstanceBackups() {
                                           key={`torrent-delete-${hash}`}
                                           className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
                                         >
-                                          <Badge variant="destructive" className="text-[10px] uppercase">delete</Badge>
+                                          <Badge variant="destructive" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.delete")}</Badge>
                                           <code className="text-xs text-muted-foreground">{hash}</code>
                                           {isExcluded ? (
-                                            <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                                            <Badge variant="secondary" className="text-[10px] uppercase">{tr("instanceBackups.restore.labels.excluded")}</Badge>
                                           ) : null}
                                           <Button
                                             variant="ghost"
@@ -1507,15 +1568,20 @@ export function InstanceBackups() {
                                             onClick={() => (isExcluded? handleIncludeTorrent(hash, { hash, action: "delete" }): handleExcludeTorrent(hash, { hash, action: "delete" })
                                             )}
                                             disabled={restorePlanLoading}
-                                            aria-label={`${isExcluded ? "Include" : "Exclude"} ${hash} from restore`}
+                                            aria-label={tr("instanceBackups.restore.actions.toggleTorrentInRestoreAria", {
+                                              action: isExcluded
+                                                ? tr("instanceBackups.restore.actions.include")
+                                                : tr("instanceBackups.restore.actions.exclude"),
+                                              name: hash,
+                                            })}
                                           >
                                             {isExcluded ? (
                                               <>
-                                                <Undo2 className="mr-1 h-3 w-3" /> Include
+                                                <Undo2 className="mr-1 h-3 w-3" /> {tr("instanceBackups.restore.actions.include")}
                                               </>
                                             ) : (
                                               <>
-                                                <CircleX className="mr-1 h-3 w-3" /> Exclude
+                                                <CircleX className="mr-1 h-3 w-3" /> {tr("instanceBackups.restore.actions.exclude")}
                                               </>
                                             )}
                                           </Button>
@@ -1527,21 +1593,21 @@ export function InstanceBackups() {
                               ) : null}
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground">No torrent changes.</p>
+                            <p className="text-sm text-muted-foreground">{tr("instanceBackups.restore.states.noTorrentChanges")}</p>
                           )}
                       </section>
                     </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No changes are required for this restore mode.</p>
+                    <p className="text-sm text-muted-foreground">{tr("instanceBackups.restore.states.noChangesRequired")}</p>
                   )}
 
                   {restoreUnsupportedChanges.length > 0 && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
-                      <p className="font-medium">Manual follow-up required</p>
+                      <p className="font-medium">{tr("instanceBackups.restore.states.manualFollowUpRequired")}</p>
                       <ul className="list-disc pl-5 space-y-1">
                         {restoreUnsupportedChanges.map(({ hash, change }, index) => (
                           <li key={`unsupported-${hash}-${change.field}-${index}`}>
-                            <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field)}
+                            <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field, tr)}
                             {change.message ? <span> — {change.message}</span> : null}
                           </li>
                         ))}
@@ -1550,34 +1616,40 @@ export function InstanceBackups() {
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Select a backup to restore.</p>
+                <p className="text-sm text-muted-foreground">{tr("instanceBackups.restore.selectBackup")}</p>
               )}
             </div>
 
             {restoreResult && (
               <div className="rounded-md border p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">Last execution</h4>
+                  <h4 className="text-sm font-semibold">{tr("instanceBackups.restore.lastExecutionTitle")}</h4>
                   <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
-                    {restoreResult.dryRun ? "Dry run" : "Applied"}
+                    {restoreResult.dryRun
+                      ? tr("instanceBackups.restore.results.dryRun")
+                      : tr("instanceBackups.restore.results.applied")}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">Mode: {restoreResult.mode}</p>
+                <p className="text-xs text-muted-foreground">
+                  {tr("instanceBackups.restore.results.modeLabel", {
+                    mode: tr(`instanceBackups.restore.modes.${restoreResult.mode}`),
+                  })}
+                </p>
                 <div className="grid gap-3 md:grid-cols-3 text-sm">
                   <div>
-                    <p className="font-medium">Categories</p>
+                    <p className="font-medium">{tr("instanceBackups.restore.sections.categories")}</p>
                     <p className="text-xs text-muted-foreground">
                       +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
                     </p>
                   </div>
                   <div>
-                    <p className="font-medium">Tags</p>
+                    <p className="font-medium">{tr("instanceBackups.restore.sections.tags")}</p>
                     <p className="text-xs text-muted-foreground">
                       +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
                     </p>
                   </div>
                   <div>
-                    <p className="font-medium">Torrents</p>
+                    <p className="font-medium">{tr("instanceBackups.restore.sections.torrents")}</p>
                     <p className="text-xs text-muted-foreground">
                       +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
                     </p>
@@ -1585,7 +1657,7 @@ export function InstanceBackups() {
                 </div>
                 {restoreResult.warnings?.length ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
-                    <p className="font-medium">Warnings</p>
+                    <p className="font-medium">{tr("instanceBackups.restore.results.warnings")}</p>
                     <ul className="list-disc pl-5 space-y-1">
                       {restoreResult.warnings.map((warning, index) => (
                         <li key={`restore-warning-${index}`}>{warning}</li>
@@ -1595,7 +1667,7 @@ export function InstanceBackups() {
                 ) : null}
                 {restoreResult.errors?.length ? (
                   <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-sm text-destructive">
-                    <p className="font-medium">Errors</p>
+                    <p className="font-medium">{tr("instanceBackups.restore.results.errors")}</p>
                     <ul className="list-disc pl-5 space-y-1">
                       {restoreResult.errors.map((errorItem, index) => (
                         <li key={`restore-error-${index}`}>
@@ -1618,15 +1690,14 @@ export function InstanceBackups() {
         }}>
           <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Import backup</DialogTitle>
+              <DialogTitle>{tr("instanceBackups.import.title")}</DialogTitle>
               <DialogDescription>
-                Upload a backup archive (with torrent files) or manifest.json (metadata only).
-                Archive formats: zip, tar.gz, tar.zst, tar.br, tar.xz, tar.
+                {tr("instanceBackups.import.description")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="manifest-file">Backup file</Label>
+                <Label htmlFor="manifest-file">{tr("instanceBackups.import.fileLabel")}</Label>
                 <Input
                   id="manifest-file"
                   type="file"
@@ -1638,14 +1709,17 @@ export function InstanceBackups() {
                 />
                 {importFile && (
                   <p className="text-sm text-muted-foreground">
-                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                    {tr("instanceBackups.import.selectedFile", {
+                      name: importFile.name,
+                      sizeKb: (importFile.size / 1024).toFixed(1),
+                    })}
                   </p>
                 )}
               </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
-                Cancel
+                {tr("instanceBackups.actions.cancel")}
               </Button>
               <Button
                 onClick={async () => {
@@ -1653,17 +1727,19 @@ export function InstanceBackups() {
 
                   try {
                     await importManifest.mutateAsync(importFile)
-                    toast.success("Backup imported successfully")
+                    toast.success(tr("instanceBackups.toasts.backupImported"))
                     setImportDialogOpen(false)
                     setImportFile(null)
                   } catch (error) {
-                    toast.error("Failed to import backup")
+                    toast.error(tr("instanceBackups.toasts.failedImportBackup"))
                     console.error("Import error:", error)
                   }
                 }}
                 disabled={!importFile || importManifest.isPending}
               >
-                {importManifest.isPending ? "Importing..." : "Import"}
+                {importManifest.isPending
+                  ? tr("instanceBackups.import.importing")
+                  : tr("instanceBackups.import.importAction")}
               </Button>
             </div>
           </DialogContent>
@@ -1673,7 +1749,7 @@ export function InstanceBackups() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Backup history</CardTitle>
+                <CardTitle>{tr("instanceBackups.history.title")}</CardTitle>
                 <div className="flex items-center gap-2">
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -1682,26 +1758,26 @@ export function InstanceBackups() {
                         size="sm"
                         disabled={deleteAllRuns.isPending || runsLoading || !hasRuns}
                       >
-                        <Trash className="mr-2 h-4 w-4" /> Delete all
+                        <Trash className="mr-2 h-4 w-4" /> {tr("instanceBackups.history.actions.deleteAll")}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Delete all backups?</AlertDialogTitle>
+                        <AlertDialogTitle>{tr("instanceBackups.history.deleteAllDialog.title")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This removes every stored backup archive and manifest for this instance. This action cannot be undone.
+                          {tr("instanceBackups.history.deleteAllDialog.description")}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{tr("instanceBackups.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteAll} disabled={deleteAllRuns.isPending}>
-                          Delete all
+                          {tr("instanceBackups.history.actions.deleteAll")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
                   <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                    <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
+                    <ArrowDownToLine className="mr-2 h-4 w-4" /> {tr("instanceBackups.history.actions.queueBackup")}
                   </Button>
                   <Button
                     variant="default"
@@ -1709,41 +1785,47 @@ export function InstanceBackups() {
                     onClick={() => latestCompletedRun && openRestore(latestCompletedRun)}
                     disabled={!latestCompletedRun || executeRestore.isPending || runsLoading}
                   >
-                    <Undo2 className="mr-2 h-4 w-4" /> Restore from latest
+                    <Undo2 className="mr-2 h-4 w-4" /> {tr("instanceBackups.history.actions.restoreFromLatest")}
                   </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {runsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading backups...</p>
+                <p className="text-sm text-muted-foreground">{tr("instanceBackups.history.loadingBackups")}</p>
               ) : runs.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-40">Requested</TableHead>
-                      <TableHead className="w-40">Completed</TableHead>
-                      <TableHead className="text-right">Torrents</TableHead>
-                      <TableHead className="text-right">Size</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{tr("instanceBackups.history.columns.type")}</TableHead>
+                      <TableHead>{tr("instanceBackups.history.columns.status")}</TableHead>
+                      <TableHead className="w-40">{tr("instanceBackups.history.columns.requested")}</TableHead>
+                      <TableHead className="w-40">{tr("instanceBackups.history.columns.completed")}</TableHead>
+                      <TableHead className="text-right">{tr("instanceBackups.history.columns.torrents")}</TableHead>
+                      <TableHead className="text-right">{tr("instanceBackups.history.columns.size")}</TableHead>
+                      <TableHead className="text-right">{tr("instanceBackups.history.columns.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {runs.map(run => (
                       <TableRow key={run.id}>
-                        <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
+                        <TableCell className="font-medium">{getRunKindLabel(run.kind)}</TableCell>
                         <TableCell>
                           {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
                             <div className="space-y-1 min-w-[200px]">
                               <Progress value={run.progressPercentage ?? 0} className="h-2" />
                               <p className="text-xs text-muted-foreground">
-                                {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
+                                {tr("instanceBackups.summary.progressLabel", {
+                                  current: run.progressCurrent ?? 0,
+                                  total: run.progressTotal,
+                                  percentage: (run.progressPercentage ?? 0).toFixed(1),
+                                })}
                               </p>
                             </div>
                           ) : (
-                            <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                            <Badge variant={statusVariants[run.status]} className="capitalize">
+                              {getRunStatusLabel(run.status)}
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
@@ -1757,12 +1839,12 @@ export function InstanceBackups() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => openManifest(run.id)}
-                                aria-label="View manifest"
+                                aria-label={tr("instanceBackups.history.actions.viewManifestAria")}
                               >
                                 <FileText className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>View backup manifest</TooltipContent>
+                            <TooltipContent>{tr("instanceBackups.history.tooltips.viewManifest")}</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -1770,24 +1852,24 @@ export function InstanceBackups() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => openRestore(run)}
-                                aria-label="Restore from backup"
+                                aria-label={tr("instanceBackups.history.actions.restoreFromBackupAria")}
                               >
                                 <Undo2 className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Restore torrents from this backup</TooltipContent>
+                            <TooltipContent>{tr("instanceBackups.history.tooltips.restoreFromBackup")}</TooltipContent>
                           </Tooltip>
                           {run.status === "success" && run.torrentCount > 0 ? (
                             <Tooltip>
                               <DropdownMenu>
                                 <TooltipTrigger asChild>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" aria-label="Download backup">
+                                    <Button variant="ghost" size="icon" aria-label={tr("instanceBackups.history.actions.downloadBackupAria")}>
                                       <Download className="h-4 w-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
                                 </TooltipTrigger>
-                                <TooltipContent>Download backup archive</TooltipContent>
+                                <TooltipContent>{tr("instanceBackups.history.tooltips.downloadBackupArchive")}</TooltipContent>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem asChild>
                                     <a
@@ -1795,7 +1877,7 @@ export function InstanceBackups() {
                                       rel="noreferrer"
                                       download
                                     >
-                                      Download as ZIP
+                                      {tr("instanceBackups.history.downloadFormats.zip")}
                                     </a>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
@@ -1804,7 +1886,7 @@ export function InstanceBackups() {
                                       rel="noreferrer"
                                       download
                                     >
-                                      Download as TAR.GZ
+                                      {tr("instanceBackups.history.downloadFormats.tarGz")}
                                     </a>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
@@ -1813,7 +1895,7 @@ export function InstanceBackups() {
                                       rel="noreferrer"
                                       download
                                     >
-                                      Download as TAR.ZST
+                                      {tr("instanceBackups.history.downloadFormats.tarZst")}
                                     </a>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
@@ -1822,7 +1904,7 @@ export function InstanceBackups() {
                                       rel="noreferrer"
                                       download
                                     >
-                                      Download as TAR.BR
+                                      {tr("instanceBackups.history.downloadFormats.tarBr")}
                                     </a>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
@@ -1831,7 +1913,7 @@ export function InstanceBackups() {
                                       rel="noreferrer"
                                       download
                                     >
-                                      Download as TAR.XZ
+                                      {tr("instanceBackups.history.downloadFormats.tarXz")}
                                     </a>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
@@ -1840,14 +1922,14 @@ export function InstanceBackups() {
                                       rel="noreferrer"
                                       download
                                     >
-                                      Download as TAR
+                                      {tr("instanceBackups.history.downloadFormats.tar")}
                                     </a>
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </Tooltip>
                           ) : (
-                            <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
+                            <Button variant="ghost" size="icon" disabled aria-label={tr("instanceBackups.history.actions.downloadUnavailableAria")}>
                               <Download className="h-4 w-4" />
                             </Button>
                           )}
@@ -1855,23 +1937,23 @@ export function InstanceBackups() {
                             <AlertDialog>
                               <TooltipTrigger asChild>
                                 <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" aria-label="Delete backup">
+                                  <Button variant="ghost" size="icon" aria-label={tr("instanceBackups.history.actions.deleteBackupAria")}>
                                     <Trash className="h-4 w-4" />
                                   </Button>
                                 </AlertDialogTrigger>
                               </TooltipTrigger>
-                              <TooltipContent>Delete this backup</TooltipContent>
+                              <TooltipContent>{tr("instanceBackups.history.tooltips.deleteBackup")}</TooltipContent>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete backup?</AlertDialogTitle>
+                                  <AlertDialogTitle>{tr("instanceBackups.history.deleteDialog.title")}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will remove the backup archive and manifest from disk. This action cannot be undone.
+                                    {tr("instanceBackups.history.deleteDialog.description")}
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel>{tr("instanceBackups.actions.cancel")}</AlertDialogCancel>
                                   <AlertDialogAction onClick={() => handleDelete(run)}>
-                                    Delete
+                                    {tr("instanceBackups.actions.delete")}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -1884,13 +1966,18 @@ export function InstanceBackups() {
                 </Table>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {canGoPrevious ? "No backups on this page. Use pagination to go back." : "No backups have been created yet."}
+                  {canGoPrevious
+                    ? tr("instanceBackups.history.empty.currentPage")
+                    : tr("instanceBackups.history.empty.noneCreated")}
                 </p>
               )}
               {shouldShowPagination && (
                 <div className="flex items-center justify-between pt-4">
                   <p className="text-sm text-muted-foreground">
-                    Page {backupsPage} • Showing {runs.length} backup{runs.length !== 1 ? "s" : ""}
+                    {tr("instanceBackups.history.pagination.pageSummary", {
+                      page: backupsPage,
+                      count: runs.length,
+                    })}
                   </p>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1900,7 +1987,7 @@ export function InstanceBackups() {
                       disabled={!canGoPrevious || runsLoading}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
-                      Previous
+                      {tr("instanceBackups.history.pagination.previous")}
                     </Button>
                     <Button
                       variant="outline"
@@ -1908,7 +1995,7 @@ export function InstanceBackups() {
                       onClick={() => setBackupsPage(p => p + 1)}
                       disabled={!canGoNext || runsLoading}
                     >
-                      Next
+                      {tr("instanceBackups.history.pagination.next")}
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
@@ -1926,27 +2013,33 @@ export function InstanceBackups() {
         }}>
           <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <DialogTitle>Backup manifest</DialogTitle>
+              <DialogTitle>{tr("instanceBackups.manifest.title")}</DialogTitle>
               <DialogDescription>
-                {manifestRunId ? `Run #${manifestRunId}` : "Select a backup to view its manifest"}
+                {manifestRunId
+                  ? tr("instanceBackups.manifest.runDescription", { id: manifestRunId })
+                  : tr("instanceBackups.manifest.selectBackup")}
               </DialogDescription>
             </DialogHeader>
             {manifestLoading ? (
-              <p className="text-sm text-muted-foreground">Loading manifest...</p>
+              <p className="text-sm text-muted-foreground">{tr("instanceBackups.manifest.loading")}</p>
             ) : manifest ? (
               <div className="space-y-4 flex-1 flex flex-col min-h-0">
                 <div className="space-y-3 text-sm">
                   <div className="flex flex-wrap gap-3 text-muted-foreground">
-                    <span className="font-medium text-foreground">Torrents: {manifest.torrentCount}</span>
+                    <span className="font-medium text-foreground">
+                      {tr("instanceBackups.manifest.summary.torrents", { count: manifest.torrentCount })}
+                    </span>
                     {manifestCategoryEntries.length > 0 && (
-                      <span>Categories: {manifestCategoryEntries.length}</span>
+                      <span>{tr("instanceBackups.manifest.summary.categories", { count: manifestCategoryEntries.length })}</span>
                     )}
-                    {manifestTags.length > 0 && <span>Tags: {manifestTags.length}</span>}
-                    <span>Generated {formatDateSafe(manifest.generatedAt, formatDate)}</span>
+                    {manifestTags.length > 0 && (
+                      <span>{tr("instanceBackups.manifest.summary.tags", { count: manifestTags.length })}</span>
+                    )}
+                    <span>{tr("instanceBackups.manifest.summary.generated", { date: formatDateSafe(manifest.generatedAt, formatDate) })}</span>
                   </div>
                   {displayedCategoryEntries.length > 0 && (
                     <div>
-                      <p className="font-medium text-foreground mb-2">Categories</p>
+                      <p className="font-medium text-foreground mb-2">{tr("instanceBackups.manifest.sections.categories")}</p>
                       <div className="flex flex-wrap gap-2">
                         {displayedCategoryEntries.map(([name, snapshot]) => (
                           <Badge key={name} variant="secondary" title={snapshot?.savePath ?? undefined}>
@@ -1954,20 +2047,20 @@ export function InstanceBackups() {
                           </Badge>
                         ))}
                         {remainingCategoryCount > 0 && (
-                          <Badge variant="outline">+{remainingCategoryCount} more</Badge>
+                          <Badge variant="outline">{tr("instanceBackups.manifest.summary.more", { count: remainingCategoryCount })}</Badge>
                         )}
                       </div>
                     </div>
                   )}
                   {displayedTags.length > 0 && (
                     <div>
-                      <p className="font-medium text-foreground mb-2">Tags</p>
+                      <p className="font-medium text-foreground mb-2">{tr("instanceBackups.manifest.sections.tags")}</p>
                       <div className="flex flex-wrap gap-2">
                         {displayedTags.map(tag => (
                           <Badge key={tag} variant="outline">{tag}</Badge>
                         ))}
                         {remainingTagCount > 0 && (
-                          <Badge variant="outline">+{remainingTagCount} more</Badge>
+                          <Badge variant="outline">{tr("instanceBackups.manifest.summary.more", { count: remainingTagCount })}</Badge>
                         )}
                       </div>
                     </div>
@@ -1977,20 +2070,20 @@ export function InstanceBackups() {
                   <Input
                     value={manifestSearch}
                     onChange={event => setManifestSearch(event.target.value)}
-                    placeholder="Search torrents, tags, categories..."
+                    placeholder={tr("instanceBackups.manifest.searchPlaceholder")}
                     className="w-full sm:w-[18rem] md:w-[16rem]"
-                    aria-label="Search backup manifest"
+                    aria-label={tr("instanceBackups.manifest.searchAriaLabel")}
                   />
                 </div>
                 <div className="flex-1 overflow-auto pr-1">
                   <Table className="min-w-[640px] w-full">
                     <TableHeader className="sticky top-0 z-10 bg-background">
                       <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Tags</TableHead>
-                        <TableHead className="text-right">Size</TableHead>
-                        <TableHead className="text-right">Cached Torrent</TableHead>
+                        <TableHead>{tr("instanceBackups.manifest.columns.name")}</TableHead>
+                        <TableHead>{tr("instanceBackups.manifest.columns.category")}</TableHead>
+                        <TableHead>{tr("instanceBackups.manifest.columns.tags")}</TableHead>
+                        <TableHead className="text-right">{tr("instanceBackups.manifest.columns.size")}</TableHead>
+                        <TableHead className="text-right">{tr("instanceBackups.manifest.columns.cachedTorrent")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -2007,7 +2100,7 @@ export function InstanceBackups() {
                                   <a
                                     href={api.getBackupTorrentDownloadUrl(instanceId!, manifestRunId, item.hash)}
                                     download
-                                    aria-label={`Download ${item.name} torrent`}
+                                    aria-label={tr("instanceBackups.manifest.downloadTorrentAria", { name: item.name })}
                                   >
                                     <Download className="h-4 w-4" />
                                   </a>
@@ -2021,7 +2114,9 @@ export function InstanceBackups() {
                       ) : (
                         <TableRow>
                           <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                            {manifestSearch ? `No torrents match "${manifestSearch}".` : "No torrents found."}
+                            {manifestSearch
+                              ? tr("instanceBackups.manifest.empty.filtered", { query: manifestSearch })
+                              : tr("instanceBackups.manifest.empty.none")}
                           </TableCell>
                         </TableRow>
                       )}
@@ -2030,7 +2125,7 @@ export function InstanceBackups() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Manifest unavailable.</p>
+              <p className="text-sm text-muted-foreground">{tr("instanceBackups.manifest.unavailable")}</p>
             )}
           </DialogContent>
         </Dialog>
@@ -2104,13 +2199,16 @@ function ScheduleControl({
   )
 }
 
-function humanizeChangeField(field: string): string {
-  const mappings: Record<string, string> = {
-    sizeBytes: "Size",
-    infohash_v1: "Infohash v1",
-    infohash_v2: "Infohash v2",
+function humanizeChangeField(
+  field: string,
+  tr?: (key: string, options?: Record<string, unknown>) => string
+): string {
+  if (tr) {
+    const translated = tr(`instanceBackups.restore.changeFields.${field}`)
+    if (translated !== `instanceBackups.restore.changeFields.${field}`) {
+      return translated
+    }
   }
-  if (mappings[field]) return mappings[field]
   return field
     .replace(/_/g, " ")
     .replace(/([A-Z])/g, " $1")

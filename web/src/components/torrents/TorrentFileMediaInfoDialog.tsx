@@ -13,6 +13,7 @@ import type { TorrentFile, TorrentFileMediaInfoResponse } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2, RotateCw } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface TorrentFileMediaInfoDialogProps {
@@ -59,19 +60,23 @@ function formatSummary(data: TorrentFileMediaInfoResponse, streamLabels: string[
 
 function ErrorRetryBlock({
   error,
+  fallbackMessage,
+  retryLabel,
   onRetry,
 }: {
   error: unknown
+  fallbackMessage: string
+  retryLabel: string
   onRetry: () => void
 }) {
   return (
     <div className="flex flex-col items-start gap-3 py-8">
       <p className="text-sm text-muted-foreground">
-        {error instanceof Error ? error.message : "Failed to fetch MediaInfo"}
+        {error instanceof Error ? error.message : fallbackMessage}
       </p>
       <Button variant="outline" size="sm" onClick={onRetry}>
         <RotateCw className="h-4 w-4 mr-2" />
-        Retry
+        {retryLabel}
       </Button>
     </div>
   )
@@ -81,12 +86,16 @@ function QueryStateWrapper({
   isLoading,
   isError,
   error,
+  fallbackMessage,
+  retryLabel,
   onRetry,
   children,
 }: {
   isLoading: boolean
   isError: boolean
   error: unknown
+  fallbackMessage: string
+  retryLabel: string
   onRetry: () => void
   children: React.ReactNode
 }) {
@@ -99,7 +108,7 @@ function QueryStateWrapper({
   }
 
   if (isError) {
-    return <ErrorRetryBlock error={error} onRetry={onRetry} />
+    return <ErrorRetryBlock error={error} fallbackMessage={fallbackMessage} retryLabel={retryLabel} onRetry={onRetry} />
   }
 
   return children
@@ -113,6 +122,8 @@ export function TorrentFileMediaInfoDialog({
   file,
 }: TorrentFileMediaInfoDialogProps) {
   const [tab, setTab] = useState<"summary" | "raw">("summary")
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -149,7 +160,7 @@ export function TorrentFileMediaInfoDialog({
     }
   }, [query.data?.rawJSON])
 
-  const copyLabel = tab === "summary" ? "Copy Summary" : "Copy JSON"
+  const copyLabel = tab === "summary" ? tr("torrentFileMediaInfoDialog.actions.copySummary") : tr("torrentFileMediaInfoDialog.actions.copyJson")
   const copyText = tab === "summary" ? summaryText : prettyRawJSON
   const canCopy = !!copyText && !query.isLoading && !query.isError && !query.isFetching
 
@@ -157,14 +168,14 @@ export function TorrentFileMediaInfoDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg md:max-w-5xl max-h-[85vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>MediaInfo</DialogTitle>
+          <DialogTitle>{tr("torrentFileMediaInfoDialog.title")}</DialogTitle>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)} className="w-full">
           <div className="flex items-center justify-between gap-2 min-w-0 mb-4">
             <TabsList className="min-w-0">
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+              <TabsTrigger value="summary">{tr("torrentFileMediaInfoDialog.tabs.summary")}</TabsTrigger>
+              <TabsTrigger value="raw">{tr("torrentFileMediaInfoDialog.tabs.rawJson")}</TabsTrigger>
             </TabsList>
 
             <Button
@@ -175,9 +186,9 @@ export function TorrentFileMediaInfoDialog({
                 if (!canCopy) return
                 try {
                   await copyTextToClipboard(copyText)
-                  toast.success(`${copyLabel} copied to clipboard`)
+                  toast.success(tr("torrentFileMediaInfoDialog.toasts.copiedToClipboard", { label: copyLabel }))
                 } catch {
-                  toast.error("Failed to copy to clipboard")
+                  toast.error(tr("torrentFileMediaInfoDialog.toasts.copyFailed"))
                 }
               }}
               disabled={!canCopy}
@@ -193,6 +204,8 @@ export function TorrentFileMediaInfoDialog({
                 isLoading={query.isLoading}
                 isError={query.isError}
                 error={query.error}
+                fallbackMessage={tr("torrentFileMediaInfoDialog.errors.failedFetch")}
+                retryLabel={tr("torrentFileMediaInfoDialog.actions.retry")}
                 onRetry={() => void query.refetch()}
               >
                 {query.data ? (
@@ -210,7 +223,7 @@ export function TorrentFileMediaInfoDialog({
                           </div>
 
                           {fields.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No fields</p>
+                            <p className="text-sm text-muted-foreground">{tr("torrentFileMediaInfoDialog.empty.noFields")}</p>
                           ) : (
                             <div className="grid grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1">
                               {fields.map((field, fieldIdx) => (
@@ -243,6 +256,8 @@ export function TorrentFileMediaInfoDialog({
                 isLoading={query.isLoading}
                 isError={query.isError}
                 error={query.error}
+                fallbackMessage={tr("torrentFileMediaInfoDialog.errors.failedFetch")}
+                retryLabel={tr("torrentFileMediaInfoDialog.actions.retry")}
                 onRetry={() => void query.refetch()}
               >
                 <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">

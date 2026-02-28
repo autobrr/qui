@@ -20,6 +20,7 @@ import {
   type ReactNode,
   type SetStateAction
 } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -375,6 +376,8 @@ const CollapseButton = forwardRef<
     expandAll?: boolean
   } & React.HTMLAttributes<HTMLButtonElement>
 >(({ className, elements, expandAll = false, children, ...props }, ref) => {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { expandedItems, setExpandedItems } = useTree()
 
   const expandAllNodes = useCallback(
@@ -421,7 +424,7 @@ const CollapseButton = forwardRef<
       {...props}
     >
       {children}
-      <span className="sr-only">Toggle</span>
+      <span className="sr-only">{tr("fileTree.collapseButton.toggleSrLabel")}</span>
     </Button>
   )
 })

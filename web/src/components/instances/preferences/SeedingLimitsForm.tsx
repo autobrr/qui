@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
+import { useTranslation } from "react-i18next"
 
 
 function SwitchSetting({
@@ -43,6 +44,8 @@ interface SeedingLimitsFormProps {
 }
 
 export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -52,14 +55,16 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
       max_seeding_time_enabled: false,
       max_seeding_time: 0,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        updatePreferences(value)
-        toast.success("Seeding limits updated successfully")
-        onSuccess?.()
-      } catch {
-        toast.error("Failed to update seeding limits")
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("seedingLimitsForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: () => {
+          toast.error(tr("seedingLimitsForm.toasts.failedUpdate"))
+        },
+      })
     },
   })
 
@@ -76,7 +81,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   if (isLoading) {
     return (
       <div className="text-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading seeding limits...</p>
+        <p className="text-sm text-muted-foreground">{tr("seedingLimitsForm.loading")}</p>
       </div>
     )
   }
@@ -84,7 +89,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   if (!preferences) {
     return (
       <div className="text-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{tr("seedingLimitsForm.loadFailed")}</p>
       </div>
     )
   }
@@ -101,10 +106,10 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
         <form.Field name="max_ratio_enabled">
           {(field) => (
             <SwitchSetting
-              label="Enable Share Ratio Limit"
+              label={tr("seedingLimitsForm.fields.enableShareRatioLimitLabel")}
               checked={(field.state.value as boolean) ?? false}
               onCheckedChange={field.handleChange}
-              description="Stop seeding when ratio is reached"
+              description={tr("seedingLimitsForm.fields.enableShareRatioLimitDescription")}
             />
           )}
         </form.Field>
@@ -114,13 +119,13 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
             <form.Field name="max_ratio">
               {(field) => (
                 <NumberInputWithUnlimited
-                  label="Maximum Share Ratio"
+                  label={tr("seedingLimitsForm.fields.maximumShareRatioLabel")}
                   value={(field.state.value as number) ?? 2.0}
                   onChange={field.handleChange}
                   min={-1}
                   max={10}
                   step="0.05"
-                  description="Stop seeding at this upload/download ratio"
+                  description={tr("seedingLimitsForm.fields.maximumShareRatioDescription")}
                   allowUnlimited={true}
                   disabled={!(enabledField.state.value as boolean)}
                 />
@@ -132,10 +137,10 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
         <form.Field name="max_seeding_time_enabled">
           {(field) => (
             <SwitchSetting
-              label="Enable Seeding Time Limit"
+              label={tr("seedingLimitsForm.fields.enableSeedingTimeLimitLabel")}
               checked={(field.state.value as boolean) ?? false}
               onCheckedChange={field.handleChange}
-              description="Stop seeding after specified time"
+              description={tr("seedingLimitsForm.fields.enableSeedingTimeLimitDescription")}
             />
           )}
         </form.Field>
@@ -145,12 +150,12 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
             <form.Field name="max_seeding_time">
               {(field) => (
                 <NumberInputWithUnlimited
-                  label="Maximum Seeding Time (minutes)"
+                  label={tr("seedingLimitsForm.fields.maximumSeedingTimeLabel")}
                   value={(field.state.value as number) ?? 1440}
                   onChange={field.handleChange}
                   min={-1}
                   max={525600} // 1 year in minutes
-                  description="Stop seeding after this many minutes"
+                  description={tr("seedingLimitsForm.fields.maximumSeedingTimeDescription")}
                   allowUnlimited={true}
                   disabled={!(enabledField.state.value as boolean)}
                 />
@@ -170,7 +175,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? tr("seedingLimitsForm.actions.saving") : tr("seedingLimitsForm.actions.saveChanges")}
             </Button>
           )}
         </form.Subscribe>

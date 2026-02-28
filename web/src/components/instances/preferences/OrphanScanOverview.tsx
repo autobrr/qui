@@ -23,6 +23,7 @@ import { cn, copyTextToClipboard, formatBytes, formatRelativeTime } from "@/lib/
 import type { Instance, OrphanScanRunStatus } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface OrphanScanOverviewProps {
@@ -35,25 +36,58 @@ function getStatusBadge(status: OrphanScanRunStatus, filesFound?: number) {
   // Special case: "Clean" state for zero-file scans
   // Handles both new (completed) and old DB rows (preview_ready) with no files
   if ((status === "completed" || status === "preview_ready") && filesFound === 0) {
-    return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: "Clean" }
+    return {
+      variant: "outline" as const,
+      className: "bg-muted text-muted-foreground border-border/60",
+      labelKey: "orphanScanOverview.status.clean",
+      isClean: true,
+    }
   }
 
   switch (status) {
     case "pending":
     case "scanning":
-      return { variant: "outline" as const, className: "bg-blue-500/10 text-blue-500 border-blue-500/20", label: status === "pending" ? "Starting..." : "Scanning..." }
+      return {
+        variant: "outline" as const,
+        className: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+        labelKey: status === "pending" ? "orphanScanOverview.status.starting" : "orphanScanOverview.status.scanning",
+      }
     case "preview_ready":
-      return { variant: "outline" as const, className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: "Ready for Review" }
+      return {
+        variant: "outline" as const,
+        className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+        labelKey: "orphanScanOverview.status.readyForReview",
+      }
     case "deleting":
-      return { variant: "outline" as const, className: "bg-orange-500/10 text-orange-500 border-orange-500/20", label: "Deleting..." }
+      return {
+        variant: "outline" as const,
+        className: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+        labelKey: "orphanScanOverview.status.deleting",
+      }
     case "completed":
-      return { variant: "outline" as const, className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", label: "Completed" }
+      return {
+        variant: "outline" as const,
+        className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+        labelKey: "orphanScanOverview.status.completed",
+      }
     case "failed":
-      return { variant: "outline" as const, className: "bg-destructive/10 text-destructive border-destructive/30", label: "Failed" }
+      return {
+        variant: "outline" as const,
+        className: "bg-destructive/10 text-destructive border-destructive/30",
+        labelKey: "orphanScanOverview.status.failed",
+      }
     case "canceled":
-      return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: "Canceled" }
+      return {
+        variant: "outline" as const,
+        className: "bg-muted text-muted-foreground border-border/60",
+        labelKey: "orphanScanOverview.status.canceled",
+      }
     default:
-      return { variant: "outline" as const, className: "", label: status }
+      return {
+        variant: "outline" as const,
+        className: "",
+        labelKey: "orphanScanOverview.status.unknown",
+      }
   }
 }
 
@@ -68,6 +102,8 @@ function InstanceOrphanScanItem({
   isExpanded: boolean
   onToggle: () => void
 }) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const hasLocalAccess = instance.hasLocalFilesystemAccess
   const settingsQuery = useOrphanScanSettings(instance.id, { enabled: hasLocalAccess })
   const runsQuery = useOrphanScanRuns(instance.id, { limit: 5, enabled: hasLocalAccess })
@@ -88,13 +124,15 @@ function InstanceOrphanScanItem({
       { enabled },
       {
         onSuccess: () => {
-          toast.success(enabled ? "Scheduled scanning enabled" : "Scheduled scanning disabled", {
+          toast.success(enabled
+            ? tr("orphanScanOverview.toasts.scheduledScanningEnabled")
+            : tr("orphanScanOverview.toasts.scheduledScanningDisabled"), {
             description: instance.name,
           })
         },
         onError: (error) => {
-          toast.error("Update failed", {
-            description: error instanceof Error ? error.message : "Unable to update settings",
+          toast.error(tr("orphanScanOverview.toasts.updateFailed"), {
+            description: error instanceof Error ? error.message : tr("orphanScanOverview.toasts.unableUpdateSettings"),
           })
         },
       }
@@ -104,11 +142,11 @@ function InstanceOrphanScanItem({
   const handleTriggerScan = () => {
     triggerMutation.mutate(undefined, {
       onSuccess: () => {
-        toast.success("Scan started", { description: instance.name })
+        toast.success(tr("orphanScanOverview.toasts.scanStarted"), { description: instance.name })
       },
       onError: (error) => {
-        toast.error("Failed to start scan", {
-          description: error instanceof Error ? error.message : "Unknown error",
+        toast.error(tr("orphanScanOverview.toasts.failedStartScan"), {
+          description: error instanceof Error ? error.message : tr("orphanScanOverview.values.unknownError"),
         })
       },
     })
@@ -117,11 +155,11 @@ function InstanceOrphanScanItem({
   const handleCancelRun = (runId: number) => {
     cancelMutation.mutate(runId, {
       onSuccess: () => {
-        toast.success("Scan canceled", { description: instance.name })
+        toast.success(tr("orphanScanOverview.toasts.scanCanceled"), { description: instance.name })
       },
       onError: (error) => {
-        toast.error("Failed to cancel", {
-          description: error instanceof Error ? error.message : "Unknown error",
+        toast.error(tr("orphanScanOverview.toasts.failedCancel"), {
+          description: error instanceof Error ? error.message : tr("orphanScanOverview.values.unknownError"),
         })
       },
     })
@@ -136,14 +174,14 @@ function InstanceOrphanScanItem({
         <div className="px-6 py-4 flex items-center justify-between opacity-60">
           <div className="flex items-center gap-3">
             <span className="font-medium">{instance.name}</span>
-            <Badge variant="outline" className="text-xs">No Local Access</Badge>
+            <Badge variant="outline" className="text-xs">{tr("orphanScanOverview.values.noLocalAccess")}</Badge>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
               <AlertTriangle className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[250px]">
-              <p>qui and qBittorrent must run on the same machine. Enable "Local Filesystem Access" in instance settings to use orphan scanning.</p>
+              <p>{tr("orphanScanOverview.tooltips.localAccessRequired")}</p>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -160,12 +198,15 @@ function InstanceOrphanScanItem({
               <span className="font-medium truncate">{instance.name}</span>
               {latestRunBadge && (
                 <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
-                  {latestRunBadge.label}
+                  {tr(latestRunBadge.labelKey)}
                 </Badge>
               )}
               {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
                 <Badge variant="outline" className="text-xs">
-                  {latestRun.filesFound} files ({formatBytes(latestRun.bytesReclaimed || 0)})
+                  {tr("orphanScanOverview.values.filesWithSize", {
+                    count: latestRun.filesFound,
+                    size: formatBytes(latestRun.bytesReclaimed || 0),
+                  })}
                 </Badge>
               )}
               {latestRun?.status === "completed" && latestRun.errorMessage && (
@@ -174,7 +215,7 @@ function InstanceOrphanScanItem({
                     <AlertTriangle className="h-4 w-4 text-yellow-500" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Partial failure - check recent scans</p>
+                    <p>{tr("orphanScanOverview.states.partialFailureCheckScans")}</p>
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -196,7 +237,7 @@ function InstanceOrphanScanItem({
               "text-xs font-medium",
               isEnabled ? "text-emerald-500" : "text-muted-foreground"
             )}>
-              {isEnabled ? "On" : "Off"}
+              {isEnabled ? tr("orphanScanOverview.values.on") : tr("orphanScanOverview.values.off")}
             </span>
             <Switch
               checked={isEnabled}
@@ -209,7 +250,7 @@ function InstanceOrphanScanItem({
             type="button"
             onClick={onToggle}
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? "Collapse" : "Expand"}
+            aria-label={isExpanded ? tr("orphanScanOverview.actions.collapse") : tr("orphanScanOverview.actions.expand")}
           >
             <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
           </button>
@@ -223,15 +264,24 @@ function InstanceOrphanScanItem({
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
                 {settings
-                  ? `Grace ${settings.gracePeriodMinutes}min · Interval ${settings.scanIntervalHours}h · Max ${settings.maxFilesPerRun} files`
-                  : "Loading..."}
+                  ? tr("orphanScanOverview.summary.scanConfig", {
+                    graceMinutes: settings.gracePeriodMinutes,
+                    intervalHours: settings.scanIntervalHours,
+                    maxFiles: settings.maxFilesPerRun,
+                  })
+                  : tr("orphanScanOverview.states.loading")}
               </p>
               <p className="text-xs text-muted-foreground/70">
                 {settings?.autoCleanupEnabled
-                  ? `Auto-cleanup enabled (≤${settings.autoCleanupMaxFiles} files)`
-                  : "Auto-cleanup disabled"}
+                  ? tr("orphanScanOverview.summary.autoCleanupEnabled", { maxFiles: settings.autoCleanupMaxFiles })
+                  : tr("orphanScanOverview.summary.autoCleanupDisabled")}
                 {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
-                  <> · {settings.ignorePaths.length} path{settings.ignorePaths.length !== 1 ? "s" : ""} ignored</>
+                  <> · {tr("orphanScanOverview.summary.pathsIgnored", {
+                    count: settings.ignorePaths.length,
+                    noun: settings.ignorePaths.length === 1
+                      ? tr("orphanScanOverview.values.path")
+                      : tr("orphanScanOverview.values.paths"),
+                  })}</>
                 )}
               </p>
             </div>
@@ -248,7 +298,7 @@ function InstanceOrphanScanItem({
                 ) : (
                   <>
                     <Play className="h-4 w-4 mr-2" />
-                    Scan Now
+                    {tr("orphanScanOverview.actions.scanNow")}
                   </>
                 )}
               </Button>
@@ -265,7 +315,7 @@ function InstanceOrphanScanItem({
                   ) : (
                     <>
                       <X className="h-4 w-4 mr-2" />
-                      Cancel
+                      {tr("orphanScanOverview.actions.cancel")}
                     </>
                   )}
                 </Button>
@@ -278,7 +328,7 @@ function InstanceOrphanScanItem({
                   className="h-8"
                 >
                   <Settings2 className="h-4 w-4 mr-2" />
-                  Configure
+                  {tr("orphanScanOverview.actions.configure")}
                 </Button>
               )}
             </div>
@@ -291,11 +341,16 @@ function InstanceOrphanScanItem({
                 <Files className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">
-                    {latestRun.filesFound} orphan file{latestRun.filesFound !== 1 ? "s" : ""} found
+                    {tr("orphanScanOverview.preview.orphanFilesFound", {
+                      count: latestRun.filesFound,
+                      noun: latestRun.filesFound === 1
+                        ? tr("orphanScanOverview.values.orphanFile")
+                        : tr("orphanScanOverview.values.orphanFiles"),
+                    })}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Total size: {formatBytes(latestRun.bytesReclaimed || 0)}
-                    {latestRun.truncated && " (scan was truncated, more files may exist)"}
+                    {tr("orphanScanOverview.preview.totalSize", { size: formatBytes(latestRun.bytesReclaimed || 0) })}
+                    {latestRun.truncated && ` (${tr("orphanScanOverview.preview.scanTruncated")})`}
                   </p>
                 </div>
               </div>
@@ -307,7 +362,7 @@ function InstanceOrphanScanItem({
                   className="h-8"
                 >
                   <Eye className="h-4 w-4 mr-2" />
-                  View Preview
+                  {tr("orphanScanOverview.actions.viewPreview")}
                 </Button>
                 <Button
                   variant="ghost"
@@ -317,7 +372,7 @@ function InstanceOrphanScanItem({
                   className="h-8"
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Cancel
+                  {tr("orphanScanOverview.actions.cancel")}
                 </Button>
               </div>
             </div>
@@ -335,7 +390,7 @@ function InstanceOrphanScanItem({
           {/* Recent runs */}
           {runs.length > 0 && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium">Recent Scans</h4>
+              <h4 className="text-sm font-medium">{tr("orphanScanOverview.runs.title")}</h4>
               <div className="rounded-md border divide-y">
                 {runs.map((run) => {
                   const statusBadge = getStatusBadge(run.status, run.filesFound)
@@ -348,7 +403,7 @@ function InstanceOrphanScanItem({
                     <div className="p-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
-                          {statusBadge.label}
+                          {tr(statusBadge.labelKey)}
                         </Badge>
                         {hasWarning && (
                           <Tooltip>
@@ -356,19 +411,22 @@ function InstanceOrphanScanItem({
                               <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Partial failure - expand for details</p>
+                              <p>{tr("orphanScanOverview.states.partialFailureExpandDetails")}</p>
                             </TooltipContent>
                           </Tooltip>
                         )}
                         <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        {statusBadge.label === "Clean" && (
-                          <span>0 orphans</span>
+                        {statusBadge.isClean && (
+                          <span>{tr("orphanScanOverview.runs.zeroOrphans")}</span>
                         )}
                         {run.status === "completed" && run.filesFound > 0 && (
                           <span>
-                            {run.filesDeleted} deleted · {formatBytes(run.bytesReclaimed)}
+                            {tr("orphanScanOverview.runs.deletedWithSize", {
+                              count: run.filesDeleted,
+                              size: formatBytes(run.bytesReclaimed),
+                            })}
                           </span>
                         )}
                         {run.startedAt && (
@@ -404,7 +462,7 @@ function InstanceOrphanScanItem({
                               className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100"
                               onClick={() => {
                                 copyTextToClipboard(run.errorMessage ?? "")
-                                toast.success("Copied to clipboard")
+                                toast.success(tr("orphanScanOverview.toasts.copiedToClipboard"))
                               }}
                             >
                               <Copy className="h-3.5 w-3.5" />
@@ -426,7 +484,7 @@ function InstanceOrphanScanItem({
                 <Files className="h-5 w-5 text-muted-foreground/50" />
               </div>
               <p className="text-sm text-muted-foreground">
-                No scans run yet. Click "Scan Now" to find orphan files.
+                {tr("orphanScanOverview.states.noScansYet")}
               </p>
             </div>
           )}
@@ -441,6 +499,8 @@ export function OrphanScanOverview({
   expandedInstances: controlledExpanded,
   onExpandedInstancesChange,
 }: OrphanScanOverviewProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { instances } = useInstances()
 
   // Internal state for standalone usage
@@ -459,9 +519,9 @@ export function OrphanScanOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Orphan Scan</CardTitle>
+          <CardTitle className="text-lg font-semibold">{tr("orphanScanOverview.header.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this service.
+            {tr("orphanScanOverview.header.noInstances")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -472,21 +532,18 @@ export function OrphanScanOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Orphan Scan</CardTitle>
+          <CardTitle className="text-lg font-semibold">{tr("orphanScanOverview.header.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px]">
-              <p>
-                Finds files on disk that are not associated with any torrent in qBittorrent.
-                Requires local filesystem access to be enabled for each instance.
-              </p>
+              <p>{tr("orphanScanOverview.header.tooltip")}</p>
             </TooltipContent>
           </Tooltip>
         </div>
         <CardDescription>
-          Scans download directories and identifies orphan files for cleanup.
+          {tr("orphanScanOverview.header.description")}
         </CardDescription>
       </CardHeader>
 

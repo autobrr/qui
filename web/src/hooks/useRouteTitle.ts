@@ -4,17 +4,22 @@
  */
 
 import { useRouterState } from "@tanstack/react-router"
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 
 const DEFAULT_TITLE = "qui"
 
-function getStaticTitle(staticData: unknown): string | undefined {
+function getStaticTitle(staticData: unknown, resolveKey: (key: string) => string): string | undefined {
   if (!staticData || typeof staticData !== "object") {
     return undefined
   }
 
-  if (!("title" in staticData)) {
-    return undefined
+  const titleKey = (staticData as { titleKey?: unknown }).titleKey
+  if (typeof titleKey === "string") {
+    const translated = resolveKey(titleKey).trim()
+    if (translated.length > 0) {
+      return translated
+    }
   }
 
   const title = (staticData as { title?: unknown }).title
@@ -31,19 +36,21 @@ function getStaticTitle(staticData: unknown): string | undefined {
  * Falls back to the provided string when no route title is available.
  */
 export function useRouteTitle(fallback: string = DEFAULT_TITLE) {
+  const { t } = useTranslation("common")
   const matches = useRouterState({
     select: (state) => state.matches,
   })
+  const resolveKey = useCallback((key: string) => String(t(key as never)), [t])
 
   return useMemo(() => {
     for (let index = matches.length - 1; index >= 0; index -= 1) {
       const match = matches[index]
-      const staticTitle = getStaticTitle(match.staticData)
+      const staticTitle = getStaticTitle(match.staticData, resolveKey)
       if (staticTitle) {
         return staticTitle
       }
     }
 
     return fallback
-  }, [fallback, matches])
+  }, [fallback, matches, resolveKey])
 }

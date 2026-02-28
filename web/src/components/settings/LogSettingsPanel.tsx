@@ -38,6 +38,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Copy, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const
@@ -51,16 +52,18 @@ function normalizeLogLevel(level: string | undefined): (typeof LOG_LEVELS)[numbe
 }
 
 function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<ReturnType<typeof api.getLogSettings>>> }) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const queryClient = useQueryClient()
 
   const updateMutation = useMutation({
     mutationFn: (update: LogSettingsUpdate) => api.updateLogSettings(update),
     onSuccess: (data) => {
       queryClient.setQueryData(["log-settings"], data)
-      toast.success("Log settings updated")
+      toast.success(tr("logSettingsPanel.toasts.settingsUpdated"))
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update log settings")
+      toast.error(error instanceof Error ? error.message : tr("logSettingsPanel.toasts.failedUpdateSettings"))
     },
   })
 
@@ -110,7 +113,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
         {(field) => (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <Label htmlFor="level" className="text-sm">Log Level</Label>
+              <Label htmlFor="level" className="text-sm">{tr("logSettingsPanel.form.logLevel")}</Label>
               {isLocked("level") && (
                 <Badge variant="outline" className="gap-1 text-xs">
                   <Lock className="h-3 w-3" />
@@ -124,7 +127,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
               disabled={isLocked("level")}
             >
               <SelectTrigger id="level" className="h-9">
-                <SelectValue placeholder="Select log level" />
+                <SelectValue placeholder={tr("logSettingsPanel.form.selectLogLevel")} />
               </SelectTrigger>
               <SelectContent>
                 {LOG_LEVELS.map((level) => (
@@ -142,7 +145,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
         {(field) => (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <Label htmlFor="path" className="text-sm">Log File Path</Label>
+              <Label htmlFor="path" className="text-sm">{tr("logSettingsPanel.form.logFilePath")}</Label>
               {isLocked("path") && (
                 <Badge variant="outline" className="gap-1 text-xs">
                   <Lock className="h-3 w-3" />
@@ -153,7 +156,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
             <Input
               id="path"
               className="h-9"
-              placeholder="Leave empty for stdout only"
+              placeholder={tr("logSettingsPanel.form.pathPlaceholder")}
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
               disabled={isLocked("path")}
@@ -167,7 +170,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
           {(field) => (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <Label htmlFor="maxSize" className="text-sm">Max Size (MB)</Label>
+                <Label htmlFor="maxSize" className="text-sm">{tr("logSettingsPanel.form.maxSizeMb")}</Label>
                 {isLocked("maxSize") && (
                   <Badge variant="outline" className="gap-1 text-xs">
                     <Lock className="h-3 w-3" />
@@ -191,7 +194,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
           {(field) => (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <Label htmlFor="maxBackups" className="text-sm">Max Backups</Label>
+                <Label htmlFor="maxBackups" className="text-sm">{tr("logSettingsPanel.form.maxBackups")}</Label>
                 {isLocked("maxBackups") && (
                   <Badge variant="outline" className="gap-1 text-xs">
                     <Lock className="h-3 w-3" />
@@ -218,10 +221,10 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
             {isSubmitting || updateMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {tr("logSettingsPanel.actions.saving")}
               </>
             ) : (
-              "Save Settings"
+              tr("logSettingsPanel.actions.saveSettings")
             )}
           </Button>
         )}
@@ -335,6 +338,11 @@ function LogEntry({
   onSelect?: () => void
   onMute?: () => void
 }) {
+  const { t } = useTranslation("common")
+  const tr = useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
   const extraKeys = Object.keys(entry.extra)
   const isClickable = onSelect && entry.isJson
 
@@ -363,7 +371,7 @@ function LogEntry({
         type="button"
         onClick={onMute ? handleMute : undefined}
         disabled={!onMute}
-        title={onMute ? "Mute similar entries" : undefined}
+        title={onMute ? tr("logSettingsPanel.logEntry.muteSimilarEntries") : undefined}
         className={`group/mute shrink-0 w-12 h-4 inline-flex items-center justify-center text-[10px] font-medium uppercase rounded ${LEVEL_BADGE_COLORS[entry.level]} ${onMute ? "cursor-pointer" : ""}`}
       >
         <span className={onMute ? "group-hover/mute:hidden" : ""}>{entry.level}</span>
@@ -456,6 +464,8 @@ function LogEntryDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
   const { prettyJson, highlightedJson } = useMemo(() => {
     if (!entry) return { prettyJson: "", highlightedJson: [] as React.ReactNode[] }
@@ -473,28 +483,28 @@ function LogEntryDialog({
     if (!prettyJson) return
     try {
       await copyTextToClipboard(prettyJson)
-      toast.success("JSON copied to clipboard")
+      toast.success(tr("logSettingsPanel.toasts.jsonCopied"))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(tr("logSettingsPanel.toasts.failedCopyClipboard"))
     }
-  }, [prettyJson])
+  }, [prettyJson, tr])
 
   const handleCopyRaw = useCallback(async () => {
     if (!entry) return
     try {
       await copyTextToClipboard(entry.raw)
-      toast.success("Raw line copied to clipboard")
+      toast.success(tr("logSettingsPanel.toasts.rawLineCopied"))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(tr("logSettingsPanel.toasts.failedCopyClipboard"))
     }
-  }, [entry])
+  }, [entry, tr])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Log Entry
+            {tr("logSettingsPanel.dialog.logEntryTitle")}
             {entry && (
               <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded ${LEVEL_BADGE_COLORS[entry.level]}`}>
                 {entry.level}
@@ -502,7 +512,7 @@ function LogEntryDialog({
             )}
           </DialogTitle>
           <DialogDescription>
-            {entry?.time ? new Date(entry.time).toLocaleString() : "Raw log line"}
+            {entry?.time ? new Date(entry.time).toLocaleString() : tr("logSettingsPanel.dialog.rawLogLine")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[400px] overflow-auto rounded-md border bg-muted/30 p-4">
@@ -511,14 +521,14 @@ function LogEntryDialog({
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" size="sm" onClick={handleCopyRaw}>
             <Copy className="mr-2 h-4 w-4" />
-            Copy Raw
+            {tr("logSettingsPanel.actions.copyRaw")}
           </Button>
           <Button variant="outline" size="sm" onClick={handleCopyJson}>
             <Copy className="mr-2 h-4 w-4" />
-            Copy JSON
+            {tr("logSettingsPanel.actions.copyJson")}
           </Button>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {tr("logSettingsPanel.actions.close")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -533,6 +543,11 @@ const LOG_SOFT_CAP = 1000
 const LOG_HARD_CAP = 10000
 
 function LiveLogViewer({ configPath }: { configPath?: string }) {
+  const { t } = useTranslation("common")
+  const tr = useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
   const [lines, setLines] = useState<RawLogLine[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
@@ -595,11 +610,11 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 
     es.onerror = () => {
       setIsConnected(false)
-      setError("Connection lost. Reconnecting...")
+      setError(tr("logSettingsPanel.states.connectionLostReconnecting"))
       es.close()
       reconnectTimeoutRef.current = window.setTimeout(connect, 3000)
     }
-  }, [])
+  }, [tr])
 
   useEffect(() => {
     connect()
@@ -686,7 +701,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
           />
           <span className="text-sm text-muted-foreground">
-            {isConnected ? "Connected" : "Disconnected"}
+            {isConnected ? tr("logSettingsPanel.states.connected") : tr("logSettingsPanel.states.disconnected")}
           </span>
           {error && (
             <span className="flex items-center gap-1 text-sm text-yellow-500">
@@ -700,7 +715,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Search logs..."
+              placeholder={tr("logSettingsPanel.search.placeholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 w-40 pl-7 pr-7 text-xs"
@@ -721,10 +736,10 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
                 <Filter className="h-3.5 w-3.5" />
                 <span className="text-xs">
                   {selectedLevels.size === ALL_LOG_LEVELS.length
-                    ? "All Levels"
+                    ? tr("logSettingsPanel.filters.allLevels")
                     : selectedLevels.size === 0
-                      ? "None"
-                      : `${selectedLevels.size} Level${selectedLevels.size > 1 ? "s" : ""}`}
+                      ? tr("logSettingsPanel.filters.none")
+                      : tr("logSettingsPanel.filters.selectedLevels", { count: selectedLevels.size })}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 opacity-50" />
               </Button>
@@ -737,7 +752,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
                   className="h-6 px-2 text-xs"
                   onClick={selectAll}
                 >
-                  All
+                  {tr("logSettingsPanel.filters.all")}
                 </Button>
                 <Button
                   variant="ghost"
@@ -745,7 +760,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
                   className="h-6 px-2 text-xs"
                   onClick={selectNone}
                 >
-                  None
+                  {tr("logSettingsPanel.filters.none")}
                 </Button>
               </div>
               <div className="space-y-1">
@@ -772,20 +787,20 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 gap-1">
-                  <span className="text-xs">{logExclusions.length} Muted</span>
+                  <span className="text-xs">{tr("logSettingsPanel.filters.mutedCount", { count: logExclusions.length })}</span>
                   <ChevronDown className="h-3.5 w-3.5 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-72 p-2" align="start">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-medium">Muted Messages</span>
+                  <span className="text-xs font-medium">{tr("logSettingsPanel.filters.mutedMessages")}</span>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs"
                     onClick={() => setLogExclusions([])}
                   >
-                    Clear all
+                    {tr("logSettingsPanel.actions.clearAll")}
                   </Button>
                 </div>
                 <div className="space-y-1 max-h-48 overflow-auto">
@@ -811,7 +826,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             </Popover>
           )}
           <Button variant="outline" size="sm" onClick={handleClear}>
-            Clear
+            {tr("logSettingsPanel.actions.clear")}
           </Button>
           <div className="flex items-center gap-2">
             <Switch
@@ -820,7 +835,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               onCheckedChange={setAutoScroll}
             />
             <Label htmlFor="autoscroll" className="text-sm">
-              Auto-scroll
+              {tr("logSettingsPanel.filters.autoScroll")}
             </Label>
           </div>
         </div>
@@ -844,8 +859,8 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
           ) : (
             <span className="text-muted-foreground">
               {lines.length > 0
-                ? "No entries match the current filter"
-                : "Waiting for log entries..."}
+                ? tr("logSettingsPanel.states.noEntriesMatchFilter")
+                : tr("logSettingsPanel.states.waitingForEntries")}
             </span>
           )}
         </div>
@@ -854,11 +869,16 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
       <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
           <span>
-            Showing {filteredEntries.length} of {lines.length} entries
-            {autoScroll ? ` (${LOG_SOFT_CAP.toLocaleString()} max)` : ` (${LOG_HARD_CAP.toLocaleString()} max while paused)`}
+            {tr("logSettingsPanel.states.showingEntries", {
+              shown: filteredEntries.length,
+              total: lines.length,
+            })}
+            {autoScroll
+              ? tr("logSettingsPanel.states.maxEntries", { max: LOG_SOFT_CAP.toLocaleString() })
+              : tr("logSettingsPanel.states.maxEntriesWhilePaused", { max: LOG_HARD_CAP.toLocaleString() })}
           </span>
           {droppedWhilePaused && (
-            <span className="text-yellow-500">• oldest entries dropped</span>
+            <span className="text-yellow-500">{tr("logSettingsPanel.states.oldestEntriesDropped")}</span>
           )}
         </span>
         {configPath && (
@@ -879,6 +899,8 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 }
 
 export function LogSettingsPanel() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { data: settings } = useQuery({
     queryKey: ["log-settings"],
     queryFn: () => api.getLogSettings(),
@@ -889,24 +911,24 @@ export function LogSettingsPanel() {
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle>Logs</CardTitle>
+            <CardTitle>{tr("logSettingsPanel.panel.logsTitle")}</CardTitle>
             <CardDescription>
-              Real-time application logs. Click a level badge to mute similar entries.
+              {tr("logSettingsPanel.panel.logsDescription")}
             </CardDescription>
           </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
                 <Settings className="h-4 w-4" />
-                <span className="sr-only">Log settings</span>
+                <span className="sr-only">{tr("logSettingsPanel.panel.logSettingsSrOnly")}</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80" align="end">
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <h4 className="font-medium text-sm">Log Configuration</h4>
+                  <h4 className="font-medium text-sm">{tr("logSettingsPanel.panel.logConfigurationTitle")}</h4>
                   <p className="text-xs text-muted-foreground">
-                    Changes are applied immediately.
+                    {tr("logSettingsPanel.panel.changesAppliedImmediately")}
                   </p>
                 </div>
                 <LogSettingsForm />

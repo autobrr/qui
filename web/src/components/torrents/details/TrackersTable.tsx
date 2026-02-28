@@ -21,7 +21,8 @@ import {
 } from "@tanstack/react-table"
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Loader2 } from "lucide-react"
-import { memo, useMemo, useState } from "react"
+import { memo, useCallback, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { TrackerContextMenu } from "./TrackerContextMenu"
 
 interface TrackersTableProps {
@@ -41,6 +42,8 @@ export const TrackersTable = memo(function TrackersTable({
   onEditTracker,
   supportsTrackerEditing = false,
 }: TrackersTableProps) {
+  const { t } = useTranslation("common")
+  const tr = useCallback((key: string) => String(t(key as never)), [t])
   // Default sort by status with disabled at bottom
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }])
   const { data: trackerIcons } = useTrackerIcons()
@@ -48,7 +51,7 @@ export const TrackersTable = memo(function TrackersTable({
   const columns = useMemo(() => [
     columnHelper.accessor("status", {
       header: "Status",
-      cell: (info) => getTrackerStatusBadge(info.getValue(), true),
+      cell: (info) => getTrackerStatusBadge(info.getValue(), tr, true),
       size: 90,
       // Custom sort: disabled (0) always at bottom
       sortingFn: (rowA, rowB) => {
@@ -138,7 +141,7 @@ export const TrackersTable = memo(function TrackersTable({
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 60,
     }),
-  ], [incognitoMode, trackerIcons])
+  ], [incognitoMode, trackerIcons, tr])
 
   const data = useMemo(() => trackers || [], [trackers])
 

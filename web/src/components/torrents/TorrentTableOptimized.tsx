@@ -47,6 +47,7 @@ import {
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
@@ -373,6 +374,8 @@ const CompactRow = memo(({
   trackerCustomizationLookup,
   style,
 }: CompactRowProps) => {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
@@ -426,7 +429,7 @@ const CompactRow = memo(({
             <Checkbox
               checked={isRowSelected}
               onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-              aria-label="Select torrent"
+              aria-label={tr("torrentTableOptimized.compactRow.selectTorrentAria")}
               className="h-4 w-4"
             />
           </div>
@@ -458,7 +461,7 @@ const CompactRow = memo(({
           {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
         </span>
         <div className="flex items-center gap-1">
-          <span className="text-muted-foreground">Ratio:</span>
+          <span className="text-muted-foreground">{tr("torrentTableOptimized.compactRow.ratioLabel")}</span>
           <span
             className="font-medium"
             style={{ color: getRatioColor(displayRatio) }}
@@ -598,6 +601,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onServerStateUpdate,
   onSelectionInfoUpdate,
 }: TorrentTableOptimizedProps) {
+  const { t } = useTranslation()
+  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
   const isReadOnly = readOnly
   const isUnifiedView = isAllInstancesScope(instanceId)
   // State management
@@ -1354,8 +1359,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       getSelectionIdentity,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, tr),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, tr]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1472,7 +1477,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const currentCompactSortLabel = useMemo(() => {
     const directOption = compactSortOptions.find(option => option.value === activeSortField)
     if (directOption) {
-      return directOption.label
+      return tr(directOption.labelKey, { defaultValue: directOption.fallbackLabel })
     }
 
     const columns = table.getAllLeafColumns()
@@ -1501,7 +1506,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     return activeSortField
-  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
+  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder, tr])
 
   const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
     if (activeSortField === value) {
@@ -2365,6 +2370,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               {/* Column controls next to search via portal, with inline fallback */}
               {(() => {
                 const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
+                const compactSortDirectionLabel = activeSortOrder === "desc" ? tr("torrentTableOptimized.controls.sort.direction.ascending") : tr("torrentTableOptimized.controls.sort.direction.descending")
                 const actions = (
                   <>
                     {desktopViewMode === "compact" && compactSortOptions.length > 0 && (
@@ -2388,10 +2394,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                                 </Button>
                               </DropdownMenuTrigger>
                             </TooltipTrigger>
-                            <TooltipContent>Change sort field</TooltipContent>
+                            <TooltipContent>{tr("torrentTableOptimized.controls.sort.changeField")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
-                            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                            <DropdownMenuLabel>{tr("torrentTableOptimized.controls.sort.byLabel")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup
                               value={activeSortField}
@@ -2399,7 +2405,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             >
                               {compactSortOptions.map(option => (
                                 <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
-                                  {option.label}
+                                  {tr(option.labelKey, { defaultValue: option.fallbackLabel })}
                                 </DropdownMenuRadioItem>
                               ))}
                             </DropdownMenuRadioGroup>
@@ -2417,7 +2423,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               size="icon"
                               className="h-8 w-8"
                               onClick={handleCompactSortOrderToggle}
-                              aria-label={`Sort ${activeSortOrder === "desc" ? "ascending" : "descending"}`}
+                              aria-label={tr("torrentTableOptimized.controls.sort.toggleAria", {
+                                direction: compactSortDirectionLabel,
+                              })}
                             >
                               {activeSortOrder === "desc" ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -2426,7 +2434,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               )}
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Sort {activeSortOrder === "desc" ? "ascending" : "descending"}</TooltipContent>
+                          <TooltipContent>
+                            {tr("torrentTableOptimized.controls.sort.toggleTooltip", {
+                              direction: compactSortDirectionLabel,
+                            })}
+                          </TooltipContent>
                         </Tooltip>
                       </div>
                     )}
@@ -2452,10 +2464,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             }}
                           >
                             <X className="h-4 w-4" />
-                            <span className="sr-only">Clear all column filters</span>
+                            <span className="sr-only">{tr("torrentTableOptimized.controls.filters.clearAllSr")}</span>
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
+                        <TooltipContent>{tr("torrentTableOptimized.controls.filters.clearAllTooltip", { count: columnFilters.length })}</TooltipContent>
                       </Tooltip>
                     )}
 
@@ -2475,14 +2487,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                                 size="icon"
                               >
                                 <Columns3 className="h-4 w-4" />
-                                <span className="sr-only">Toggle columns</span>
+                                <span className="sr-only">{tr("torrentTableOptimized.controls.columns.toggleSr")}</span>
                               </Button>
                             </DropdownMenuTrigger>
                           </TooltipTrigger>
-                          <TooltipContent>Toggle columns</TooltipContent>
+                          <TooltipContent>{tr("torrentTableOptimized.controls.columns.toggleTooltip")}</TooltipContent>
                         </Tooltip>
                         <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                          <DropdownMenuLabel>{tr("torrentTableOptimized.controls.columns.toggleLabel")}</DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           {table
                             .getAllColumns()
@@ -2538,7 +2550,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             ref={parentRef}
             className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
             role="grid"
-            aria-label="Torrents table"
+            aria-label={tr("torrentTableOptimized.table.ariaLabel")}
             aria-rowcount={totalCount}
             aria-colcount={table.getVisibleLeafColumns().length}
             onDropPayload={handleDropPayload}
@@ -2548,7 +2560,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
                 <div className="text-center animate-in zoom-in-95 duration-300">
                   <Logo className="h-12 w-12 animate-pulse mx-auto mb-3" />
-                  <p>Loading torrents...</p>
+                  <p>{tr("torrentTableOptimized.loading.torrents")}</p>
                 </div>
               </div>
             )}
@@ -2567,7 +2579,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       variant="outline"
                       onClick={() => clearFiltersAtomically("all")}
                     >
-                      Clear filters
+                      {tr("torrentTableOptimized.empty.clearFilters")}
                     </Button>
                   )}
                 </div>

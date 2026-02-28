@@ -17,6 +17,7 @@ import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useTranslation } from "react-i18next"
 
 interface DeleteTorrentDialogProps {
   open: boolean
@@ -55,6 +56,8 @@ export function DeleteTorrentDialog({
   crossSeedWarning,
   onConfirm,
 }: DeleteTorrentDialogProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   // Include cross-seeds in the displayed count when selected
   const crossSeedCount = deleteCrossSeeds ? (crossSeedWarning?.affectedTorrents.length ?? 0) : 0
   const displayCount = count + crossSeedCount
@@ -63,12 +66,12 @@ export function DeleteTorrentDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="!max-w-2xl">
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {displayCount} torrent(s)?</AlertDialogTitle>
+          <AlertDialogTitle>{tr("deleteTorrentDialog.title", { count: displayCount })}</AlertDialogTitle>
           <AlertDialogDescription>
-            This action cannot be undone. The torrents will be removed from qBittorrent.
+            {tr("deleteTorrentDialog.description")}
             {totalSize > 0 && (
               <span className="block mt-2 text-xs text-muted-foreground">
-                Total size: {formattedSize}
+                {tr("deleteTorrentDialog.totalSize", { size: formattedSize })}
               </span>
             )}
           </AlertDialogDescription>
@@ -104,17 +107,17 @@ export function DeleteTorrentDialog({
               htmlFor="blockCrossSeeds"
               className="text-xs cursor-pointer select-none"
             >
-              Block cross-seed infohashes (prevent re-add)
+              {tr("deleteTorrentDialog.blockCrossSeeds")}
             </label>
           </div>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{tr("deleteTorrentDialog.actions.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Delete
+            {tr("deleteTorrentDialog.actions.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

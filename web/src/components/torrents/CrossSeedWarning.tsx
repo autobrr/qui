@@ -5,6 +5,7 @@
 
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, GitBranch, Info, Loader2, Search, XCircle } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -52,6 +53,8 @@ export function CrossSeedWarning({
   checkedCount,
   className,
 }: CrossSeedWarningProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [isExpanded, setIsExpanded] = useState(false)
   const [incognitoMode] = useIncognitoMode()
 
@@ -64,9 +67,7 @@ export function CrossSeedWarning({
       <div
         className={cn(
           "group relative rounded-lg border py-2 px-3 transition-all duration-300",
-          isHighRisk
-            ? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10"
-            : "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
+          isHighRisk ? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10" : "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
           className
         )}
       >
@@ -81,7 +82,7 @@ export function CrossSeedWarning({
               "text-xs font-medium truncate",
               isHighRisk ? "text-amber-700 dark:text-amber-300" : "text-foreground"
             )}>
-              {isHighRisk ? "Check for cross-seeds" : "Cross-seeds not checked"}
+              {isHighRisk ? tr("crossSeedWarning.idle.highRiskTitle") : tr("crossSeedWarning.idle.defaultTitle")}
             </p>
           </div>
 
@@ -92,13 +93,11 @@ export function CrossSeedWarning({
             onClick={onSearch}
             className={cn(
               "shrink-0 h-7 px-2 text-xs transition-all",
-              isHighRisk
-                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
-                : "hover:bg-accent"
+              isHighRisk ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm" : "hover:bg-accent"
             )}
           >
             <Search className="h-3 w-3 mr-1" />
-            Check
+            {tr("crossSeedWarning.idle.checkAction")}
           </Button>
         </div>
       </div>
@@ -111,7 +110,7 @@ export function CrossSeedWarning({
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         <span>
-          Checking for cross-seeds
+          {tr("crossSeedWarning.searching.title")}
           {totalToCheck > 1 && ` (${checkedCount}/${totalToCheck})`}
           ...
         </span>
@@ -124,7 +123,7 @@ export function CrossSeedWarning({
     return (
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
         <XCircle className="h-3.5 w-3.5 text-destructive" />
-        <span>Failed to check for cross-seeds</span>
+        <span>{tr("crossSeedWarning.error.title")}</span>
         <Button
           type="button"
           variant="ghost"
@@ -132,7 +131,7 @@ export function CrossSeedWarning({
           onClick={onSearch}
           className="h-6 px-2 text-xs"
         >
-          Retry
+          {tr("crossSeedWarning.error.retryAction")}
         </Button>
       </div>
     )
@@ -143,7 +142,7 @@ export function CrossSeedWarning({
     return (
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
         <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-        <span>No cross-seeds found</span>
+        <span>{tr("crossSeedWarning.complete.noneFound")}</span>
       </div>
     )
   }
@@ -152,7 +151,7 @@ export function CrossSeedWarning({
   // Group by instance
   const byInstance = affectedTorrents.reduce<Record<string, CrossSeedTorrent[]>>(
     (acc, torrent) => {
-      const key = torrent.instanceName || `Instance ${torrent.instanceId}`
+      const key = torrent.instanceName || tr("crossSeedWarning.instances.fallback", { id: torrent.instanceId })
       if (!acc[key]) {
         acc[key] = []
       }
@@ -173,13 +172,14 @@ export function CrossSeedWarning({
     if (domain) uniqueTrackers.add(domain)
   })
 
+  const shareSummary = affectedTorrents.length === 1 ? tr("crossSeedWarning.summary.shareSingle", { count: affectedTorrents.length }) : tr("crossSeedWarning.summary.sharePlural", { count: affectedTorrents.length })
+  const trackerSummary = uniqueTrackers.size === 1 ? tr("crossSeedWarning.summary.onSingleTracker", { tracker: Array.from(uniqueTrackers)[0] }) : tr("crossSeedWarning.summary.onMultipleTrackers", { count: uniqueTrackers.size })
+
   return (
     <div
       className={cn(
         "rounded-lg border py-3 px-4 overflow-hidden",
-        isDestructive
-          ? "border-destructive/40 bg-destructive/5"
-          : "border-blue-500/30 bg-blue-500/5",
+        isDestructive ? "border-destructive/40 bg-destructive/5" : "border-blue-500/30 bg-blue-500/5",
         className
       )}
     >
@@ -195,27 +195,17 @@ export function CrossSeedWarning({
             "text-sm font-medium",
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
-            {deleteCrossSeeds
-              ? "These cross-seeds will also be deleted"
-              : deleteFiles
-                ? "Deleting files will break these cross-seeds"
-                : "Cross-seeds detected — data will be preserved"}
+            {deleteCrossSeeds ? tr("crossSeedWarning.warning.deleteCrossSeeds") : deleteFiles ? tr("crossSeedWarning.warning.deleteFiles") : tr("crossSeedWarning.warning.preserveData")}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {affectedTorrents.length} {affectedTorrents.length === 1 ? "torrent shares" : "torrents share"} these files
-            {instanceCount > 1 && ` across ${instanceCount} instances`}
+            {shareSummary}
+            {instanceCount > 1 && ` ${tr("crossSeedWarning.summary.acrossInstances", { count: instanceCount })}`}
             {uniqueTrackers.size > 0 && (
               <span className="ml-1">
-                on {uniqueTrackers.size === 1
-                  ? Array.from(uniqueTrackers)[0]
-                  : `${uniqueTrackers.size} trackers`}
+                {trackerSummary}
               </span>
             )}
-            {deleteCrossSeeds
-              ? " — will be removed along with selection"
-              : deleteFiles
-                ? " — they will need to redownload"
-                : " — unaffected by this removal"}
+            {deleteCrossSeeds ? tr("crossSeedWarning.summary.tail.deleteCrossSeeds") : deleteFiles ? tr("crossSeedWarning.summary.tail.deleteFiles") : tr("crossSeedWarning.summary.tail.preserve")}
           </p>
         </div>
       </div>
@@ -231,7 +221,7 @@ export function CrossSeedWarning({
           htmlFor="deleteCrossSeeds"
           className="text-xs cursor-pointer select-none"
         >
-          Also delete these cross-seeded torrents
+          {tr("crossSeedWarning.options.deleteCrossSeedsLabel")}
         </label>
       </div>
 
@@ -248,7 +238,9 @@ export function CrossSeedWarning({
             <ChevronRight className="h-3 w-3" />
           )}
           <GitBranch className="h-3 w-3" />
-          <span>{isExpanded ? "Hide" : "Show"} affected torrents</span>
+          <span>
+            {isExpanded ? tr("crossSeedWarning.list.hide") : tr("crossSeedWarning.list.show")} {tr("crossSeedWarning.list.affectedTorrents")}
+          </span>
         </button>
 
         {isExpanded && (
@@ -269,9 +261,7 @@ export function CrossSeedWarning({
                         className="flex items-center gap-2 py-0.5 text-xs min-w-0"
                       >
                         <span className="truncate min-w-0 flex-1">
-                          {incognitoMode
-                            ? getLinuxIsoName(torrent.hash)
-                            : torrent.name}
+                          {incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name}
                         </span>
                         {trackerDomain && (
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -285,7 +275,7 @@ export function CrossSeedWarning({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <p className="text-[10px] text-muted-foreground pt-0.5 cursor-help hover:text-foreground transition-colors w-fit">
-                          + {torrents.length - 8} more
+                          + {torrents.length - 8} {tr("crossSeedWarning.list.more")}
                         </p>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" align="start" className="max-w-sm">
