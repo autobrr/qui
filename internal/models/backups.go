@@ -1663,14 +1663,10 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 	}
 
 	// Use view to query by kind string value
-	query := `
-        SELECT id FROM instance_backup_runs_view
-        WHERE instance_id = ? AND kind = ?
-        ORDER BY requested_at DESC
-        LIMIT -1 OFFSET ?
-    `
+	query := deleteRunsOlderThanQuery(dbinterface.DialectOf(s.db))
+	args := []any{instanceID, string(kind), keep}
 
-	rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind), keep)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1690,6 +1686,25 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 	}
 
 	return ids, nil
+}
+
+func deleteRunsOlderThanQuery(dialect string) string {
+	base := `
+        SELECT id FROM instance_backup_runs_view
+        WHERE instance_id = ? AND kind = ?
+        ORDER BY requested_at DESC
+    `
+	if strings.EqualFold(strings.TrimSpace(dialect), "postgres") {
+		// PostgreSQL rejects LIMIT -1; OFFSET without LIMIT is valid.
+		return base + `
+        OFFSET ?
+    `
+	}
+
+	// SQLite requires LIMIT when using OFFSET; LIMIT -1 means "no limit".
+	return base + `
+        LIMIT -1 OFFSET ?
+    `
 }
 
 func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) error {

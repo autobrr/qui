@@ -83,7 +83,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 		for rows.Next() {
 			var (
 				f      CachedFile
-				isSeed sql.NullBool
+				isSeed sql.NullInt64
 			)
 			if err := rows.Scan(
 				&f.ID,
@@ -104,9 +104,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 				return nil, err
 			}
 
-			if isSeed.Valid {
-				f.IsSeed = &isSeed.Bool
-			}
+			f.IsSeed = decodeNullableBoolFromInt(isSeed)
 
 			results[f.TorrentHash] = append(results[f.TorrentHash], f)
 		}
@@ -146,7 +144,7 @@ func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, ha
 	var files []CachedFile
 	for rows.Next() {
 		var f CachedFile
-		var isSeed sql.NullBool
+		var isSeed sql.NullInt64
 		err := rows.Scan(
 			&f.ID,
 			&f.InstanceID,
@@ -166,9 +164,7 @@ func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, ha
 			return nil, err
 		}
 
-		if isSeed.Valid {
-			f.IsSeed = &isSeed.Bool
-		}
+		f.IsSeed = decodeNullableBoolFromInt(isSeed)
 
 		files = append(files, f)
 	}
@@ -265,11 +261,6 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				return fmt.Errorf("missing interned ID for file %s", f.Name)
 			}
 
-			var isSeed interface{}
-			if f.IsSeed != nil {
-				isSeed = *f.IsSeed
-			}
-
 			allRows = append(allRows, fileRow{
 				instanceID:      f.InstanceID,
 				hashID:          hashID,
@@ -278,7 +269,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				size:            f.Size,
 				progress:        f.Progress,
 				priority:        f.Priority,
-				isSeed:          isSeed,
+				isSeed:          encodeNullableBoolAsInt(f.IsSeed),
 				pieceRangeStart: f.PieceRangeStart,
 				pieceRangeEnd:   f.PieceRangeEnd,
 				availability:    f.Availability,
@@ -397,6 +388,25 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	}
 
 	return nil
+}
+
+func encodeNullableBoolAsInt(value *bool) interface{} {
+	if value == nil {
+		return nil
+	}
+	if *value {
+		return 1
+	}
+	return 0
+}
+
+func decodeNullableBoolFromInt(value sql.NullInt64) *bool {
+	if !value.Valid {
+		return nil
+	}
+
+	result := value.Int64 != 0
+	return &result
 }
 
 // GetSyncInfo retrieves sync metadata for a torrent
