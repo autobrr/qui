@@ -511,7 +511,8 @@ type Service struct {
 	activityRuns              *activityRunStore
 	releaseParser             *releases.Parser
 
-	// keep lightweight memory of recent applications to avoid hammering qBittorrent
+	// keep lightweight memory of recent deletions to avoid acting on torrents
+	// that havent disappeared from sync data yet
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
@@ -2485,12 +2486,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			})
 		}
 
-		// Mark as processed
-		if !dryRun {
-			s.mu.Lock()
-			instLastApplied[hash] = now
-			s.mu.Unlock()
-		}
 	}
 
 	if dryRun {
