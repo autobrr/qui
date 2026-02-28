@@ -799,10 +799,10 @@ function FeedsTab({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenameDialog({ open: false, path: "", currentName: "" })}>
-              {tr("actions.cancel")}
+              {tr("rssPage.actions.cancel")}
             </Button>
             <Button onClick={handleRenameFeed} disabled={!newName.trim() || newName === renameDialog.currentName}>
-              {tr("actions.rename")}
+              {tr("rssPage.actions.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -825,10 +825,10 @@ function FeedsTab({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditURLDialog({ open: false, path: "", currentURL: "" })}>
-              {tr("actions.cancel")}
+              {tr("rssPage.actions.cancel")}
             </Button>
             <Button onClick={handleEditURL} disabled={!newURL.trim() || newURL === editURLDialog.currentURL}>
-              {tr("actions.save")}
+              {tr("rssPage.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -977,7 +977,7 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onRename(itemPath)}>
                     <Pencil className="h-4 w-4 mr-2" />
-                    {tr("actions.rename")}
+                    {tr("rssPage.actions.rename")}
                   </DropdownMenuItem>
                   {supportsEditURL && feed.url && (
                     <DropdownMenuItem onClick={() => onEditURL(itemPath, feed.url)}>
@@ -1039,7 +1039,7 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => onRename(itemPath)}>
                       <Pencil className="h-4 w-4 mr-2" />
-                      {tr("actions.rename")}
+                      {tr("rssPage.actions.rename")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
@@ -1696,7 +1696,7 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {tr("actions.cancel")}
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={addFeed.isPending}>
             {addFeed.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -1762,7 +1762,7 @@ function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProp
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {tr("actions.cancel")}
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={addFolder.isPending}>
             {addFolder.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -2116,7 +2116,7 @@ function AddRuleDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {tr("actions.cancel")}
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={setRule.isPending}>
             {setRule.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -2250,7 +2250,7 @@ function EditRuleDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {tr("actions.cancel")}
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={setRuleMutation.isPending}>
             {setRuleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -2426,7 +2426,7 @@ function RssSettingsPopover({
           </div>
 
           <Button onClick={handleSave} disabled={isUpdating} className="w-full">
-            {isUpdating ? tr("actions.saving") : tr("actions.save")}
+            {isUpdating ? tr("rssPage.actions.saving") : tr("rssPage.actions.save")}
           </Button>
         </div>
       </PopoverContent>

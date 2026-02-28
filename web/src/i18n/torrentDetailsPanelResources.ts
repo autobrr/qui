@@ -35,6 +35,7 @@ export const torrentDetailsPanelResources = {
       all: "All",
       none: "None",
       deleteTorrent: "Delete Torrent",
+      cancel: "Cancel",
     },
     words: {
       tracker: "tracker",
@@ -243,6 +244,7 @@ export const torrentDetailsPanelResources = {
       all: "全部",
       none: "无",
       deleteTorrent: "删除种子",
+      cancel: "取消",
     },
     words: {
       tracker: "个追踪器",
@@ -451,6 +453,7 @@ export const torrentDetailsPanelResources = {
       all: "すべて",
       none: "なし",
       deleteTorrent: "トレントを削除",
+      cancel: "キャンセル",
     },
     words: {
       tracker: "トラッカー",
@@ -659,6 +662,7 @@ export const torrentDetailsPanelResources = {
       all: "Todos",
       none: "Nenhum",
       deleteTorrent: "Excluir torrent",
+      cancel: "Cancelar",
     },
     words: {
       tracker: "tracker",
@@ -867,6 +871,7 @@ export const torrentDetailsPanelResources = {
       all: "Todos",
       none: "Ninguno",
       deleteTorrent: "Eliminar torrent",
+      cancel: "Cancelar",
     },
     words: {
       tracker: "tracker",
@@ -1075,6 +1080,7 @@ export const torrentDetailsPanelResources = {
       all: "Tous",
       none: "Aucun",
       deleteTorrent: "Supprimer le torrent",
+      cancel: "Annuler",
     },
     words: {
       tracker: "tracker",
@@ -1283,6 +1289,7 @@ export const torrentDetailsPanelResources = {
       all: "전체",
       none: "없음",
       deleteTorrent: "토렌트 삭제",
+      cancel: "취소",
     },
     words: {
       tracker: "트래커",
@@ -1491,6 +1498,7 @@ export const torrentDetailsPanelResources = {
       all: "Alle",
       none: "Keine",
       deleteTorrent: "Torrent löschen",
+      cancel: "Abbrechen",
     },
     words: {
       tracker: "Tracker",

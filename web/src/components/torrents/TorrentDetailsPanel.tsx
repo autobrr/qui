@@ -1910,7 +1910,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddPeersDialog(false)}>
-              {tr("actions.cancel")}
+              {tr("torrentDetailsPanel.actions.cancel")}
             </Button>
             <Button
               onClick={handleAddPeersSubmit}
@@ -1960,7 +1960,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 setPeerToBan(null)
               }}
             >
-              {tr("actions.cancel")}
+              {tr("torrentDetailsPanel.actions.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -2015,7 +2015,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               variant="outline"
               onClick={() => setShowDeleteCrossSeedDialog(false)}
             >
-              {tr("actions.cancel")}
+              {tr("torrentDetailsPanel.actions.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -2071,7 +2071,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               variant="outline"
               onClick={() => setShowDeleteCurrentDialog(false)}
             >
-              {tr("actions.cancel")}
+              {tr("torrentDetailsPanel.actions.cancel")}
             </Button>
             <Button
               variant="destructive"
