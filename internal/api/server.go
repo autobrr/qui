@@ -482,6 +482,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
 						})
 					})
 

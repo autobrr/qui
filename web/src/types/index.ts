@@ -624,6 +624,23 @@ export interface TorrentFile {
   size: number
 }
 
+export interface TorrentFileMediaInfoField {
+  name: string
+  value: string
+}
+
+export interface TorrentFileMediaInfoStream {
+  kind: string
+  fields: TorrentFileMediaInfoField[]
+}
+
+export interface TorrentFileMediaInfoResponse {
+  fileIndex: number
+  relativePath: string
+  streams: TorrentFileMediaInfoStream[]
+  rawJSON: string
+}
+
 export interface Torrent {
   added_on: number
   amount_left: number

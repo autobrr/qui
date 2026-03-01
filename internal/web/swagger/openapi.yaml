@@ -1979,6 +1979,35 @@ paths:
         '500':
           description: Internal server error
 
+  /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/mediainfo:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get MediaInfo for a torrent content file
+      description: >
+        Analyzes a single file from the torrent's content on the local filesystem and returns a human-readable
+        stream/field report plus the raw MediaInfo JSON output.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+        - $ref: '#/components/parameters/fileIndex'
+      responses:
+        '200':
+          description: MediaInfo report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorrentFileMediaInfoResponse'
+        '400':
+          description: Invalid instance ID, hash, or file index
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Torrent, file index, or file on disk not found
+        '500':
+          description: Internal server error
+
   /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
       tags:
@@ -5507,6 +5536,52 @@ components:
           type: boolean
         availability:
           type: number
+
+    TorrentFileMediaInfoField:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+
+    TorrentFileMediaInfoStream:
+      type: object
+      required:
+        - kind
+        - fields
+      properties:
+        kind:
+          type: string
+          description: Stream kind (General, Video, Audio, Text, etc.)
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TorrentFileMediaInfoField'
+
+    TorrentFileMediaInfoResponse:
+      type: object
+      required:
+        - fileIndex
+        - relativePath
+        - streams
+        - rawJSON
+      properties:
+        fileIndex:
+          type: integer
+        relativePath:
+          type: string
+          description: Torrent-relative path from qBittorrent file list
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/TorrentFileMediaInfoStream'
+        rawJSON:
+          type: string
+          description: Raw MediaInfo JSON output
 
     DuplicateTorrentMatch:
       type: object
