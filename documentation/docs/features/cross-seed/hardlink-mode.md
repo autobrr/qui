@@ -32,6 +32,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 ## Behavior
 
 - Hardlink mode is a **per-instance setting** (not per request). Each qBittorrent instance can have its own hardlink configuration.
+- Torrents added via hardlink/reflink mode always use an explicit `savepath` (the link-tree root), which forces **AutoTMM off**. Enabling AutoTMM after adding can move files out of the link tree.
 - By default, if a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails**.
 - Enable **"Fallback to regular mode"** to allow failed hardlink operations to fall back to regular cross-seed mode instead of failing. This is useful when files may occasionally be on different filesystems.
 - Hardlinked torrents are still categorized using your existing cross-seed category rules (category affix, indexer name, or custom category); the hardlink preset only affects on-disk folder layout.

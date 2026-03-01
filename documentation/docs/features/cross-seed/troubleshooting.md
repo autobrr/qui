@@ -139,9 +139,12 @@ The `toRawJson` function (from Sprig) properly escapes special characters and ou
 
 - Check your cross-seed settings in qui
 - Verify the matched torrent has the expected category
+- For Dir Scan injections, Cross-Seed → Rules category modes do not apply. Dir Scan uses its own Default Category / Category override, and leaving it blank results in no category.
 
 ## autoTMM unexpectedly enabled/disabled
 
-- In affix mode, autoTMM mirrors the matched torrent's setting (intentional)
+- In reuse/affix mode (regular mode), autoTMM mirrors the matched torrent's setting (intentional)
 - In indexer name or custom category mode, autoTMM is always disabled
+- In hardlink/reflink mode, autoTMM is always disabled (explicit `savepath`)
+- Dir Scan injections always disable autoTMM (explicit `savepath`)
 - Check the original torrent's autoTMM status in qBittorrent
