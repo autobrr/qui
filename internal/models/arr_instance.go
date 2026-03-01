@@ -224,7 +224,7 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	`
 
 	var id int
-	err = tx.QueryRowContext(ctx, query, prepared.instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, enabled, priority, prepared.timeoutSeconds).Scan(&id)
+	err = tx.QueryRowContext(ctx, query, prepared.instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, BoolToSQLite(enabled), priority, prepared.timeoutSeconds).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create arr instance: %w", err)
 	}
@@ -297,6 +297,7 @@ func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error
 	var typeStr string
 	var basicUser sql.NullString
 	var basicPass sql.NullString
+	var enabled int
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instance.ID,
 		&typeStr,
@@ -305,7 +306,7 @@ func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error
 		&basicUser,
 		&basicPass,
 		&instance.APIKeyEncrypted,
-		&instance.Enabled,
+		&enabled,
 		&instance.Priority,
 		&instance.TimeoutSeconds,
 		&instance.LastTestAt,
@@ -320,6 +321,7 @@ func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error
 		}
 		return nil, fmt.Errorf("failed to get arr instance: %w", err)
 	}
+	instance.Enabled = SQLiteIntToBool(enabled)
 
 	parsedType, err := ParseArrInstanceType(typeStr)
 	if err != nil {
@@ -359,6 +361,7 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 		var typeStr string
 		var basicUser sql.NullString
 		var basicPass sql.NullString
+		var enabled int
 		err := rows.Scan(
 			&instance.ID,
 			&typeStr,
@@ -367,7 +370,7 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 			&basicUser,
 			&basicPass,
 			&instance.APIKeyEncrypted,
-			&instance.Enabled,
+			&enabled,
 			&instance.Priority,
 			&instance.TimeoutSeconds,
 			&instance.LastTestAt,
@@ -379,6 +382,7 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan arr instance: %w", err)
 		}
+		instance.Enabled = SQLiteIntToBool(enabled)
 
 		parsedType, err := ParseArrInstanceType(typeStr)
 		if err != nil {
@@ -426,6 +430,7 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 		var typeStr string
 		var basicUser sql.NullString
 		var basicPass sql.NullString
+		var enabled int
 		err := rows.Scan(
 			&instance.ID,
 			&typeStr,
@@ -434,7 +439,7 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 			&basicUser,
 			&basicPass,
 			&instance.APIKeyEncrypted,
-			&instance.Enabled,
+			&enabled,
 			&instance.Priority,
 			&instance.TimeoutSeconds,
 			&instance.LastTestAt,
@@ -446,6 +451,7 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan arr instance: %w", err)
 		}
+		instance.Enabled = SQLiteIntToBool(enabled)
 
 		parsedType, err := ParseArrInstanceType(typeStr)
 		if err != nil {
@@ -493,6 +499,7 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 		var typeStr string
 		var basicUser sql.NullString
 		var basicPass sql.NullString
+		var enabled int
 		err := rows.Scan(
 			&instance.ID,
 			&typeStr,
@@ -501,7 +508,7 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 			&basicUser,
 			&basicPass,
 			&instance.APIKeyEncrypted,
-			&instance.Enabled,
+			&enabled,
 			&instance.Priority,
 			&instance.TimeoutSeconds,
 			&instance.LastTestAt,
@@ -513,6 +520,7 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan arr instance: %w", err)
 		}
+		instance.Enabled = SQLiteIntToBool(enabled)
 
 		parsedType, err := ParseArrInstanceType(typeStr)
 		if err != nil {
@@ -644,7 +652,7 @@ func persistUpdateWithIntern(ctx context.Context, txProvider dbinterface.Querier
 		allIDs[2],
 		existing.BasicPasswordEncrypted,
 		existing.APIKeyEncrypted,
-		existing.Enabled,
+		BoolToSQLite(existing.Enabled),
 		existing.Priority,
 		existing.TimeoutSeconds,
 		existing.ID,

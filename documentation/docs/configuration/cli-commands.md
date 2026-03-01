@@ -83,22 +83,26 @@ Offline SQLite to Postgres migration:
 # 0) Stop qui first (no writes during migration)
 #    (example) docker compose stop qui
 
-# 1) Optional: backup the SQLite file
+# 1) Create the target Postgres database first (required)
+#    (example) createdb -h localhost -p 5432 -U user qui
+#    (or in psql) CREATE DATABASE qui;
+
+# 2) Optional: backup the SQLite file
 cp /path/to/qui.db /path/to/qui.db.bak
 
-# 2) Validate source + destination without importing rows
+# 3) Validate source + destination without importing rows
 ./qui db migrate \
   --from-sqlite /path/to/qui.db \
   --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
   --dry-run
 
-# 3) Apply migration (schema bootstrap + table copy + identity reset)
+# 4) Apply migration (schema bootstrap + table copy + identity reset)
 ./qui db migrate \
   --from-sqlite /path/to/qui.db \
   --to-postgres "postgres://user:pass@localhost:5432/qui?sslmode=disable" \
   --apply
 
-# 4) Point qui at Postgres and start it again
+# 5) Point qui at Postgres and start it again
 #    - config.toml: databaseEngine=postgres + databaseDsn=...
 #    - or env: QUI__DATABASE_ENGINE=postgres + QUI__DATABASE_DSN=...
 ```
@@ -106,8 +110,10 @@ cp /path/to/qui.db /path/to/qui.db.bak
 Notes:
 
 - Run this while qui is stopped.
+- Create the target Postgres database before running migration.
 - `--dry-run` and `--apply` are mutually exclusive.
 - The command copies all runtime tables except migration history.
+- The migrator bootstraps schema/tables inside the destination DB, but does not create the database itself.
 - The output includes per-table row counts for SQLite and Postgres.
 
 ### FAQ

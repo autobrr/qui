@@ -136,20 +136,22 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 	var customPath sql.NullString
 	var createdAt sql.NullTime
 	var updatedAt sql.NullTime
+	var enabled, hourlyEnabled, dailyEnabled, weeklyEnabled, monthlyEnabled int
+	var includeCategories, includeTags int
 
 	err := row.Scan(
 		&settings.InstanceID,
-		&settings.Enabled,
-		&settings.HourlyEnabled,
-		&settings.DailyEnabled,
-		&settings.WeeklyEnabled,
-		&settings.MonthlyEnabled,
+		&enabled,
+		&hourlyEnabled,
+		&dailyEnabled,
+		&weeklyEnabled,
+		&monthlyEnabled,
 		&settings.KeepHourly,
 		&settings.KeepDaily,
 		&settings.KeepWeekly,
 		&settings.KeepMonthly,
-		&settings.IncludeCategories,
-		&settings.IncludeTags,
+		&includeCategories,
+		&includeTags,
 		&customPath,
 		&createdAt,
 		&updatedAt,
@@ -171,6 +173,13 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 	if updatedAt.Valid {
 		settings.UpdatedAt = updatedAt.Time
 	}
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.HourlyEnabled = SQLiteIntToBool(hourlyEnabled)
+	settings.DailyEnabled = SQLiteIntToBool(dailyEnabled)
+	settings.WeeklyEnabled = SQLiteIntToBool(weeklyEnabled)
+	settings.MonthlyEnabled = SQLiteIntToBool(monthlyEnabled)
+	settings.IncludeCategories = SQLiteIntToBool(includeCategories)
+	settings.IncludeTags = SQLiteIntToBool(includeTags)
 
 	return &settings, nil
 }
@@ -211,17 +220,17 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 		ctx,
 		query,
 		settings.InstanceID,
-		settings.Enabled,
-		settings.HourlyEnabled,
-		settings.DailyEnabled,
-		settings.WeeklyEnabled,
-		settings.MonthlyEnabled,
+		BoolToSQLite(settings.Enabled),
+		BoolToSQLite(settings.HourlyEnabled),
+		BoolToSQLite(settings.DailyEnabled),
+		BoolToSQLite(settings.WeeklyEnabled),
+		BoolToSQLite(settings.MonthlyEnabled),
 		maxInt(settings.KeepHourly, 0),
 		maxInt(settings.KeepDaily, 0),
 		maxInt(settings.KeepWeekly, 0),
 		maxInt(settings.KeepMonthly, 0),
-		settings.IncludeCategories,
-		settings.IncludeTags,
+		BoolToSQLite(settings.IncludeCategories),
+		BoolToSQLite(settings.IncludeTags),
 		settings.CustomPath,
 	)
 
@@ -1593,20 +1602,22 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		var customPath sql.NullString
 		var createdAt sql.NullTime
 		var updatedAt sql.NullTime
+		var enabled, hourlyEnabled, dailyEnabled, weeklyEnabled, monthlyEnabled int
+		var includeCategories, includeTags int
 
 		if err := rows.Scan(
 			&s.InstanceID,
-			&s.Enabled,
-			&s.HourlyEnabled,
-			&s.DailyEnabled,
-			&s.WeeklyEnabled,
-			&s.MonthlyEnabled,
+			&enabled,
+			&hourlyEnabled,
+			&dailyEnabled,
+			&weeklyEnabled,
+			&monthlyEnabled,
 			&s.KeepHourly,
 			&s.KeepDaily,
 			&s.KeepWeekly,
 			&s.KeepMonthly,
-			&s.IncludeCategories,
-			&s.IncludeTags,
+			&includeCategories,
+			&includeTags,
 			&customPath,
 			&createdAt,
 			&updatedAt,
@@ -1623,6 +1634,13 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		if updatedAt.Valid {
 			s.UpdatedAt = updatedAt.Time
 		}
+		s.Enabled = SQLiteIntToBool(enabled)
+		s.HourlyEnabled = SQLiteIntToBool(hourlyEnabled)
+		s.DailyEnabled = SQLiteIntToBool(dailyEnabled)
+		s.WeeklyEnabled = SQLiteIntToBool(weeklyEnabled)
+		s.MonthlyEnabled = SQLiteIntToBool(monthlyEnabled)
+		s.IncludeCategories = SQLiteIntToBool(includeCategories)
+		s.IncludeTags = SQLiteIntToBool(includeTags)
 
 		settings = append(settings, &s)
 	}

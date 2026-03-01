@@ -335,7 +335,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	`
 
 	var id int
-	err = tx.QueryRowContext(ctx, query, nameID, baseURLID, indexerIDStringID, basicUserID, encryptedBasicPassword, backend, encryptedAPIKey, enabled, priority, timeoutSeconds, limitDefault, limitMax).Scan(&id)
+	err = tx.QueryRowContext(ctx, query, nameID, baseURLID, indexerIDStringID, basicUserID, encryptedBasicPassword, backend, encryptedAPIKey, BoolToSQLite(enabled), priority, timeoutSeconds, limitDefault, limitMax).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
 	}
@@ -360,6 +360,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 	var basicUser sql.NullString
 	var basicPass sql.NullString
 	var backendStr string
+	var enabled int
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&indexer.ID,
 		&indexer.Name,
@@ -369,7 +370,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		&basicPass,
 		&backendStr,
 		&indexer.APIKeyEncrypted,
-		&indexer.Enabled,
+		&enabled,
 		&indexer.Priority,
 		&indexer.TimeoutSeconds,
 		&indexer.LimitDefault,
@@ -380,6 +381,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		&indexer.CreatedAt,
 		&indexer.UpdatedAt,
 	)
+	indexer.Enabled = SQLiteIntToBool(enabled)
 	if indexerID.Valid {
 		indexer.IndexerID = indexerID.String
 	}
@@ -446,6 +448,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 		var basicUser sql.NullString
 		var basicPass sql.NullString
 		var backendStr string
+		var enabled int
 		err := rows.Scan(
 			&indexer.ID,
 			&indexer.Name,
@@ -455,7 +458,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 			&basicPass,
 			&backendStr,
 			&indexer.APIKeyEncrypted,
-			&indexer.Enabled,
+			&enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
 			&indexer.LimitDefault,
@@ -466,6 +469,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 			&indexer.CreatedAt,
 			&indexer.UpdatedAt,
 		)
+		indexer.Enabled = SQLiteIntToBool(enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan torznab indexer: %w", err)
 		}
@@ -536,6 +540,7 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 		var basicUser sql.NullString
 		var basicPass sql.NullString
 		var backendStr string
+		var enabled int
 		err := rows.Scan(
 			&indexer.ID,
 			&indexer.Name,
@@ -545,7 +550,7 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 			&basicPass,
 			&backendStr,
 			&indexer.APIKeyEncrypted,
-			&indexer.Enabled,
+			&enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
 			&indexer.LimitDefault,
@@ -556,6 +561,7 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 			&indexer.CreatedAt,
 			&indexer.UpdatedAt,
 		)
+		indexer.Enabled = SQLiteIntToBool(enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan torznab indexer: %w", err)
 		}
@@ -731,7 +737,7 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 		existing.BasicPasswordEncrypted,
 		existing.Backend,
 		existing.APIKeyEncrypted,
-		existing.Enabled,
+		BoolToSQLite(existing.Enabled),
 		existing.Priority,
 		existing.TimeoutSeconds,
 		id,
@@ -1158,9 +1164,9 @@ func (s *TorznabIndexerStore) GetRecentErrors(ctx context.Context, indexerID int
 // RecordLatency records a latency measurement for an indexer
 func (s *TorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO torznab_indexer_latency (indexer_id, operation_type, latency_ms, success)
-		VALUES (?, ?, ?, ?)
-	`, indexerID, operationType, latencyMs, success)
+			INSERT INTO torznab_indexer_latency (indexer_id, operation_type, latency_ms, success)
+			VALUES (?, ?, ?, ?)
+		`, indexerID, operationType, latencyMs, BoolToSQLite(success))
 	if err != nil {
 		return fmt.Errorf("failed to record latency: %w", err)
 	}
@@ -1207,10 +1213,11 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 	`
 
 	var health TorznabIndexerHealth
+	var enabled int
 	err := s.db.QueryRowContext(ctx, query, indexerID).Scan(
 		&health.IndexerID,
 		&health.IndexerName,
-		&health.Enabled,
+		&enabled,
 		&health.LastTestStatus,
 		&health.ErrorsLast24h,
 		&health.UnresolvedErrors,
@@ -1219,6 +1226,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 		&health.RequestsLast7d,
 		&health.LastMeasuredAt,
 	)
+	health.Enabled = SQLiteIntToBool(enabled)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1247,9 +1255,11 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 	healthList := make([]TorznabIndexerHealth, 0)
 	for rows.Next() {
 		var health TorznabIndexerHealth
-		if err := rows.Scan(&health.IndexerID, &health.IndexerName, &health.Enabled, &health.LastTestStatus, &health.ErrorsLast24h, &health.UnresolvedErrors, &health.AvgLatencyMs, &health.SuccessRatePct, &health.RequestsLast7d, &health.LastMeasuredAt); err != nil {
+		var enabled int
+		if err := rows.Scan(&health.IndexerID, &health.IndexerName, &enabled, &health.LastTestStatus, &health.ErrorsLast24h, &health.UnresolvedErrors, &health.AvgLatencyMs, &health.SuccessRatePct, &health.RequestsLast7d, &health.LastMeasuredAt); err != nil {
 			return nil, fmt.Errorf("failed to scan health: %w", err)
 		}
+		health.Enabled = SQLiteIntToBool(enabled)
 		healthList = append(healthList, health)
 	}
 

@@ -338,10 +338,10 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var instanceID int
 	var passwordEncrypted sql.NullString
 	var basicPasswordEncrypted sql.NullString
-	var tlsSkipVerifyResult bool
-	var hasLocalFilesystemAccessResult bool
+	var tlsSkipVerifyResult int
+	var hasLocalFilesystemAccessResult int
 	var sortOrder int
-	var isActive bool
+	var isActive int
 
 	// Default hasLocalFilesystemAccess to false if not provided (opt-in feature)
 	localAccess := false
@@ -366,15 +366,15 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		)
 		SELECT ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
 		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
-	`,
+		`,
 		nameID,
 		hostID,
 		usernameID,
 		encryptedPassword,
 		allIDs[3],
 		encryptedBasicPassword,
-		tlsSkipVerify,
-		localAccess,
+		BoolToSQLite(tlsSkipVerify),
+		BoolToSQLite(localAccess),
 	).Scan(
 		&instanceID,
 		&passwordEncrypted,
@@ -394,10 +394,10 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		Host:                     normalizedHost,
 		Username:                 username,
 		PasswordEncrypted:        passwordEncrypted.String,
-		TLSSkipVerify:            tlsSkipVerifyResult,
-		HasLocalFilesystemAccess: hasLocalFilesystemAccessResult,
+		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerifyResult),
+		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccessResult),
 		SortOrder:                sortOrder,
-		IsActive:                 isActive,
+		IsActive:                 SQLiteIntToBool(isActive),
 	}
 
 	if basicUsername != nil {
@@ -424,14 +424,14 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var instanceID int
 	var name, host, username, passwordEncrypted string
 	var basicUsername, basicPasswordEncrypted sql.NullString
-	var tlsSkipVerify bool
+	var tlsSkipVerify int
 	var sortOrder int
-	var isActive bool
-	var hasLocalFilesystemAccess bool
-	var useHardlinks bool
+	var isActive int
+	var hasLocalFilesystemAccess int
+	var useHardlinks int
 	var hardlinkBaseDir, hardlinkDirPreset string
-	var useReflinks bool
-	var fallbackToRegularMode bool
+	var useReflinks int
+	var fallbackToRegularMode int
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -464,15 +464,15 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		Host:                     host,
 		Username:                 username,
 		PasswordEncrypted:        passwordEncrypted,
-		TLSSkipVerify:            tlsSkipVerify,
+		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
 		SortOrder:                sortOrder,
-		IsActive:                 isActive,
-		HasLocalFilesystemAccess: hasLocalFilesystemAccess,
-		UseHardlinks:             useHardlinks,
+		IsActive:                 SQLiteIntToBool(isActive),
+		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
+		UseHardlinks:             SQLiteIntToBool(useHardlinks),
 		HardlinkBaseDir:          hardlinkBaseDir,
 		HardlinkDirPreset:        hardlinkDirPreset,
-		UseReflinks:              useReflinks,
-		FallbackToRegularMode:    fallbackToRegularMode,
+		UseReflinks:              SQLiteIntToBool(useReflinks),
+		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
 	}
 
 	if basicUsername.Valid {
@@ -508,14 +508,14 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var id int
 		var name, host, username, passwordEncrypted string
 		var basicUsername, basicPasswordEncrypted sql.NullString
-		var tlsSkipVerify bool
+		var tlsSkipVerify int
 		var sortOrder int
-		var isActive bool
-		var hasLocalFilesystemAccess bool
-		var useHardlinks bool
+		var isActive int
+		var hasLocalFilesystemAccess int
+		var useHardlinks int
 		var hardlinkBaseDir, hardlinkDirPreset string
-		var useReflinks bool
-		var fallbackToRegularMode bool
+		var useReflinks int
+		var fallbackToRegularMode int
 
 		err := rows.Scan(
 			&id,
@@ -545,15 +545,15 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			Host:                     host,
 			Username:                 username,
 			PasswordEncrypted:        passwordEncrypted,
-			TLSSkipVerify:            tlsSkipVerify,
+			TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
 			SortOrder:                sortOrder,
-			IsActive:                 isActive,
-			HasLocalFilesystemAccess: hasLocalFilesystemAccess,
-			UseHardlinks:             useHardlinks,
+			IsActive:                 SQLiteIntToBool(isActive),
+			HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
+			UseHardlinks:             SQLiteIntToBool(useHardlinks),
 			HardlinkBaseDir:          hardlinkBaseDir,
 			HardlinkDirPreset:        hardlinkDirPreset,
-			UseReflinks:              useReflinks,
-			FallbackToRegularMode:    fallbackToRegularMode,
+			UseReflinks:              SQLiteIntToBool(useReflinks),
+			FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
 		}
 
 		if basicUsername.Valid {
@@ -676,17 +676,17 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if params != nil {
 		if params.TLSSkipVerify != nil {
 			query += ", tls_skip_verify = ?"
-			args = append(args, *params.TLSSkipVerify)
+			args = append(args, BoolToSQLite(*params.TLSSkipVerify))
 		}
 
 		if params.HasLocalFilesystemAccess != nil {
 			query += ", has_local_filesystem_access = ?"
-			args = append(args, *params.HasLocalFilesystemAccess)
+			args = append(args, BoolToSQLite(*params.HasLocalFilesystemAccess))
 		}
 
 		if params.UseHardlinks != nil {
 			query += ", use_hardlinks = ?"
-			args = append(args, *params.UseHardlinks)
+			args = append(args, BoolToSQLite(*params.UseHardlinks))
 		}
 
 		if params.HardlinkBaseDir != nil {
@@ -701,12 +701,12 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 
 		if params.UseReflinks != nil {
 			query += ", use_reflinks = ?"
-			args = append(args, *params.UseReflinks)
+			args = append(args, BoolToSQLite(*params.UseReflinks))
 		}
 
 		if params.FallbackToRegularMode != nil {
 			query += ", fallback_to_regular_mode = ?"
-			args = append(args, *params.FallbackToRegularMode)
+			args = append(args, BoolToSQLite(*params.FallbackToRegularMode))
 		}
 	}
 
@@ -741,7 +741,7 @@ func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool)
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
+	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, BoolToSQLite(active), id)
 	if err != nil {
 		return nil, err
 	}

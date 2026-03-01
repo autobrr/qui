@@ -169,18 +169,19 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 	var settings DirScanSettings
 	var category sql.NullString
 	var tagsJSON sql.NullString
+	var enabled, allowPartial, skipPieceBoundarySafetyCheck, startPaused int
 
 	err := row.Scan(
 		&settings.ID,
-		&settings.Enabled,
+		&enabled,
 		&settings.MatchMode,
 		&settings.SizeTolerancePercent,
 		&settings.MinPieceRatio,
 		&settings.MaxSearcheesPerRun,
 		&settings.MaxSearcheeAgeDays,
-		&settings.AllowPartial,
-		&settings.SkipPieceBoundarySafetyCheck,
-		&settings.StartPaused,
+		&allowPartial,
+		&skipPieceBoundarySafetyCheck,
+		&startPaused,
 		&category,
 		&tagsJSON,
 		&settings.CreatedAt,
@@ -204,6 +205,10 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 	if settings.Tags == nil {
 		settings.Tags = []string{}
 	}
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.AllowPartial = SQLiteIntToBool(allowPartial)
+	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.StartPaused = SQLiteIntToBool(startPaused)
 
 	// Store in DB uses a 0-1 ratio; API/UI expects percent (0-100).
 	settings.MinPieceRatio = minPieceRatioToPercent(settings.MinPieceRatio)
@@ -364,6 +369,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	var tagsJSON sql.NullString
 	var arrInstanceID sql.NullInt64
 	var lastScanAt sql.NullTime
+	var enabled int
 
 	if err := scanner.Scan(
 		&dir.ID,
@@ -371,7 +377,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 		&qbitPathPrefix,
 		&category,
 		&tagsJSON,
-		&dir.Enabled,
+		&enabled,
 		&arrInstanceID,
 		&dir.TargetInstanceID,
 		&dir.ScanIntervalMinutes,
@@ -403,6 +409,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	if lastScanAt.Valid {
 		dir.LastScanAt = &lastScanAt.Time
 	}
+	dir.Enabled = SQLiteIntToBool(enabled)
 
 	return &dir, nil
 }

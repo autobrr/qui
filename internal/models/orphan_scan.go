@@ -84,17 +84,18 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 
 	var settings OrphanScanSettings
 	var ignorePathsJSON sql.NullString
+	var enabled, autoCleanupEnabled int
 
 	err := row.Scan(
 		&settings.ID,
 		&settings.InstanceID,
-		&settings.Enabled,
+		&enabled,
 		&settings.GracePeriodMinutes,
 		&ignorePathsJSON,
 		&settings.ScanIntervalHours,
 		&settings.PreviewSort,
 		&settings.MaxFilesPerRun,
-		&settings.AutoCleanupEnabled,
+		&autoCleanupEnabled,
 		&settings.AutoCleanupMaxFiles,
 		&settings.CreatedAt,
 		&settings.UpdatedAt,
@@ -114,6 +115,8 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	if settings.IgnorePaths == nil {
 		settings.IgnorePaths = []string{}
 	}
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.AutoCleanupEnabled = SQLiteIntToBool(autoCleanupEnabled)
 
 	return &settings, nil
 }
@@ -225,6 +228,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	var scanPathsJSON sql.NullString
 	var errorMessage sql.NullString
 	var completedAt sql.NullTime
+	var truncated int
 
 	err := row.Scan(
 		&run.ID,
@@ -236,7 +240,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 		&run.FilesDeleted,
 		&run.FoldersDeleted,
 		&run.BytesReclaimed,
-		&run.Truncated,
+		&truncated,
 		&errorMessage,
 		&run.StartedAt,
 		&completedAt,
@@ -247,6 +251,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	if err != nil {
 		return nil, err
 	}
+	run.Truncated = SQLiteIntToBool(truncated)
 	if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
 		return nil, err
 	}
@@ -279,6 +284,7 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 		var scanPathsJSON sql.NullString
 		var errorMessage sql.NullString
 		var completedAt sql.NullTime
+		var truncated int
 
 		if err := rows.Scan(
 			&run.ID,
@@ -290,13 +296,14 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 			&run.FilesDeleted,
 			&run.FoldersDeleted,
 			&run.BytesReclaimed,
-			&run.Truncated,
+			&truncated,
 			&errorMessage,
 			&run.StartedAt,
 			&completedAt,
 		); err != nil {
 			return nil, err
 		}
+		run.Truncated = SQLiteIntToBool(truncated)
 
 		if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
 			return nil, err
