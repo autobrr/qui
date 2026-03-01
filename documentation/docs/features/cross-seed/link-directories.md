@@ -8,6 +8,8 @@ description: How qui lays out hardlink/reflink trees on disk.
 
 When **Hardlink mode** or **Reflink mode** is enabled for a qBittorrent instance, qui creates a directory tree that matches the incoming torrent’s expected layout, then adds the torrent pointing at that tree.
 
+Because these modes add torrents with an explicit `savepath` (the link-tree root), AutoTMM is always disabled for torrents added via hardlink/reflink mode.
+
 This applies to:
 - Cross-seed searches (RSS, completion, manual, scan)
 - Directory scan (dirscan) injections
