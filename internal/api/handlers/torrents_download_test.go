@@ -427,8 +427,57 @@ func TestFilePathCandidates(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			if tc.savePath != "" {
+				require.NoError(t, os.MkdirAll(tc.savePath, 0o755))
+			}
+			if tc.downloadPath != "" {
+				require.NoError(t, os.MkdirAll(tc.downloadPath, 0o755))
+			}
+			if tc.contentPath != "" {
+				if tc.singleFile {
+					require.NoError(t, os.MkdirAll(filepath.Dir(tc.contentPath), 0o755))
+					require.NoError(t, os.WriteFile(tc.contentPath, []byte("content"), 0o600))
+				} else {
+					require.NoError(t, os.MkdirAll(tc.contentPath, 0o755))
+				}
+			}
 			candidates := filePathCandidates(tc.savePath, tc.downloadPath, tc.contentPath, tc.relativePath, tc.singleFile)
 			tc.check(t, candidates)
 		})
 	}
+}
+
+func TestResolveTorrentFilePath_ResolvesSymlinkPathWithinBase(t *testing.T) {
+	baseDir := t.TempDir()
+	realDir := filepath.Join(baseDir, "real")
+	require.NoError(t, os.MkdirAll(realDir, 0o755))
+
+	target := filepath.Join(realDir, "file.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("ok"), 0o600))
+
+	symlinkPath := filepath.Join(baseDir, "alias.mkv")
+	if err := os.Symlink(target, symlinkPath); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	resolved, err := resolveTorrentFilePath(baseDir, "alias.mkv")
+	require.NoError(t, err)
+	require.Equal(t, target, resolved)
+}
+
+func TestResolveTorrentFilePath_RejectsSymlinkEscapeOutsideBase(t *testing.T) {
+	baseDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	target := filepath.Join(outsideDir, "outside.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("ok"), 0o600))
+
+	symlinkPath := filepath.Join(baseDir, "escape.mkv")
+	if err := os.Symlink(target, symlinkPath); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	_, err := resolveTorrentFilePath(baseDir, "escape.mkv")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path traversal")
 }
