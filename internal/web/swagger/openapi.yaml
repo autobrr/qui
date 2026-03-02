@@ -2021,14 +2021,15 @@ paths:
         - $ref: '#/components/parameters/instanceID'
         - name: contentPath
           in: query
-          required: false
-          description: Instance-relative content path (alias of content_path)
+          required: true
+          description: "Canonical instance-relative content path parameter (legacy alias: content_path)"
           schema:
             type: string
         - name: content_path
           in: query
+          deprecated: true
           required: false
-          description: Legacy alias of contentPath
+          description: Legacy alias for contentPath (maps to the canonical contentPath parameter)
           schema:
             type: string
       responses:
