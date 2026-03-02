@@ -350,6 +350,37 @@ func TestParseProxyMediaInfoContentPath_JSON(t *testing.T) {
 	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
 }
 
+func TestParseProxyMediaInfoContentPath_JSON_LegacyAlias(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"content_path": "folder/file.mkv"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_JSON_PrefersCanonicalWhenBothPresent(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{
+		"contentPath":  "folder/canonical.mkv",
+		"content_path": "folder/legacy.mkv",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/canonical.mkv"), contentPath)
+}
+
 func TestParseProxyMediaInfoContentPath_Form(t *testing.T) {
 	t.Helper()
 

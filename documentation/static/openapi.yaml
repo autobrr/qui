@@ -541,7 +541,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Canonical instance-relative content path (legacy alias: content_path)
+          description: "Canonical instance-relative content path (legacy alias: content_path)"
         - name: content_path
           in: query
           required: false

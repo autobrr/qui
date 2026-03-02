@@ -75,6 +75,25 @@ type proxyContentPathMediaInfoRequest struct {
 	ContentPath string `json:"contentPath"`
 }
 
+func (r *proxyContentPathMediaInfoRequest) UnmarshalJSON(data []byte) error {
+	type proxyContentPathMediaInfoRequestAlias struct {
+		ContentPath       string `json:"contentPath"`
+		LegacyContentPath string `json:"content_path"`
+	}
+
+	var decoded proxyContentPathMediaInfoRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	r.ContentPath = decoded.ContentPath
+	if strings.TrimSpace(r.ContentPath) == "" {
+		r.ContentPath = decoded.LegacyContentPath
+	}
+
+	return nil
+}
+
 type proxyContentPathMediaInfoResponse struct {
 	ContentPath   string          `json:"contentPath"`
 	SummaryTxt    string          `json:"summaryTxt"`
@@ -811,14 +830,21 @@ func findExistingProxyContentFile(candidates []string) (string, bool) {
 
 		stat, err := f.Stat()
 		if err != nil {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("failed to close probed content file")
+			}
 			continue
 		}
 		if stat.IsDir() {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("failed to close probed content file")
+			}
 			continue
 		}
-		_ = f.Close()
+		if cerr := f.Close(); cerr != nil {
+			log.Warn().Err(cerr).Str("candidate", candidate).Msg("failed to close probed content file")
+			continue
+		}
 
 		return candidate, true
 	}
