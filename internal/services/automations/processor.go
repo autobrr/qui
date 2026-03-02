@@ -54,7 +54,7 @@ type torrentDesiredState struct {
 	shouldReannounce bool
 	reannounceRule   ruleRef
 
-	// Auto management (OR - any rule can trigger)
+	// Auto management (last rule wins)
 	shouldAutoManage bool
 	autoManageRule   ruleRef
 
@@ -398,8 +398,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if stats != nil {
 				stats.AutoManageApplied++
 			}
-			state.shouldAutoManage = true
-			state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
+			// Only enable if not already auto-managed
+			if !torrent.AutoManaged {
+				state.shouldAutoManage = true
+				state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
+			}
 		} else if stats != nil {
 			stats.AutoManageConditionNotMet++
 		}
