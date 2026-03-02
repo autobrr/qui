@@ -865,8 +865,8 @@ type ActionConditions struct {
 	Tags            []*TagAction           `json:"tags,omitempty"` // Preferred multi-tag actions
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
-	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty"`
-	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty"`
+	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
+	AutoManagement  *AutoManagementAction  `json:"autoManagement,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
