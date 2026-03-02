@@ -340,6 +340,7 @@ func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 }
 
 func TestFilePathCandidates(t *testing.T) {
+	baseRoot := filepath.Join(os.TempDir(), "qui-file-path-candidates")
 	testCases := []struct {
 		name         string
 		savePath     string
@@ -351,13 +352,13 @@ func TestFilePathCandidates(t *testing.T) {
 	}{
 		{
 			name:         "content_path_single_file_fallback",
-			savePath:     "/downloads/tv",
-			contentPath:  "/downloads/tv/Show.S01E01/Show.S01E01.mkv",
+			savePath:     filepath.Join(baseRoot, "downloads", "tv"),
+			contentPath:  filepath.Join(baseRoot, "downloads", "tv", "Show.S01E01", "Show.S01E01.mkv"),
 			relativePath: "Show.S01E01.v2.mkv",
 			singleFile:   true,
 			check: func(t *testing.T, candidates []string) {
-				savePath := "/downloads/tv"
-				contentPath := "/downloads/tv/Show.S01E01/Show.S01E01.mkv"
+				savePath := filepath.Join(baseRoot, "downloads", "tv")
+				contentPath := filepath.Join(baseRoot, "downloads", "tv", "Show.S01E01", "Show.S01E01.mkv")
 				relativePath := "Show.S01E01.v2.mkv"
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
 				require.Contains(t, candidates, filepath.Clean(contentPath))
@@ -366,13 +367,13 @@ func TestFilePathCandidates(t *testing.T) {
 		},
 		{
 			name:         "content_path_multi_file_fallback",
-			savePath:     "/downloads",
-			contentPath:  "/downloads/Show.S01",
+			savePath:     filepath.Join(baseRoot, "downloads"),
+			contentPath:  filepath.Join(baseRoot, "downloads", "Show.S01"),
 			relativePath: "Show.S01/Show.S01E01.mkv",
 			singleFile:   false,
 			check: func(t *testing.T, candidates []string) {
-				savePath := "/downloads"
-				contentPath := "/downloads/Show.S01"
+				savePath := filepath.Join(baseRoot, "downloads")
+				contentPath := filepath.Join(baseRoot, "downloads", "Show.S01")
 				relativePath := "Show.S01/Show.S01E01.mkv"
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(contentPath, relativePath)))
@@ -380,12 +381,12 @@ func TestFilePathCandidates(t *testing.T) {
 		},
 		{
 			name:         "deduplicates_equivalent_paths",
-			savePath:     "/downloads",
-			contentPath:  "/downloads/Movie.mkv",
+			savePath:     filepath.Join(baseRoot, "downloads"),
+			contentPath:  filepath.Join(baseRoot, "downloads", "Movie.mkv"),
 			relativePath: "Movie.mkv",
 			singleFile:   true,
 			check: func(t *testing.T, candidates []string) {
-				want := filepath.Clean("/downloads/Movie.mkv")
+				want := filepath.Clean(filepath.Join(baseRoot, "downloads", "Movie.mkv"))
 				count := 0
 				for _, candidate := range candidates {
 					if candidate == want {
@@ -397,15 +398,15 @@ func TestFilePathCandidates(t *testing.T) {
 		},
 		{
 			name:         "uses_download_path_after_content_and_save",
-			savePath:     "/downloads",
-			downloadPath: "/tmp/incomplete",
-			contentPath:  "/downloads/Show.S01",
+			savePath:     filepath.Join(baseRoot, "downloads"),
+			downloadPath: filepath.Join(baseRoot, "tmp", "incomplete"),
+			contentPath:  filepath.Join(baseRoot, "downloads", "Show.S01"),
 			relativePath: "Show.S01/Show.S01E01.mkv",
 			singleFile:   false,
 			check: func(t *testing.T, candidates []string) {
-				savePath := "/downloads"
-				downloadPath := "/tmp/incomplete"
-				contentPath := "/downloads/Show.S01"
+				savePath := filepath.Join(baseRoot, "downloads")
+				downloadPath := filepath.Join(baseRoot, "tmp", "incomplete")
+				contentPath := filepath.Join(baseRoot, "downloads", "Show.S01")
 				relativePath := "Show.S01/Show.S01E01.mkv"
 				require.GreaterOrEqual(t, len(candidates), 3)
 				contentCandidate := filepath.Clean(filepath.Join(contentPath, relativePath))
