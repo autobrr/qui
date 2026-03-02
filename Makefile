@@ -6,6 +6,14 @@ ifneq (,$(wildcard .env))
     export
 endif
 
+# Windows compatibility: run recipes through Git Bash so POSIX tools work
+ifeq ($(OS),Windows_NT)
+	GIT_BASH ?= C:/Progra~1/Git/bin/bash.exe
+	override SHELL := $(GIT_BASH)
+	override MAKESHELL := $(SHELL)
+	.SHELLFLAGS := -lc
+endif
+
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
