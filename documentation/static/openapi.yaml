@@ -520,6 +520,60 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /proxy/{api-key}/api/v2/torrents/mediainfo:
+    get:
+      tags:
+        - Proxy
+      summary: Get MediaInfo via proxy API key
+      description: >
+        Returns MediaInfo summary text and JSON output for an instance-relative content path using
+        a client API key in the proxy path.
+      security: []
+      parameters:
+        - name: api-key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Client API key
+        - name: contentPath
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Instance-relative content path
+        - name: content_path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Legacy alias for contentPath
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contentPath:
+                    type: string
+                  summaryTxt:
+                    type: string
+                  mediaInfoJson:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: Invalid content path
+        '401':
+          description: Missing or invalid client API key
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Instance or file not found
+        '500':
+          description: Internal server error
+
   /api/arr/instances:
     get:
       tags:
@@ -5493,3 +5547,5 @@ tags:
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Proxy
+    description: qBittorrent-compatible proxy endpoints authenticated by client API key

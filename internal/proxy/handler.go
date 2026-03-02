@@ -15,11 +15,14 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/sharedhttp"
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -66,6 +69,16 @@ type proxyContext struct {
 	instanceURL *url.URL
 	httpClient  *http.Client
 	basicAuth   *basicAuthCredentials
+}
+
+type proxyContentPathMediaInfoRequest struct {
+	ContentPath string `json:"contentPath"`
+}
+
+type proxyContentPathMediaInfoResponse struct {
+	ContentPath   string          `json:"contentPath"`
+	SummaryTxt    string          `json:"summaryTxt"`
+	MediaInfoJSON json.RawMessage `json:"mediaInfoJson"`
 }
 
 // NewHandler creates a new proxy handler
@@ -408,6 +421,7 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
 		pr.Get("/api/v2/torrents/files", h.handleTorrentFiles)
 		pr.Get("/api/v2/torrents/search", h.handleTorrentSearch)
+		pr.Get("/api/v2/torrents/mediainfo", h.handleTorrentMediaInfo)
 
 		// Intercepted write operations for cache invalidation
 		pr.Post("/api/v2/torrents/setLocation", h.handleSetLocation)
@@ -557,6 +571,142 @@ func difference(all, subset []string) []string {
 		remaining = append(remaining, val)
 	}
 	return remaining
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func normalizeContentPathRelativeInput(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New("content path is required")
+	}
+
+	normalized := filepath.Clean(filepath.FromSlash(trimmed))
+	if filepath.IsAbs(normalized) {
+		return "", errors.New("absolute paths are not allowed")
+	}
+	if normalized == ".." || strings.HasPrefix(normalized, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	return normalized, nil
+}
+
+func resolveProxyContentPath(basePath, relativePath string) (string, error) {
+	full := filepath.Join(basePath, filepath.FromSlash(relativePath))
+	cleanBase := filepath.Clean(basePath)
+	cleanFull := filepath.Clean(full)
+
+	evaluatedBase, err := filepath.EvalSymlinks(cleanBase)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base path symlinks: %w", err)
+	}
+
+	evaluatedFull, err := filepath.EvalSymlinks(cleanFull)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve candidate path symlinks: %w", err)
+	}
+
+	rel, err := filepath.Rel(evaluatedBase, evaluatedFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	return evaluatedFull, nil
+}
+
+func appendUniqueProxyCandidate(candidates []string, seen map[string]struct{}, candidate string) []string {
+	if candidate == "" {
+		return candidates
+	}
+
+	cleanCandidate := filepath.Clean(candidate)
+	if !filepath.IsAbs(cleanCandidate) {
+		return candidates
+	}
+	if _, ok := seen[cleanCandidate]; ok {
+		return candidates
+	}
+
+	seen[cleanCandidate] = struct{}{}
+	return append(candidates, cleanCandidate)
+}
+
+func contentPathCandidatesFromPreferences(prefs qbt.AppPreferences, relativePath string) []string {
+	candidates := make([]string, 0, 2)
+	seen := make(map[string]struct{})
+
+	if p, err := resolveProxyContentPath(prefs.SavePath, relativePath); err == nil {
+		candidates = appendUniqueProxyCandidate(candidates, seen, p)
+	}
+
+	if prefs.TempPathEnabled {
+		if p, err := resolveProxyContentPath(prefs.TempPath, relativePath); err == nil {
+			candidates = appendUniqueProxyCandidate(candidates, seen, p)
+		}
+	}
+
+	return candidates
+}
+
+func findExistingProxyContentFile(candidates []string) (string, bool) {
+	for _, candidate := range candidates {
+		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveProxyContentPath.
+		f, err := os.Open(candidate)
+		if err != nil {
+			continue
+		}
+
+		stat, err := f.Stat()
+		if err != nil {
+			_ = f.Close()
+			continue
+		}
+		if stat.IsDir() {
+			_ = f.Close()
+			continue
+		}
+		_ = f.Close()
+
+		return candidate, true
+	}
+
+	return "", false
+}
+
+func parseProxyMediaInfoContentPath(r *http.Request) (string, error) {
+	queryContentPath := strings.TrimSpace(r.URL.Query().Get("contentPath"))
+	if queryContentPath == "" {
+		queryContentPath = strings.TrimSpace(r.URL.Query().Get("content_path"))
+	}
+	if queryContentPath != "" {
+		return normalizeContentPathRelativeInput(queryContentPath)
+	}
+
+	contentType := strings.TrimSpace(strings.ToLower(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "application/json") {
+		var req proxyContentPathMediaInfoRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return "", errors.New("invalid request body")
+		}
+		return normalizeContentPathRelativeInput(req.ContentPath)
+	}
+
+	if err := r.ParseForm(); err != nil {
+		return "", errors.New("invalid form data")
+	}
+
+	contentPath := r.FormValue("contentPath")
+	if strings.TrimSpace(contentPath) == "" {
+		contentPath = r.FormValue("content_path")
+	}
+
+	return normalizeContentPathRelativeInput(contentPath)
 }
 
 func generateLoginCookieValue() (string, error) {
@@ -1318,6 +1468,107 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 			Int("instanceId", instanceID).
 			Msg("Failed to encode files response")
 	}
+}
+
+// handleTorrentMediaInfo handles /api/v2/torrents/mediainfo requests.
+func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	if h.instanceStore == nil || h.syncManager == nil {
+		log.Error().Int("instanceId", instanceID).Msg("Proxy mediainfo dependencies not configured")
+		writeJSONError(w, http.StatusInternalServerError, "MediaInfo service unavailable")
+		return
+	}
+
+	instance, err := h.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			writeJSONError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to load instance for proxy mediainfo")
+		writeJSONError(w, http.StatusInternalServerError, "Failed to load instance")
+		return
+	}
+
+	if instance == nil {
+		writeJSONError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	if !instance.HasLocalFilesystemAccess {
+		writeJSONError(w, http.StatusForbidden, "Instance does not have local filesystem access enabled")
+		return
+	}
+
+	contentPath, err := parseProxyMediaInfoContentPath(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "Invalid content path")
+		return
+	}
+
+	clientName := "unknown"
+	if clientAPIKey != nil {
+		clientName = clientAPIKey.ClientName
+	}
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientName).
+		Str("contentPath", contentPath).
+		Msg("Handling torrent mediainfo request via proxy endpoint")
+
+	prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to get app preferences for proxy mediainfo")
+		writeJSONError(w, http.StatusInternalServerError, "Failed to get app preferences")
+		return
+	}
+
+	candidates := contentPathCandidatesFromPreferences(prefs, contentPath)
+	if len(candidates) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "No content roots configured for instance")
+		return
+	}
+
+	resolvedPath, ok := findExistingProxyContentFile(candidates)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+
+	// #nosec G304 -- resolvedPath is constructed from validated base paths via resolveProxyContentPath.
+	report, err := mediainfo.AnalyzeFile(resolvedPath, mediainfo.WithParseSpeed(0.5))
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to analyze file with MediaInfo")
+		writeJSONError(w, http.StatusInternalServerError, "Failed to analyze file")
+		return
+	}
+
+	summaryTxt, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputText)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo summary text")
+		writeJSONError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
+		return
+	}
+
+	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo JSON")
+		writeJSONError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(proxyContentPathMediaInfoResponse{
+		ContentPath:   contentPath,
+		SummaryTxt:    summaryTxt,
+		MediaInfoJSON: json.RawMessage(rawJSON),
+	})
 }
 
 // handleAuthLogin handles /api/v2/auth/login requests (ceremonial - proxy already authenticated)

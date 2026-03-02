@@ -6,11 +6,14 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -303,4 +306,68 @@ func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) 
 	require.True(t, slices.Equal([]string{"tracker-c", "tracker-d"}, filters.ExcludeTrackers))
 	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI"}, filters.Hashes))
 	require.Equal(t, "ratio > 1", filters.Expr)
+}
+
+func TestNormalizeContentPathRelativeInput(t *testing.T) {
+	t.Helper()
+
+	testCases := []struct {
+		name      string
+		input     string
+		wantError bool
+	}{
+		{name: "valid", input: "folder/file.mkv", wantError: false},
+		{name: "empty", input: "", wantError: true},
+		{name: "traversal", input: "../escape.mkv", wantError: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized, err := normalizeContentPathRelativeInput(tc.input)
+			if tc.wantError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, filepath.FromSlash(tc.input), normalized)
+		})
+	}
+}
+
+func TestParseProxyMediaInfoContentPath_JSON(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"contentPath": "folder/file.mkv"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_Form(t *testing.T) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", strings.NewReader("content_path=folder%2Ffile.mkv"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestFindExistingProxyContentFile(t *testing.T) {
+	t.Helper()
+
+	root := t.TempDir()
+	goodPath := filepath.Join(root, "good.mkv")
+	require.NoError(t, os.WriteFile(goodPath, []byte("ok"), 0o600))
+
+	found, ok := findExistingProxyContentFile([]string{filepath.Join(root, "missing.mkv"), goodPath})
+	require.True(t, ok)
+	require.Equal(t, goodPath, found)
 }
