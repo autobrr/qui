@@ -577,7 +577,13 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+	err := json.NewEncoder(w).Encode(map[string]string{"error": message})
+	if err != nil {
+		log.Error().Err(err).Int("status", status).Msg("Failed to encode JSON error response")
+		if _, writeErr := io.WriteString(w, "error\n"); writeErr != nil {
+			log.Error().Err(writeErr).Int("status", status).Msg("Failed to write JSON error fallback response")
+		}
+	}
 }
 
 func normalizeContentPathRelativeInput(raw string) (string, error) {
@@ -598,13 +604,35 @@ func normalizeContentPathRelativeInput(raw string) (string, error) {
 }
 
 func resolveProxyContentPath(basePath, relativePath string) (string, error) {
-	full := filepath.Join(basePath, filepath.FromSlash(relativePath))
 	cleanBase := filepath.Clean(basePath)
+	if !filepath.IsAbs(cleanBase) {
+		return "", errors.New("base path must be absolute")
+	}
+
+	full := filepath.Join(cleanBase, filepath.FromSlash(relativePath))
 	cleanFull := filepath.Clean(full)
+
+	rel, err := filepath.Rel(cleanBase, cleanFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	// #nosec G703 -- cleanBase is validated as absolute and constrained by traversal checks above.
+	if _, err := os.Lstat(cleanBase); err != nil {
+		return "", fmt.Errorf("failed to access base path: %w", err)
+	}
 
 	evaluatedBase, err := filepath.EvalSymlinks(cleanBase)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve base path symlinks: %w", err)
+	}
+
+	// #nosec G703 -- cleanFull is derived from a validated base path and traversal-checked relative input.
+	if _, err := os.Lstat(cleanFull); err != nil {
+		if os.IsNotExist(err) {
+			return cleanFull, nil
+		}
+		return "", fmt.Errorf("failed to access candidate path: %w", err)
 	}
 
 	evaluatedFull, err := filepath.EvalSymlinks(cleanFull)
@@ -612,7 +640,7 @@ func resolveProxyContentPath(basePath, relativePath string) (string, error) {
 		return "", fmt.Errorf("failed to resolve candidate path symlinks: %w", err)
 	}
 
-	rel, err := filepath.Rel(evaluatedBase, evaluatedFull)
+	rel, err = filepath.Rel(evaluatedBase, evaluatedFull)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", errors.New("path traversal detected")
 	}
@@ -1564,11 +1592,17 @@ func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(proxyContentPathMediaInfoResponse{
+	err = json.NewEncoder(w).Encode(proxyContentPathMediaInfoResponse{
 		ContentPath:   contentPath,
 		SummaryTxt:    summaryTxt,
 		MediaInfoJSON: json.RawMessage(rawJSON),
 	})
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to encode proxy mediainfo response")
+		if _, writeErr := io.WriteString(w, "{}\n"); writeErr != nil {
+			log.Error().Err(writeErr).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to write proxy mediainfo fallback response")
+		}
+	}
 }
 
 // handleAuthLogin handles /api/v2/auth/login requests (ceremonial - proxy already authenticated)

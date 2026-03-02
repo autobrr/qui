@@ -2908,10 +2908,6 @@ type torrentFileMediaInfoResponse struct {
 	RawJSON      string                       `json:"rawJSON"`
 }
 
-type contentPathMediaInfoRequest struct {
-	ContentPath string `json:"contentPath"`
-}
-
 type contentPathMediaInfoResponse struct {
 	ContentPath   string          `json:"contentPath"`
 	SummaryTxt    string          `json:"summaryTxt"`
