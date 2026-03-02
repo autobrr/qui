@@ -586,6 +586,125 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	}
 }
 
+type proxyMediaInfoRequestError struct {
+	status  int
+	message string
+}
+
+func (e *proxyMediaInfoRequestError) Error() string {
+	return e.message
+}
+
+type proxyMediaInfoResponseWriteError struct {
+	encodeErr   error
+	fallbackErr error
+}
+
+func (e *proxyMediaInfoResponseWriteError) Error() string {
+	if e.fallbackErr != nil {
+		return e.fallbackErr.Error()
+	}
+	if e.encodeErr != nil {
+		return e.encodeErr.Error()
+	}
+	return "proxy mediainfo response write failed"
+}
+
+func validateProxyMediainfoRequest(ctx context.Context, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, instanceID int) (*models.Instance, qbt.AppPreferences, error) {
+	if instanceStore == nil || syncManager == nil {
+		log.Error().Int("instanceId", instanceID).Msg("Proxy mediainfo dependencies not configured")
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "MediaInfo service unavailable"}
+	}
+
+	instance, err := instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
+		}
+
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to load instance for proxy mediainfo")
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to load instance"}
+	}
+
+	if instance == nil {
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
+	}
+
+	if !instance.HasLocalFilesystemAccess {
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusForbidden, message: "Instance does not have local filesystem access enabled"}
+	}
+
+	prefs, err := syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to get app preferences for proxy mediainfo")
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to get app preferences"}
+	}
+
+	return instance, prefs, nil
+}
+
+func resolveProxyContentPathCandidates(r *http.Request, prefs qbt.AppPreferences, contentPathCandidates func(qbt.AppPreferences, string) []string) (string, string, error) {
+	contentPath, err := parseProxyMediaInfoContentPath(r)
+	if err != nil {
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusBadRequest, message: "Invalid content path"}
+	}
+
+	candidates := contentPathCandidates(prefs, contentPath)
+	if len(candidates) == 0 {
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusBadRequest, message: "No content roots configured for instance"}
+	}
+
+	resolvedPath, ok := findExistingProxyContentFile(candidates)
+	if !ok {
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "File not found on disk"}
+	}
+
+	return contentPath, resolvedPath, nil
+}
+
+func analyzeMediaFile(resolvedPath, contentPath string, instanceID int) (string, string, error) {
+	// #nosec G304 -- resolvedPath is constructed from validated base paths via resolveProxyContentPath.
+	report, err := mediainfo.AnalyzeFile(resolvedPath, mediainfo.WithParseSpeed(0.5))
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to analyze file with MediaInfo")
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to analyze file"}
+	}
+
+	summaryTxt, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputText)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo summary text")
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to render MediaInfo"}
+	}
+
+	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo JSON")
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to render MediaInfo"}
+	}
+
+	return summaryTxt, rawJSON, nil
+}
+
+func writeProxyMediaInfoResponse(w http.ResponseWriter, contentPath, summaryTxt, rawJSON string) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(proxyContentPathMediaInfoResponse{
+		ContentPath:   contentPath,
+		SummaryTxt:    summaryTxt,
+		MediaInfoJSON: json.RawMessage(rawJSON),
+	})
+	if err == nil {
+		return nil
+	}
+
+	writeErr := error(nil)
+	if _, fallbackErr := io.WriteString(w, "{}\n"); fallbackErr != nil {
+		writeErr = fallbackErr
+	}
+
+	return &proxyMediaInfoResponseWriteError{encodeErr: err, fallbackErr: writeErr}
+}
+
 func normalizeContentPathRelativeInput(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -1504,37 +1623,28 @@ func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request)
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
-	if h.instanceStore == nil || h.syncManager == nil {
-		log.Error().Int("instanceId", instanceID).Msg("Proxy mediainfo dependencies not configured")
-		writeJSONError(w, http.StatusInternalServerError, "MediaInfo service unavailable")
-		return
-	}
-
-	instance, err := h.instanceStore.Get(ctx, instanceID)
+	instance, prefs, err := validateProxyMediainfoRequest(ctx, h.instanceStore, h.syncManager, instanceID)
 	if err != nil {
-		if errors.Is(err, models.ErrInstanceNotFound) {
-			writeJSONError(w, http.StatusNotFound, "Instance not found")
+		var reqErr *proxyMediaInfoRequestError
+		if errors.As(err, &reqErr) {
+			writeJSONError(w, reqErr.status, reqErr.message)
 			return
 		}
 
-		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to load instance for proxy mediainfo")
 		writeJSONError(w, http.StatusInternalServerError, "Failed to load instance")
 		return
 	}
+	_ = instance
 
-	if instance == nil {
-		writeJSONError(w, http.StatusNotFound, "Instance not found")
-		return
-	}
-
-	if !instance.HasLocalFilesystemAccess {
-		writeJSONError(w, http.StatusForbidden, "Instance does not have local filesystem access enabled")
-		return
-	}
-
-	contentPath, err := parseProxyMediaInfoContentPath(r)
+	contentPath, resolvedPath, err := resolveProxyContentPathCandidates(r, prefs, contentPathCandidatesFromPreferences)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Invalid content path")
+		var reqErr *proxyMediaInfoRequestError
+		if errors.As(err, &reqErr) {
+			writeJSONError(w, reqErr.status, reqErr.message)
+			return
+		}
+
+		writeJSONError(w, http.StatusInternalServerError, "File not found on disk")
 		return
 	}
 
@@ -1549,59 +1659,31 @@ func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request)
 		Str("contentPath", contentPath).
 		Msg("Handling torrent mediainfo request via proxy endpoint")
 
-	prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
+	summaryTxt, rawJSON, err := analyzeMediaFile(resolvedPath, contentPath, instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to get app preferences for proxy mediainfo")
-		writeJSONError(w, http.StatusInternalServerError, "Failed to get app preferences")
-		return
-	}
+		var reqErr *proxyMediaInfoRequestError
+		if errors.As(err, &reqErr) {
+			writeJSONError(w, reqErr.status, reqErr.message)
+			return
+		}
 
-	candidates := contentPathCandidatesFromPreferences(prefs, contentPath)
-	if len(candidates) == 0 {
-		writeJSONError(w, http.StatusBadRequest, "No content roots configured for instance")
-		return
-	}
-
-	resolvedPath, ok := findExistingProxyContentFile(candidates)
-	if !ok {
-		writeJSONError(w, http.StatusNotFound, "File not found on disk")
-		return
-	}
-
-	// #nosec G304 -- resolvedPath is constructed from validated base paths via resolveProxyContentPath.
-	report, err := mediainfo.AnalyzeFile(resolvedPath, mediainfo.WithParseSpeed(0.5))
-	if err != nil {
-		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to analyze file with MediaInfo")
 		writeJSONError(w, http.StatusInternalServerError, "Failed to analyze file")
 		return
 	}
 
-	summaryTxt, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputText)
-	if err != nil {
-		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo summary text")
-		writeJSONError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
-		return
-	}
-
-	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
-	if err != nil {
-		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo JSON")
-		writeJSONError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(proxyContentPathMediaInfoResponse{
-		ContentPath:   contentPath,
-		SummaryTxt:    summaryTxt,
-		MediaInfoJSON: json.RawMessage(rawJSON),
-	})
-	if err != nil {
-		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to encode proxy mediainfo response")
-		if _, writeErr := io.WriteString(w, "{}\n"); writeErr != nil {
-			log.Error().Err(writeErr).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to write proxy mediainfo fallback response")
+	if err = writeProxyMediaInfoResponse(w, contentPath, summaryTxt, rawJSON); err != nil {
+		var writeErr *proxyMediaInfoResponseWriteError
+		if errors.As(err, &writeErr) {
+			if writeErr.encodeErr != nil {
+				log.Error().Err(writeErr.encodeErr).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to encode proxy mediainfo response")
+			}
+			if writeErr.fallbackErr != nil {
+				log.Error().Err(writeErr.fallbackErr).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to write proxy mediainfo fallback response")
+			}
+			return
 		}
+
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to encode proxy mediainfo response")
 	}
 }
 
