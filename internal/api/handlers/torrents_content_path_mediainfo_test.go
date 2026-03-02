@@ -25,6 +25,14 @@ type mockMediaInfoPreferencesAdder struct {
 	prefsCall int
 }
 
+type mediaInfoJSONPayload struct {
+	Media mediaInfoJSONMedia `json:"media"`
+}
+
+type mediaInfoJSONMedia struct {
+	Track []json.RawMessage `json:"track"`
+}
+
 func (m *mockMediaInfoPreferencesAdder) AddTorrent(context.Context, int, []byte, map[string]string) error {
 	return nil
 }
@@ -248,13 +256,13 @@ func TestGetContentPathMediaInfo_ReturnsSummaryAndJSON(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp struct {
-		ContentPath   string         `json:"contentPath"`
-		SummaryTxt    string         `json:"summaryTxt"`
-		MediaInfoJSON map[string]any `json:"mediaInfoJson"`
+		ContentPath   string               `json:"contentPath"`
+		SummaryTxt    string               `json:"summaryTxt"`
+		MediaInfoJSON mediaInfoJSONPayload `json:"mediaInfoJson"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, filepath.ToSlash(relativePath), filepath.ToSlash(resp.ContentPath))
 	require.NotEmpty(t, resp.SummaryTxt)
-	require.Contains(t, resp.MediaInfoJSON, "media")
+	require.NotEmpty(t, resp.MediaInfoJSON.Media.Track)
 	require.Equal(t, 1, mockAdder.prefsCall)
 }

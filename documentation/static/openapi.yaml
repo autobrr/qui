@@ -538,16 +538,39 @@ paths:
           description: Client API key
         - name: contentPath
           in: query
-          required: true
+          required: false
           schema:
             type: string
-          description: Instance-relative content path
+          description: Canonical instance-relative content path (legacy alias: content_path)
         - name: content_path
           in: query
           required: false
           schema:
             type: string
           description: Legacy alias for contentPath
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
       responses:
         '200':
           description: MediaInfo summary and JSON

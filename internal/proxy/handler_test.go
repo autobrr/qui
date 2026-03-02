@@ -319,6 +319,7 @@ func TestNormalizeContentPathRelativeInput(t *testing.T) {
 		{name: "valid", input: "folder/file.mkv", wantError: false},
 		{name: "empty", input: "", wantError: true},
 		{name: "traversal", input: "../escape.mkv", wantError: true},
+		{name: "windows-traversal", input: "..\\escape.mkv", wantError: true},
 	}
 
 	for _, tc := range testCases {
