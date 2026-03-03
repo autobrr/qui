@@ -1273,10 +1273,15 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 // CleanupOldLatency removes latency records older than the specified duration
 func (s *TorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().UTC().Add(-olderThan)
+	cutoffArg := any(cutoff)
+	if dbinterface.DialectOf(s.db) == "sqlite" {
+		cutoffArg = cutoff.Format(time.DateTime)
+	}
+
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM torznab_indexer_latency
 		WHERE measured_at < ?
-	`, cutoff)
+	`, cutoffArg)
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup old latency: %w", err)
 	}
