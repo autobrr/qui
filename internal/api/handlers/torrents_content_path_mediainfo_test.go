@@ -145,6 +145,7 @@ func TestGetContentPathMediaInfo_RejectsInvalidContentPath(t *testing.T) {
 		contentPath string
 	}{
 		{name: "traversal", contentPath: "../escape.bin"},
+		{name: "windows-traversal", contentPath: "..\\escape.bin"},
 	}
 
 	for _, tc := range testCases {

@@ -730,6 +730,7 @@ func normalizeContentPathRelativeInput(raw string) (string, error) {
 		return "", errors.New("content path is required")
 	}
 
+	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
 	normalized := filepath.Clean(filepath.FromSlash(trimmed))
 	if filepath.IsAbs(normalized) {
 		return "", errors.New("absolute paths are not allowed")
