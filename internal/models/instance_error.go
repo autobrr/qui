@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
-	"modernc.org/sqlite"
-	lib "modernc.org/sqlite/lib"
 )
 
 // Error types for categorization
@@ -83,11 +81,12 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 
 	// Simple deduplication: check if same error was recorded in last minute using view
 	var count int
-	checkQuery := `SELECT COUNT(*) FROM instance_errors_view 
-                   WHERE instance_id = ? AND error_type = ? AND error_message = ? 
-                   AND occurred_at > datetime('now', '-1 minute')`
+	cutoff := time.Now().UTC().Add(-time.Minute)
+	checkQuery := `SELECT COUNT(*) FROM instance_errors_view
+                   WHERE instance_id = ? AND error_type = ? AND error_message = ?
+                   AND occurred_at > ?`
 
-	if err := tx.QueryRowContext(ctx, checkQuery, instanceID, errorType, errorMessage).Scan(&count); err == nil && count > 0 {
+	if err := tx.QueryRowContext(ctx, checkQuery, instanceID, errorType, errorMessage, cutoff).Scan(&count); err == nil && count > 0 {
 		return nil // Skip duplicate
 	}
 
@@ -102,8 +101,7 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		instanceID, ids[0], ids[1])
 
 	// Handle foreign key constraint errors gracefully
-	var sqlErr *sqlite.Error
-	if execErr != nil && errors.As(execErr, &sqlErr) && sqlErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
+	if isForeignKeyConstraintError(execErr) {
 		// Instance was likely deleted between our check and insert, silently ignore
 		return nil
 	}
@@ -117,10 +115,10 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 
 // GetRecentErrors retrieves the last N errors for an instance
 func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int, limit int) ([]InstanceError, error) {
-	query := `SELECT id, instance_id, error_type, error_message, occurred_at 
-              FROM instance_errors_view 
-              WHERE instance_id = ? 
-              ORDER BY occurred_at DESC 
+	query := `SELECT id, instance_id, error_type, error_message, occurred_at
+              FROM instance_errors_view
+              WHERE instance_id = ?
+              ORDER BY occurred_at DESC
               LIMIT ?`
 
 	rows, err := s.db.QueryContext(ctx, query, instanceID, limit)

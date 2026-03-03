@@ -16,6 +16,34 @@ export interface AuthResponse {
   message?: string
 }
 
+export interface ApplicationDatabaseInfo {
+  engine: string
+  target: string
+}
+
+export interface ApplicationInfo {
+  version: string
+  commit?: string
+  commitShort?: string
+  buildDate?: string
+  startedAt: string
+  uptimeSeconds: number
+  goVersion: string
+  goOS: string
+  goArch: string
+  baseUrl: string
+  host: string
+  port: number
+  configDir: string
+  dataDir: string
+  authMode: "builtin" | "oidc" | "disabled"
+  oidcEnabled: boolean
+  builtInLoginEnabled: boolean
+  oidcIssuerHost?: string
+  checkForUpdates: boolean
+  database: ApplicationDatabaseInfo
+}
+
 // Generic warning response for operations that succeed with caveats
 export interface WarningResponse {
   warning?: string

@@ -11,9 +11,6 @@ import (
 	"fmt"
 	"time"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -172,18 +169,19 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 	var settings DirScanSettings
 	var category sql.NullString
 	var tagsJSON sql.NullString
+	var enabled, allowPartial, skipPieceBoundarySafetyCheck, startPaused int
 
 	err := row.Scan(
 		&settings.ID,
-		&settings.Enabled,
+		&enabled,
 		&settings.MatchMode,
 		&settings.SizeTolerancePercent,
 		&settings.MinPieceRatio,
 		&settings.MaxSearcheesPerRun,
 		&settings.MaxSearcheeAgeDays,
-		&settings.AllowPartial,
-		&settings.SkipPieceBoundarySafetyCheck,
-		&settings.StartPaused,
+		&allowPartial,
+		&skipPieceBoundarySafetyCheck,
+		&startPaused,
 		&category,
 		&tagsJSON,
 		&settings.CreatedAt,
@@ -207,6 +205,10 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 	if settings.Tags == nil {
 		settings.Tags = []string{}
 	}
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.AllowPartial = SQLiteIntToBool(allowPartial)
+	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.StartPaused = SQLiteIntToBool(startPaused)
 
 	// Store in DB uses a 0-1 ratio; API/UI expects percent (0-100).
 	settings.MinPieceRatio = minPieceRatioToPercent(settings.MinPieceRatio)
@@ -321,22 +323,19 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 		return nil, fmt.Errorf("marshal tags: %w", err)
 	}
 
-	res, err := s.db.ExecContext(ctx, `
+	var id int
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO dir_scan_directories
 			(path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`, dir.Path, qbitPathPrefix, category, string(tagsJSON), boolToInt(dir.Enabled), dir.ArrInstanceID,
-		dir.TargetInstanceID, dir.ScanIntervalMinutes)
+		dir.TargetInstanceID, dir.ScanIntervalMinutes).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert directory: %w", err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get last insert id: %w", err)
-	}
-
-	return s.GetDirectory(ctx, int(id))
+	return s.GetDirectory(ctx, id)
 }
 
 // GetDirectory retrieves a directory by ID.
@@ -370,6 +369,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	var tagsJSON sql.NullString
 	var arrInstanceID sql.NullInt64
 	var lastScanAt sql.NullTime
+	var enabled int
 
 	if err := scanner.Scan(
 		&dir.ID,
@@ -377,7 +377,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 		&qbitPathPrefix,
 		&category,
 		&tagsJSON,
-		&dir.Enabled,
+		&enabled,
 		&arrInstanceID,
 		&dir.TargetInstanceID,
 		&dir.ScanIntervalMinutes,
@@ -409,6 +409,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	if lastScanAt.Valid {
 		dir.LastScanAt = &lastScanAt.Time
 	}
+	dir.Enabled = SQLiteIntToBool(enabled)
 
 	return &dir, nil
 }
@@ -594,17 +595,14 @@ var ErrDirScanRunAlreadyActive = errors.New("an active scan run already exists f
 
 // CreateRun creates a new scan run.
 func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
 		VALUES (?, ?, ?)
-	`, directoryID, DirScanRunStatusQueued, triggeredBy)
+		RETURNING id
+	`, directoryID, DirScanRunStatusQueued, triggeredBy).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert run: %w", err)
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
 	}
 
 	return id, nil
@@ -612,7 +610,8 @@ func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggered
 
 // CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
 func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
 		SELECT ?, ?, ?
 		WHERE NOT EXISTS (
@@ -620,22 +619,13 @@ func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int,
 			WHERE directory_id = ?
 			  AND status IN ('queued', 'scanning', 'searching', 'injecting')
 		)
-	`, directoryID, DirScanRunStatusQueued, triggeredBy, directoryID)
+		RETURNING id
+	`, directoryID, DirScanRunStatusQueued, triggeredBy, directoryID).Scan(&id)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrDirScanRunAlreadyActive
+		}
 		return 0, fmt.Errorf("insert run: %w", err)
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("get rows affected: %w", err)
-	}
-	if rows == 0 {
-		return 0, ErrDirScanRunAlreadyActive
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
 	}
 
 	return id, nil
@@ -1125,8 +1115,7 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 			matchedTorrentHash, matchedIndexerID, file.DirectoryID, file.FileID)
 		if err != nil {
 			// If the target path is already tracked, fall back to the path-upsert which will merge state.
-			var sqlErr *sqlite.Error
-			if !errors.As(err, &sqlErr) || sqlErr.Code() != sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			if !isUniqueConstraintError(err) {
 				return fmt.Errorf("update by file_id: %w", err)
 			}
 		} else {

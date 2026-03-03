@@ -36,6 +36,37 @@ func TestBoolToSQLite(t *testing.T) {
 	}
 }
 
+func TestSQLiteIntToBool(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    int
+		expected bool
+	}{
+		{
+			name:     "zero returns false",
+			input:    0,
+			expected: false,
+		},
+		{
+			name:     "one returns true",
+			input:    1,
+			expected: true,
+		},
+		{
+			name:     "negative non-zero returns true",
+			input:    -1,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SQLiteIntToBool(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestSanitizeStringSlice(t *testing.T) {
 	tests := []struct {
 		name     string

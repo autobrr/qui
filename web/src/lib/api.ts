@@ -7,6 +7,7 @@ import type {
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
+  ApplicationInfo,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -1989,6 +1990,10 @@ class ApiClient {
 
   async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
     return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
+  }
+
+  async getApplicationInfo(): Promise<ApplicationInfo> {
+    return this.request<ApplicationInfo>("/application/info")
   }
 
   async getLatestVersion(): Promise<{
