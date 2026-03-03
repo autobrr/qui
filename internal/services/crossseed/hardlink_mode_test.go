@@ -352,7 +352,19 @@ func TestFindMatchingBaseDir(t *testing.T) {
 }
 
 func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
-	_, err := findMatchingBaseDir("/path1, /path2 , /path3", "/nonexistent")
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	invalidPath1 := filepath.Join(t.TempDir(), "not-a-directory-1")
+	invalidPath2 := filepath.Join(t.TempDir(), "not-a-directory-2")
+	invalidPath3 := filepath.Join(t.TempDir(), "not-a-directory-3")
+	require.NoError(t, os.WriteFile(invalidPath1, []byte("file"), 0o600))
+	require.NoError(t, os.WriteFile(invalidPath2, []byte("file"), 0o600))
+	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
+
+	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
+	_, err := findMatchingBaseDir(configured, sourceFile)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base directory")

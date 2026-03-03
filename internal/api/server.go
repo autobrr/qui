@@ -458,6 +458,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
+					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
