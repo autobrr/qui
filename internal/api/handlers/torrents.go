@@ -2834,14 +2834,21 @@ func resolveTorrentContentFilePathOnDisk(ctx context.Context, resolver torrentCo
 
 		stat, err := f.Stat()
 		if err != nil {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file after stat error")
+			}
 			continue
 		}
 		if stat.IsDir() {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate directory handle")
+			}
 			continue
 		}
-		_ = f.Close()
+		if cerr := f.Close(); cerr != nil {
+			log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file")
+			continue
+		}
 
 		return candidate, true
 	}
@@ -3018,14 +3025,21 @@ func findExistingContentFile(candidates []string) (string, bool) {
 
 		stat, err := f.Stat()
 		if err != nil {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file after stat error")
+			}
 			continue
 		}
 		if stat.IsDir() {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate directory handle")
+			}
 			continue
 		}
-		_ = f.Close()
+		if cerr := f.Close(); cerr != nil {
+			log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file")
+			continue
+		}
 
 		return candidate, true
 	}
