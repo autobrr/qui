@@ -54,13 +54,13 @@ import { api } from "@/lib/api"
 
 import { withBasePath } from "@/lib/base-url"
 import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidanceVariant, registerMagnetHandler } from "@/lib/protocol-handler"
-import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import type { Instance, TorznabSearchCacheStats } from "@/types"
+import type { Instance, TorznabSearchCacheStats, User } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
-import type { FormEvent } from "react"
+import { Bell, Clock, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import type { FormEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -775,6 +775,373 @@ function TorznabSearchCachePanel() {
   )
 }
 
+function formatApplicationDate(value?: string): string {
+  if (!value || value.trim() === "") {
+    return "—"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  })
+}
+
+function formatRelativeDate(
+  value: string | undefined,
+  labels: { notAvailable: string; justNow: string; ago: string; inPrefix: string }
+): string {
+  if (!value || value.trim() === "") {
+    return labels.notAvailable
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return labels.notAvailable
+  }
+
+  const secondsDiff = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (Math.abs(secondsDiff) < 1) {
+    return labels.justNow
+  }
+
+  const duration = formatDuration(Math.abs(secondsDiff))
+  if (secondsDiff >= 0) {
+    return `${duration} ${labels.ago}`
+  }
+
+  return `${labels.inPrefix} ${duration}`
+}
+
+function formatCurrentSessionAuth(user: User | undefined, labels: { unknown: string; builtin: string }): string {
+  if (!user) {
+    return labels.unknown
+  }
+
+  const methodRaw = user.auth_method?.trim() || ""
+  const method = methodRaw !== "" ? methodRaw : labels.builtin
+  const username = user.username?.trim() || ""
+
+  if (username !== "") {
+    return `${method} (${username})`
+  }
+
+  return method
+}
+
+function isDevVersion(version?: string): boolean {
+  const value = version?.trim().toLowerCase() || ""
+  return value === "0.0.0-dev" || value.includes("dev") || value === "main"
+}
+
+function getLiveUptimeSeconds(baseUptime: number, startedAtMs: number): number {
+  const elapsed = Math.floor((Date.now() - startedAtMs) / 1000)
+  return Math.max(0, baseUptime + elapsed)
+}
+
+type ApplicationField = {
+  label: string
+  value: string
+  secondary?: string
+  copyValue?: string
+  monospace?: boolean
+}
+
+interface ApplicationSectionProps {
+  title: string
+  description: string
+  fields: ApplicationField[]
+  onCopy: (value: string, label: string) => Promise<void> | void
+  headerAction?: ReactNode
+}
+
+function ApplicationSection({ title, description, fields, onCopy, headerAction }: ApplicationSectionProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        {headerAction}
+      </CardHeader>
+      <CardContent className="p-0">
+        <dl className="divide-y">
+          {fields.map((field) => (
+            <div key={field.label} className="group px-4 py-3 sm:px-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <dt className="text-xs uppercase text-muted-foreground sm:w-44 sm:shrink-0">{field.label}</dt>
+                <dd className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`${field.monospace ? "font-mono text-xs sm:text-sm" : "text-sm font-medium"} break-all`}
+                        title={field.value}
+                      >
+                        {field.value}
+                      </p>
+                      {field.secondary && (
+                        <p className="mt-1 text-xs text-muted-foreground">{field.secondary}</p>
+                      )}
+                    </div>
+                    {field.copyValue && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => {
+                          void onCopy(field.copyValue || "", field.label)
+                        }}
+                        title={tr("settingsPage.applicationInfo.actions.copyField", { field: field.label })}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ApplicationInfoPanel() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+
+  const appInfoQuery = useQuery({
+    queryKey: ["application-info"],
+    queryFn: () => api.getApplicationInfo(),
+    staleTime: 30 * 1000,
+  })
+
+  const currentUserQuery = useQuery({
+    queryKey: ["auth-me", "application-tab"],
+    queryFn: () => api.checkAuth(),
+    staleTime: 60 * 1000,
+  })
+
+  const latestVersionQuery = useQuery({
+    queryKey: ["latest-version"],
+    queryFn: () => api.getLatestVersion(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const info = appInfoQuery.data
+  const user = currentUserQuery.data
+
+  const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!info) {
+      setLiveUptimeSeconds(0)
+      return
+    }
+
+    const baseUptime = Math.max(0, info.uptimeSeconds)
+    const startedAtMs = Date.now()
+    setLiveUptimeSeconds(baseUptime)
+
+    const timer = window.setInterval(() => {
+      setLiveUptimeSeconds(getLiveUptimeSeconds(baseUptime, startedAtMs))
+    }, 1000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [info])
+
+  const notAvailable = tr("settingsPage.applicationInfo.values.notAvailable")
+
+  let currentSessionAuth = tr("settingsPage.applicationInfo.status.unknown")
+  if (currentUserQuery.isLoading) {
+    currentSessionAuth = tr("settingsPage.applicationInfo.status.loading")
+  } else if (currentUserQuery.isError) {
+    currentSessionAuth = tr("settingsPage.applicationInfo.status.unavailable")
+  } else {
+    currentSessionAuth = formatCurrentSessionAuth(user, {
+      unknown: tr("settingsPage.applicationInfo.status.unknown"),
+      builtin: tr("settingsPage.applicationInfo.status.builtin"),
+    })
+  }
+
+  const updateStatus = useMemo(() => {
+    if (!info) {
+      return {
+        label: tr("settingsPage.applicationInfo.updateStatus.unknown"),
+        detail: tr("settingsPage.applicationInfo.updateStatus.waiting"),
+      }
+    }
+    if (!info.checkForUpdates) {
+      return {
+        label: tr("settingsPage.applicationInfo.updateStatus.disabled"),
+        detail: tr("settingsPage.applicationInfo.updateStatus.disabledDetail"),
+      }
+    }
+    if (isDevVersion(info.version)) {
+      return { label: tr("settingsPage.applicationInfo.updateStatus.devBuild"), detail: "" }
+    }
+    if (latestVersionQuery.isLoading || latestVersionQuery.isFetching) {
+      return {
+        label: tr("settingsPage.applicationInfo.updateStatus.checking"),
+        detail: tr("settingsPage.applicationInfo.updateStatus.checkingDetail"),
+      }
+    }
+    if (latestVersionQuery.data) {
+      return { label: tr("settingsPage.applicationInfo.updateStatus.updateAvailable"), detail: latestVersionQuery.data.tag_name }
+    }
+    return {
+      label: tr("settingsPage.applicationInfo.updateStatus.upToDate"),
+      detail: tr("settingsPage.applicationInfo.updateStatus.upToDateDetail"),
+    }
+  }, [info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading, tr])
+
+  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0
+    ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString())
+    : tr("settingsPage.applicationInfo.updateStatus.notChecked")
+
+  const buildFields: ApplicationField[] = info ? [
+    { label: tr("settingsPage.applicationInfo.fields.version"), value: info.version || notAvailable, monospace: true },
+    { label: tr("settingsPage.applicationInfo.fields.commit"), value: info.commitShort || info.commit || notAvailable, copyValue: info.commit || "", monospace: true },
+    {
+      label: tr("settingsPage.applicationInfo.fields.buildDate"),
+      value: formatApplicationDate(info.buildDate),
+      secondary: formatRelativeDate(info.buildDate, {
+        notAvailable,
+        justNow: tr("settingsPage.applicationInfo.relative.justNow"),
+        ago: tr("settingsPage.applicationInfo.relative.ago"),
+        inPrefix: tr("settingsPage.applicationInfo.relative.inPrefix"),
+      }),
+    },
+    {
+      label: tr("settingsPage.applicationInfo.fields.updateStatus"),
+      value: updateStatus.label,
+      secondary: [updateStatus.detail, tr("settingsPage.applicationInfo.updateStatus.lastChecked", { value: updateCheckedAt })].filter(Boolean).join(" • "),
+    },
+  ] : []
+
+  const runtimeFields: ApplicationField[] = info ? [
+    { label: tr("settingsPage.applicationInfo.fields.uptime"), value: formatDuration(liveUptimeSeconds) },
+    { label: tr("settingsPage.applicationInfo.fields.runtime"), value: `${info.goVersion} • ${info.goOS}/${info.goArch}`, monospace: true },
+  ] : []
+
+  const authFields: ApplicationField[] = info ? [
+    { label: tr("settingsPage.applicationInfo.fields.currentSessionAuth"), value: currentSessionAuth, monospace: true },
+    { label: tr("settingsPage.applicationInfo.fields.oidcEnabled"), value: info.oidcEnabled ? tr("settingsPage.applicationInfo.values.yes") : tr("settingsPage.applicationInfo.values.no") },
+    { label: tr("settingsPage.applicationInfo.fields.builtInLoginEnabled"), value: info.builtInLoginEnabled ? tr("settingsPage.applicationInfo.values.yes") : tr("settingsPage.applicationInfo.values.no") },
+    { label: tr("settingsPage.applicationInfo.fields.oidcIssuerHost"), value: info.oidcIssuerHost || notAvailable, monospace: true },
+  ] : []
+
+  const storageFields: ApplicationField[] = info ? [
+    {
+      label: tr("settingsPage.applicationInfo.fields.database"),
+      value: `${info.database.engine}${info.database.target ? ` (${info.database.target})` : ""}`,
+      monospace: true,
+    },
+    { label: tr("settingsPage.applicationInfo.fields.bind"), value: `${info.host}:${info.port}${info.baseUrl}`, monospace: true },
+    { label: tr("settingsPage.applicationInfo.fields.configDir"), value: info.configDir || notAvailable, copyValue: info.configDir || "", monospace: true },
+    { label: tr("settingsPage.applicationInfo.fields.dataDir"), value: info.dataDir || notAvailable, copyValue: info.dataDir || "", monospace: true },
+  ] : []
+
+  const handleCopy = useCallback(async (value: string, label: string) => {
+    if (!value) {
+      return
+    }
+
+    try {
+      await copyTextToClipboard(value)
+      toast.success(tr("settingsPage.applicationInfo.toasts.copied", { label }))
+    } catch {
+      toast.error(tr("settingsPage.applicationInfo.toasts.copyFailed", { label: label.toLowerCase() }))
+    }
+  }, [tr])
+
+  return (
+    <div className="space-y-4">
+      {appInfoQuery.isLoading && (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {tr("settingsPage.applicationInfo.states.loading")}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {appInfoQuery.isError && (
+        <Card>
+          <CardContent className="py-6">
+            <p className="text-sm text-destructive">
+              {appInfoQuery.error instanceof Error ? appInfoQuery.error.message : tr("settingsPage.applicationInfo.states.loadFailed")}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {info && (
+        <>
+          <ApplicationSection
+            title={tr("settingsPage.applicationInfo.sections.build.title")}
+            description={tr("settingsPage.applicationInfo.sections.build.description")}
+            fields={buildFields}
+            onCopy={handleCopy}
+            headerAction={(
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void appInfoQuery.refetch()
+                  void latestVersionQuery.refetch()
+                  void currentUserQuery.refetch()
+                }}
+                disabled={appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${(appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching) ? "animate-spin" : ""}`} />
+                {tr("settingsPage.applicationInfo.actions.refresh")}
+              </Button>
+            )}
+          />
+          <ApplicationSection
+            title={tr("settingsPage.applicationInfo.sections.runtime.title")}
+            description={tr("settingsPage.applicationInfo.sections.runtime.description")}
+            fields={runtimeFields}
+            onCopy={handleCopy}
+          />
+          <ApplicationSection
+            title={tr("settingsPage.applicationInfo.sections.authentication.title")}
+            description={tr("settingsPage.applicationInfo.sections.authentication.description")}
+            fields={authFields}
+            onCopy={handleCopy}
+          />
+          <ApplicationSection
+            title={tr("settingsPage.applicationInfo.sections.storageAndNetwork.title")}
+            description={tr("settingsPage.applicationInfo.sections.storageAndNetwork.description")}
+            fields={storageFields}
+            onCopy={handleCopy}
+          />
+        </>
+      )}
+
+    </div>
+  )
+}
+
 interface SettingsProps {
   search: SettingsSearch
   onSearchChange: (search: SettingsSearch) => void
@@ -783,7 +1150,7 @@ interface SettingsProps {
 export function Settings({ search, onSearchChange }: SettingsProps) {
   const { t } = useTranslation("common")
   const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-  const activeTab: SettingsTab = search.tab ?? "instances"
+  const activeTab: SettingsTab = search.tab ?? "application"
 
   const handleTabChange = (tab: SettingsTab) => {
     onSearchChange({ tab })
@@ -808,6 +1175,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="application">
+              <div className="flex items-center">
+                <Info className="w-4 h-4 mr-2" />
+                {tr("settingsPage.tabs.application")}
+              </div>
+            </SelectItem>
             <SelectItem value="instances">
               <div className="flex items-center">
                 <Server className="w-4 h-4 mr-2" />
@@ -888,6 +1261,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         {/* Desktop Sidebar Navigation */}
         <div className="hidden md:block w-64 shrink-0">
           <nav className="space-y-1">
+            <button
+              onClick={() => handleTabChange("application")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "application" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Info className="w-4 h-4 mr-2" />
+              {tr("settingsPage.tabs.application")}
+            </button>
             <button
               onClick={() => handleTabChange("instances")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -1001,6 +1383,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
         {/* Main Content Area */}
         <div className="flex-1 min-w-0">
+          {activeTab === "application" && (
+            <div className="space-y-4">
+              <ApplicationInfoPanel />
+            </div>
+          )}
 
           {activeTab === "instances" && (
             <div className="space-y-4">

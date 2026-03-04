@@ -2164,6 +2164,7 @@
       "description": "Manage your application preferences and security"
     },
     "tabs": {
+      "application": "Application",
       "instances": "Instances",
       "indexers": "Indexers",
       "searchCache": "Search Cache",
@@ -2299,6 +2300,84 @@
         "failedUpdate": "Failed to update cache TTL",
         "enterValidNumber": "Enter a valid number of minutes",
         "minimumTtl": "Cache TTL must be at least {{min}} minutes"
+      }
+    },
+    "applicationInfo": {
+      "actions": {
+        "copyField": "Copy {{field}}",
+        "refresh": "Refresh"
+      },
+      "toasts": {
+        "copied": "{{label}} copied",
+        "copyFailed": "Failed to copy {{label}}"
+      },
+      "states": {
+        "loading": "Loading application info...",
+        "loadFailed": "Failed to load application info"
+      },
+      "status": {
+        "unknown": "Unknown",
+        "loading": "Loading...",
+        "unavailable": "Unavailable",
+        "builtin": "builtin"
+      },
+      "updateStatus": {
+        "unknown": "Unknown",
+        "waiting": "Waiting for application metadata.",
+        "disabled": "Disabled",
+        "disabledDetail": "Update checks are disabled in config.",
+        "devBuild": "Dev build",
+        "checking": "Checking",
+        "checkingDetail": "Checking GitHub release cache.",
+        "updateAvailable": "Update available",
+        "upToDate": "Up to date",
+        "upToDateDetail": "No newer release is currently cached.",
+        "notChecked": "Not checked yet",
+        "lastChecked": "Last checked: {{value}}"
+      },
+      "fields": {
+        "version": "Version",
+        "commit": "Commit",
+        "buildDate": "Build date",
+        "updateStatus": "Update status",
+        "uptime": "Uptime",
+        "runtime": "Runtime",
+        "currentSessionAuth": "Current session auth",
+        "oidcEnabled": "OIDC enabled",
+        "builtInLoginEnabled": "Built-in login enabled",
+        "oidcIssuerHost": "OIDC issuer host",
+        "database": "Database",
+        "bind": "Bind",
+        "configDir": "Config dir",
+        "dataDir": "Data dir"
+      },
+      "relative": {
+        "justNow": "just now",
+        "ago": "ago",
+        "inPrefix": "in"
+      },
+      "values": {
+        "notAvailable": "—",
+        "yes": "Yes",
+        "no": "No"
+      },
+      "sections": {
+        "build": {
+          "title": "Build",
+          "description": "Build identity and traceability."
+        },
+        "runtime": {
+          "title": "Runtime",
+          "description": "Process runtime and host platform."
+        },
+        "authentication": {
+          "title": "Authentication",
+          "description": "Authentication settings and current session."
+        },
+        "storageAndNetwork": {
+          "title": "Storage & Network",
+          "description": "Active paths, bind target, and database endpoint."
+        }
       }
     },
     "instancesCard": {

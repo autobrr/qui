@@ -9,16 +9,20 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/sharedhttp"
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -65,6 +69,35 @@ type proxyContext struct {
 	instanceURL *url.URL
 	httpClient  *http.Client
 	basicAuth   *basicAuthCredentials
+}
+
+type proxyContentPathMediaInfoRequest struct {
+	ContentPath string `json:"contentPath"`
+}
+
+func (r *proxyContentPathMediaInfoRequest) UnmarshalJSON(data []byte) error {
+	type proxyContentPathMediaInfoRequestAlias struct {
+		ContentPath       string `json:"contentPath"`
+		LegacyContentPath string `json:"content_path"`
+	}
+
+	var decoded proxyContentPathMediaInfoRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	r.ContentPath = decoded.ContentPath
+	if strings.TrimSpace(r.ContentPath) == "" {
+		r.ContentPath = decoded.LegacyContentPath
+	}
+
+	return nil
+}
+
+type proxyContentPathMediaInfoResponse struct {
+	ContentPath   string          `json:"contentPath"`
+	SummaryTxt    string          `json:"summaryTxt"`
+	MediaInfoJSON json.RawMessage `json:"mediaInfoJson"`
 }
 
 // NewHandler creates a new proxy handler
@@ -244,7 +277,7 @@ func bufferRequestBody(r *http.Request) ([]byte, error) {
 		r.Body.Close()
 		if n > 0 {
 			// Body exceeds limit - use generic error message
-			return nil, fmt.Errorf("request body exceeds maximum allowed size")
+			return nil, errors.New("request body exceeds maximum allowed size")
 		}
 	} else {
 		r.Body.Close()
@@ -407,6 +440,7 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
 		pr.Get("/api/v2/torrents/files", h.handleTorrentFiles)
 		pr.Get("/api/v2/torrents/search", h.handleTorrentSearch)
+		pr.Get("/api/v2/torrents/mediainfo", h.handleTorrentMediaInfo)
 
 		// Intercepted write operations for cache invalidation
 		pr.Post("/api/v2/torrents/setLocation", h.handleSetLocation)
@@ -437,12 +471,12 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 	if instanceID == 0 || clientAPIKey == nil {
 		sampled := logger.Sample(missingProxyContextSampler)
 		sampled.Warn().Msg("Proxy request missing instance ID or client API key")
-		return nil, fmt.Errorf("missing proxy context")
+		return nil, errors.New("missing proxy context")
 	}
 
 	instance, err := h.instanceStore.Get(ctx, instanceID)
 	if err != nil {
-		if err == models.ErrInstanceNotFound {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			logger.Warn().Msg("Instance not found for proxy request")
 		} else {
 			logger.Error().Err(err).Msg("Failed to load instance for proxy request")
@@ -558,6 +592,297 @@ func difference(all, subset []string) []string {
 	return remaining
 }
 
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	err := json.NewEncoder(w).Encode(map[string]string{"error": message})
+	if err != nil {
+		log.Error().Err(err).Int("status", status).Msg("Failed to encode JSON error response")
+		if _, writeErr := io.WriteString(w, "error\n"); writeErr != nil {
+			log.Error().Err(writeErr).Int("status", status).Msg("Failed to write JSON error fallback response")
+		}
+	}
+}
+
+type proxyMediaInfoRequestError struct {
+	status  int
+	message string
+}
+
+func (e *proxyMediaInfoRequestError) Error() string {
+	return e.message
+}
+
+type proxyMediaInfoResponseWriteError struct {
+	encodeErr   error
+	fallbackErr error
+}
+
+func (e *proxyMediaInfoResponseWriteError) Error() string {
+	if e.fallbackErr != nil {
+		return e.fallbackErr.Error()
+	}
+	if e.encodeErr != nil {
+		return e.encodeErr.Error()
+	}
+	return "proxy mediainfo response write failed"
+}
+
+func validateProxyMediainfoRequest(ctx context.Context, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, instanceID int) (*models.Instance, qbt.AppPreferences, error) {
+	if instanceStore == nil || syncManager == nil {
+		log.Error().Int("instanceId", instanceID).Msg("Proxy mediainfo dependencies not configured")
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "MediaInfo service unavailable"}
+	}
+
+	instance, err := instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
+		}
+
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to load instance for proxy mediainfo")
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to load instance"}
+	}
+
+	if instance == nil {
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
+	}
+
+	if !instance.HasLocalFilesystemAccess {
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusForbidden, message: "Instance does not have local filesystem access enabled"}
+	}
+
+	prefs, err := syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to get app preferences for proxy mediainfo")
+		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to get app preferences"}
+	}
+
+	return instance, prefs, nil
+}
+
+func resolveProxyContentPathCandidates(r *http.Request, prefs qbt.AppPreferences, contentPathCandidates func(qbt.AppPreferences, string) []string) (string, string, error) {
+	contentPath, err := parseProxyMediaInfoContentPath(r)
+	if err != nil {
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusBadRequest, message: "Invalid content path"}
+	}
+
+	candidates := contentPathCandidates(prefs, contentPath)
+	if len(candidates) == 0 {
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusBadRequest, message: "No content roots configured for instance"}
+	}
+
+	resolvedPath, ok := findExistingProxyContentFile(candidates)
+	if !ok {
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "File not found on disk"}
+	}
+
+	return contentPath, resolvedPath, nil
+}
+
+func analyzeMediaFile(resolvedPath, contentPath string, instanceID int) (string, string, error) {
+	// #nosec G304 -- resolvedPath is constructed from validated base paths via resolveProxyContentPath.
+	report, err := mediainfo.AnalyzeFile(resolvedPath, mediainfo.WithParseSpeed(0.5))
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to analyze file with MediaInfo")
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to analyze file"}
+	}
+
+	summaryTxt, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputText)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo summary text")
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to render MediaInfo"}
+	}
+
+	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to render MediaInfo JSON")
+		return "", "", &proxyMediaInfoRequestError{status: http.StatusInternalServerError, message: "Failed to render MediaInfo"}
+	}
+
+	return summaryTxt, rawJSON, nil
+}
+
+func writeProxyMediaInfoResponse(w http.ResponseWriter, contentPath, summaryTxt, rawJSON string) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(proxyContentPathMediaInfoResponse{
+		ContentPath:   contentPath,
+		SummaryTxt:    summaryTxt,
+		MediaInfoJSON: json.RawMessage(rawJSON),
+	})
+	if err == nil {
+		return nil
+	}
+
+	writeErr := error(nil)
+	if _, fallbackErr := io.WriteString(w, "{}\n"); fallbackErr != nil {
+		writeErr = fallbackErr
+	}
+
+	return &proxyMediaInfoResponseWriteError{encodeErr: err, fallbackErr: writeErr}
+}
+
+func normalizeContentPathRelativeInput(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New("content path is required")
+	}
+
+	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
+	normalized := filepath.Clean(filepath.FromSlash(trimmed))
+	if filepath.IsAbs(normalized) {
+		return "", errors.New("absolute paths are not allowed")
+	}
+	if normalized == ".." || strings.HasPrefix(normalized, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	return normalized, nil
+}
+
+func resolveProxyContentPath(basePath, relativePath string) (string, error) {
+	cleanBase := filepath.Clean(basePath)
+	if !filepath.IsAbs(cleanBase) {
+		return "", errors.New("base path must be absolute")
+	}
+
+	full := filepath.Join(cleanBase, filepath.FromSlash(relativePath))
+	cleanFull := filepath.Clean(full)
+
+	rel, err := filepath.Rel(cleanBase, cleanFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	// #nosec G703 -- cleanBase is validated as absolute and constrained by traversal checks above.
+	if _, err := os.Lstat(cleanBase); err != nil {
+		return "", fmt.Errorf("failed to access base path: %w", err)
+	}
+
+	evaluatedBase, err := filepath.EvalSymlinks(cleanBase)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base path symlinks: %w", err)
+	}
+
+	// #nosec G703 -- cleanFull is derived from a validated base path and traversal-checked relative input.
+	if _, err := os.Lstat(cleanFull); err != nil {
+		if os.IsNotExist(err) {
+			return cleanFull, nil
+		}
+		return "", fmt.Errorf("failed to access candidate path: %w", err)
+	}
+
+	evaluatedFull, err := filepath.EvalSymlinks(cleanFull)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve candidate path symlinks: %w", err)
+	}
+
+	rel, err = filepath.Rel(evaluatedBase, evaluatedFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	return evaluatedFull, nil
+}
+
+func appendUniqueProxyCandidate(candidates []string, seen map[string]struct{}, candidate string) []string {
+	if candidate == "" {
+		return candidates
+	}
+
+	cleanCandidate := filepath.Clean(candidate)
+	if !filepath.IsAbs(cleanCandidate) {
+		return candidates
+	}
+	if _, ok := seen[cleanCandidate]; ok {
+		return candidates
+	}
+
+	seen[cleanCandidate] = struct{}{}
+	return append(candidates, cleanCandidate)
+}
+
+func contentPathCandidatesFromPreferences(prefs qbt.AppPreferences, relativePath string) []string {
+	candidates := make([]string, 0, 2)
+	seen := make(map[string]struct{})
+
+	if p, err := resolveProxyContentPath(prefs.SavePath, relativePath); err == nil {
+		candidates = appendUniqueProxyCandidate(candidates, seen, p)
+	}
+
+	if prefs.TempPathEnabled {
+		if p, err := resolveProxyContentPath(prefs.TempPath, relativePath); err == nil {
+			candidates = appendUniqueProxyCandidate(candidates, seen, p)
+		}
+	}
+
+	return candidates
+}
+
+func findExistingProxyContentFile(candidates []string) (string, bool) {
+	for _, candidate := range candidates {
+		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveProxyContentPath.
+		f, err := os.Open(candidate)
+		if err != nil {
+			continue
+		}
+
+		stat, err := f.Stat()
+		if err != nil {
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("failed to close probed content file")
+			}
+			continue
+		}
+		if stat.IsDir() {
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("failed to close probed content file")
+			}
+			continue
+		}
+		if cerr := f.Close(); cerr != nil {
+			log.Warn().Err(cerr).Str("candidate", candidate).Msg("failed to close probed content file")
+			continue
+		}
+
+		return candidate, true
+	}
+
+	return "", false
+}
+
+func parseProxyMediaInfoContentPath(r *http.Request) (string, error) {
+	queryContentPath := strings.TrimSpace(r.URL.Query().Get("contentPath"))
+	if queryContentPath == "" {
+		queryContentPath = strings.TrimSpace(r.URL.Query().Get("content_path"))
+	}
+	if queryContentPath != "" {
+		return normalizeContentPathRelativeInput(queryContentPath)
+	}
+
+	contentType := strings.TrimSpace(strings.ToLower(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "application/json") {
+		var req proxyContentPathMediaInfoRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return "", errors.New("invalid request body")
+		}
+		return normalizeContentPathRelativeInput(req.ContentPath)
+	}
+
+	if err := r.ParseForm(); err != nil {
+		return "", errors.New("invalid form data")
+	}
+
+	contentPath := r.FormValue("contentPath")
+	if strings.TrimSpace(contentPath) == "" {
+		contentPath = r.FormValue("content_path")
+	}
+
+	return normalizeContentPathRelativeInput(contentPath)
+}
+
 func generateLoginCookieValue() (string, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
@@ -626,6 +951,176 @@ func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, al
 	return true
 }
 
+func parseCSVQueryValues(queryParams url.Values, keys ...string) []string {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	parsed := make([]string, 0)
+
+	for _, key := range keys {
+		values, exists := queryParams[key]
+		if !exists {
+			continue
+		}
+
+		for _, value := range values {
+			for entry := range strings.SplitSeq(value, ",") {
+				trimmed := strings.TrimSpace(entry)
+				if trimmed == "" {
+					continue
+				}
+
+				if _, ok := seen[trimmed]; ok {
+					continue
+				}
+
+				seen[trimmed] = struct{}{}
+				parsed = append(parsed, trimmed)
+			}
+		}
+	}
+
+	if len(parsed) == 0 {
+		return nil
+	}
+
+	return parsed
+}
+
+func parseHashesQueryValues(queryParams url.Values) []string {
+	hashValues, exists := queryParams["hashes"]
+	if !exists {
+		return nil
+	}
+
+	rawHashes := make([]string, 0, len(hashValues))
+	for _, hashValue := range hashValues {
+		for segment := range strings.SplitSeq(hashValue, "|") {
+			for hashEntry := range strings.SplitSeq(segment, ",") {
+				trimmed := strings.TrimSpace(hashEntry)
+				if trimmed == "" || strings.EqualFold(trimmed, "all") {
+					continue
+				}
+
+				rawHashes = append(rawHashes, trimmed)
+			}
+		}
+	}
+
+	if len(rawHashes) == 0 {
+		return nil
+	}
+
+	return normalizeHashes(rawHashes)
+}
+
+func mergeUniqueStringSlices(valueSets ...[]string) []string {
+	merged := make([]string, 0)
+	seen := make(map[string]struct{})
+
+	for _, values := range valueSets {
+		for _, value := range values {
+			if value == "" {
+				continue
+			}
+
+			if _, ok := seen[value]; ok {
+				continue
+			}
+
+			seen[value] = struct{}{}
+			merged = append(merged, value)
+		}
+	}
+
+	if len(merged) == 0 {
+		return nil
+	}
+
+	return merged
+}
+
+func normalizeStatusFilters(statusValues []string) []string {
+	normalized := make([]string, 0, len(statusValues))
+	seen := make(map[string]struct{})
+
+	for _, status := range statusValues {
+		trimmed := strings.TrimSpace(status)
+		if trimmed == "" {
+			continue
+		}
+
+		lowered := strings.ToLower(trimmed)
+		if _, ok := seen[lowered]; ok {
+			continue
+		}
+
+		seen[lowered] = struct{}{}
+		normalized = append(normalized, lowered)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
+}
+
+func splitStatusFilters(filterValues []string) (status []string, excludeStatus []string) {
+	statusSeen := make(map[string]struct{})
+	excludeSeen := make(map[string]struct{})
+
+	for _, normalized := range normalizeStatusFilters(filterValues) {
+		switch normalized {
+		case "unregistered", "tracker_down":
+			if _, ok := excludeSeen[normalized]; ok {
+				continue
+			}
+			excludeSeen[normalized] = struct{}{}
+			excludeStatus = append(excludeStatus, normalized)
+		default:
+			if _, ok := statusSeen[normalized]; ok {
+				continue
+			}
+			statusSeen[normalized] = struct{}{}
+			status = append(status, normalized)
+		}
+	}
+
+	return status, excludeStatus
+}
+
+func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions {
+	legacyFilterValues := parseCSVQueryValues(queryParams, "filter")
+	legacyStatusFilters, legacyExcludeStatusFilters := splitStatusFilters(legacyFilterValues)
+
+	statusFilters := mergeUniqueStringSlices(
+		normalizeStatusFilters(parseCSVQueryValues(queryParams, "status")),
+		legacyStatusFilters,
+	)
+	excludeStatusFilters := mergeUniqueStringSlices(
+		normalizeStatusFilters(parseCSVQueryValues(queryParams, "excludeStatus", "excludestatus")),
+		legacyExcludeStatusFilters,
+	)
+
+	filters := qbittorrent.FilterOptions{
+		Hashes:            parseHashesQueryValues(queryParams),
+		Status:            statusFilters,
+		ExcludeStatus:     excludeStatusFilters,
+		Categories:        parseCSVQueryValues(queryParams, "category", "categories"),
+		ExcludeCategories: parseCSVQueryValues(queryParams, "excludeCategories", "excludecategories"),
+		Tags:              parseCSVQueryValues(queryParams, "tag", "tags"),
+		ExcludeTags:       parseCSVQueryValues(queryParams, "excludeTags", "excludetags"),
+		Trackers:          parseCSVQueryValues(queryParams, "trackers"),
+		ExcludeTrackers:   parseCSVQueryValues(queryParams, "excludeTrackers", "excludetrackers"),
+		Expr:              strings.TrimSpace(queryParams.Get("expr")),
+	}
+
+	return filters
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
@@ -648,9 +1143,10 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queryParams := r.URL.Query()
-	filter := queryParams.Get("filter")
-	category := queryParams.Get("category")
-	tag := queryParams.Get("tag")
+	filterValues := parseCSVQueryValues(queryParams, "filter")
+	categoryValues := parseCSVQueryValues(queryParams, "category")
+	tagValues := parseCSVQueryValues(queryParams, "tag")
+	statusFilters, excludeStatusFilters := splitStatusFilters(filterValues)
 	sort := queryParams.Get("sort")
 	reverse := queryParams.Get("reverse") == "true"
 	limit := 0
@@ -668,27 +1164,8 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	hashesParam := queryParams.Get("hashes")
-	var hashes []string
-	var uniqueHashCount int
-	if hashesParam != "" && !strings.EqualFold(hashesParam, "all") {
-		hashSet := make(map[string]struct{})
-		for rawHash := range strings.SplitSeq(hashesParam, "|") {
-			trimmed := strings.TrimSpace(rawHash)
-			if trimmed == "" {
-				continue
-			}
-
-			normalized := strings.ToUpper(trimmed)
-			if _, exists := hashSet[normalized]; exists {
-				continue
-			}
-
-			hashSet[normalized] = struct{}{}
-			hashes = append(hashes, normalized)
-		}
-		uniqueHashCount = len(hashSet)
-	}
+	hashes := parseHashesQueryValues(queryParams)
+	uniqueHashCount := len(hashes)
 
 	// Build basic filter options (standard qBittorrent parameters only)
 	filters := qbittorrent.FilterOptions{}
@@ -697,16 +1174,20 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		filters.Hashes = hashes
 	}
 
-	if filter != "" {
-		filters.Status = []string{filter}
+	if len(statusFilters) > 0 {
+		filters.Status = statusFilters
 	}
 
-	if category != "" {
-		filters.Categories = []string{category}
+	if len(excludeStatusFilters) > 0 {
+		filters.ExcludeStatus = excludeStatusFilters
 	}
 
-	if tag != "" {
-		filters.Tags = []string{tag}
+	if len(categoryValues) > 0 {
+		filters.Categories = categoryValues
+	}
+
+	if len(tagValues) > 0 {
+		filters.Tags = tagValues
 	}
 
 	// Default sort order
@@ -721,9 +1202,9 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
-		Str("filter", filter).
-		Str("category", category).
-		Str("tag", tag).
+		Strs("filter", filterValues).
+		Strs("category", categoryValues).
+		Strs("tag", tagValues).
 		Str("sort", sort).
 		Str("order", order).
 		Int("limit", limit).
@@ -770,14 +1251,24 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Extract qBittorrent API parameters
 	allowedParams := map[string]struct{}{
-		"search":   {},
-		"filter":   {},
-		"category": {},
-		"tag":      {},
-		"sort":     {},
-		"reverse":  {},
-		"limit":    {},
-		"offset":   {},
+		"search":            {},
+		"filter":            {},
+		"status":            {},
+		"excludestatus":     {},
+		"category":          {},
+		"categories":        {},
+		"excludecategories": {},
+		"tag":               {},
+		"tags":              {},
+		"excludetags":       {},
+		"trackers":          {},
+		"excludetrackers":   {},
+		"expr":              {},
+		"hashes":            {},
+		"sort":              {},
+		"reverse":           {},
+		"limit":             {},
+		"offset":            {},
 	}
 	if !h.validateQueryParams(w, r, allowedParams, "torrents/search") {
 		return
@@ -785,9 +1276,7 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 
 	queryParams := r.URL.Query()
 	search := queryParams.Get("search")
-	filter := queryParams.Get("filter")
-	category := queryParams.Get("category")
-	tag := queryParams.Get("tag")
+	filters := buildTorrentSearchFilters(queryParams)
 	sort := queryParams.Get("sort")
 	reverse := queryParams.Get("reverse") == "true"
 	limit := 0
@@ -803,22 +1292,6 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
 			offset = parsed
 		}
-	}
-
-	// Build filter options from qBittorrent API parameters
-	filters := qbittorrent.FilterOptions{}
-
-	// Map standard qBittorrent parameters to qui filter
-	if filter != "" {
-		filters.Status = []string{filter}
-	}
-
-	if category != "" {
-		filters.Categories = []string{category}
-	}
-
-	if tag != "" {
-		filters.Tags = []string{tag}
 	}
 
 	// Default sort order
@@ -839,7 +1312,15 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("search", search).
-		Str("filter", filter).
+		Strs("status", filters.Status).
+		Strs("excludeStatus", filters.ExcludeStatus).
+		Strs("categories", filters.Categories).
+		Strs("excludeCategories", filters.ExcludeCategories).
+		Strs("tags", filters.Tags).
+		Strs("excludeTags", filters.ExcludeTags).
+		Strs("trackers", filters.Trackers).
+		Strs("excludeTrackers", filters.ExcludeTrackers).
+		Str("expr", filters.Expr).
 		Str("sort", sort).
 		Str("order", order).
 		Int("limit", limit).
@@ -1160,6 +1641,76 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 			Err(err).
 			Int("instanceId", instanceID).
 			Msg("Failed to encode files response")
+	}
+}
+
+// handleTorrentMediaInfo handles /api/v2/torrents/mediainfo requests.
+func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	instance, prefs, err := validateProxyMediainfoRequest(ctx, h.instanceStore, h.syncManager, instanceID)
+	if err != nil {
+		var reqErr *proxyMediaInfoRequestError
+		if errors.As(err, &reqErr) {
+			writeJSONError(w, reqErr.status, reqErr.message)
+			return
+		}
+
+		writeJSONError(w, http.StatusInternalServerError, "Failed to load instance")
+		return
+	}
+	_ = instance
+
+	contentPath, resolvedPath, err := resolveProxyContentPathCandidates(r, prefs, contentPathCandidatesFromPreferences)
+	if err != nil {
+		var reqErr *proxyMediaInfoRequestError
+		if errors.As(err, &reqErr) {
+			writeJSONError(w, reqErr.status, reqErr.message)
+			return
+		}
+
+		writeJSONError(w, http.StatusInternalServerError, "File not found on disk")
+		return
+	}
+
+	clientName := "unknown"
+	if clientAPIKey != nil {
+		clientName = clientAPIKey.ClientName
+	}
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientName).
+		Str("contentPath", contentPath).
+		Msg("Handling torrent mediainfo request via proxy endpoint")
+
+	summaryTxt, rawJSON, err := analyzeMediaFile(resolvedPath, contentPath, instanceID)
+	if err != nil {
+		var reqErr *proxyMediaInfoRequestError
+		if errors.As(err, &reqErr) {
+			writeJSONError(w, reqErr.status, reqErr.message)
+			return
+		}
+
+		writeJSONError(w, http.StatusInternalServerError, "Failed to analyze file")
+		return
+	}
+
+	if err = writeProxyMediaInfoResponse(w, contentPath, summaryTxt, rawJSON); err != nil {
+		var writeErr *proxyMediaInfoResponseWriteError
+		if errors.As(err, &writeErr) {
+			if writeErr.encodeErr != nil {
+				log.Error().Err(writeErr.encodeErr).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to encode proxy mediainfo response")
+			}
+			if writeErr.fallbackErr != nil {
+				log.Error().Err(writeErr.fallbackErr).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to write proxy mediainfo fallback response")
+			}
+			return
+		}
+
+		log.Error().Err(err).Int("instanceId", instanceID).Str("contentPath", contentPath).Msg("Failed to encode proxy mediainfo response")
 	}
 }
 
