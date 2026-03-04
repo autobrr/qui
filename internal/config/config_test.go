@@ -420,6 +420,47 @@ func TestApplyDynamicChangesRejectsInvalidCORSReload(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
 }
 
+func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	cfg := &AppConfig{
+		Config: &domain.Config{
+			LogLevel:                   "warn",
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+			AuthDisabledAllowedCIDRs:   nil, // invalid when auth is disabled
+			CORSAllowedOrigins:         []string{"https://*.example.com"},
+		},
+		version:    "test",
+		logManager: NewLogManager("test"),
+	}
+
+	var listenerCalls int32
+	cfg.RegisterReloadListener(func(_ *domain.Config) {
+		atomic.AddInt32(&listenerCalls, 1)
+	})
+
+	previous := authReloadSettings{
+		authDisabled:               false,
+		iAcknowledgeThisIsABadIdea: false,
+		authDisabledAllowedCIDRs:   nil,
+		oidcEnabled:                false,
+		corsAllowedOrigins:         []string{"https://good.example"},
+	}
+
+	cfg.applyDynamicChanges(previous)
+
+	assert.False(t, cfg.Config.AuthDisabled)
+	assert.False(t, cfg.Config.IAcknowledgeThisIsABadIdea)
+	assert.Nil(t, cfg.Config.AuthDisabledAllowedCIDRs)
+	assert.False(t, cfg.Config.OIDCEnabled)
+	assert.Equal(t, []string{"https://good.example"}, cfg.Config.CORSAllowedOrigins)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&listenerCalls))
+}
+
 func TestHydrateConfigFromViperSplitsStringSlices(t *testing.T) {
 	tests := []struct {
 		name                    string

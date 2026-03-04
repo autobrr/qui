@@ -269,6 +269,7 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
 		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
 		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
 
 		return
 	}
