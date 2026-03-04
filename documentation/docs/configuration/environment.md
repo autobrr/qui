@@ -17,6 +17,14 @@ QUI__PORT=7476           # Port number
 QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 ```
 
+## CORS
+
+```bash
+QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com  # Optional: explicit CORS allowlist (empty disables CORS)
+```
+
+`QUI__CORS_ALLOWED_ORIGINS` accepts comma/space-separated origins. Entries must be explicit `http(s)://host[:port]` values, without wildcards, paths, query strings, fragments, or userinfo.
+
 ## Security
 
 ```bash

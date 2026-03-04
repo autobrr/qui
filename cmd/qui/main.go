@@ -457,6 +457,10 @@ func (app *Application) runServer() {
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
+	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
+	}
+
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
