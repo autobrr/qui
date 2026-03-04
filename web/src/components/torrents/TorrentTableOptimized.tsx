@@ -84,6 +84,7 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { isAllInstancesScope } from "@/lib/instances"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getStateLabel } from "@/lib/torrent-state-utils"
@@ -175,7 +176,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   infohash_v2: false,
   reannounce: false,
   private: false,
-  instance: false, // Hidden by default, shown when cross-seed filtering
+  instance: true,
 }
 const DEFAULT_COLUMN_SIZING = {}
 
@@ -598,6 +599,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onSelectionInfoUpdate,
 }: TorrentTableOptimizedProps) {
   const isReadOnly = readOnly
+  const isUnifiedView = isAllInstancesScope(instanceId)
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -1047,13 +1049,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return `${resolvedInstanceId}:${torrent.hash}`
   }, [isCrossInstanceEndpoint, instanceId])
 
-  // When cross-instance data is active, ensure instance column is visible.
-  useEffect(() => {
-    if (isCrossInstanceEndpoint && columnVisibility.instance === false) {
-      setColumnVisibility(prev => ({ ...prev, instance: true }))
-    }
-  }, [isCrossInstanceEndpoint, columnVisibility.instance, setColumnVisibility])
-
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>
@@ -1359,8 +1354,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       getSelectionIdentity,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly]
   )
 
   const torrentIdentityCounts = useMemo(() => {

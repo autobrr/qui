@@ -342,51 +342,45 @@ func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
 
 func TestFilePathCandidates(t *testing.T) {
 	testCases := []struct {
-		name         string
-		savePath     string
-		downloadPath string
-		contentPath  string
-		relativePath string
-		singleFile   bool
-		check        func(t *testing.T, candidates []string)
+		name            string
+		savePathRel     string
+		downloadPathRel string
+		contentPathRel  string
+		relativePath    string
+		singleFile      bool
+		check           func(t *testing.T, candidates []string, savePath, downloadPath, contentPath, relativePath string)
 	}{
 		{
-			name:         "content_path_single_file_fallback",
-			savePath:     "/downloads/tv",
-			contentPath:  "/downloads/tv/Show.S01E01/Show.S01E01.mkv",
-			relativePath: "Show.S01E01.v2.mkv",
-			singleFile:   true,
-			check: func(t *testing.T, candidates []string) {
-				savePath := "/downloads/tv"
-				contentPath := "/downloads/tv/Show.S01E01/Show.S01E01.mkv"
-				relativePath := "Show.S01E01.v2.mkv"
+			name:           "content_path_single_file_fallback",
+			savePathRel:    filepath.Join("downloads", "tv"),
+			contentPathRel: filepath.Join("downloads", "tv", "Show.S01E01", "Show.S01E01.mkv"),
+			relativePath:   "Show.S01E01.v2.mkv",
+			singleFile:     true,
+			check: func(t *testing.T, candidates []string, savePath, _, contentPath, relativePath string) {
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
 				require.Contains(t, candidates, filepath.Clean(contentPath))
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(filepath.Dir(contentPath), relativePath)))
 			},
 		},
 		{
-			name:         "content_path_multi_file_fallback",
-			savePath:     "/downloads",
-			contentPath:  "/downloads/Show.S01",
-			relativePath: "Show.S01/Show.S01E01.mkv",
-			singleFile:   false,
-			check: func(t *testing.T, candidates []string) {
-				savePath := "/downloads"
-				contentPath := "/downloads/Show.S01"
-				relativePath := "Show.S01/Show.S01E01.mkv"
+			name:           "content_path_multi_file_fallback",
+			savePathRel:    "downloads",
+			contentPathRel: filepath.Join("downloads", "Show.S01"),
+			relativePath:   "Show.S01/Show.S01E01.mkv",
+			singleFile:     false,
+			check: func(t *testing.T, candidates []string, savePath, _, contentPath, relativePath string) {
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
 				require.Contains(t, candidates, filepath.Clean(filepath.Join(contentPath, relativePath)))
 			},
 		},
 		{
-			name:         "deduplicates_equivalent_paths",
-			savePath:     "/downloads",
-			contentPath:  "/downloads/Movie.mkv",
-			relativePath: "Movie.mkv",
-			singleFile:   true,
-			check: func(t *testing.T, candidates []string) {
-				want := filepath.Clean("/downloads/Movie.mkv")
+			name:           "deduplicates_equivalent_paths",
+			savePathRel:    "downloads",
+			contentPathRel: filepath.Join("downloads", "Movie.mkv"),
+			relativePath:   "Movie.mkv",
+			singleFile:     true,
+			check: func(t *testing.T, candidates []string, savePath, _, _, relativePath string) {
+				want := filepath.Clean(filepath.Join(savePath, relativePath))
 				count := 0
 				for _, candidate := range candidates {
 					if candidate == want {
@@ -397,17 +391,13 @@ func TestFilePathCandidates(t *testing.T) {
 			},
 		},
 		{
-			name:         "uses_download_path_after_content_and_save",
-			savePath:     "/downloads",
-			downloadPath: "/tmp/incomplete",
-			contentPath:  "/downloads/Show.S01",
-			relativePath: "Show.S01/Show.S01E01.mkv",
-			singleFile:   false,
-			check: func(t *testing.T, candidates []string) {
-				savePath := "/downloads"
-				downloadPath := "/tmp/incomplete"
-				contentPath := "/downloads/Show.S01"
-				relativePath := "Show.S01/Show.S01E01.mkv"
+			name:            "uses_download_path_after_content_and_save",
+			savePathRel:     "downloads",
+			downloadPathRel: filepath.Join("tmp", "incomplete"),
+			contentPathRel:  filepath.Join("downloads", "Show.S01"),
+			relativePath:    "Show.S01/Show.S01E01.mkv",
+			singleFile:      false,
+			check: func(t *testing.T, candidates []string, savePath, downloadPath, contentPath, relativePath string) {
 				require.GreaterOrEqual(t, len(candidates), 3)
 				contentCandidate := filepath.Clean(filepath.Join(contentPath, relativePath))
 				saveCandidate := filepath.Clean(filepath.Join(savePath, relativePath))
@@ -427,8 +417,68 @@ func TestFilePathCandidates(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			candidates := filePathCandidates(tc.savePath, tc.downloadPath, tc.contentPath, tc.relativePath, tc.singleFile)
-			tc.check(t, candidates)
+			baseRoot := filepath.Join(t.TempDir(), "qui-file-path-candidates")
+
+			savePath := ""
+			if tc.savePathRel != "" {
+				savePath = filepath.Join(baseRoot, tc.savePathRel)
+				require.NoError(t, os.MkdirAll(savePath, 0o755))
+			}
+
+			downloadPath := ""
+			if tc.downloadPathRel != "" {
+				downloadPath = filepath.Join(baseRoot, tc.downloadPathRel)
+				require.NoError(t, os.MkdirAll(downloadPath, 0o755))
+			}
+
+			contentPath := ""
+			if tc.contentPathRel != "" {
+				contentPath = filepath.Join(baseRoot, tc.contentPathRel)
+				if tc.singleFile {
+					require.NoError(t, os.MkdirAll(filepath.Dir(contentPath), 0o755))
+					require.NoError(t, os.WriteFile(contentPath, []byte("content"), 0o600))
+				} else {
+					require.NoError(t, os.MkdirAll(contentPath, 0o755))
+				}
+			}
+
+			candidates := filePathCandidates(savePath, downloadPath, contentPath, tc.relativePath, tc.singleFile)
+			tc.check(t, candidates, savePath, downloadPath, contentPath, tc.relativePath)
 		})
 	}
+}
+
+func TestResolveTorrentFilePath_ResolvesSymlinkPathWithinBase(t *testing.T) {
+	baseDir := t.TempDir()
+	realDir := filepath.Join(baseDir, "real")
+	require.NoError(t, os.MkdirAll(realDir, 0o755))
+
+	target := filepath.Join(realDir, "file.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("ok"), 0o600))
+
+	symlinkPath := filepath.Join(baseDir, "alias.mkv")
+	if err := os.Symlink(target, symlinkPath); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	resolved, err := resolveTorrentFilePath(baseDir, "alias.mkv")
+	require.NoError(t, err)
+	require.Equal(t, target, resolved)
+}
+
+func TestResolveTorrentFilePath_RejectsSymlinkEscapeOutsideBase(t *testing.T) {
+	baseDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	target := filepath.Join(outsideDir, "outside.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("ok"), 0o600))
+
+	symlinkPath := filepath.Join(baseDir, "escape.mkv")
+	if err := os.Symlink(target, symlinkPath); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	_, err := resolveTorrentFilePath(baseDir, "escape.mkv")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path traversal")
 }

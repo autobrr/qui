@@ -257,6 +257,9 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 	}
 
 	data.Torrent = func() *notifiarrAPITorrent {
+		hasTorrentContext := event.Type == EventTorrentAdded || event.Type == EventTorrentCompleted ||
+			strings.TrimSpace(event.TorrentName) != "" || strings.TrimSpace(event.TorrentHash) != ""
+
 		t := &notifiarrAPITorrent{
 			Name:          stringPtr(event.TorrentName),
 			Hash:          stringPtr(event.TorrentHash),
@@ -267,7 +270,7 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 			addedAt := time.Unix(event.TorrentAddedOn, 0).UTC()
 			t.AddedAt = &addedAt
 		}
-		if event.TorrentETASeconds > 0 {
+		if hasTorrentContext {
 			eta := event.TorrentETASeconds
 			t.EtaSeconds = &eta
 			estimated := data.Timestamp.Add(time.Duration(eta) * time.Second)
@@ -276,39 +279,23 @@ func (s *Service) buildNotifiarrAPIData(ctx context.Context, event Event, title,
 		if strings.TrimSpace(event.TorrentState) != "" {
 			t.State = stringPtr(event.TorrentState)
 		}
-		if event.TorrentProgress > 0 {
+		if hasTorrentContext {
 			progress := event.TorrentProgress
 			t.Progress = &progress
-		}
-		if event.TorrentRatio > 0 {
 			ratio := event.TorrentRatio
 			t.Ratio = &ratio
-		}
-		if event.TorrentTotalSizeBytes > 0 {
 			total := event.TorrentTotalSizeBytes
 			t.TotalSizeBytes = &total
-		}
-		if event.TorrentDownloadedBytes > 0 {
 			downloaded := event.TorrentDownloadedBytes
 			t.DownloadedBytes = &downloaded
-		}
-		if event.TorrentAmountLeftBytes > 0 {
 			left := event.TorrentAmountLeftBytes
 			t.AmountLeftBytes = &left
-		}
-		if event.TorrentDlSpeedBps > 0 {
 			dl := event.TorrentDlSpeedBps
 			t.DlSpeedBps = &dl
-		}
-		if event.TorrentUpSpeedBps > 0 {
 			ul := event.TorrentUpSpeedBps
 			t.UpSpeedBps = &ul
-		}
-		if event.TorrentNumSeeds > 0 {
 			seeds := event.TorrentNumSeeds
 			t.NumSeeds = &seeds
-		}
-		if event.TorrentNumLeechs > 0 {
 			leechs := event.TorrentNumLeechs
 			t.NumLeechs = &leechs
 		}

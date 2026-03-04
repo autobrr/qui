@@ -7,6 +7,7 @@ import type {
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
+  ApplicationInfo,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -96,6 +97,7 @@ import type {
   TorrentCreationTask,
   TorrentCreationTaskResponse,
   TorrentFile,
+  TorrentFileMediaInfoResponse,
   TorrentFilters,
   TorrentProperties,
   TorrentResponse,
@@ -776,6 +778,12 @@ class ApiClient {
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+  }
+
+  async getTorrentFileMediaInfo(instanceId: number, hash: string, fileIndex: number): Promise<TorrentFileMediaInfoResponse> {
+    return this.request<TorrentFileMediaInfoResponse>(
+      `/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/mediainfo`
+    )
   }
 
   // Torrent endpoints
@@ -1982,6 +1990,10 @@ class ApiClient {
 
   async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
     return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
+  }
+
+  async getApplicationInfo(): Promise<ApplicationInfo> {
+    return this.request<ApplicationInfo>("/application/info")
   }
 
   async getLatestVersion(): Promise<{

@@ -193,23 +193,20 @@ func (s *DashboardSettingsStore) createDefault(ctx context.Context, userID int) 
 		return nil, fmt.Errorf("marshal section order: %w", err)
 	}
 
-	res, err := s.db.ExecContext(ctx, `
+	var id int
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO dashboard_settings (user_id, section_visibility, section_order, section_collapsed,
 		                                tracker_breakdown_sort_column, tracker_breakdown_sort_direction,
 		                                tracker_breakdown_items_per_page)
 		VALUES (?, ?, ?, '{}', 'uploaded', 'desc', 15)
-	`, userID, string(visibilityJSON), string(orderJSON))
-	if err != nil {
-		return nil, err
-	}
-
-	id, err := res.LastInsertId()
+		RETURNING id
+	`, userID, string(visibilityJSON), string(orderJSON)).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 
 	return &DashboardSettings{
-		ID:                           int(id),
+		ID:                           id,
 		UserID:                       userID,
 		SectionVisibility:            copyVisibilityMap(DefaultSectionVisibility),
 		SectionOrder:                 copyStringSlice(DefaultSectionOrder),

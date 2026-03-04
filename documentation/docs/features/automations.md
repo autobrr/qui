@@ -468,11 +468,28 @@ Manage tags on torrents. You can add multiple Tag actions in one workflow.
 `mode: remove` removes tags from torrents that match the tag action condition. It does not remove from non-matches.
 :::
 
+`mode: full` is evaluated within the rule's scope for that run (enabled rule, tracker pattern match, and run eligibility). It is not a client-wide sweep by itself.
+
 Options:
 
-- **Managed / Replace in Client** - `Managed` (default) keeps tag set in sync without hard-resetting client tags. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
+- **Managed / Replace in Client** - `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
 - **Use Tracker as Tag** - Derive tag from tracker domain
 - **Use Display Name** - Use tracker customization display name instead of raw domain
+
+Behavior reference:
+
+| Configuration                  | Behavior |
+| ----------------------------- | -------- |
+| `mode: full` + `Managed`      | Adds/removes tag for torrents this rule evaluates. No client-wide reset. |
+| `mode: full` + `Replace in client` | Deletes selected tag(s) client-wide first, then re-adds only current matches. |
+
+If you see repeated activity like `+tag=696` every run, that usually means **Replace in client** is enabled for that tag action.
+
+Quick troubleshooting:
+
+1. Check logs for `automations: deleted managed tags from client before retagging`.
+2. In Automations UI, open enabled rules and verify whether "Replace in client" is enabled on any tag action.
+3. Confirm the activity entry's rule list matches the rule you expect.
 
 ### Category
 

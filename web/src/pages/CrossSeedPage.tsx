@@ -2621,7 +2621,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent align="start" className="max-w-xs text-xs">
-                            Cross-seeds use the exact same category as the matched torrent. If the matched torrent uses AutoTMM, cross-seeds will too; otherwise the save path is set to match the original.
+                            Cross-seeds use the exact same category as the matched torrent. In regular mode, AutoTMM mirrors the matched torrent; in hardlink/reflink mode, AutoTMM is disabled and an explicit save path is used.
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -2640,7 +2640,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent align="start" className="max-w-xs text-xs">
-                            Creates isolated categories (e.g., cross-seed/movie or tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                            Creates isolated categories (e.g., cross-seed/movie or tv.cross). In regular mode, cross-seeds inherit AutoTMM from the matched torrent; in hardlink/reflink mode, AutoTMM is disabled and an explicit save path is used.
                           </TooltipContent>
                         </Tooltip>
                       </div>

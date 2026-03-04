@@ -19,7 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
-func TestIsAuthenticated_APIKeyHeaderAndUnauthorized(t *testing.T) {
+func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	ctx := t.Context()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -59,21 +59,27 @@ func TestIsAuthenticated_APIKeyHeaderAndUnauthorized(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
+			name:           "endpoint with invalid X-API-Key header",
+			path:           "/api/cross-seed/apply",
+			apiKeyHeader:   "invalid-key",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
 			name:           "endpoint without auth",
 			path:           "/api/cross-seed/apply",
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusForbidden,
 		},
 		{
 			name:           "endpoint with invalid apikey",
 			path:           "/api/cross-seed/apply",
 			apiKeyQuery:    "invalid-key",
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusForbidden,
 		},
 		{
 			name:           "query param without middleware is rejected",
 			path:           "/api/torrents",
 			apiKeyQuery:    apiKeyValue,
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusForbidden,
 		},
 	}
 
@@ -158,5 +164,5 @@ func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	assert.Equal(t, http.StatusForbidden, resp.Code)
 }

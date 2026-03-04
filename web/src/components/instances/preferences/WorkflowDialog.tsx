@@ -2540,7 +2540,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 </div>
                               ) : (
                                 <div className="text-xs text-muted-foreground">
-                                  Managed mode keeps tags accurate; with Full sync it resets selected tags and re-adds only current matches.
+                                  Managed mode keeps tags accurate with diff-based updates; Full sync adds tags to matches and removes them from non-matches.
                                 </div>
                               )}
                               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
