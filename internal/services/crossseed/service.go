@@ -1393,8 +1393,8 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	if torrent.Progress < 1.0 || torrent.Hash == "" {
-		// Safety check – the qbittorrent completion hook should only fire for 100% torrents.
+	if torrent.CompletionOn <= 0 || torrent.Hash == "" {
+		// Safety check – the qbittorrent completion hook should only fire for completed torrents.
 		return
 	}
 
@@ -1715,19 +1715,13 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				}
 
 				searchCtx := ctx
-				var searchCancel context.CancelFunc
-				searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
-				if searchTimeout > 0 {
-					searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
-				}
-				if searchCancel != nil {
-					defer searchCancel()
-				}
 				searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
 				resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 					IndexerIDs:             allowedIndexerIDs,
 					FindIndividualEpisodes: settings.FindIndividualEpisodes,
+					// Completion search should prioritize Torznab for non-Gazelle sources.
+					SkipGazelle: !isGazelleSource,
 				})
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
@@ -1735,7 +1729,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 							Int("instanceID", instanceID).
 							Str("hash", torrent.Hash).
 							Str("name", torrent.Name).
-							Dur("timeout", searchTimeout).
 							Msg("[CROSSSEED-COMPLETION] Search timed out, no cross-seeds found")
 						return nil
 					}
@@ -2682,7 +2675,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		case "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped", "rejected", "blocked":
+		case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink":
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
@@ -3561,7 +3554,7 @@ func (s *Service) processCrossSeedCandidate(
 				Str("instanceName", candidate.InstanceName).
 				Str("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
-				Str("matchType", string(matchType)).
+				Str("matchType", matchType).
 				Strs("mismatchedFiles", mismatchedFiles).
 				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
 			return false
@@ -3786,6 +3779,30 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Regular mode: continue with reuse+rename alignment
+
+	// SAFETY: Guard against folder->rootless adds with extra files in regular mode.
+	// When the incoming torrent has a top-level folder, the existing torrent is rootless,
+	// and the incoming torrent has extra files (sample, nfo, srr), using contentLayout=NoSubfolder
+	// would cause those extra files to be downloaded into the base directory (e.g., /downloads/)
+	// instead of being contained in a folder (e.g., /downloads/Movie/). This creates a messy
+	// directory structure and can cause collisions across torrents.
+	//
+	// Hardlink/reflink modes are safe because they use contentLayout=Original and preserve
+	// the incoming torrent's layout exactly via hardlink/reflink tree creation.
+	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles {
+		result.Status = "requires_hardlink_reflink"
+		result.Message = "Skipped: cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("matchType", matchType).
+			Str("sourceRoot", sourceRoot).
+			Str("candidateRoot", candidateRoot).
+			Bool("hasExtraFiles", hasExtraFiles).
+			Msg("[CROSSSEED] Skipped folder->rootless regular add: NoSubfolder would scatter extra files in base directory. Enable hardlink or reflink mode.")
+		return result
+	}
 
 	if crossCategory != "" {
 		options["category"] = crossCategory
@@ -5794,7 +5811,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(sourceTorrent)
-	gazelleResults, _ := s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
+	gazelleResults := []TorrentSearchResult{}
+	if !opts.SkipGazelle {
+		gazelleResults, _ = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
+	}
 
 	if opts.DisableTorznab {
 		if gazelleClients == nil || len(gazelleClients.byHost) == 0 {

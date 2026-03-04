@@ -6,13 +6,13 @@ package dbinterface
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
 
-// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999, but can be higher)
-// Use a larger batch size for better performance with large datasets
-// Modern SQLite often supports 32766, but we stay conservative at 900
+// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999, but can be higher).
+// Use a conservative value so batch queries also stay portable in tests and tooling.
 const maxParams = 900
 
 // InternStrings interns one or more string values efficiently and returns their IDs.
@@ -28,29 +28,9 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 		return []int64{}, nil
 	}
 
-	// Fast path for single string - avoid RETURNING overhead
+	// Fast path for single string.
 	if len(values) == 1 {
-		if values[0] == "" {
-			return nil, fmt.Errorf("value at index 0 is empty")
-		}
-
-		// INSERT OR IGNORE is slightly faster than ON CONFLICT DO NOTHING
-		_, err := tx.ExecContext(ctx,
-			"INSERT OR IGNORE INTO string_pool (value) VALUES (?)",
-			values[0])
-		if err != nil {
-			return nil, err
-		}
-
-		// Then get the ID (fast with unique index)
-		ids, err := GetStringID(ctx, tx, values[0])
-		if err != nil {
-			return nil, err
-		}
-		if !ids[0].Valid {
-			return nil, fmt.Errorf("failed to get ID for interned string %q", values[0])
-		}
-		return []int64{ids[0].Int64}, nil
+		return internSingleString(ctx, tx, values[0])
 	}
 
 	// Batch path for multiple strings
@@ -73,11 +53,8 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 		valuesList = append(valuesList, v)
 	}
 
-	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
-	// Process in chunks to avoid hitting this limit
-
 	// Pre-build the query template for full chunks to avoid repeated string building in hot path
-	queryTemplate := "INSERT OR IGNORE INTO string_pool (value) VALUES %s"
+	queryTemplate := "INSERT INTO string_pool (value) VALUES %s ON CONFLICT(value) DO NOTHING"
 	fullQuery := BuildQueryWithPlaceholders(queryTemplate, 1, maxParams)
 
 	for i := 0; i < len(valuesList); i += maxParams {
@@ -111,7 +88,7 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 		return nil, err
 	}
 
-	// Verify all IDs are valid (they should be after INSERT OR IGNORE)
+	// Verify all IDs are valid (they should be after ON CONFLICT DO NOTHING insert)
 	result := make([]int64, len(ids))
 	for i, id := range ids {
 		if !id.Valid {
@@ -121,6 +98,28 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 	}
 
 	return result, nil
+}
+
+func internSingleString(ctx context.Context, tx TxQuerier, value string) ([]int64, error) {
+	if value == "" {
+		return nil, errors.New("value at index 0 is empty")
+	}
+
+	_, err := tx.ExecContext(ctx,
+		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT(value) DO NOTHING",
+		value)
+	if err != nil {
+		return nil, fmt.Errorf("insert into string pool: %w", err)
+	}
+
+	ids, err := GetStringID(ctx, tx, value)
+	if err != nil {
+		return nil, err
+	}
+	if !ids[0].Valid {
+		return nil, fmt.Errorf("failed to get ID for interned string %q", value)
+	}
+	return []int64{ids[0].Int64}, nil
 }
 
 // InternStringNullable interns one or more optional string values and returns their IDs as sql.NullInt64.
@@ -271,7 +270,7 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 // this function specifically handles the case where empty string is a meaningful value.
 func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
 	// Ensure empty string exists
-	_, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES ('')")
+	_, err := tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES ('') ON CONFLICT(value) DO NOTHING")
 	if err != nil {
 		return 0, fmt.Errorf("failed to ensure empty string in string_pool: %w", err)
 	}

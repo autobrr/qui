@@ -97,7 +97,7 @@ jobs:
         run: CI= pnpm run build
 
       - name: Upload web production build
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -111,7 +111,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download web production build
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -139,7 +139,7 @@ jobs:
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
@@ -157,7 +157,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -170,7 +170,7 @@ jobs:
 
       - name: Run GoReleaser build
         if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -181,7 +181,7 @@ jobs:
 
       - name: Run GoReleaser build and publish tags
         if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -191,7 +191,7 @@ jobs:
           BUILDER: ${{ github.actor }}@github-actions
 
       - name: Upload assets
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qui
           path: |
@@ -228,7 +228,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download web production build
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -280,7 +280,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: docker-digests-${{ steps.digest-prep.outputs.manifest-hash }}
           path: /tmp/digests/*
@@ -294,7 +294,7 @@ jobs:
     needs: [docker]
     steps:
       - name: Download image digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: docker-digests-*

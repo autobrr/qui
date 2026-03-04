@@ -24,7 +24,7 @@ Choose one of three mutually exclusive category modes:
 
 ### Category Affix (default)
 
-Adds a configurable affix to the matched torrent's category. Prevents Sonarr/Radarr from importing cross-seeded files as duplicates. AutoTMM is inherited from the matched torrent.
+Adds a configurable affix to the matched torrent's category. Prevents Sonarr/Radarr from importing cross-seeded files as duplicates. In **regular mode** (no hardlink/reflink), AutoTMM is inherited from the matched torrent.
 
 **Affix Mode:**
 - **Suffix** (default): Appends the affix to the category (e.g., `movies` → `movies.cross`)
@@ -78,7 +78,7 @@ autoTMM behavior depends on which category mode is active:
 
 | Category Mode | autoTMM Behavior |
 |---------------|------------------|
-| **Category Affix** | Inherited from matched torrent |
+| **Category Affix** | Inherited from matched torrent (regular mode only; hardlink/reflink disables autoTMM) |
 | **Indexer name** | Always disabled (explicit save paths) |
 | **Custom** | Always disabled (explicit save paths) |
 
@@ -87,6 +87,11 @@ When autoTMM is inherited (affix mode):
 - If matched torrent has manual path, cross-seed uses same manual path
 
 When autoTMM is disabled (indexer/custom modes), cross-seeds always use explicit save paths derived from the matched torrent's location.
+
+:::note
+Hardlink/reflink mode always adds torrents with an explicit `savepath` pointing at the link tree, which forces autoTMM off.
+Dir Scan injections are separate from cross-seed rules and also always add with explicit `savepath` (autoTMM off).
+:::
 
 ### Save Path Determination
 

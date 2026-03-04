@@ -38,7 +38,26 @@ When `logPath` is set the server writes to disk using size-based rotation. Adjus
 ## Storage
 
 ```bash
-QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: next to config)
+```
+
+`QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
+
+## Database
+
+```bash
+QUI__DATABASE_ENGINE=sqlite            # sqlite or postgres (default: sqlite)
+QUI__DATABASE_DSN=...                  # Full Postgres DSN (preferred for Postgres)
+QUI__DATABASE_HOST=localhost           # Postgres host when not using DATABASE_DSN
+QUI__DATABASE_PORT=5432                # Postgres port when not using DATABASE_DSN
+QUI__DATABASE_USER=...                 # Postgres user when not using DATABASE_DSN
+QUI__DATABASE_PASSWORD=...             # Postgres password when not using DATABASE_DSN
+QUI__DATABASE_NAME=qui                 # Postgres database name when not using DATABASE_DSN
+QUI__DATABASE_SSL_MODE=disable         # disable, require, verify-ca, verify-full
+QUI__DATABASE_CONNECT_TIMEOUT=10       # Connect timeout in seconds
+QUI__DATABASE_MAX_OPEN_CONNS=25        # Postgres pool max open connections
+QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
+QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 ```
 
 ## Cross-Seed

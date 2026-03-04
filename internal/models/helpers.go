@@ -17,6 +17,11 @@ func BoolToSQLite(v bool) int {
 	return 0
 }
 
+// SQLiteIntToBool converts SQLite/Postgres integer-backed boolean columns to bool.
+func SQLiteIntToBool(v int) bool {
+	return v != 0
+}
+
 // SanitizeStringSlice trims whitespace, removes empty strings, and deduplicates case-insensitively.
 // Original casing is preserved for the first occurrence of each unique value.
 func SanitizeStringSlice(values []string) []string {
