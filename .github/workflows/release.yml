@@ -4,18 +4,8 @@ on:
   push:
     branches:
       - "main"
-      - "develop"
     tags:
       - "v*"
-    paths-ignore:
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/images/**"
-      - "config.toml"
-      - "distrib/docker/docker-compose.yml"
-      - "Makefile"
-      - "**.md"
-      - "documentation/**"
-  pull_request:
     paths-ignore:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/images/**"
