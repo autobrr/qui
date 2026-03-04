@@ -2008,6 +2008,115 @@ paths:
         '500':
           description: Internal server error
 
+  /api/instances/{instanceID}/mediainfo:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get MediaInfo for an instance content path
+      description: >
+        Analyzes a file from an instance-relative content path and returns both text summary and parsed
+        MediaInfo JSON output.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: contentPath
+          in: query
+          required: true
+          description: "Canonical instance-relative content path parameter (legacy alias: content_path)"
+          schema:
+            type: string
+        - name: content_path
+          in: query
+          deprecated: true
+          required: false
+          description: Legacy alias for contentPath (maps to the canonical contentPath parameter)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPathMediaInfoResponse'
+        '400':
+          description: Invalid instance ID or content path
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: File not found on disk
+        '500':
+          description: Internal server error
+
+  /proxy/{api-key}/api/v2/torrents/mediainfo:
+    get:
+      tags:
+        - Proxy
+      summary: Get MediaInfo via proxy API key
+      description: >
+        Returns MediaInfo summary text and JSON output for an instance-relative content path using
+        a client API key in the proxy path.
+      security: []
+      parameters:
+        - name: api-key
+          in: path
+          required: true
+          description: Client API key created in qui client API keys.
+          schema:
+            type: string
+        - name: contentPath
+          in: query
+          required: false
+          description: "Canonical instance-relative content path (legacy alias: content_path)"
+          schema:
+            type: string
+        - name: content_path
+          in: query
+          required: false
+          description: Legacy alias of contentPath
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPathMediaInfoResponse'
+        '400':
+          description: Invalid content path
+        '401':
+          description: Missing or invalid client API key
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Instance or file not found
+        '500':
+          description: Internal server error
+
   /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
       tags:
@@ -5583,6 +5692,33 @@ components:
           type: string
           description: Raw MediaInfo JSON output
 
+    ContentPathMediaInfoRequest:
+      type: object
+      required:
+        - contentPath
+      properties:
+        contentPath:
+          type: string
+          description: Instance-relative file path to analyze
+
+    ContentPathMediaInfoResponse:
+      type: object
+      required:
+        - contentPath
+        - summaryTxt
+        - mediaInfoJson
+      properties:
+        contentPath:
+          type: string
+          description: Normalized instance-relative file path that was analyzed
+        summaryTxt:
+          type: string
+          description: Human-readable MediaInfo text summary
+        mediaInfoJson:
+          type: object
+          description: Parsed MediaInfo JSON output
+          additionalProperties: true
+
     DuplicateTorrentMatch:
       type: object
       properties:
@@ -7550,3 +7686,5 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Proxy
+    description: qBittorrent-compatible proxy endpoints authenticated by client API key

@@ -1,0 +1,214 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test-sqlite:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests (SQLite)
+        run: go test -race -v -timeout 20m ./...
+
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qui
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qui"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests (Postgres integration)
+        env:
+          QUI_TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/qui?sslmode=disable
+        run: go test -race -v -timeout 20m ./internal/database -run TestOpenPostgres
+
+  migration-parity:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PG_ADMIN_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      PG_MIGRATION_DSN: postgres://postgres:postgres@localhost:5432/qui_migration_ci?sslmode=disable
+      MIGRATION_TMPDIR: .tmp/migration-ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install sqlite3 + psql clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3 postgresql-client
+
+      - name: Build SQLite fixture (current schema)
+        run: |
+          set -euo pipefail
+          rm -rf "$MIGRATION_TMPDIR"
+          mkdir -p "$MIGRATION_TMPDIR"
+
+          go run ./cmd/qui generate-config --config-dir "$MIGRATION_TMPDIR"
+          go run ./cmd/qui create-user \
+            --config-dir "$MIGRATION_TMPDIR" \
+            --data-dir "$MIGRATION_TMPDIR" \
+            --username ci \
+            --password ci-password-123
+
+          SQLITE_DB="$MIGRATION_TMPDIR/qui.db"
+          test -f "$SQLITE_DB"
+
+          # Seed one orphan feed item intentionally; migration should filter it.
+          sqlite3 "$SQLITE_DB" <<'SQL'
+          PRAGMA foreign_keys = OFF;
+          INSERT OR IGNORE INTO cross_seed_feed_items (
+            guid, indexer_id, title, first_seen_at, last_seen_at, last_status, last_run_id, info_hash
+          ) VALUES (
+            'ci-orphan-guid', 999999, 'orphan row', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'pending', NULL, NULL
+          );
+          SQL
+
+      - name: Apply SQLite -> Postgres migration
+        run: |
+          set -euo pipefail
+          psql -X "$PG_ADMIN_DSN" -v ON_ERROR_STOP=1 \
+            -c "DROP DATABASE IF EXISTS qui_migration_ci;" \
+            -c "CREATE DATABASE qui_migration_ci;"
+
+          go run ./cmd/qui db migrate \
+            --from-sqlite "$MIGRATION_TMPDIR/qui.db" \
+            --to-postgres "$PG_MIGRATION_DSN" \
+            --apply \
+            | tee "$MIGRATION_TMPDIR/migrate.log"
+
+      - name: Validate table parity + expected filtered rows
+        run: |
+          set -euo pipefail
+          SQLITE_DB="$MIGRATION_TMPDIR/qui.db"
+          DIAG_TSV="$MIGRATION_TMPDIR/migration-counts.tsv"
+          DIAG_CROSSSEED="$MIGRATION_TMPDIR/cross-seed-diagnostics.txt"
+
+          echo -e "table\tsqlite\tpostgres\tnote" > "$DIAG_TSV"
+          fail=0
+
+          declare -A PG_TABLES=()
+          while IFS= read -r table; do
+            [ -n "$table" ] && PG_TABLES["$table"]=1
+          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;")
+
+          while IFS= read -r table; do
+            [ -z "$table" ] && continue
+            sqlite_count="$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM \"$table\";")"
+
+            if [ -z "${PG_TABLES[$table]:-}" ]; then
+              echo -e "$table\t$sqlite_count\tMISSING\tmissing_postgres_table" | tee -a "$DIAG_TSV"
+              fail=1
+              continue
+            fi
+
+            pg_count="$(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT COUNT(*) FROM public.\"$table\";")"
+            note="ok"
+
+            if [ "$table" = "cross_seed_feed_items" ]; then
+              expected_count="$(sqlite3 "$SQLITE_DB" "
+                SELECT COUNT(*)
+                FROM cross_seed_feed_items f
+                WHERE EXISTS (SELECT 1 FROM torznab_indexers i WHERE i.id = f.indexer_id)
+                  AND (f.last_run_id IS NULL OR EXISTS (SELECT 1 FROM cross_seed_runs r WHERE r.id = f.last_run_id));
+              ")"
+              orphan_indexer_count="$(sqlite3 "$SQLITE_DB" "
+                SELECT COUNT(*)
+                FROM cross_seed_feed_items f
+                LEFT JOIN torznab_indexers i ON i.id = f.indexer_id
+                WHERE i.id IS NULL;
+              ")"
+              orphan_run_count="$(sqlite3 "$SQLITE_DB" "
+                SELECT COUNT(*)
+                FROM cross_seed_feed_items f
+                LEFT JOIN cross_seed_runs r ON r.id = f.last_run_id
+                WHERE f.last_run_id IS NOT NULL AND r.id IS NULL;
+              ")"
+
+              {
+                echo "cross_seed_feed_items sqlite_count=$sqlite_count"
+                echo "cross_seed_feed_items postgres_count=$pg_count"
+                echo "cross_seed_feed_items expected_count=$expected_count"
+                echo "cross_seed_feed_items orphan_indexer_count=$orphan_indexer_count"
+                echo "cross_seed_feed_items orphan_run_count=$orphan_run_count"
+              } | tee "$DIAG_CROSSSEED"
+
+              if [ "$pg_count" != "$expected_count" ]; then
+                note="unexpected_filtered_count expected=$expected_count"
+                fail=1
+              else
+                note="filtered_fk_orphans expected=$expected_count"
+              fi
+            elif [ "$sqlite_count" != "$pg_count" ]; then
+              note="mismatch"
+              fail=1
+            fi
+
+            echo -e "$table\t$sqlite_count\t$pg_count\t$note" | tee -a "$DIAG_TSV"
+          done < <(sqlite3 "$SQLITE_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'migrations' ORDER BY name;")
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Migration parity check failed. See $DIAG_TSV and $DIAG_CROSSSEED."
+            exit 1
+          fi
+
+      - name: Upload migration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: migration-parity-diagnostics
+          path: |
+            .tmp/migration-ci/migrate.log
+            .tmp/migration-ci/migration-counts.tsv
+            .tmp/migration-ci/cross-seed-diagnostics.txt

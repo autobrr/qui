@@ -436,8 +436,8 @@ func (s *TorznabSearchCacheStore) InvalidateByIndexerIDs(ctx context.Context, in
 		if id <= 0 {
 			continue
 		}
-		conditions = append(conditions, "instr(indexer_matcher, ?) > 0")
-		args = append(args, fmt.Sprintf("|%d|", id))
+		conditions = append(conditions, "indexer_matcher LIKE ?")
+		args = append(args, fmt.Sprintf("%%|%d|%%", id))
 	}
 	if len(conditions) == 0 {
 		return 0, nil
@@ -508,11 +508,11 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 
 // GetSettings returns the current cache settings (if any).
 func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSearchCacheSettings, error) {
-	const query = `SELECT ttl_minutes, unixepoch(updated_at) FROM torznab_search_cache_settings WHERE id = 1`
+	const query = `SELECT ttl_minutes, updated_at FROM torznab_search_cache_settings WHERE id = 1`
 
 	var (
 		ttlMinutes int
-		updatedRaw sql.NullInt64
+		updatedRaw sql.NullTime
 	)
 
 	err := s.db.QueryRowContext(ctx, query).Scan(&ttlMinutes, &updatedRaw)
@@ -526,8 +526,9 @@ func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSear
 	settings := &TorznabSearchCacheSettings{
 		TTLMinutes: ttlMinutes,
 	}
-	if ts := timeFromUnixNull(updatedRaw); ts != nil {
-		settings.UpdatedAt = ts
+	if updatedRaw.Valid {
+		ts := updatedRaw.Time.UTC()
+		settings.UpdatedAt = &ts
 	}
 
 	return settings, nil
@@ -633,14 +634,6 @@ func decodeIntArray(raw string) []int {
 		return nil
 	}
 	return values
-}
-
-func timeFromUnixNull(value sql.NullInt64) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-	ts := time.Unix(value.Int64, 0).UTC()
-	return &ts
 }
 
 type cacheTimestampLayout struct {
