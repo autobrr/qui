@@ -110,6 +110,14 @@ For each configured scan directory, qui:
 6. Downloads torrent files and matches their file lists against what's on disk.
 7. If a match is found, adds the torrent to the target qBittorrent instance.
 
+:::note Categories + AutoTMM
+Dir Scan adds torrents using an explicit `savepath` to point qBittorrent at the existing files on disk. That forces **AutoTMM off** for Dir Scan injections.
+
+Dir Scan categories come only from **Dir Scan → Default Category** and per-directory **Category override**. Cross-Seed → Rules category modes (affix / indexer / custom) do not apply to Dir Scan.
+
+If you later enable AutoTMM on an injected torrent, qBittorrent may relocate files based on its default save path + category rules.
+:::
+
 :::info
 Torznab searches run through the shared scheduler at background priority, so they queue behind interactive, RSS, and completion cross-seed work.
 

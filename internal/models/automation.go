@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,6 +242,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		var intervalSeconds sql.NullInt64
 		var freeSpaceSourceJSON sql.NullString
 		var sortingConfigJSON sql.NullString
+		var enabled, dryRun int
 
 		if err := rows.Scan(
 			&automation.ID,
@@ -248,8 +250,8 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&automation.Name,
 			&automation.TrackerPattern,
 			&conditionsJSON,
-			&automation.Enabled,
-			&automation.DryRun,
+			&enabled,
+			&dryRun,
 			&automation.SortOrder,
 			&intervalSeconds,
 			&freeSpaceSourceJSON,
@@ -267,6 +269,8 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		conditions.Normalize()
 		automation.Conditions = &conditions
 
+		automation.Enabled = SQLiteIntToBool(enabled)
+		automation.DryRun = SQLiteIntToBool(dryRun)
 		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 		if intervalSeconds.Valid {
@@ -312,6 +316,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	var intervalSeconds sql.NullInt64
 	var freeSpaceSourceJSON sql.NullString
 	var sortingConfigJSON sql.NullString
+	var enabled, dryRun int
 
 	if err := row.Scan(
 		&automation.ID,
@@ -319,8 +324,8 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 		&automation.Name,
 		&automation.TrackerPattern,
 		&conditionsJSON,
-		&automation.Enabled,
-		&automation.DryRun,
+		&enabled,
+		&dryRun,
 		&automation.SortOrder,
 		&intervalSeconds,
 		&freeSpaceSourceJSON,
@@ -338,6 +343,8 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	conditions.Normalize()
 	automation.Conditions = &conditions
 
+	automation.Enabled = SQLiteIntToBool(enabled)
+	automation.DryRun = SQLiteIntToBool(dryRun)
 	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 	if intervalSeconds.Valid {
@@ -429,23 +436,19 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		}
 		sortingConfigJSON = sql.NullString{String: string(data), Valid: true}
 	}
-
-	res, err := s.db.ExecContext(ctx, `
+	var id int
+	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO automations
 			(instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, sorting_config)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON)
+		RETURNING id
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-
-	return s.Get(ctx, automation.InstanceID, int(id))
+	return s.Get(ctx, automation.InstanceID, id)
 }
 
 func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*Automation, error) {
@@ -550,14 +553,15 @@ type AutomationReference struct {
 }
 
 // FindByExternalProgramID returns automations that reference the given external program ID.
-// Uses SQLite's json_extract to query the conditions JSON column.
 // Returns all automations referencing the program, regardless of whether the action is enabled.
 func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID int) ([]*AutomationReference, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name
-		FROM automations
-		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
-	`, programID)
+	dialect := dbinterface.DialectOf(s.db)
+	programIDArg := any(programID)
+	if dialect == "postgres" {
+		programIDArg = strconv.Itoa(programID)
+	}
+
+	rows, err := s.db.QueryContext(ctx, findByExternalProgramIDQuery(dialect), programIDArg)
 	if err != nil {
 		return nil, err
 	}
@@ -578,16 +582,49 @@ func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID
 // that reference the given program ID. This is used for cascade delete.
 // Clears references regardless of whether the action is enabled or disabled.
 func (s *AutomationStore) ClearExternalProgramAction(ctx context.Context, programID int) (int64, error) {
-	// Set externalProgram to null in the conditions JSON for all matching automations
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE automations
-		SET conditions = json_remove(conditions, '$.externalProgram')
-		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
-	`, programID)
+	dialect := dbinterface.DialectOf(s.db)
+	programIDArg := any(programID)
+	if dialect == "postgres" {
+		programIDArg = strconv.Itoa(programID)
+	}
+
+	res, err := s.db.ExecContext(ctx, clearExternalProgramActionQuery(dialect), programIDArg)
 	if err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+func findByExternalProgramIDQuery(dialect string) string {
+	if dialect == "postgres" {
+		return `
+		SELECT id, instance_id, name
+		FROM automations
+		WHERE (conditions::jsonb -> 'externalProgram' ->> 'programId') = ?
+	`
+	}
+
+	return `
+		SELECT id, instance_id, name
+		FROM automations
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
+	`
+}
+
+func clearExternalProgramActionQuery(dialect string) string {
+	if dialect == "postgres" {
+		return `
+		UPDATE automations
+		SET conditions = (conditions::jsonb - 'externalProgram')::text
+		WHERE (conditions::jsonb -> 'externalProgram' ->> 'programId') = ?
+	`
+	}
+
+	return `
+		UPDATE automations
+		SET conditions = json_remove(conditions, '$.externalProgram')
+		WHERE json_extract(conditions, '$.externalProgram.programId') = ?
+	`
 }
 
 func boolToInt(v bool) int {
