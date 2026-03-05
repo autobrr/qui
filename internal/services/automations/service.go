@@ -902,6 +902,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return &PreviewResult{}, nil
 	}
 	rule = prepareRuleForPreview(rule, instanceID)
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
@@ -1491,6 +1494,9 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		return &PreviewResult{}, nil
 	}
 	rule = prepareRuleForPreview(rule, instanceID)
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
@@ -4360,34 +4366,34 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 		return false
 	}
 	conds := make([]*models.RuleCondition, 0, 10)
-	if ac.SpeedLimits != nil {
+	if ac.SpeedLimits != nil && ac.SpeedLimits.Enabled {
 		conds = append(conds, ac.SpeedLimits.Condition)
 	}
-	if ac.ShareLimits != nil {
+	if ac.ShareLimits != nil && ac.ShareLimits.Enabled {
 		conds = append(conds, ac.ShareLimits.Condition)
 	}
-	if ac.Pause != nil {
+	if ac.Pause != nil && ac.Pause.Enabled {
 		conds = append(conds, ac.Pause.Condition)
 	}
-	if ac.Resume != nil {
+	if ac.Resume != nil && ac.Resume.Enabled {
 		conds = append(conds, ac.Resume.Condition)
 	}
-	if ac.Recheck != nil {
+	if ac.Recheck != nil && ac.Recheck.Enabled {
 		conds = append(conds, ac.Recheck.Condition)
 	}
-	if ac.Reannounce != nil {
+	if ac.Reannounce != nil && ac.Reannounce.Enabled {
 		conds = append(conds, ac.Reannounce.Condition)
 	}
-	if ac.Delete != nil {
+	if ac.Delete != nil && ac.Delete.Enabled {
 		conds = append(conds, ac.Delete.Condition)
 	}
-	if ac.Category != nil {
+	if ac.Category != nil && ac.Category.Enabled {
 		conds = append(conds, ac.Category.Condition)
 	}
-	if ac.Move != nil {
+	if ac.Move != nil && ac.Move.Enabled {
 		conds = append(conds, ac.Move.Condition)
 	}
-	if ac.ExternalProgram != nil {
+	if ac.ExternalProgram != nil && ac.ExternalProgram.Enabled {
 		conds = append(conds, ac.ExternalProgram.Condition)
 	}
 	for _, cond := range conds {
@@ -4396,7 +4402,7 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 		}
 	}
 	for _, action := range ac.TagActions() {
-		if action != nil && conditionTreeUsesField(action.Condition, field) {
+		if action != nil && action.Enabled && conditionTreeUsesField(action.Condition, field) {
 			return true
 		}
 	}
@@ -5561,7 +5567,7 @@ func (s *Service) buildAndExecuteBatches(
 		rule := eligibleRules[i]
 		prevRule := eligibleRules[i-1]
 
-		if sortingConfigEqual(prevRule.SortingConfig, rule.SortingConfig) {
+		if rulesCanShareSortingBatch(prevRule, rule) {
 			currentBatch = append(currentBatch, rule)
 		} else {
 			// Execute current batch
@@ -5574,6 +5580,24 @@ func (s *Service) buildAndExecuteBatches(
 	if len(currentBatch) > 0 {
 		executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
 	}
+}
+
+func rulesCanShareSortingBatch(a, b *models.Automation) bool {
+	if !sortingConfigEqual(a.SortingConfig, b.SortingConfig) {
+		return false
+	}
+
+	return !ruleUsesRuleScopedSortingContext(a) && !ruleUsesRuleScopedSortingContext(b)
+}
+
+func ruleUsesRuleScopedSortingContext(rule *models.Automation) bool {
+	if rule == nil {
+		return false
+	}
+
+	return sortingConfigUsesField(rule.SortingConfig, FieldFreeSpace) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldGroupSize) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldIsGrouped)
 }
 
 func sortingConfigEqual(a, b *models.SortingConfig) bool {

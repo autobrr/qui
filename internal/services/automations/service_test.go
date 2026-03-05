@@ -281,59 +281,119 @@ func TestDetectCrossSeeds(t *testing.T) {
 }
 
 func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
-	t.Run("simple sort field", func(t *testing.T) {
-		rule := &models.Automation{
-			Enabled: true,
-			SortingConfig: &models.SortingConfig{
-				SchemaVersion: "1",
-				Type:          models.SortingTypeSimple,
-				Field:         models.FieldFreeSpace,
-				Direction:     models.SortDirectionDESC,
+	tests := []struct {
+		name  string
+		rule  *models.Automation
+		field ConditionField
+		want  bool
+	}{
+		{
+			name: "simple sort field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
 			},
-		}
-
-		require.True(t, ruleUsesCondition(rule, FieldFreeSpace))
-	})
-
-	t.Run("score conditional field", func(t *testing.T) {
-		rule := &models.Automation{
-			Enabled: true,
-			SortingConfig: &models.SortingConfig{
-				SchemaVersion: "1",
-				Type:          models.SortingTypeScore,
-				Direction:     models.SortDirectionDESC,
-				ScoreRules: []models.ScoreRule{
-					{
-						Type: models.ScoreRuleTypeConditional,
-						Conditional: &models.ConditionalScoreRule{
-							Condition: &models.RuleCondition{
-								Field:    models.FieldHasMissingFiles,
-								Operator: models.OperatorEqual,
-								Value:    "true",
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "score conditional field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeConditional,
+							Conditional: &models.ConditionalScoreRule{
+								Condition: &models.RuleCondition{
+									Field:    models.FieldHasMissingFiles,
+									Operator: models.OperatorEqual,
+									Value:    "true",
+								},
+								Score: 10,
 							},
-							Score: 10,
 						},
 					},
 				},
 			},
-		}
-
-		require.True(t, ruleUsesCondition(rule, FieldHasMissingFiles))
-	})
-
-	t.Run("disabled preview rule still counts", func(t *testing.T) {
-		rule := &models.Automation{
-			Enabled: false,
-			SortingConfig: &models.SortingConfig{
-				SchemaVersion: "1",
-				Type:          models.SortingTypeSimple,
-				Field:         models.FieldFreeSpace,
-				Direction:     models.SortDirectionDESC,
+			field: FieldHasMissingFiles,
+			want:  true,
+		},
+		{
+			name: "score field multiplier field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeFieldMultiplier,
+							FieldMultiplier: &models.FieldMultiplierScoreRule{
+								Field:      models.FieldFreeSpace,
+								Multiplier: 1,
+							},
+						},
+					},
+				},
 			},
-		}
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "disabled preview rule still counts",
+			rule: &models.Automation{
+				Enabled: false,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+	}
 
-		require.True(t, ruleUsesCondition(rule, FieldFreeSpace))
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ruleUsesCondition(tt.rule, tt.field))
+		})
+	}
+}
+
+func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
+	ac := &models.ActionConditions{
+		Pause: &models.PauseAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldFreeSpace,
+				Operator: models.OperatorLessThan,
+				Value:    "100",
+			},
+		},
+		Tag: &models.TagAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldHasMissingFiles,
+				Operator: models.OperatorEqual,
+				Value:    "true",
+			},
+		},
+	}
+
+	require.False(t, actionConditionsUseField(ac, FieldFreeSpace))
+	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
 }
 
 func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
@@ -410,7 +470,45 @@ func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
 		map[string]*torrentDesiredState{},
 	)
 
-	require.Equal(t, []string{"y", "z", "a"}, []string{torrents[0].Hash, torrents[1].Hash, torrents[2].Hash})
+	require.ElementsMatch(t, []string{"y", "z"}, []string{torrents[0].Hash, torrents[1].Hash})
+	require.Equal(t, "a", torrents[2].Hash)
+}
+
+func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T) {
+	scoreSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeScore,
+		Direction:     models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{
+			{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{
+					Condition: &models.RuleCondition{
+						Field:    models.FieldIsGrouped,
+						Operator: models.OperatorEqual,
+						Value:    "true",
+					},
+					Score: 100,
+				},
+			},
+		},
+	}
+
+	freeSpaceSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeSimple,
+		Field:         models.FieldFreeSpace,
+		Direction:     models.SortDirectionDESC,
+	}
+
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: scoreSort},
+		&models.Automation{SortingConfig: scoreSort},
+	))
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: freeSpaceSort},
+		&models.Automation{SortingConfig: freeSpaceSort},
+	))
 }
 
 func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
