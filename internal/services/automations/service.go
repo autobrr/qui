@@ -4345,7 +4345,7 @@ func deleteFreesSpace(mode string, torrent qbt.Torrent, allTorrents []qbt.Torren
 }
 
 func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
-	if rule == nil || !rule.Enabled {
+	if rule == nil {
 		return false
 	}
 	if actionConditionsUseField(rule.Conditions, field) {
@@ -4359,43 +4359,53 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 	if ac == nil {
 		return false
 	}
-	if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, field) {
-		return true
+	conds := make([]*models.RuleCondition, 0, 10)
+	if ac.SpeedLimits != nil {
+		conds = append(conds, ac.SpeedLimits.Condition)
 	}
-	if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, field) {
-		return true
+	if ac.ShareLimits != nil {
+		conds = append(conds, ac.ShareLimits.Condition)
 	}
-	if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, field) {
-		return true
+	if ac.Pause != nil {
+		conds = append(conds, ac.Pause.Condition)
 	}
-	if ac.Resume != nil && ConditionUsesField(ac.Resume.Condition, field) {
-		return true
+	if ac.Resume != nil {
+		conds = append(conds, ac.Resume.Condition)
 	}
-	if ac.Recheck != nil && ConditionUsesField(ac.Recheck.Condition, field) {
-		return true
+	if ac.Recheck != nil {
+		conds = append(conds, ac.Recheck.Condition)
 	}
-	if ac.Reannounce != nil && ConditionUsesField(ac.Reannounce.Condition, field) {
-		return true
+	if ac.Reannounce != nil {
+		conds = append(conds, ac.Reannounce.Condition)
 	}
-	if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
-		return true
+	if ac.Delete != nil {
+		conds = append(conds, ac.Delete.Condition)
 	}
-	for _, action := range ac.TagActions() {
-		if action != nil && ConditionUsesField(action.Condition, field) {
+	if ac.Category != nil {
+		conds = append(conds, ac.Category.Condition)
+	}
+	if ac.Move != nil {
+		conds = append(conds, ac.Move.Condition)
+	}
+	if ac.ExternalProgram != nil {
+		conds = append(conds, ac.ExternalProgram.Condition)
+	}
+	for _, cond := range conds {
+		if conditionTreeUsesField(cond, field) {
 			return true
 		}
 	}
-	if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
-		return true
-	}
-	if ac.Move != nil && ConditionUsesField(ac.Move.Condition, field) {
-		return true
-	}
-	if ac.ExternalProgram != nil && ConditionUsesField(ac.ExternalProgram.Condition, field) {
-		return true
+	for _, action := range ac.TagActions() {
+		if action != nil && conditionTreeUsesField(action.Condition, field) {
+			return true
+		}
 	}
 
 	return false
+}
+
+func conditionTreeUsesField(cond *models.RuleCondition, field ConditionField) bool {
+	return cond != nil && ConditionUsesField(cond, field)
 }
 
 func sortingConfigUsesField(config *models.SortingConfig, field ConditionField) bool {
@@ -5500,6 +5510,16 @@ func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConf
 	}
 }
 
+func loadRuleScopedEvalContext(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager) {
+	if evalCtx == nil {
+		return
+	}
+	if ruleUsesCondition(rule, FieldFreeSpace) {
+		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+	}
+	activateRuleGrouping(evalCtx, rule, torrents, sm)
+}
+
 func executeBatch(
 	instanceID int,
 	currentBatch []*models.Automation,
@@ -5516,6 +5536,7 @@ func executeBatch(
 
 	// 1. Sort torrents based on this batch's configuration
 	// Use the config from the first rule (all rules in batch have equivalent config)
+	loadRuleScopedEvalContext(currentBatch[0], torrents, evalCtx, sm)
 	SortTorrentsWithFallback(torrents, currentBatch[0].SortingConfig, evalCtx, instanceID, currentBatch[0].Name)
 
 	// 2. Process rules

@@ -320,6 +320,20 @@ func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
 
 		require.True(t, ruleUsesCondition(rule, FieldHasMissingFiles))
 	})
+
+	t.Run("disabled preview rule still counts", func(t *testing.T) {
+		rule := &models.Automation{
+			Enabled: false,
+			SortingConfig: &models.SortingConfig{
+				SchemaVersion: "1",
+				Type:          models.SortingTypeSimple,
+				Field:         models.FieldFreeSpace,
+				Direction:     models.SortDirectionDESC,
+			},
+		}
+
+		require.True(t, ruleUsesCondition(rule, FieldFreeSpace))
+	})
 }
 
 func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
@@ -348,6 +362,55 @@ func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
 	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
 	require.NotNil(t, score)
 	require.InDelta(t, 100, *score, 0.001)
+}
+
+func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
+	rule := &models.Automation{
+		ID:             7,
+		Name:           "grouped sort",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Grouping: &models.GroupingConfig{},
+		},
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeConditional,
+					Conditional: &models.ConditionalScoreRule{
+						Condition: &models.RuleCondition{
+							Field:    models.FieldIsGrouped,
+							Operator: models.OperatorEqual,
+							Value:    "true",
+						},
+						Score: 100,
+					},
+				},
+			},
+		},
+	}
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/solo", SavePath: "/data"},
+		{Hash: "z", ContentPath: "/data/group", SavePath: "/data"},
+		{Hash: "y", ContentPath: "/data/group", SavePath: "/data"},
+	}
+
+	executeBatch(
+		1,
+		[]*models.Automation{rule},
+		torrents,
+		&EvalContext{},
+		nil,
+		nil,
+		map[int]*ruleRunStats{},
+		map[string]*torrentDesiredState{},
+	)
+
+	require.Equal(t, []string{"y", "z", "a"}, []string{torrents[0].Hash, torrents[1].Hash, torrents[2].Hash})
 }
 
 func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
