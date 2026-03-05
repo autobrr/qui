@@ -1433,7 +1433,8 @@ func TestCalculateScore(t *testing.T) {
 				Size: 1024 * 1024 * 10, // 10MB
 			},
 			config: models.SortingConfig{
-				Type: models.SortingTypeScore,
+				SchemaVersion: "1",
+				Type:          models.SortingTypeScore,
 				ScoreRules: []models.ScoreRule{
 					{
 						Type: models.ScoreRuleTypeFieldMultiplier,
@@ -1453,7 +1454,8 @@ func TestCalculateScore(t *testing.T) {
 				Category: "linux-iso",
 			},
 			config: models.SortingConfig{
-				Type: models.SortingTypeScore,
+				SchemaVersion: "1",
+				Type:          models.SortingTypeScore,
 				ScoreRules: []models.ScoreRule{
 					{
 						Type: models.ScoreRuleTypeFieldMultiplier,
@@ -1483,7 +1485,8 @@ func TestCalculateScore(t *testing.T) {
 				Category: "other",
 			},
 			config: models.SortingConfig{
-				Type: models.SortingTypeScore,
+				SchemaVersion: "1",
+				Type:          models.SortingTypeScore,
 				ScoreRules: []models.ScoreRule{
 					{
 						Type: models.ScoreRuleTypeConditional,
@@ -1518,7 +1521,8 @@ func TestSortTorrents_Score(t *testing.T) {
 	}
 
 	config := models.SortingConfig{
-		Type: models.SortingTypeScore,
+		SchemaVersion: "1",
+		Type:          models.SortingTypeScore,
 		ScoreRules: []models.ScoreRule{
 			{
 				Type: models.ScoreRuleTypeFieldMultiplier,

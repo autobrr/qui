@@ -5,6 +5,7 @@ package automations
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -892,6 +893,13 @@ func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *
 // Returns an error if the sorting configuration is invalid (e.g. unsupported field).
 func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) error {
 	if config != nil {
+		if config.SchemaVersion != "1" {
+			return fmt.Errorf("invalid schema version: %s", config.SchemaVersion)
+		}
+		if config.Direction != models.SortDirectionASC && config.Direction != models.SortDirectionDESC {
+			return fmt.Errorf("invalid direction: %s", config.Direction)
+		}
+
 		switch config.Type {
 		case models.SortingTypeSimple:
 			if !config.Field.IsNumeric() {
@@ -900,11 +908,27 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 				}
 			}
 		case models.SortingTypeScore:
-			for _, r := range config.ScoreRules {
-				if r.Type == models.ScoreRuleTypeFieldMultiplier && r.FieldMultiplier != nil {
+			if len(config.ScoreRules) == 0 {
+				return errors.New("score sort requires at least one rule")
+			}
+			for i, r := range config.ScoreRules {
+				switch r.Type {
+				case models.ScoreRuleTypeFieldMultiplier:
+					if r.FieldMultiplier == nil {
+						return fmt.Errorf("score rule %d: content missing for field multiplier", i)
+					}
 					if !r.FieldMultiplier.Field.IsNumeric() {
 						return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 					}
+				case models.ScoreRuleTypeConditional:
+					if r.Conditional == nil {
+						return fmt.Errorf("score rule %d: content missing for conditional", i)
+					}
+					if r.Conditional.Condition == nil {
+						return fmt.Errorf("score rule %d: condition missing", i)
+					}
+				default:
+					return fmt.Errorf("score rule %d: unknown type %s", i, r.Type)
 				}
 			}
 		default:
