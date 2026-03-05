@@ -740,6 +740,7 @@ const (
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
 )
 
+//nolint:exhaustive // Only sortable numeric fields belong here.
 func (f ConditionField) IsNumeric() bool {
 	switch f {
 	case FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
@@ -749,16 +750,19 @@ func (f ConditionField) IsNumeric() bool {
 		FieldDlSpeed, FieldUpSpeed,
 		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
+//nolint:exhaustive // Only sortable string fields belong here.
 func (f ConditionField) IsString() bool {
 	switch f {
 	case FieldName, FieldCategory, FieldTags, FieldTracker, FieldState, FieldSavePath, FieldContentPath, FieldComment:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // Hardlink scope values (wire format - stable API values)

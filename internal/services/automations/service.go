@@ -924,15 +924,16 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
 	deleteMode := getDeleteMode(rule)
 	eligibleMode := previewView == "eligible"
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode)
+		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode, scoreByHash)
 	}
 
-	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg)
+	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash)
 }
 
 // setupDeleteHardlinkContext sets up hardlink index if needed for delete preview.
@@ -945,7 +946,9 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 	}
 
 	cond := rule.Conditions.Delete.Condition
-	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) || rule.Conditions.Delete.IncludeHardlinks
+	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope) ||
+		rule.Conditions.Delete.IncludeHardlinks
 	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
 	if !needsHardlinkScope && !needsHardlinkSignatureGrouping {
 		return nil
@@ -971,15 +974,32 @@ func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, 
 	}
 
 	cond := rule.Conditions.Delete.Condition
-	if !ConditionUsesField(cond, FieldHasMissingFiles) {
+	if !ConditionUsesField(cond, FieldHasMissingFiles) && !sortingConfigUsesField(rule.SortingConfig, FieldHasMissingFiles) {
 		return
 	}
 
 	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 }
 
+func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
+	if rule == nil || rule.SortingConfig == nil || rule.SortingConfig.Type != models.SortingTypeScore {
+		return nil
+	}
+
+	scoreByHash := make(map[string]float64, len(torrents))
+	for i := range torrents {
+		scoreByHash[torrents[i].Hash] = CalculateScore(torrents[i], rule.SortingConfig, evalCtx)
+	}
+
+	return scoreByHash
+}
+
 // computePreviewScore safely calculates the sorting score for preview functionality.
-func computePreviewScore(torrent *qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) *float64 {
+func computePreviewScore(torrent *qbt.Torrent, rule *models.Automation, evalCtx *EvalContext, scoreByHash map[string]float64) *float64 {
+	if score, ok := scoreByHash[torrent.Hash]; ok {
+		scoreCopy := score
+		return &scoreCopy
+	}
 	if rule != nil && rule.SortingConfig != nil && rule.SortingConfig.Type == models.SortingTypeScore {
 		score := CalculateScore(*torrent, rule.SortingConfig, evalCtx)
 		return &score
@@ -1016,6 +1036,7 @@ func (s *Service) previewDeleteStandard(
 	deleteMode string,
 	eligibleMode bool,
 	cfg previewConfig,
+	scoreByHash map[string]float64,
 ) (*PreviewResult, error) {
 	result := &PreviewResult{
 		Examples: make([]PreviewTorrent, 0, cfg.limit),
@@ -1141,7 +1162,7 @@ func (s *Service) previewDeleteStandard(
 			_, isDirect := directMatchSet[torrent.Hash]
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
 
-			score := computePreviewScore(torrent, rule, evalCtx)
+			score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false, score))
 		}
@@ -1163,7 +1184,7 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 
-		score := computePreviewScore(torrent, rule, evalCtx)
+		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		if !eligibleMode {
 			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, torrents)
@@ -1244,6 +1265,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	hardlinkIndex *HardlinkIndex,
 	limit, offset int,
 	eligibleMode bool,
+	scoreByHash map[string]float64,
 ) (*PreviewResult, error) {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 		return &PreviewResult{Examples: make([]PreviewTorrent, 0)}, nil
@@ -1286,7 +1308,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		}
 	}
 
-	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset, rule), nil
+	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset, rule, scoreByHash), nil
 }
 
 // setupHardlinkSignatureContext sets up hardlink signature tracking for FREE_SPACE projection.
@@ -1319,6 +1341,7 @@ func (s *Service) buildCrossSeedPreviewResult(
 	evalCtx *EvalContext,
 	limit, offset int,
 	rule *models.Automation,
+	scoreByHash map[string]float64,
 ) *PreviewResult {
 	result := &PreviewResult{
 		TotalMatches:   len(state.expandedSet),
@@ -1344,7 +1367,7 @@ func (s *Service) buildCrossSeedPreviewResult(
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
 		_, isHardlinkCopy := state.hardlinkCopySet[torrent.Hash]
 
-		score := computePreviewScore(torrent, rule, evalCtx)
+		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		tracker := getTrackerForTorrent(torrent, s.syncManager)
 		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy, score))
@@ -1491,6 +1514,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	}
 
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
 	catAction := getCategoryAction(rule)
 	state := newCategoryPreviewState(catAction.targetCategory)
@@ -1502,7 +1526,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		s.findCategoryCrossSeeds(torrents, catAction, state)
 	}
 
-	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg, rule), nil
+	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg, rule, scoreByHash), nil
 }
 
 // categoryActionConfig holds category action configuration.
@@ -1542,7 +1566,8 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 	}
 
 	cond := rule.Conditions.Category.Condition
-	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope)
+	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope)
 	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
 	if !needsHardlinkScope && !needsHardlinkSignatureGrouping {
 		return
@@ -1710,6 +1735,7 @@ func (s *Service) buildCategoryPreviewResult(
 	evalCtx *EvalContext,
 	cfg previewConfig,
 	rule *models.Automation,
+	scoreByHash map[string]float64,
 ) *PreviewResult {
 	allMatches := make(map[string]struct{}, len(state.directMatchSet)+len(state.crossSeedSet))
 	for h := range state.directMatchSet {
@@ -1742,7 +1768,7 @@ func (s *Service) buildCategoryPreviewResult(
 
 		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
 
-		score := computePreviewScore(torrent, rule, evalCtx)
+		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		tracker := getTrackerForTorrent(torrent, s.syncManager)
 		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, false, score))
@@ -4319,10 +4345,20 @@ func deleteFreesSpace(mode string, torrent qbt.Torrent, allTorrents []qbt.Torren
 }
 
 func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
-	if rule == nil || rule.Conditions == nil || !rule.Enabled {
+	if rule == nil || !rule.Enabled {
 		return false
 	}
-	ac := rule.Conditions
+	if actionConditionsUseField(rule.Conditions, field) {
+		return true
+	}
+
+	return sortingConfigUsesField(rule.SortingConfig, field)
+}
+
+func actionConditionsUseField(ac *models.ActionConditions, field ConditionField) bool {
+	if ac == nil {
+		return false
+	}
 	if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, field) {
 		return true
 	}
@@ -4358,6 +4394,40 @@ func ruleUsesCondition(rule *models.Automation, field ConditionField) bool {
 	if ac.ExternalProgram != nil && ConditionUsesField(ac.ExternalProgram.Condition, field) {
 		return true
 	}
+
+	return false
+}
+
+func sortingConfigUsesField(config *models.SortingConfig, field ConditionField) bool {
+	if config == nil {
+		return false
+	}
+
+	if config.Type == models.SortingTypeSimple {
+		return config.Field == field
+	}
+
+	if config.Type != models.SortingTypeScore {
+		return false
+	}
+
+	for i := range config.ScoreRules {
+		if scoreRuleUsesField(config.ScoreRules[i], field) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
+	if rule.FieldMultiplier != nil && rule.FieldMultiplier.Field == field {
+		return true
+	}
+	if rule.Conditional != nil && ConditionUsesField(rule.Conditional.Condition, field) {
+		return true
+	}
+
 	return false
 }
 

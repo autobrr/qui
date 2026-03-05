@@ -280,6 +280,76 @@ func TestDetectCrossSeeds(t *testing.T) {
 	}
 }
 
+func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
+	t.Run("simple sort field", func(t *testing.T) {
+		rule := &models.Automation{
+			Enabled: true,
+			SortingConfig: &models.SortingConfig{
+				SchemaVersion: "1",
+				Type:          models.SortingTypeSimple,
+				Field:         models.FieldFreeSpace,
+				Direction:     models.SortDirectionDESC,
+			},
+		}
+
+		require.True(t, ruleUsesCondition(rule, FieldFreeSpace))
+	})
+
+	t.Run("score conditional field", func(t *testing.T) {
+		rule := &models.Automation{
+			Enabled: true,
+			SortingConfig: &models.SortingConfig{
+				SchemaVersion: "1",
+				Type:          models.SortingTypeScore,
+				Direction:     models.SortDirectionDESC,
+				ScoreRules: []models.ScoreRule{
+					{
+						Type: models.ScoreRuleTypeConditional,
+						Conditional: &models.ConditionalScoreRule{
+							Condition: &models.RuleCondition{
+								Field:    models.FieldHasMissingFiles,
+								Operator: models.OperatorEqual,
+								Value:    "true",
+							},
+							Score: 10,
+						},
+					},
+				},
+			},
+		}
+
+		require.True(t, ruleUsesCondition(rule, FieldHasMissingFiles))
+	})
+}
+
+func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
+	rule := &models.Automation{
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeFieldMultiplier,
+					FieldMultiplier: &models.FieldMultiplierScoreRule{
+						Field:      models.FieldFreeSpace,
+						Multiplier: 1,
+					},
+				},
+			},
+		},
+	}
+	torrents := []qbt.Torrent{{Hash: "a"}}
+	evalCtx := &EvalContext{FreeSpace: 100}
+
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+	evalCtx.FreeSpace = 25
+
+	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
+	require.NotNil(t, score)
+	require.InDelta(t, 100, *score, 0.001)
+}
+
 func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", ContentPath: "/data/shared", SavePath: "/data", Ratio: 3.0},

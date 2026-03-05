@@ -992,11 +992,9 @@ func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores ma
 				return t1.AddedOn < t2.AddedOn
 			}
 		}
-	} else {
+	} else if t1.AddedOn != t2.AddedOn {
 		// Default sort: Oldest first (AddedOn ASC)
-		if t1.AddedOn != t2.AddedOn {
-			return t1.AddedOn < t2.AddedOn
-		}
+		return t1.AddedOn < t2.AddedOn
 	}
 
 	// 2. Tiebreaker: Hash ASC
@@ -1013,6 +1011,8 @@ func getNowUnix(evalCtx *EvalContext) int64 {
 
 // getNumericFieldValue returns the float64 representation of a field for scoring.
 // Returns 0 if field is not numeric or not found.
+//
+//nolint:exhaustive // Only numeric sort fields are supported.
 func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *EvalContext) float64 {
 	switch field {
 	case models.FieldSize:
@@ -1077,10 +1077,12 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 		return float64(t.NumIncomplete)
 	case models.FieldTrackersCount:
 		return float64(t.TrackersCount)
+	default:
+		return 0
 	}
-	return 0
 }
 
+//nolint:exhaustive // Only age-backed fields are supported.
 func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
 	var ts int64
 	switch field {
@@ -1090,6 +1092,8 @@ func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.T
 		ts = t.CompletionOn
 	case models.FieldLastActivityAge:
 		ts = t.LastActivity
+	default:
+		return 0
 	}
 	if ts <= 0 {
 		return 0
@@ -1097,6 +1101,7 @@ func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.T
 	return float64(getNowUnix(evalCtx) - ts)
 }
 
+//nolint:exhaustive // Only string sort fields are supported.
 func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
 	switch field {
 	case models.FieldName:
@@ -1115,6 +1120,7 @@ func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, boo
 		return strings.ToLower(t.ContentPath), true
 	case models.FieldComment:
 		return strings.ToLower(t.Comment), true
+	default:
+		return "", false
 	}
-	return "", false
 }
