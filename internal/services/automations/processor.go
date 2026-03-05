@@ -894,13 +894,19 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 	if config != nil {
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if !isNumericField(config.Field) {
-				if _, ok := extractStringValue(qbt.Torrent{}, config.Field); !ok {
+			if !config.Field.IsNumeric() {
+				if !config.Field.IsString() {
 					return fmt.Errorf("unsupported sort field: %s", config.Field)
 				}
 			}
 		case models.SortingTypeScore:
-			// No initial validation needed
+			for _, r := range config.ScoreRules {
+				if r.Type == models.ScoreRuleTypeFieldMultiplier && r.FieldMultiplier != nil {
+					if !r.FieldMultiplier.Field.IsNumeric() {
+						return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
+					}
+				}
+			}
 		default:
 			return fmt.Errorf("unsupported sorting type: %s", config.Type)
 		}
@@ -928,7 +934,7 @@ func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores ma
 	if config != nil {
 		switch config.Type {
 		case models.SortingTypeSimple:
-			if isNumericField(config.Field) {
+			if config.Field.IsNumeric() {
 				v1 := getNumericFieldValue(t1, config.Field, evalCtx)
 				v2 := getNumericFieldValue(t2, config.Field, evalCtx)
 				if v1 != v2 {
@@ -1087,17 +1093,4 @@ func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, boo
 		return strings.ToLower(t.Comment), true
 	}
 	return "", false
-}
-
-func isNumericField(field models.ConditionField) bool {
-	switch field {
-	case models.FieldSize, models.FieldTotalSize, models.FieldDownloaded, models.FieldUploaded, models.FieldAmountLeft, models.FieldFreeSpace,
-		models.FieldAddedOn, models.FieldCompletionOn, models.FieldLastActivity, models.FieldSeedingTime, models.FieldTimeActive,
-		models.FieldAddedOnAge, models.FieldCompletionOnAge, models.FieldLastActivityAge,
-		models.FieldRatio, models.FieldProgress, models.FieldAvailability,
-		models.FieldDlSpeed, models.FieldUpSpeed,
-		models.FieldNumSeeds, models.FieldNumLeechs, models.FieldNumComplete, models.FieldNumIncomplete, models.FieldTrackersCount:
-		return true
-	}
-	return false
 }

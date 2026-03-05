@@ -123,6 +123,9 @@ func (c *SortingConfig) Validate() error {
 		if c.Field == "" {
 			return errors.New("simple sort requires field")
 		}
+		if !c.Field.IsNumeric() && !c.Field.IsString() {
+			return fmt.Errorf("unknown sort field: %s", c.Field)
+		}
 	case SortingTypeScore:
 
 		if len(c.ScoreRules) == 0 {
@@ -137,6 +140,9 @@ func (c *SortingConfig) Validate() error {
 				}
 				if r.FieldMultiplier.Field == "" {
 					return fmt.Errorf("score rule %d: field required for field multiplier", i)
+				}
+				if !r.FieldMultiplier.Field.IsNumeric() {
+					return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 				}
 			case ScoreRuleTypeConditional:
 				if r.Conditional == nil {
@@ -733,6 +739,27 @@ const (
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
 )
+
+func (f ConditionField) IsNumeric() bool {
+	switch f {
+	case FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
+		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
+		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
+		FieldRatio, FieldProgress, FieldAvailability,
+		FieldDlSpeed, FieldUpSpeed,
+		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount:
+		return true
+	}
+	return false
+}
+
+func (f ConditionField) IsString() bool {
+	switch f {
+	case FieldName, FieldCategory, FieldTags, FieldTracker, FieldState, FieldSavePath, FieldContentPath, FieldComment:
+		return true
+	}
+	return false
+}
 
 // Hardlink scope values (wire format - stable API values)
 const (

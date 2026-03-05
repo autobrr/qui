@@ -1163,6 +1163,8 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 
+		score := computePreviewScore(torrent, rule, evalCtx)
+
 		if !eligibleMode {
 			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, torrents)
 		}
@@ -1172,8 +1174,6 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 		if len(result.Examples) < cfg.limit {
-			score := computePreviewScore(torrent, rule, evalCtx)
-
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
 			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false, score))
 		}
@@ -5425,7 +5425,7 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 
 func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {
 	if err := SortTorrents(torrents, config, evalCtx); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", ruleName).Msg("invalid sorting config during preview, falling back to default sort")
+		log.Warn().Err(err).Int("instanceID", instanceID).Str("rule", ruleName).Msg("invalid sorting config, falling back to default sort")
 		_ = SortTorrents(torrents, nil, evalCtx)
 	}
 }
