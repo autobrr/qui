@@ -6,16 +6,19 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Link2 } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
   canRegisterProtocolHandler,
   dismissProtocolHandlerBanner,
-  getMagnetHandlerRegistrationGuidance,
+  getMagnetHandlerRegistrationGuidanceVariant,
   isProtocolHandlerBannerDismissed,
   registerMagnetHandler,
 } from "@/lib/protocol-handler"
 
 export function MagnetHandlerBanner() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [dismissed, setDismissed] = useState(() => isProtocolHandlerBannerDismissed())
 
   // Don't show if browser doesn't support registerProtocolHandler or not HTTPS
@@ -31,13 +34,14 @@ export function MagnetHandlerBanner() {
   const handleRegister = () => {
     const success = registerMagnetHandler()
     if (success) {
-      toast.success("Magnet handler registration requested", {
-        description: getMagnetHandlerRegistrationGuidance(),
+      const guidanceVariant = getMagnetHandlerRegistrationGuidanceVariant()
+      toast.success(tr("magnetHandlerBanner.toasts.registrationRequested"), {
+        description: tr(`magnetHandlerBanner.guidance.${guidanceVariant}`),
       })
       dismissProtocolHandlerBanner()
       setDismissed(true)
     } else {
-      toast.error("Failed to register magnet handler")
+      toast.error(tr("magnetHandlerBanner.toasts.failedRegister"))
     }
   }
 
@@ -50,14 +54,14 @@ export function MagnetHandlerBanner() {
     <div className="mb-4 flex items-center justify-between gap-4 rounded-md bg-blue-500/10 border border-blue-500/20 px-4 py-2.5 text-sm">
       <div className="flex items-center gap-2">
         <Link2 className="h-4 w-4 text-blue-500" />
-        <span>Register qui as your magnet link handler</span>
+        <span>{tr("magnetHandlerBanner.message")}</span>
       </div>
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={handleRegister}>
-          Register
+          {tr("magnetHandlerBanner.actions.register")}
         </Button>
         <Button variant="ghost" size="sm" onClick={handleDismiss}>
-          Dismiss
+          {tr("magnetHandlerBanner.actions.dismiss")}
         </Button>
       </div>
     </div>

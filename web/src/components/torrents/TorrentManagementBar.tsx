@@ -50,6 +50,7 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   AddTagsDialog,
@@ -61,6 +62,11 @@ import {
   SpeedLimitsDialog,
   TmmConfirmDialog
 } from "./TorrentDialogs"
+
+function useCommonTr() {
+  const { t } = useTranslation("common")
+  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+}
 
 interface TorrentManagementBarProps {
   instanceId?: number
@@ -91,6 +97,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   excludeTargets = [],
   onComplete,
 }: TorrentManagementBarProps) {
+  const tr = useCommonTr()
   const selectionCount = totalSelectionCount || selectedHashes.length
   const hasActionScope = typeof instanceId === "number" && instanceId >= 0
   const actionInstanceId = hasActionScope ? instanceId : -1
@@ -459,6 +466,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !hasActionScope || !hasSelection
+  const selectionCountSuffix = selectionCount > 1 ? ` (${selectionCount})` : ""
 
   // Keep this guard after hooks so their invocation order stays stable.
   if (!hasActionScope || !hasSelection) {
@@ -470,7 +478,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <div
         className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md mr-2 px-3 py-2 gap-3 shadow-xs transition-all duration-200"
         role="toolbar"
-        aria-label={`${selectionCount} torrent${selectionCount !== 1 ? "s" : ""} selected - Bulk actions available`}
+        aria-label={tr("torrentManagementBar.toolbarAria", {
+          count: selectionCount,
+          plural: selectionCount !== 1 ? "s" : "",
+        })}
       >
         <div className="flex items-center gap-3 flex-shrink-0 min-w-0">
           <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[3ch] text-center">
@@ -491,7 +502,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <Play className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Resume</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.resume")}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -505,7 +516,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <Pause className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Pause</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.pause")}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -519,7 +530,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <CheckCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Force Recheck</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.forceRecheck")}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -533,7 +544,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <Radio className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Reannounce</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.reannounce")}</TooltipContent>
           </Tooltip>
 
           {(() => {
@@ -552,7 +563,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                     <Blocks className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{allSeqDlEnabled ? "Disable" : "Enable"} Sequential Download</TooltipContent>
+                <TooltipContent>
+                  {tr("torrentManagementBar.tooltips.sequentialDownload", {
+                    action: allSeqDlEnabled ? tr("torrentManagementBar.actions.disable") : tr("torrentManagementBar.actions.enable"),
+                  })}
+                </TooltipContent>
               </Tooltip>
             )
           })()}
@@ -571,7 +586,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Tag Actions</TooltipContent>
+              <TooltipContent>{tr("torrentManagementBar.tooltips.tagActions")}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="center">
               <DropdownMenuItem
@@ -579,14 +594,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 disabled={isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
-                Add Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.addTags")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => prepareTagsAction("set", selectedHashes, selectedTorrents)}
                 disabled={isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
-                Replace Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.replaceTags")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -602,7 +619,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <Folder className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Set Category</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.setCategory")}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -616,7 +633,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <FolderOpen className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Set Location</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.setLocation")}</TooltipContent>
           </Tooltip>
 
           {/* Queue Priority */}
@@ -633,7 +650,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Queue Priority</TooltipContent>
+              <TooltipContent>{tr("torrentManagementBar.tooltips.queuePriority")}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="center">
               <DropdownMenuItem
@@ -641,28 +658,32 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 disabled={isPending || isDisabled}
               >
                 <ChevronsUp className="h-4 w-4 mr-2" />
-                Top Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.topPriority")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("increasePriority")}
                 disabled={isPending || isDisabled}
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
-                Increase Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.increasePriority")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("decreasePriority")}
                 disabled={isPending || isDisabled}
               >
                 <ArrowDown className="h-4 w-4 mr-2" />
-                Decrease Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.decreasePriority")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("bottomPriority")}
                 disabled={isPending || isDisabled}
               >
                 <ChevronsDown className="h-4 w-4 mr-2" />
-                Bottom Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.bottomPriority")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -681,7 +702,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Limits</TooltipContent>
+              <TooltipContent>{tr("torrentManagementBar.tooltips.limits")}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent>
               <DropdownMenuItem
@@ -689,14 +710,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 disabled={isPending || isDisabled}
               >
                 <Sprout className="mr-2 h-4 w-4" />
-                Set Share Limit {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.setShareLimit")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => prepareSpeedLimitAction(selectedHashes, selectedTorrents)}
                 disabled={isPending || isDisabled}
               >
                 <Gauge className="mr-2 h-4 w-4" />
-                Set Speed Limit {selectionCount > 1 ? `(${selectionCount})` : ""}
+                {tr("torrentManagementBar.menu.setSpeedLimit")}
+                {selectionCountSuffix}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -706,6 +729,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             const tmmStates = selectedTorrents?.map(t => t.auto_tmm) ?? []
             const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
             const mixed = tmmStates.length > 0 && !tmmStates.every(state => state === allEnabled)
+            let tmmTooltip = tr("torrentManagementBar.tooltips.enableTmm")
+            if (mixed) {
+              tmmTooltip = tr("torrentManagementBar.tooltips.tmmMixed")
+            } else if (allEnabled) {
+              tmmTooltip = tr("torrentManagementBar.tooltips.disableTmm")
+            }
 
             return (
               <Tooltip>
@@ -719,9 +748,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                     <Settings2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {mixed ? "TMM (Mixed)" : allEnabled ? "Disable TMM" : "Enable TMM"}
-                </TooltipContent>
+                <TooltipContent>{tmmTooltip}</TooltipContent>
               </Tooltip>
             )
           })()}
@@ -739,7 +766,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Delete</TooltipContent>
+            <TooltipContent>{tr("torrentManagementBar.tooltips.delete")}</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -836,17 +863,19 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Force Recheck {totalSelectionCount || selectedHashes.length} torrent(s)?</DialogTitle>
+            <DialogTitle>
+              {tr("torrentManagementBar.dialogs.recheck.title", { count: totalSelectionCount || selectedHashes.length })}
+            </DialogTitle>
             <DialogDescription>
-              This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+              {tr("torrentManagementBar.dialogs.recheck.description")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-              Cancel
+              {tr("torrentManagementBar.dialogs.actions.cancel")}
             </Button>
             <Button onClick={handleRecheckWrapper} disabled={isPending}>
-              Force Recheck
+              {tr("torrentManagementBar.dialogs.recheck.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -856,17 +885,19 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reannounce {totalSelectionCount || selectedHashes.length} torrent(s)?</DialogTitle>
+            <DialogTitle>
+              {tr("torrentManagementBar.dialogs.reannounce.title", { count: totalSelectionCount || selectedHashes.length })}
+            </DialogTitle>
             <DialogDescription>
-              This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+              {tr("torrentManagementBar.dialogs.reannounce.description")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-              Cancel
+              {tr("torrentManagementBar.dialogs.actions.cancel")}
             </Button>
             <Button onClick={handleReannounceWrapper} disabled={isPending}>
-              Reannounce
+              {tr("torrentManagementBar.dialogs.reannounce.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

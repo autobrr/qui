@@ -35,13 +35,18 @@ jobs:
         run: |
           webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
           if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
-    
+
   backend:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}"
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -53,4 +58,4 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.6
-          only-new-issues: true
+          args: --new-from-rev=origin/${{ github.base_ref }}

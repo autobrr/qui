@@ -9,8 +9,10 @@ import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Download, X } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 export function UpdateBanner() {
+  const { t } = useTranslation()
   const [dismissed, setDismissed] = useState(false)
 
   const { data: updateInfo } = useQuery({
@@ -45,10 +47,10 @@ export function UpdateBanner() {
         <Download className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-green-800 dark:text-green-200">
-            Update Available
+            {t("update.available")}
           </p>
           <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-            Version {updateInfo.tag_name} is now available
+            {t("update.version", { version: updateInfo.tag_name })}
           </p>
           <Button
             size="sm"
@@ -56,7 +58,7 @@ export function UpdateBanner() {
             className="mt-2 h-6 text-xs border-green-300 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900"
             onClick={handleViewUpdate}
           >
-            View Release
+            {t("update.viewRelease")}
           </Button>
         </div>
         <Button
@@ -66,7 +68,7 @@ export function UpdateBanner() {
           onClick={handleDismiss}
         >
           <X className="h-3 w-3" />
-          <span className="sr-only">Dismiss</span>
+          <span className="sr-only">{t("update.dismiss")}</span>
         </Button>
       </div>
     </div>

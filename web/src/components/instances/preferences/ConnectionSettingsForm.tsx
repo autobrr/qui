@@ -17,6 +17,7 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const sanitizeBtProtocol = (value: unknown): 0 | 1 | 2 => {
@@ -126,9 +127,12 @@ function NumberInput({
 }
 
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
   const [incognitoMode] = useIncognitoMode()
+  const validateUnlimitedRange = (value: number, errorKey: string) => (value < -1 ? tr(errorKey) : undefined)
 
   const form = useForm({
     defaultValues: {
@@ -153,15 +157,17 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       ip_filter_trackers: false,
       banned_IPs: "",
     },
-    onSubmit: async ({ value }) => {
-      try {
-        await updatePreferences(value)
-        toast.success("Connection settings updated successfully")
-        onSuccess?.()
-      } catch (error) {
-        toast.error("Failed to update connection settings")
-        console.error("Failed to update connection settings:", error)
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("connectionSettingsForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: (error) => {
+          toast.error(tr("connectionSettingsForm.toasts.failedUpdate"))
+          console.error("Failed to update connection settings:", error)
+        },
+      })
     },
   })
 
@@ -194,25 +200,25 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading connection settings...</p>
+        <p className="text-sm text-muted-foreground">{tr("connectionSettingsForm.loading")}</p>
       </div>
     )
   }
 
   const getBittorrentProtocolLabel = (value: number) => {
     switch (value) {
-      case 0: return "TCP and μTP"
-      case 1: return "TCP"
-      case 2: return "μTP"
-      default: return "TCP and μTP"
+      case 0: return tr("connectionSettingsForm.protocols.tcpAndUtp")
+      case 1: return tr("connectionSettingsForm.protocols.tcp")
+      case 2: return tr("connectionSettingsForm.protocols.utp")
+      default: return tr("connectionSettingsForm.protocols.tcpAndUtp")
     }
   }
 
   const getUtpTcpMixedModeLabel = (value: number) => {
     switch (value) {
-      case 0: return "Prefer TCP"
-      case 1: return "Peer proportional"
-      default: return "Prefer TCP"
+      case 0: return tr("connectionSettingsForm.mixedModes.preferTcp")
+      case 1: return tr("connectionSettingsForm.mixedModes.peerProportional")
+      default: return tr("connectionSettingsForm.mixedModes.preferTcp")
     }
   }
 
@@ -228,10 +234,9 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       {fieldVisibility.isUnknown && (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/70 dark:bg-amber-950/50">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertTitle>Limited version details</AlertTitle>
+          <AlertTitle>{tr("connectionSettingsForm.alerts.limitedVersionTitle")}</AlertTitle>
           <AlertDescription>
-            We couldn&apos;t confirm this instance&apos;s qBittorrent build details, so all connection
-            options are visible. Double-check applicability before applying changes.
+            {tr("connectionSettingsForm.alerts.limitedVersionDescription")}
           </AlertDescription>
         </Alert>
       )}
@@ -240,7 +245,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Server className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Listening Port</h3>
+          <h3 className="text-lg font-medium">{tr("connectionSettingsForm.sections.listeningPort")}</h3>
         </div>
 
         <div className="space-y-4">
@@ -251,7 +256,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
               validators={{
                 onChange: ({ value }) => {
                   if (value < 0 || value > 65535) {
-                    return "The port used for incoming connections must be between 0 and 65535"
+                    return tr("connectionSettingsForm.errors.listenPortRange")
                   }
                   return undefined
                 },
@@ -260,12 +265,12 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
               {(field) => (
                 <div className="space-y-2">
                   <NumberInput
-                    label="Port for incoming connections"
+                    label={tr("connectionSettingsForm.fields.listenPortLabel")}
                     value={field.state.value}
                     onChange={(value) => field.handleChange(value)}
                     min={0}
                     max={65535}
-                    description="Port used for incoming BitTorrent connections"
+                    description={tr("connectionSettingsForm.fields.listenPortDescription")}
                   />
                   {field.state.meta.errors.length > 0 && (
                     <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -277,12 +282,12 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             {fieldVisibility.showUpnpLeaseField && (
               <form.Field name="upnp_lease_duration">
                 {(field) => (
-                  <NumberInput
-                    label="UPnP lease duration (0 = permanent)"
+                <NumberInput
+                    label={tr("connectionSettingsForm.fields.upnpLeaseDurationLabel")}
                     value={field.state.value}
                     onChange={(value) => field.handleChange(value)}
                     min={0}
-                    description="Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)"
+                    description={tr("connectionSettingsForm.fields.upnpLeaseDurationDescription")}
                   />
                 )}
               </form.Field>
@@ -294,8 +299,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             <form.Field name="random_port">
               {(field) => (
                 <SwitchSetting
-                  label="Use random port on each startup"
-                  description="Randomly select a port when qBittorrent starts"
+                  label={tr("connectionSettingsForm.fields.randomPortLabel")}
+                  description={tr("connectionSettingsForm.fields.randomPortDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -305,8 +310,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             <form.Field name="upnp">
               {(field) => (
                 <SwitchSetting
-                  label="Enable UPnP/NAT-PMP port forwarding"
-                  description="Automatically forward port through your router"
+                  label={tr("connectionSettingsForm.fields.upnpLabel")}
+                  description={tr("connectionSettingsForm.fields.upnpDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -320,7 +325,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Wifi className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Protocol Settings</h3>
+          <h3 className="text-lg font-medium">{tr("connectionSettingsForm.sections.protocolSettings")}</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -334,7 +339,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
               return (
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">BitTorrent Protocol</Label>
+                  <Label className="text-sm font-medium">{tr("connectionSettingsForm.fields.bittorrentProtocolLabel")}</Label>
                   <Select
                     value={sanitizedValue.toString()}
                     onValueChange={(value) => {
@@ -355,7 +360,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Protocol to use for peer connections
+                    {tr("connectionSettingsForm.fields.bittorrentProtocolDescription")}
                   </p>
                 </div>
               )
@@ -373,7 +378,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
               return (
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">μTP-TCP Mixed Mode</Label>
+                  <Label className="text-sm font-medium">{tr("connectionSettingsForm.fields.utpTcpMixedModeLabel")}</Label>
                   <Select
                     value={sanitizedValue.toString()}
                     onValueChange={(value) => {
@@ -385,7 +390,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select mode" />
+                      <SelectValue placeholder={tr("connectionSettingsForm.fields.utpTcpMixedModePlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="0">{getUtpTcpMixedModeLabel(0)}</SelectItem>
@@ -393,7 +398,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    How to handle mixed μTP/TCP connections
+                    {tr("connectionSettingsForm.fields.utpTcpMixedModeDescription")}
                   </p>
                 </div>
               )
@@ -407,7 +412,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Network Interface</h3>
+          <h3 className="text-lg font-medium">{tr("connectionSettingsForm.sections.networkInterface")}</h3>
         </div>
 
         <div className="space-y-4">
@@ -415,16 +420,16 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             <form.Field name="current_network_interface">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="network_interface">Network Interface (Read-Only)</Label>
+                  <Label htmlFor="network_interface">{tr("connectionSettingsForm.fields.networkInterfaceLabel")}</Label>
                   <Input
                     id="network_interface"
-                    value={field.state.value || "Auto-detect"}
+                    value={field.state.value || tr("connectionSettingsForm.values.autoDetect")}
                     readOnly
                     className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                     disabled
                   />
                   <p className="text-xs text-muted-foreground">
-                    Currently active network interface. Configuration requires missing API endpoints.
+                    {tr("connectionSettingsForm.fields.networkInterfaceDescription")}
                   </p>
                 </div>
               )}
@@ -433,16 +438,16 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             <form.Field name="current_interface_address">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="interface_address">Interface IP Address (Read-Only)</Label>
+                  <Label htmlFor="interface_address">{tr("connectionSettingsForm.fields.interfaceAddressLabel")}</Label>
                   <Input
                     id="interface_address"
-                    value={field.state.value || "Auto-detect"}
+                    value={field.state.value || tr("connectionSettingsForm.values.autoDetect")}
                     readOnly
                     disabled
                     className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                   />
                   <p className="text-xs text-muted-foreground">
-                    IP address of the current interface. Configuration requires missing API endpoints.
+                    {tr("connectionSettingsForm.fields.interfaceAddressDescription")}
                   </p>
                 </div>
               )}
@@ -452,8 +457,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field name="reannounce_when_address_changed">
             {(field) => (
               <SwitchSetting
-                label="Re-announce to trackers when IP address changes"
-                description="Automatically re-announce when your IP address changes"
+                label={tr("connectionSettingsForm.fields.reannounceWhenAddressChangedLabel")}
+                description={tr("connectionSettingsForm.fields.reannounceWhenAddressChangedDescription")}
                 checked={field.state.value}
                 onChange={(checked) => field.handleChange(checked)}
               />
@@ -464,31 +469,28 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
       {/* Connection Limits Section */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium">Connection Limits</h3>
+        <h3 className="text-lg font-medium">{tr("connectionSettingsForm.sections.connectionLimits")}</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field
             name="max_connec"
             validators={{
-              onChange: ({ value }) => {
-                if (value !== -1 && value !== 0 && value <= 0) {
-                  return "Maximum number of connections limit must be greater than 0 or disabled"
-                }
-                return undefined
-              },
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxConnectionsRange"),
             }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Global maximum connections"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  allowUnlimited={true}
-                  description="Maximum connections across all torrents"
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label={tr("connectionSettingsForm.fields.maxConnectionsLabel")}
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    allowUnlimited={true}
+                    description={tr("connectionSettingsForm.fields.maxConnectionsDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -497,25 +499,22 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field
             name="max_connec_per_torrent"
             validators={{
-              onChange: ({ value }) => {
-                if (value !== -1 && value !== 0 && value <= 0) {
-                  return "Maximum number of connections per torrent limit must be greater than 0 or disabled"
-                }
-                return undefined
-              },
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxConnectionsPerTorrentRange"),
             }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Maximum connections per torrent"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  allowUnlimited={true}
-                  description="Maximum connections per individual torrent"
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentLabel")}
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    allowUnlimited={true}
+                    description={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -524,25 +523,22 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field
             name="max_uploads"
             validators={{
-              onChange: ({ value }) => {
-                if (value !== -1 && value !== 0 && value <= 0) {
-                  return "Global number of upload slots limit must be greater than 0 or disabled"
-                }
-                return undefined
-              },
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxUploadsRange"),
             }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Global maximum upload slots"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  allowUnlimited={true}
-                  description="Maximum upload slots across all torrents"
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label={tr("connectionSettingsForm.fields.maxUploadsLabel")}
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    allowUnlimited={true}
+                    description={tr("connectionSettingsForm.fields.maxUploadsDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -551,25 +547,22 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field
             name="max_uploads_per_torrent"
             validators={{
-              onChange: ({ value }) => {
-                if (value !== -1 && value !== 0 && value <= 0) {
-                  return "Maximum number of upload slots per torrent limit must be greater than 0 or disabled"
-                }
-                return undefined
-              },
+              onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxUploadsPerTorrentRange"),
             }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Maximum upload slots per torrent"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  allowUnlimited={true}
-                  description="Maximum upload slots per individual torrent"
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label={tr("connectionSettingsForm.fields.maxUploadsPerTorrentLabel")}
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    allowUnlimited={true}
+                    description={tr("connectionSettingsForm.fields.maxUploadsPerTorrentDescription")}
+                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -579,8 +572,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <form.Field name="enable_multi_connections_from_same_ip">
           {(field) => (
             <SwitchSetting
-              label="Allow multiple connections from the same IP address"
-              description="Enable connections from multiple peers behind the same NAT"
+              label={tr("connectionSettingsForm.fields.enableMultiConnectionsFromSameIpLabel")}
+              description={tr("connectionSettingsForm.fields.enableMultiConnectionsFromSameIpDescription")}
               checked={field.state.value}
               onChange={(checked) => field.handleChange(checked)}
             />
@@ -590,29 +583,29 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
       {/* Outgoing Ports Section */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium">Outgoing Ports</h3>
+        <h3 className="text-lg font-medium">{tr("connectionSettingsForm.sections.outgoingPorts")}</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field
             name="outgoing_ports_min"
-            validators={{
-              onChange: ({ value }) => {
-                if (value < 0 || value > 65535) {
-                  return "Outgoing port range minimum must be between 0 and 65535"
-                }
-                return undefined
-              },
-            }}
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0 || value > 65535) {
+                    return tr("connectionSettingsForm.errors.outgoingPortsMinRange")
+                  }
+                  return undefined
+                },
+              }}
           >
             {(field) => (
               <div className="space-y-2">
                 <NumberInput
-                  label="Outgoing ports (Min)"
+                  label={tr("connectionSettingsForm.fields.outgoingPortsMinLabel")}
                   value={field.state.value}
                   onChange={(value) => field.handleChange(value)}
                   min={0}
                   max={65535}
-                  description="Minimum port for outgoing connections (0 = no limit)"
+                  description={tr("connectionSettingsForm.fields.outgoingPortsMinDescription")}
                 />
                 {field.state.meta.errors.length > 0 && (
                   <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -623,24 +616,24 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
           <form.Field
             name="outgoing_ports_max"
-            validators={{
-              onChange: ({ value }) => {
-                if (value < 0 || value > 65535) {
-                  return "Outgoing port range maximum must be between 0 and 65535"
-                }
-                return undefined
-              },
-            }}
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0 || value > 65535) {
+                    return tr("connectionSettingsForm.errors.outgoingPortsMaxRange")
+                  }
+                  return undefined
+                },
+              }}
           >
             {(field) => (
               <div className="space-y-2">
                 <NumberInput
-                  label="Outgoing ports (Max)"
+                  label={tr("connectionSettingsForm.fields.outgoingPortsMaxLabel")}
                   value={field.state.value}
                   onChange={(value) => field.handleChange(value)}
                   min={0}
                   max={65535}
-                  description="Maximum port for outgoing connections (0 = no limit)"
+                  description={tr("connectionSettingsForm.fields.outgoingPortsMaxDescription")}
                 />
                 {field.state.meta.errors.length > 0 && (
                   <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
@@ -655,15 +648,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
-          <h3 className="text-lg font-medium">IP Filtering</h3>
+          <h3 className="text-lg font-medium">{tr("connectionSettingsForm.sections.ipFiltering")}</h3>
         </div>
 
         <div className="space-y-4">
           <form.Field name="ip_filter_enabled">
             {(field) => (
               <SwitchSetting
-                label="Enable IP filtering"
-                description="Filter specific IP addresses from connecting"
+                label={tr("connectionSettingsForm.fields.ipFilterEnabledLabel")}
+                description={tr("connectionSettingsForm.fields.ipFilterEnabledDescription")}
                 checked={field.state.value}
                 onChange={(checked) => field.handleChange(checked)}
               />
@@ -673,17 +666,17 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field name="ip_filter_path">
             {(field) => (
               <div className="space-y-2">
-                <Label htmlFor="ip_filter_path">IP filter file path</Label>
+                <Label htmlFor="ip_filter_path">{tr("connectionSettingsForm.fields.ipFilterPathLabel")}</Label>
                 <Input
                   id="ip_filter_path"
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="/path/to/filter.dat"
+                  placeholder={tr("connectionSettingsForm.fields.ipFilterPathPlaceholder")}
                   disabled={!form.state.values.ip_filter_enabled}
                   className={incognitoMode ? "blur-sm select-none" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Path to IP filter file (.dat, .p2p, .p2b formats)
+                  {tr("connectionSettingsForm.fields.ipFilterPathDescription")}
                 </p>
               </div>
             )}
@@ -692,8 +685,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field name="ip_filter_trackers">
             {(field) => (
               <SwitchSetting
-                label="Apply IP filter to trackers"
-                description="Also filter tracker connections based on IP filter rules"
+                label={tr("connectionSettingsForm.fields.ipFilterTrackersLabel")}
+                description={tr("connectionSettingsForm.fields.ipFilterTrackersDescription")}
                 checked={field.state.value}
                 onChange={(checked) => field.handleChange(checked)}
               />
@@ -703,18 +696,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field name="banned_IPs">
             {(field) => (
               <div className="space-y-2">
-                <Label>Manually banned IP addresses</Label>
+                <Label>{tr("connectionSettingsForm.fields.bannedIpsLabel")}</Label>
                 <Textarea
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder={`Enter IP addresses to ban (one per line):
-192.168.1.100
-10.0.0.50
-2001:db8::1`}
+                  placeholder={tr("connectionSettingsForm.fields.bannedIpsPlaceholder")}
                   className={incognitoMode ? "min-h-[100px] font-mono text-sm blur-sm select-none" : "min-h-[100px] font-mono text-sm"}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Add IP addresses to permanently ban from connecting (one per line)
+                  {tr("connectionSettingsForm.fields.bannedIpsDescription")}
                 </p>
               </div>
             )}
@@ -732,7 +722,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? tr("connectionSettingsForm.actions.saving") : tr("connectionSettingsForm.actions.saveChanges")}
             </Button>
           )}
         </form.Subscribe>

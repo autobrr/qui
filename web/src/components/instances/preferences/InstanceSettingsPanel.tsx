@@ -14,6 +14,7 @@ import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface InstanceSettingsPanelProps {
@@ -22,6 +23,8 @@ interface InstanceSettingsPanelProps {
 }
 
 export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsPanelProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { updateInstance, isUpdating } = useInstances()
   const [incognitoMode] = useIncognitoMode()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
@@ -69,14 +72,16 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
 
     updateInstance({ id: instance.id, data: submitData }, {
       onSuccess: () => {
-        toast.success("Instance Updated", {
-          description: "Instance settings updated successfully.",
+        toast.success(tr("instanceSettingsPanel.toasts.instanceUpdated"), {
+          description: tr("instanceSettingsPanel.toasts.instanceUpdatedDescription"),
         })
         onSuccess?.()
       },
       onError: (error) => {
-        toast.error("Update Failed", {
-          description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to update instance",
+        toast.error(tr("instanceSettingsPanel.toasts.updateFailed"), {
+          description: error instanceof Error
+            ? formatErrorMessage(error.message)
+            : tr("instanceSettingsPanel.toasts.failedUpdateInstance"),
         })
       },
     })
@@ -135,20 +140,20 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
             name="name"
             validators={{
               onChange: ({ value }) =>
-                !value ? "Instance name is required" : undefined,
+                !value ? tr("instanceSettingsPanel.validation.instanceNameRequired") : undefined,
             }}
           >
             {(field) => (
               <div className="space-y-2">
                 <Label htmlFor={field.name}>
-                  Instance Name <span className="text-destructive" aria-hidden="true">*</span>
+                  {tr("instanceSettingsPanel.fields.instanceName")} <span className="text-destructive" aria-hidden="true">*</span>
                 </Label>
                 <Input
                   id={field.name}
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="e.g., Main Server"
+                  placeholder={tr("instanceSettingsPanel.placeholders.instanceName")}
                   data-1p-ignore
                   autoComplete="off"
                   aria-required="true"
@@ -173,7 +178,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
             {(field) => (
               <div className="space-y-2">
                 <Label htmlFor={field.name}>
-                  URL <span className="text-destructive" aria-hidden="true">*</span>
+                  {tr("instanceSettingsPanel.fields.url")} <span className="text-destructive" aria-hidden="true">*</span>
                 </Label>
                 <Input
                   id={field.name}
@@ -186,7 +191,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                     }
                   }}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="http://localhost:8080"
+                  placeholder={tr("instanceSettingsPanel.placeholders.url")}
                   className={incognitoMode ? "blur-sm select-none" : ""}
                   aria-required="true"
                   aria-invalid={field.state.meta.isTouched && !!field.state.meta.errors[0]}
@@ -208,9 +213,9 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4 cursor-pointer"
               >
                 <div className="space-y-0.5">
-                  <span className="text-sm font-medium">Skip TLS Verification</span>
+                  <span className="text-sm font-medium">{tr("instanceSettingsPanel.fields.skipTlsVerification")}</span>
                   <p id="tls-skip-verify-desc" className="text-xs text-muted-foreground">
-                    Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.
+                    {tr("instanceSettingsPanel.descriptions.skipTlsVerification")}
                   </p>
                 </div>
                 <Switch
@@ -230,9 +235,9 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4 cursor-pointer"
               >
                 <div className="space-y-0.5">
-                  <span className="text-sm font-medium">Local Filesystem Access</span>
+                  <span className="text-sm font-medium">{tr("instanceSettingsPanel.fields.localFilesystemAccess")}</span>
                   <p id="local-filesystem-access-desc" className="text-xs text-muted-foreground">
-                    Enable if qui can access this instance's download paths (required for hardlink detection in automations).
+                    {tr("instanceSettingsPanel.descriptions.localFilesystemAccess")}
                   </p>
                 </div>
                 <Switch
@@ -251,9 +256,9 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <label htmlFor="credentials-toggle" className="flex items-center justify-between cursor-pointer">
               <div className="space-y-0.5">
-                <span className="text-sm font-medium">qBittorrent Login</span>
+                <span className="text-sm font-medium">{tr("instanceSettingsPanel.fields.qbittorrentLogin")}</span>
                 <p id="credentials-toggle-desc" className="text-xs text-muted-foreground">
-                  Disable if qBittorrent bypasses authentication for localhost or whitelisted IPs.
+                  {tr("instanceSettingsPanel.descriptions.qbittorrentLogin")}
                 </p>
               </div>
               <Switch
@@ -269,13 +274,13 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 <form.Field name="username">
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor={field.name} className="text-sm">Username</Label>
+                      <Label htmlFor={field.name} className="text-sm">{tr("instanceSettingsPanel.fields.username")}</Label>
                       <Input
                         id={field.name}
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
-                        placeholder="admin"
+                        placeholder={tr("instanceSettingsPanel.placeholders.username")}
                         data-1p-ignore
                         autoComplete="off"
                         className={incognitoMode ? "blur-sm select-none" : ""}
@@ -287,14 +292,14 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 <form.Field name="password">
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor={field.name} className="text-sm">Password</Label>
+                      <Label htmlFor={field.name} className="text-sm">{tr("instanceSettingsPanel.fields.password")}</Label>
                       <Input
                         id={field.name}
                         type="password"
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
-                        placeholder="Leave empty to keep current"
+                        placeholder={tr("instanceSettingsPanel.placeholders.passwordKeepCurrent")}
                         data-1p-ignore
                         autoComplete="off"
                       />
@@ -312,9 +317,9 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <label htmlFor="basic-auth-toggle" className="flex items-center justify-between cursor-pointer">
               <div className="space-y-0.5">
-                <span className="text-sm font-medium">HTTP Basic Authentication</span>
+                <span className="text-sm font-medium">{tr("instanceSettingsPanel.fields.httpBasicAuthentication")}</span>
                 <p id="basic-auth-toggle-desc" className="text-xs text-muted-foreground">
-                  Enable if your qBittorrent is behind a reverse proxy with Basic Auth
+                  {tr("instanceSettingsPanel.descriptions.httpBasicAuthentication")}
                 </p>
               </div>
               <Switch
@@ -330,13 +335,13 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 <form.Field name="basicUsername">
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor={field.name} className="text-sm">Username</Label>
+                      <Label htmlFor={field.name} className="text-sm">{tr("instanceSettingsPanel.fields.username")}</Label>
                       <Input
                         id={field.name}
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
-                        placeholder="Username"
+                        placeholder={tr("instanceSettingsPanel.placeholders.usernameField")}
                         data-1p-ignore
                         autoComplete="off"
                         className={incognitoMode ? "blur-sm select-none" : ""}
@@ -349,12 +354,12 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                   name="basicPassword"
                   validators={{
                     onChange: ({ value }) =>
-                      showBasicAuth && value === "" ? "Password required" : undefined,
+                      showBasicAuth && value === "" ? tr("instanceSettingsPanel.validation.passwordRequired") : undefined,
                   }}
                 >
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor={field.name} className="text-sm">Password</Label>
+                      <Label htmlFor={field.name} className="text-sm">{tr("instanceSettingsPanel.fields.password")}</Label>
                       <Input
                         id={field.name}
                         type="password"
@@ -366,7 +371,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                           }
                         }}
                         onChange={(e) => field.handleChange(e.target.value)}
-                        placeholder="Password"
+                        placeholder={tr("instanceSettingsPanel.placeholders.passwordField")}
                         data-1p-ignore
                         autoComplete="off"
                       />
@@ -392,7 +397,9 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 disabled={!canSubmit || isSubmitting || isUpdating}
                 className="min-w-32"
               >
-                {(isSubmitting || isUpdating) ? "Saving..." : "Save Changes"}
+                {(isSubmitting || isUpdating)
+                  ? tr("instanceSettingsPanel.actions.saving")
+                  : tr("instanceSettingsPanel.actions.saveChanges")}
               </Button>
             )}
           </form.Subscribe>

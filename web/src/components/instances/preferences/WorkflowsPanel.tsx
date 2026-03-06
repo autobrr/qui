@@ -24,6 +24,7 @@ import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Terminal, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 
@@ -33,20 +34,34 @@ interface WorkflowsPanelProps {
   variant?: "card" | "embedded"
 }
 
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string
+
 /** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
-function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
+function formatShareLimit(value: number | undefined, isRatio: boolean, tr: TranslateFn): string | null {
   if (value === undefined) return null
-  if (value === -2) return "Global"
-  if (value === -1) return "Unlimited"
-  // For ratio, show 2 decimal places; for time, show whole number
+  if (value === -2) return tr("workflowDialog.panel.values.global")
+  if (value === -1) return tr("workflowDialog.panel.values.unlimited")
   return isRatio ? value.toFixed(2) : String(value)
 }
 
 /** Format speed limit value for display: 0 = "Unlimited", > 0 = KiB/s value */
-function formatSpeedLimit(kiB: number | undefined): string | null {
+function formatSpeedLimit(kiB: number | undefined, tr: TranslateFn): string | null {
   if (kiB === undefined) return null
-  if (kiB === 0) return "Unlimited"
-  return `${kiB} KiB/s`
+  if (kiB === 0) return tr("workflowDialog.panel.values.unlimited")
+  return tr("workflowDialog.panel.values.kibPerSecond", { value: kiB })
+}
+
+function getDeleteModeLabel(mode: string | undefined, tr: TranslateFn): string {
+  switch (mode) {
+    case "deleteWithFilesPreserveCrossSeeds":
+      return tr("workflowDialog.panel.summary.deleteModes.withFilesPreserveCrossSeeds")
+    case "deleteWithFilesIncludeCrossSeeds":
+      return tr("workflowDialog.panel.summary.deleteModes.withFilesIncludeCrossSeeds")
+    case "deleteWithFiles":
+      return tr("workflowDialog.panel.summary.deleteModes.withFiles")
+    default:
+      return tr("workflowDialog.panel.summary.deleteModes.keepFiles")
+  }
 }
 
 function getTagActions(rule: Automation) {
@@ -61,6 +76,8 @@ function getTagActions(rule: Automation) {
 }
 
 export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
@@ -74,11 +91,11 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
   const deleteRule = useMutation({
     mutationFn: (ruleId: number) => api.deleteAutomation(instanceId, ruleId),
     onSuccess: () => {
-      toast.success("Workflow deleted")
+      toast.success(tr("workflowDialog.panel.toasts.workflowDeleted"))
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to delete automation")
+      toast.error(error instanceof Error ? error.message : tr("workflowDialog.panel.toasts.failedDeleteAutomation"))
     },
   })
 
@@ -95,17 +112,17 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
+      toast.error(error instanceof Error ? error.message : tr("workflowDialog.panel.toasts.failedToggleRule"))
     },
   })
 
   const applyRules = useMutation({
     mutationFn: () => api.applyAutomations(instanceId),
     onSuccess: () => {
-      toast.success("Workflows applied")
+      toast.success(tr("workflowDialog.panel.toasts.workflowsApplied"))
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to apply automations")
+      toast.error(error instanceof Error ? error.message : tr("workflowDialog.panel.toasts.failedApplyAutomations"))
     },
   })
 
@@ -141,18 +158,18 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       {variant === "card" && (
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold">Workflows</h3>
-          <p className="text-sm text-muted-foreground">Automatic limits and deletion.</p>
+          <h3 className="text-lg font-semibold">{tr("workflowDialog.panel.header.title")}</h3>
+          <p className="text-sm text-muted-foreground">{tr("workflowDialog.panel.header.description")}</p>
         </div>
       )}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => applyRules.mutate()} disabled={applyRules.isPending}>
           {applyRules.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Apply now
+          {tr("workflowDialog.panel.actions.applyNow")}
         </Button>
         <Button size="sm" onClick={openForCreate}>
           <Plus className="h-4 w-4 mr-2" />
-          Add rule
+          {tr("workflowDialog.panel.actions.addRule")}
         </Button>
       </div>
     </div>
@@ -163,10 +180,10 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
       {rulesQuery.isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading rules...
+          {tr("workflowDialog.panel.states.loadingRules")}
         </div>
       ) : (sortedRules?.length ?? 0) === 0 ? (
-        <p className="text-muted-foreground text-sm">No automations yet. Add one to start enforcing per-tracker limits.</p>
+        <p className="text-muted-foreground text-sm">{tr("workflowDialog.panel.states.empty")}</p>
       ) : (
         <div className="space-y-2">
           {sortedRules.map((rule) => {
@@ -194,7 +211,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
                   variant="ghost"
                   size="icon"
                   onClick={() => openForEdit(rule)}
-                  aria-label="Edit"
+                  aria-label={tr("workflowDialog.panel.actions.edit")}
                   className="h-8 w-8 sm:h-9 sm:w-9"
                 >
                   <Pencil className="h-4 w-4" />
@@ -231,7 +248,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
                       <span className={cn("font-medium truncate", !rule.enabled && "text-muted-foreground")}>{rule.name}</span>
                       {!rule.enabled && (
                         <Badge variant="outline" className="shrink-0 text-muted-foreground">
-                          Disabled
+                          {tr("workflowDialog.panel.badges.disabled")}
                         </Badge>
                       )}
                     </div>
@@ -239,7 +256,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
                       {actions}
                     </div>
                   </div>
-                  <RuleSummary rule={rule} />
+                  <RuleSummary rule={rule} tr={tr} />
                 </div>
 
                 <div className="hidden sm:flex items-center gap-1 shrink-0">
@@ -257,13 +274,13 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
     <AlertDialog open={!!deleteConfirmRule} onOpenChange={(open) => !open && setDeleteConfirmRule(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+          <AlertDialogTitle>{tr("workflowDialog.panel.deleteDialog.title")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{deleteConfirmRule?.name}"? This action cannot be undone.
+            {tr("workflowDialog.panel.deleteDialog.description", { name: deleteConfirmRule?.name ?? "" })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{tr("workflowDialog.actions.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               if (deleteConfirmRule) {
@@ -273,7 +290,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
             }}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Delete
+            {tr("workflowDialog.panel.actions.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -317,7 +334,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
   )
 }
 
-function RuleSummary({ rule }: { rule: Automation }) {
+function RuleSummary({ rule, tr }: { rule: Automation; tr: TranslateFn }) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
   const conditions = rule.conditions
@@ -332,13 +349,13 @@ function RuleSummary({ rule }: { rule: Automation }) {
     conditions?.externalProgram?.enabled
 
   if (!hasActions && !isAllTrackers && trackers.length === 0) {
-    return <span className="text-xs text-muted-foreground">No actions set</span>
+    return <span className="text-xs text-muted-foreground">{tr("workflowDialog.panel.summary.noActionsSet")}</span>
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {isAllTrackers ? (
-        <Badge variant="outline" className="text-[11px] cursor-default">All trackers</Badge>
+        <Badge variant="outline" className="text-[11px] cursor-default">{tr("workflowDialog.panel.summary.allTrackers")}</Badge>
       ) : trackers.length > 0 && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -361,21 +378,21 @@ function RuleSummary({ rule }: { rule: Automation }) {
       )}
 
       {/* Speed Limits */}
-      {conditions?.speedLimits?.enabled && (
+              {conditions?.speedLimits?.enabled && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
               <ArrowUp className="h-3 w-3 text-muted-foreground/70" />
-              Speed limits
+              {tr("workflowDialog.panel.summary.badges.speedLimits")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
             <div className="space-y-1">
               {conditions.speedLimits.uploadKiB !== undefined && (
-                <p>Upload: {formatSpeedLimit(conditions.speedLimits.uploadKiB)}</p>
+                <p>{tr("workflowDialog.panel.summary.tooltips.upload", { value: formatSpeedLimit(conditions.speedLimits.uploadKiB, tr) })}</p>
               )}
               {conditions.speedLimits.downloadKiB !== undefined && (
-                <p>Download: {formatSpeedLimit(conditions.speedLimits.downloadKiB)}</p>
+                <p>{tr("workflowDialog.panel.summary.tooltips.download", { value: formatSpeedLimit(conditions.speedLimits.downloadKiB, tr) })}</p>
               )}
             </div>
           </TooltipContent>
@@ -388,16 +405,19 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
               <Scale className="h-3 w-3 text-muted-foreground/70" />
-              Share limits
+              {tr("workflowDialog.panel.summary.badges.shareLimits")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
             <div className="space-y-1">
               {conditions.shareLimits.ratioLimit !== undefined && (
-                <p>Ratio: {formatShareLimit(conditions.shareLimits.ratioLimit, true)}</p>
+                <p>{tr("workflowDialog.panel.summary.tooltips.ratio", { value: formatShareLimit(conditions.shareLimits.ratioLimit, true, tr) })}</p>
               )}
               {conditions.shareLimits.seedingTimeMinutes !== undefined && (
-                <p>Seed time: {formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false)}{conditions.shareLimits.seedingTimeMinutes >= 0 ? "m" : ""}</p>
+                <p>{tr("workflowDialog.panel.summary.tooltips.seedTime", {
+                  value: formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false, tr),
+                  unit: conditions.shareLimits.seedingTimeMinutes >= 0 ? tr("workflowDialog.panel.values.minuteSuffix") : "",
+                })}</p>
               )}
             </div>
           </TooltipContent>
@@ -408,7 +428,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.pause?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-yellow-600 border-yellow-600/50 cursor-default">
           <Pause className="h-3 w-3" />
-          Pause
+          {tr("workflowDialog.panel.summary.badges.pause")}
         </Badge>
       )}
 
@@ -416,7 +436,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.recheck?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-orange-600 border-orange-600/50 cursor-default">
           <RefreshCw className="h-3 w-3" />
-          Recheck
+          {tr("workflowDialog.panel.summary.badges.recheck")}
         </Badge>
       )}
 
@@ -424,7 +444,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.reannounce?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-fuchsia-600 border-fuchsia-600/50 cursor-default">
           <RefreshCw className="h-3 w-3" />
-          Reannounce
+          {tr("workflowDialog.panel.summary.badges.reannounce")}
         </Badge>
       )}
 
@@ -434,17 +454,11 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-destructive border-destructive/50 cursor-help">
               <Trash2 className="h-3 w-3" />
-              Delete
+              {tr("workflowDialog.panel.summary.badges.delete")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{
-              {
-                deleteWithFilesPreserveCrossSeeds: "Delete with files (preserve cross-seeds)",
-                deleteWithFilesIncludeCrossSeeds: "Delete with files (include cross-seeds)",
-                deleteWithFiles: "Delete with files",
-              }[conditions.delete.mode as string] ?? "Delete (keep files)"
-            }</p>
+            <p>{getDeleteModeLabel(conditions.delete.mode as string | undefined, tr)}</p>
           </TooltipContent>
         </Tooltip>
       )}
@@ -455,15 +469,23 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-blue-600 border-blue-600/50 cursor-help">
               <Tag className="h-3 w-3" />
-              {getTagActions(rule).length} action{getTagActions(rule).length !== 1 ? "s" : ""}
+              {tr("workflowDialog.panel.summary.badges.tagActions", { count: getTagActions(rule).length })}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
             {getTagActions(rule).map((action, index) => (
               <p key={index}>
-                #{index + 1}: {action.useTrackerAsTag ? "Tracker-derived tag" : (action.tags?.join(", ") || "No tags")}
-                {" "}
-                ({action.mode === "full" ? "Full sync" : action.mode === "add" ? "Add only" : "Remove only"})
+                {tr("workflowDialog.panel.summary.tooltips.tagActionLine", {
+                  index: index + 1,
+                  tagLabel: action.useTrackerAsTag
+                    ? tr("workflowDialog.panel.summary.tooltips.trackerDerivedTag")
+                    : (action.tags?.join(", ") || tr("workflowDialog.panel.summary.tooltips.noTags")),
+                  mode: action.mode === "full"
+                    ? tr("workflowDialog.panel.summary.tagModes.full")
+                    : action.mode === "add"
+                      ? tr("workflowDialog.panel.summary.tagModes.addOnly")
+                      : tr("workflowDialog.panel.summary.tagModes.removeOnly"),
+                })}
               </p>
             ))}
           </TooltipContent>
@@ -480,7 +502,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Move to category: {conditions.category.category}</p>
+            <p>{tr("workflowDialog.panel.summary.tooltips.moveToCategory", { category: conditions.category.category })}</p>
           </TooltipContent>
         </Tooltip>
       )}
@@ -491,11 +513,13 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-teal-600 border-teal-600/50 cursor-help">
               <Terminal className="h-3 w-3" />
-              External program
+              {tr("workflowDialog.panel.summary.badges.externalProgram")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Program ID: {conditions.externalProgram.programId ?? "-"}</p>
+            <p>{tr("workflowDialog.panel.summary.tooltips.programId", {
+              id: conditions.externalProgram.programId ?? tr("workflowDialog.activityRun.values.none"),
+            })}</p>
           </TooltipContent>
         </Tooltip>
       )}

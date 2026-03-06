@@ -5,8 +5,11 @@
 
 import { Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 export const Footer = () => {
+  const { t } = useTranslation("footer")
+
   return (
     <div className="flex items-center justify-between mt-6 px-1">
       <p className="text-[10px] text-muted-foreground/60">
@@ -22,7 +25,7 @@ export const Footer = () => {
           href="https://github.com/autobrr/qui"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="View on GitHub"
+          aria-label={t("githubAriaLabel")}
         >
           <Github className="h-3 w-3" />
         </a>

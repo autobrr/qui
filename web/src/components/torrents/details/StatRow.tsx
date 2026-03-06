@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import { Copy } from "lucide-react"
 import { memo } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface StatRowProps {
@@ -35,11 +36,14 @@ export const StatRow = memo(function StatRow({
   tooltip,
   highlight,
 }: StatRowProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+
   const handleCopy = () => {
     const textToCopy = copyValue || (typeof value === "string" ? value : "")
     if (textToCopy) {
       copyTextToClipboard(textToCopy)
-      toast.success(`${label} copied to clipboard`)
+      toast.success(tr("torrentGeneral.toasts.copied", { label }))
     }
   }
 
@@ -71,7 +75,7 @@ export const StatRow = memo(function StatRow({
           size="icon"
           className="h-5 w-5 shrink-0 opacity-50 hover:opacity-100"
           onClick={handleCopy}
-          aria-label={`Copy ${label}`}
+          aria-label={tr("statRow.copyAria", { label })}
         >
           <Copy className="h-3 w-3" />
         </Button>

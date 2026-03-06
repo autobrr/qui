@@ -22,7 +22,7 @@ import {
   RefreshCcw,
   Rows3,
   Table as TableIcon,
-  Turtle,
+  Turtle
 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 
@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { api } from "@/lib/api"
@@ -40,8 +40,14 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Instance, ServerState } from "@/types"
+import { useTranslation } from "react-i18next"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
+
+function useCommonTr() {
+  const { t } = useTranslation("common")
+  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+}
 
 export interface SelectionInfo {
   effectiveSelectionCount: number
@@ -70,6 +76,7 @@ interface ExternalIPAddressProps {
 
 const ExternalIPAddress = memo(
   ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
+    const tr = useCommonTr()
     if (!address) return null
 
     return (
@@ -78,7 +85,7 @@ const ExternalIPAddress = memo(
           <Badge
             variant="outline"
             className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
-            aria-label={`External ${label}`}
+            aria-label={tr("globalStatusBar.externalAddress.ariaLabel", { label })}
           >
             <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
             <span>{label}</span>
@@ -113,6 +120,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   listenPort,
   selectionInfo,
 }: GlobalStatusBarProps) {
+  const tr = useCommonTr()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -137,10 +145,6 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
   const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
   const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
-
-  useEffect(() => {
-    setAltSpeedOverride(null)
-  }, [instanceId])
 
   const { mutateAsync: toggleAltSpeedLimits, isPending: isTogglingAltSpeed } = useMutation({
     mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
@@ -177,8 +181,8 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
     }
   }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
 
-  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? "Alternative speed limits: On" : "Alternative speed limits: Off" : "Alternative speed limits status unknown"
-  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? "Disable alternative speed limits" : "Enable alternative speed limits" : "Alternative speed limits status unknown"
+  const altSpeedTooltip = isAltSpeedKnown? altSpeedEnabled? tr("globalStatusBar.altSpeed.tooltipOn"): tr("globalStatusBar.altSpeed.tooltipOff"): tr("globalStatusBar.altSpeed.tooltipUnknown")
+  const altSpeedAriaLabel = isAltSpeedKnown? altSpeedEnabled? tr("globalStatusBar.altSpeed.disableAria"): tr("globalStatusBar.altSpeed.enableAria"): tr("globalStatusBar.altSpeed.unknownAria")
 
   // Connection status
   const rawConnectionStatus = serverState?.connection_status ?? ""
@@ -189,11 +193,10 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
-  const connectionStatusTooltip = hasConnectionStatus
-    ? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`
-    : "Connection status unknown"
+  const connectionStatusTitle = isConnectable? tr("globalStatusBar.connection.connectable"): connectionStatusDisplay
+  const connectionStatusTooltip = hasConnectionStatus? `${connectionStatusTitle}${listenPort ? tr("globalStatusBar.connection.portSuffix", { port: listenPort }) : ""}`: tr("globalStatusBar.connection.unknown")
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
-  const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
+  const connectionStatusAriaLabel = hasConnectionStatus? tr("globalStatusBar.connection.ariaKnown", { status: connectionStatusDisplay || formattedConnectionStatus }): tr("globalStatusBar.connection.ariaUnknown")
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none text-xs">
@@ -203,20 +206,28 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
           selectionInfo.effectiveSelectionCount > 0 ? (
             <>
               <span>
-                {selectionInfo.isAllSelected && selectionInfo.excludedFromSelectAllSize === 0 ? "All" : selectionInfo.effectiveSelectionCount} selected
-                {selectionInfo.selectedFormattedSize && <> • {selectionInfo.selectedFormattedSize}</>}
+                {tr("globalStatusBar.selection.summary", {
+                  selection: selectionInfo.isAllSelected && selectionInfo.excludedFromSelectAllSize === 0
+                    ? tr("globalStatusBar.selection.allSelected")
+                    : String(selectionInfo.effectiveSelectionCount),
+                  size: selectionInfo.selectedFormattedSize ? ` • ${selectionInfo.selectedFormattedSize}` : "",
+                })}
               </span>
               {/* Keyboard shortcuts helper - only show on desktop */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                    Selection shortcuts
+                    {tr("globalStatusBar.selection.shortcutsLabel")}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <div className="text-xs">
-                    <div>Shift+click for range</div>
-                    <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                    <div>{tr("globalStatusBar.selection.shiftRange")}</div>
+                    <div>
+                      {tr("globalStatusBar.selection.multiSelect", {
+                        key: isMac ? tr("globalStatusBar.selection.cmdKey") : tr("globalStatusBar.selection.ctrlKey"),
+                      })}
+                    </div>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -227,26 +238,32 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               {selectionInfo.isLoading && !selectionInfo.isCachedData && !selectionInfo.isStaleData && selectionInfo.torrentsLength === 0 ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                  Loading torrents...
+                  {tr("globalStatusBar.selection.loadingTorrents")}
                 </>
               ) : selectionInfo.totalCount === 0 ? (
                 selectionInfo.emptyStateMessage
               ) : (
                 <>
                   {selectionInfo.hasLoadedAll ? (
-                    `${selectionInfo.torrentsLength} torrent${selectionInfo.torrentsLength !== 1 ? "s" : ""}`
+                    tr("globalStatusBar.selection.loadedCount", {
+                      count: selectionInfo.torrentsLength,
+                      plural: selectionInfo.torrentsLength !== 1 ? "s" : "",
+                    })
                   ) : selectionInfo.isLoadingMore ? (
-                    "Loading more torrents..."
+                    tr("globalStatusBar.selection.loadingMore")
                   ) : (
-                    `${selectionInfo.torrentsLength} of ${selectionInfo.totalCount} torrents loaded`
+                    tr("globalStatusBar.selection.loadedOfTotal", {
+                      loaded: selectionInfo.torrentsLength,
+                      total: selectionInfo.totalCount,
+                    })
                   )}
-                  {selectionInfo.hasLoadedAll && selectionInfo.safeLoadedRows < selectionInfo.rowsLength && " (scroll for more)"}
+                  {selectionInfo.hasLoadedAll && selectionInfo.safeLoadedRows < selectionInfo.rowsLength && tr("globalStatusBar.selection.scrollForMore")}
                 </>
               )}
             </>
           )
         ) : (
-          <span className="opacity-50">Loading...</span>
+          <span className="opacity-50">{tr("globalStatusBar.selection.loading")}</span>
         )}
       </div>
 
@@ -267,11 +284,11 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                 className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
               >
                 <ArrowUpDown className="h-3 w-3" />
-                <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                <span>{speedUnit === "bytes" ? tr("globalStatusBar.speed.mibPerSecond") : tr("globalStatusBar.speed.mbps")}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
+              {speedUnit === "bytes"? tr("globalStatusBar.speed.switchToBits"): tr("globalStatusBar.speed.switchToBytes")}
             </TooltipContent>
           </Tooltip>
           {!isUnifiedScope && (
@@ -318,7 +335,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                   <RefreshCcw className="h-4 w-4 text-green-500" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Automatic tracker reannounce enabled - Click to configure</TooltipContent>
+              <TooltipContent>{tr("globalStatusBar.reannounce.tooltip")}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -342,7 +359,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               <LayoutGrid className="h-3 w-3" />
             )}
             <span className="hidden sm:inline">
-              {desktopViewMode === "normal" ? "Table" : desktopViewMode === "dense" ? "Dense" : "Stacked"}
+              {desktopViewMode === "normal"? tr("globalStatusBar.view.table"): desktopViewMode === "dense"? tr("globalStatusBar.view.dense"): tr("globalStatusBar.view.stacked")}
             </span>
           </Button>
           <Button
@@ -360,7 +377,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               <Eye className="h-3 w-3" />
             )}
             <span className="hidden sm:inline">
-              {incognitoMode ? "Incognito on" : "Incognito off"}
+              {incognitoMode ? tr("globalStatusBar.incognito.on") : tr("globalStatusBar.incognito.off")}
             </span>
           </Button>
         </div>
@@ -375,7 +392,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                   <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
                 </span>
               </TooltipTrigger>
-              <TooltipContent>Free Space</TooltipContent>
+              <TooltipContent>{tr("globalStatusBar.storage.freeSpace")}</TooltipContent>
             </Tooltip>
           </div>
         )}
@@ -386,12 +403,12 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
             <ExternalIPAddress
               address={serverState?.last_external_address_v4}
               incognitoMode={incognitoMode}
-              label="IPv4"
+              label={tr("globalStatusBar.externalAddress.ipv4")}
             />
             <ExternalIPAddress
               address={serverState?.last_external_address_v6}
               incognitoMode={incognitoMode}
-              label="IPv6"
+              label={tr("globalStatusBar.externalAddress.ipv6")}
             />
             <Tooltip>
               <TooltipTrigger asChild>

@@ -10,6 +10,7 @@ import { Torrents } from "@/pages/Torrents"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { Power } from "lucide-react"
 import { useLayoutEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { z } from "zod"
 
 const instanceSearchSchema = z.object({
@@ -23,11 +24,12 @@ export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
   staticData: {
-    title: "Torrents",
+    titleKey: "nav.torrents",
   },
 })
 
 function InstanceTorrents() {
+  const { t } = useTranslation()
   const { instanceId } = Route.useParams()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
@@ -66,15 +68,15 @@ function InstanceTorrents() {
   }
 
   if (isLoading) {
-    return <div className="p-6">Loading instances...</div>
+    return <div className="p-6">{t("instanceRoute.loadingInstances")}</div>
   }
 
   if (!instance) {
     return (
       <div className="p-6">
-        <h1>Instance not found</h1>
-        <p>Instance ID: {instanceId}</p>
-        <p>Available instances: {instances?.map(i => i.id).join(", ")}</p>
+        <h1>{t("instanceRoute.instanceNotFound")}</h1>
+        <p>{t("instanceRoute.instanceId", { instanceId })}</p>
+        <p>{t("instanceRoute.availableInstances", { instanceList: instances?.map(i => i.id).join(", ") })}</p>
         <Navigate to="/settings" search={{ tab: "instances" }} />
       </div>
     )
@@ -111,6 +113,7 @@ interface InstanceDisabledNoticeProps {
 }
 
 function InstanceDisabledNotice({ instanceName, onManageInstances }: InstanceDisabledNoticeProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex h-full items-center justify-center px-4 py-12">
       <div className="max-w-xl text-center space-y-4">
@@ -118,13 +121,13 @@ function InstanceDisabledNotice({ instanceName, onManageInstances }: InstanceDis
           <Power className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold">Instance disabled</h1>
+          <h1 className="text-2xl font-semibold">{t("instanceRoute.instanceDisabled")}</h1>
           <p className="text-muted-foreground">
-            {instanceName} is currently disabled. Enable it from Settings &gt; Instances to resume torrent management.
+            {t("instanceRoute.instanceDisabledDescription", { instanceName })}
           </p>
         </div>
         <Button onClick={onManageInstances} size="sm">
-          Manage Instances
+          {t("instanceRoute.manageInstances")}
         </Button>
       </div>
     </div>

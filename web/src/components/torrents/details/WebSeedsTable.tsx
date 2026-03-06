@@ -13,10 +13,11 @@ import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
-  useReactTable,
+  useReactTable
 } from "@tanstack/react-table"
 import { Copy, Loader2, Search, X } from "lucide-react"
-import { memo, useMemo, useState } from "react"
+import { memo, useCallback, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface WebSeedsTableProps {
@@ -32,11 +33,16 @@ export const WebSeedsTable = memo(function WebSeedsTable({
   loading,
   incognitoMode,
 }: WebSeedsTableProps) {
+  const { t } = useTranslation()
+  const tr = useCallback(
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
+    [t]
+  )
   const [searchQuery, setSearchQuery] = useState("")
 
   const columns = useMemo(() => [
     columnHelper.accessor("url", {
-      header: "URL",
+      header: tr("webSeedsTable.columns.url"),
       cell: (info) => {
         const url = info.getValue()
         if (incognitoMode) {
@@ -58,7 +64,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
         )
       },
     }),
-  ], [incognitoMode])
+  ], [incognitoMode, tr])
 
   const filteredData = useMemo(() => {
     const data = webseeds || []
@@ -76,7 +82,19 @@ export const WebSeedsTable = memo(function WebSeedsTable({
   const handleCopyUrl = (webseed: WebSeed) => {
     if (incognitoMode) return
     copyTextToClipboard(webseed.url)
-    toast.success("URL copied to clipboard")
+    toast.success(tr("webSeedsTable.toasts.urlCopied"))
+  }
+
+  const totalCount = webseeds?.length ?? 0
+  let countLabel = tr("webSeedsTable.toolbar.totalCount", {
+    count: totalCount,
+    plural: totalCount === 1 ? "" : "s",
+  })
+  if (searchQuery) {
+    countLabel = tr("webSeedsTable.toolbar.filteredCount", {
+      filtered: filteredData.length,
+      total: totalCount,
+    })
   }
 
   if (loading && !webseeds) {
@@ -90,7 +108,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
   if (!webseeds || webseeds.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No HTTP sources
+        {tr("webSeedsTable.empty.noHttpSources")}
       </div>
     )
   }
@@ -103,7 +121,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Search URLs..."
+            placeholder={tr("webSeedsTable.search.placeholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-6 w-40 pl-7 pr-7 text-xs"
@@ -118,9 +136,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
           )}
         </div>
         <span className="ml-auto text-muted-foreground">
-          {searchQuery
-            ? `${filteredData.length} of ${webseeds.length}`
-            : `${webseeds.length} HTTP source${webseeds.length !== 1 ? "s" : ""}`}
+          {countLabel}
         </span>
       </div>
 
@@ -159,7 +175,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
                       disabled={incognitoMode}
                     >
                       <Copy className="h-3.5 w-3.5 mr-2" />
-                      Copy URL
+                      {tr("webSeedsTable.actions.copyUrl")}
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
