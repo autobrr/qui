@@ -234,10 +234,24 @@ const (
 	minSearchIntervalSecondsTorznab     = 60
 	minSearchIntervalSecondsGazelleOnly = 5
 	minSearchCooldownMinutes            = 720
+	maxCompletionSearchAttempts         = 3
+	defaultCompletionRetryDelay         = 30 * time.Second
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
+
+var completionRateLimitTokens = []string{
+	"429",
+	"rate limit",
+	"rate-limited",
+	"too many requests",
+	"cooldown",
+	"request limit reached",
+	"query limit",
+	"grab limit",
+	"disabled till",
+}
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(indexerCount)
@@ -321,9 +335,15 @@ type Service struct {
 	// Metrics for monitoring service health and performance
 	metrics *ServiceMetrics
 
+	// Per-instance completion coordination.
+	// Ensures completion-triggered searches run serially per instance.
+	completionLaneMu sync.Mutex
+	completionLanes  map[int]*completionLane
+
 	// test hooks
-	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
@@ -337,6 +357,10 @@ type pendingResume struct {
 	hash       string
 	threshold  float64
 	addedAt    time.Time
+}
+
+type completionLane struct {
+	mu sync.Mutex
 }
 
 // NewService creates a new cross-seed service
@@ -393,6 +417,7 @@ func NewService(
 		torrentFilesCache:             contentFilesCache,
 		dedupCache:                    dedupCache,
 		metrics:                       NewServiceMetrics(),
+		completionLanes:               make(map[int]*completionLane),
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
@@ -1430,8 +1455,11 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	// Execute cross-seed search immediately
-	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings, completionSettings)
+	lane := s.getCompletionLane(instanceID)
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	err = s.executeCompletionSearchWithRetry(ctx, instanceID, &torrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -1440,6 +1468,100 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
 	}
+}
+
+func (s *Service) getCompletionLane(instanceID int) *completionLane {
+	s.completionLaneMu.Lock()
+	defer s.completionLaneMu.Unlock()
+
+	if s.completionLanes == nil {
+		s.completionLanes = make(map[int]*completionLane)
+	}
+
+	lane, ok := s.completionLanes[instanceID]
+	if !ok {
+		lane = &completionLane{}
+		s.completionLanes[instanceID] = lane
+	}
+	return lane
+}
+
+func (s *Service) executeCompletionSearchWithRetry(
+	ctx context.Context,
+	instanceID int,
+	torrent *qbt.Torrent,
+	settings *models.CrossSeedAutomationSettings,
+	completionSettings *models.InstanceCrossSeedCompletionSettings,
+) error {
+	var lastErr error
+	for attempt := 1; attempt <= maxCompletionSearchAttempts; attempt++ {
+		err := s.invokeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		retryAfter, retry := completionRetryDelay(err)
+		if !retry || attempt == maxCompletionSearchAttempts {
+			break
+		}
+		if retryAfter <= 0 {
+			retryAfter = defaultCompletionRetryDelay
+		}
+
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Int("attempt", attempt).
+			Dur("retryAfter", retryAfter).
+			Msg("[CROSSSEED-COMPLETION] Rate-limited completion search, retrying")
+
+		timer := time.NewTimer(retryAfter)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return lastErr
+}
+
+func (s *Service) invokeCompletionSearch(
+	ctx context.Context,
+	instanceID int,
+	torrent *qbt.Torrent,
+	settings *models.CrossSeedAutomationSettings,
+	completionSettings *models.InstanceCrossSeedCompletionSettings,
+) error {
+	if s.completionSearchInvoker != nil {
+		return s.completionSearchInvoker(ctx, instanceID, torrent, settings, completionSettings)
+	}
+	return s.executeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
+}
+
+func completionRetryDelay(err error) (time.Duration, bool) {
+	if err == nil {
+		return 0, false
+	}
+
+	var waitErr *jackett.RateLimitWaitError
+	if errors.As(err, &waitErr) {
+		if waitErr.Wait > 0 {
+			return waitErr.Wait, true
+		}
+		return defaultCompletionRetryDelay, true
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	for _, token := range completionRateLimitTokens {
+		if strings.Contains(msg, token) {
+			return defaultCompletionRetryDelay, true
+		}
+	}
+
+	return 0, false
 }
 
 // updateAutomationRunWithRetry attempts to update the automation run in the database with retries
