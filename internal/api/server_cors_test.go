@@ -12,8 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCORSPreflightBypassesAuth(t *testing.T) {
+func TestCORSDisabledByDefault(t *testing.T) {
 	deps := newTestDependencies(t)
+
+	server := NewServer(deps)
+	router, err := server.Handler()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"))
+}
+
+func TestCORSPreflightAllowsConfiguredOrigin(t *testing.T) {
+	deps := newTestDependencies(t)
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://example.com"}
 
 	server := NewServer(deps)
 	router, err := server.Handler()
@@ -32,15 +52,34 @@ func TestCORSPreflightBypassesAuth(t *testing.T) {
 	require.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
 }
 
-func TestCORSAllowsXRequestedWithHeader(t *testing.T) {
+func TestCORSPreflightDeniesUnconfiguredOrigin(t *testing.T) {
 	deps := newTestDependencies(t)
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://allowed.example"}
 
 	server := NewServer(deps)
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	// Preflight request asking if X-Requested-With is allowed
-	// (browsers send this header in lowercase)
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
+	req.Header.Set("Origin", "https://blocked.example")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"))
+}
+
+func TestCORSAllowsXRequestedWithHeaderForConfiguredOrigin(t *testing.T) {
+	deps := newTestDependencies(t)
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://example.com"}
+
+	server := NewServer(deps)
+	router, err := server.Handler()
+	require.NoError(t, err)
+
 	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
@@ -50,20 +89,40 @@ func TestCORSAllowsXRequestedWithHeader(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	// Basic CORS preflight should work
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	require.Equal(t, "https://example.com", rec.Header().Get("Access-Control-Allow-Origin"))
 	require.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
 
-	// rs/cors echoes back allowed headers (normalized to lowercase)
 	allowedHeaders := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers"))
 	require.Contains(t, allowedHeaders, "x-requested-with",
 		"CORS should allow X-Requested-With header for SSO proxy compatibility")
 }
 
-func TestCORSPreflightWithCustomBaseURL(t *testing.T) {
+func TestCORSPreflightDeniesUnconfiguredRequestHeader(t *testing.T) {
+	deps := newTestDependencies(t)
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://example.com"}
+
+	server := NewServer(deps)
+	router, err := server.Handler()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	req.Header.Set("Access-Control-Request-Headers", "x-not-allowed")
+
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"))
+}
+
+func TestCORSPreflightWithCustomBaseURLAndConfiguredOrigin(t *testing.T) {
 	deps := newTestDependencies(t)
 	deps.Config.Config.BaseURL = "/qui"
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://example.com"}
 
 	server := NewServer(deps)
 	router, err := server.Handler()
@@ -80,4 +139,42 @@ func TestCORSPreflightWithCustomBaseURL(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	require.Equal(t, "https://example.com", rec.Header().Get("Access-Control-Allow-Origin"))
 	require.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
+}
+
+func TestCORSGetIncludesHeadersForConfiguredOrigin(t *testing.T) {
+	deps := newTestDependencies(t)
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://example.com"}
+
+	server := NewServer(deps)
+	router, err := server.Handler()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req.Header.Set("Origin", "https://example.com")
+
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, "https://example.com", rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
+}
+
+func TestCORSGetOmitsHeadersForUnconfiguredOrigin(t *testing.T) {
+	deps := newTestDependencies(t)
+	deps.Config.Config.CORSAllowedOrigins = []string{"https://allowed.example"}
+
+	server := NewServer(deps)
+	router, err := server.Handler()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req.Header.Set("Origin", "https://blocked.example")
+
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	require.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"))
 }
