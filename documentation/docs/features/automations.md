@@ -293,6 +293,28 @@ No-match behavior:
 - Manual dry-runs still log a `dry_run_no_match` summary row when nothing matches.
 - Scheduled dry-run rules do **not** log no-match rows (to avoid event noise).
 
+## Torrent Sorting & Scoring
+
+By default, torrents matched by an automation are processed oldest-first. However, you can customize the **Torrent Priority** to control exactly which torrents are processed first. This is useful for actions like **Delete** combined with **Free Space**, where the priority determines which torrents are removed first to free up space.
+
+### Priority Types
+
+| Type       | Description                                                                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Default**| Standard oldest-first priority.                                                                                     |
+| **Simple** | Prioritize by a single numeric, duration, or string field (e.g., `Size`, `Added Age`, `Name`) in ascending or descending order.                           |
+| **Score**  | Advanced rule-based priority. Torrents are scored based on custom rules, and prioritized in ascending or descending order of their total score. |
+
+### Score-Based Priority
+
+Score-based priority allows you to rank torrents using multiple combined factors. You define **Score Rules** that evaluate each torrent and contribute to its total score.
+
+Available score rule types:
+- **Field Multiplier**: Extracts a numeric value from the torrent (like `Size` or `Time Active`), multiplies it by a specified multiplier, and adds it to the score.
+- **Conditional**: Evaluates a standard query condition (see [Query Builder](#query-builder)). If the condition is true, a static value is added to the score.
+
+Torrents are then processed by their final computed score. The computed scores are displayed in the **Live impact preview** so you can verify your scoring logic.
+
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
@@ -744,9 +766,9 @@ Only sends API calls when the torrent's current setting differs from the desired
 
 When using the **Free Space** condition in delete rules, the system uses intelligent cumulative tracking:
 
-1. **Oldest-first processing** - Torrents are sorted by age (oldest first) for deterministic, predictable cleanup
-2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space (only when the delete mode actually frees disk bytes)
-3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match
+1. **Configurable processing order** - Torrents are processed according to the automation's Torrent Priority (Default, Simple, or Score). This allows you to prioritize cleanups (e.g., largest files first, or lowest score first).
+2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space (only when the delete mode actually frees disk bytes).
+3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match.
 4. **Cross-seed aware** - Cross-seeded torrents sharing the same files are only counted once to avoid overestimating freed space
 
 **Preview Views for Free Space Rules**
@@ -836,7 +858,7 @@ Remove torrents completed over 30 days ago when disk space is low:
 - Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
 - Action: Remove with files
 
-Deletes oldest matching torrents first, stopping once enough space would be freed to exceed 500GB.
+Deletes matching torrents in the configured priority order (e.g., oldest first), stopping once enough space would be freed to exceed 500GB.
 
 ### Speed Limit Private Trackers
 
@@ -870,7 +892,7 @@ Keep at least 200GB free by removing oldest completed torrents:
 - Condition: `Free Space < 200GB` AND `State is completed`
 - Action: Remove with files (preserve cross-seeds)
 
-Removes torrents from the client, oldest first, until enough space is projected to be freed. Cross-seeded torrents keep their files on disk and don't contribute to the projection. If only cross-seeded torrents match, this may remove many torrents without freeing any disk space.
+Removes torrents from the client in the configured priority order, until enough space is projected to be freed. Cross-seeded torrents keep their files on disk and don't contribute to the projection. If only cross-seeded torrents match, this may remove many torrents without freeing any disk space.
 
 ### Clean Up Old Content with Cross-Seeds
 

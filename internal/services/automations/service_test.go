@@ -280,6 +280,237 @@ func TestDetectCrossSeeds(t *testing.T) {
 	}
 }
 
+func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		rule  *models.Automation
+		field ConditionField
+		want  bool
+	}{
+		{
+			name: "simple sort field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "score conditional field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeConditional,
+							Conditional: &models.ConditionalScoreRule{
+								Condition: &models.RuleCondition{
+									Field:    models.FieldHasMissingFiles,
+									Operator: models.OperatorEqual,
+									Value:    "true",
+								},
+								Score: 10,
+							},
+						},
+					},
+				},
+			},
+			field: FieldHasMissingFiles,
+			want:  true,
+		},
+		{
+			name: "score field multiplier field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeFieldMultiplier,
+							FieldMultiplier: &models.FieldMultiplierScoreRule{
+								Field:      models.FieldFreeSpace,
+								Multiplier: 1,
+							},
+						},
+					},
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "disabled preview rule still counts",
+			rule: &models.Automation{
+				Enabled: false,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ruleUsesCondition(tt.rule, tt.field))
+		})
+	}
+}
+
+func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
+	ac := &models.ActionConditions{
+		Pause: &models.PauseAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldFreeSpace,
+				Operator: models.OperatorLessThan,
+				Value:    "100",
+			},
+		},
+		Tag: &models.TagAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldHasMissingFiles,
+				Operator: models.OperatorEqual,
+				Value:    "true",
+			},
+		},
+	}
+
+	require.False(t, actionConditionsUseField(ac, FieldFreeSpace))
+	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
+}
+
+func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
+	rule := &models.Automation{
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeFieldMultiplier,
+					FieldMultiplier: &models.FieldMultiplierScoreRule{
+						Field:      models.FieldFreeSpace,
+						Multiplier: 1,
+					},
+				},
+			},
+		},
+	}
+	torrents := []qbt.Torrent{{Hash: "a"}}
+	evalCtx := &EvalContext{FreeSpace: 100}
+
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+	evalCtx.FreeSpace = 25
+
+	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
+	require.NotNil(t, score)
+	require.InDelta(t, 100, *score, 0.001)
+}
+
+func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
+	rule := &models.Automation{
+		ID:             7,
+		Name:           "grouped sort",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Grouping: &models.GroupingConfig{},
+		},
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeConditional,
+					Conditional: &models.ConditionalScoreRule{
+						Condition: &models.RuleCondition{
+							Field:    models.FieldIsGrouped,
+							Operator: models.OperatorEqual,
+							Value:    "true",
+						},
+						Score: 100,
+					},
+				},
+			},
+		},
+	}
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/solo", SavePath: "/data"},
+		{Hash: "z", ContentPath: "/data/group", SavePath: "/data"},
+		{Hash: "y", ContentPath: "/data/group", SavePath: "/data"},
+	}
+
+	executeBatch(
+		1,
+		[]*models.Automation{rule},
+		torrents,
+		&EvalContext{},
+		nil,
+		nil,
+		map[int]*ruleRunStats{},
+		map[string]*torrentDesiredState{},
+	)
+
+	require.ElementsMatch(t, []string{"y", "z"}, []string{torrents[0].Hash, torrents[1].Hash})
+	require.Equal(t, "a", torrents[2].Hash)
+}
+
+func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T) {
+	scoreSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeScore,
+		Direction:     models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{
+			{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{
+					Condition: &models.RuleCondition{
+						Field:    models.FieldIsGrouped,
+						Operator: models.OperatorEqual,
+						Value:    "true",
+					},
+					Score: 100,
+				},
+			},
+		},
+	}
+
+	freeSpaceSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeSimple,
+		Field:         models.FieldFreeSpace,
+		Direction:     models.SortDirectionDESC,
+	}
+
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: scoreSort},
+		&models.Automation{SortingConfig: scoreSort},
+	))
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: freeSpaceSort},
+		&models.Automation{SortingConfig: freeSpaceSort},
+	))
+}
+
 func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", ContentPath: "/data/shared", SavePath: "/data", Ratio: 3.0},
@@ -1758,7 +1989,7 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 
