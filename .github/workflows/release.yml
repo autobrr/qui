@@ -102,10 +102,54 @@ jobs:
           name: web-dist
           path: web/dist
 
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    needs: [web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download web production build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+
   goreleaserbuild:
     name: Build distribution binaries
     runs-on: ubuntu-latest
-    needs: [web]
+    needs: [test, web]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -159,7 +203,7 @@ jobs:
   docker:
     name: Build Docker images
     runs-on: ubuntu-latest
-    needs: [web]
+    needs: [test, web]
     strategy:
       fail-fast: true
       matrix:
