@@ -20,7 +20,7 @@ When qui is behind an SSO proxy (Cloudflare Access, Pangolin, etc.), expired ses
 
 ## Optional qui allowlist
 
-If your browser frontend must call qui from a different trusted origin, set an explicit allowlist:
+If another trusted website running in the user's browser must call qui from a different origin on the user's behalf, set an explicit allowlist:
 
 ```bash
 QUI__CORS_ALLOWED_ORIGINS=https://panel.example.com
