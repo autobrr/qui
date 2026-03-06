@@ -277,16 +277,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Use(compressor)
 	}
 
-	// CORS - mirror autobrr's permissive credentials setup
-	corsMiddleware := cors.New(cors.Options{
-		AllowCredentials: true,
-		AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
-		AllowOriginFunc:  func(origin string) bool { return true },
-		MaxAge:           300,
-		Debug:            false,
-	})
-	r.Use(corsMiddleware.Handler)
+	// CORS is disabled by default. Enable only for explicit trusted origins.
+	if len(s.config.Config.CORSAllowedOrigins) > 0 {
+		corsMiddleware := cors.New(cors.Options{
+			AllowCredentials: true,
+			AllowedOrigins:   s.config.Config.CORSAllowedOrigins,
+			AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
+			MaxAge:           300,
+			Debug:            false,
+		})
+		r.Use(corsMiddleware.Handler)
+	}
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)

@@ -44,6 +44,7 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `host` | `QUI__HOST` | string | `localhost` (or `0.0.0.0` in containers) | Bind address for the main HTTP server. |
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
 | `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). |
+| `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. Empty disables CORS. Origins must be `http(s)://host[:port]`; wildcards are rejected; default ports are normalized. Restart required. |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: changing breaks decryption of stored instance passwords; you must re-enter them in the UI. |
 | `logLevel` | `QUI__LOG_LEVEL` | string | `INFO` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty: logs to stdout. Relative paths resolve relative to the config directory. Applied immediately. |
@@ -118,6 +119,23 @@ If you use private trackers, running qui without authentication is especially da
 :::
 
 If `QUI__AUTH_DISABLED` is set without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui will log a warning and keep authentication enabled.
+
+## CORS
+
+By default, qui does not send CORS allow headers. To allow browser requests from another trusted origin, set `corsAllowedOrigins` (or `QUI__CORS_ALLOWED_ORIGINS`) to an explicit allowlist:
+
+```bash
+QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com
+```
+
+Rules:
+
+- only explicit origins are allowed (`http://` or `https://` + host + optional non-default port)
+- wildcards are rejected (`*`, `https://*.example.com`, etc.)
+- path/query/fragment/userinfo are rejected
+- invalid values refuse startup; invalid live reloads are rejected and keep the last valid allowlist
+
+For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors).
 
 ## Example `config.toml`
 
