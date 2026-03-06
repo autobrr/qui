@@ -260,6 +260,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "free_space_source", Type: "TEXT"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
+		{Name: "sorting_config", Type: "TEXT"},
 	},
 	"automation_activity": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
