@@ -12,7 +12,6 @@ import {
   CAPABILITY_REASONS,
   FIELD_REQUIREMENTS,
   STATE_VALUE_REQUIREMENTS,
-  getFieldType,
   type Capabilities,
   type DisabledField,
   type DisabledStateValue
@@ -216,20 +215,92 @@ function formatDryRunEventSummary(event: AutomationActivity): string {
 
 function getDisabledFields(capabilities: Capabilities): DisabledField[] {
   return Object.entries(FIELD_REQUIREMENTS)
-    .filter(([_, capability]) => !capabilities[capability as keyof Capabilities])
+    .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
     .map(([field, capability]) => ({ field, reason: CAPABILITY_REASONS[capability] }))
 }
 
 function getDisabledStateValues(capabilities: Capabilities): DisabledStateValue[] {
   return Object.entries(STATE_VALUE_REQUIREMENTS)
-    .filter(([_, capability]) => !capabilities[capability as keyof Capabilities])
+    .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
     .map(([value, capability]) => ({ value, reason: CAPABILITY_REASONS[capability] }))
 }
 
-// Helper to check if a field is numeric
-function isNumericField(field: string): boolean {
-  const type = getFieldType(field)
-  return ["bytes", "integer", "float", "speed", "duration"].includes(type)
+const SIMPLE_SORT_FIELD_SET = new Set<ConditionField>([
+  "SIZE",
+  "TOTAL_SIZE",
+  "DOWNLOADED",
+  "UPLOADED",
+  "AMOUNT_LEFT",
+  "FREE_SPACE",
+  "ADDED_ON",
+  "COMPLETION_ON",
+  "LAST_ACTIVITY",
+  "SEEDING_TIME",
+  "TIME_ACTIVE",
+  "ADDED_ON_AGE",
+  "COMPLETION_ON_AGE",
+  "LAST_ACTIVITY_AGE",
+  "RATIO",
+  "PROGRESS",
+  "AVAILABILITY",
+  "DL_SPEED",
+  "UP_SPEED",
+  "NUM_SEEDS",
+  "NUM_LEECHS",
+  "NUM_COMPLETE",
+  "NUM_INCOMPLETE",
+  "TRACKERS_COUNT",
+  "NAME",
+  "CATEGORY",
+  "TAGS",
+  "TRACKER",
+  "STATE",
+  "SAVE_PATH",
+  "CONTENT_PATH",
+  "COMMENT",
+])
+
+const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
+  "SIZE",
+  "TOTAL_SIZE",
+  "DOWNLOADED",
+  "UPLOADED",
+  "AMOUNT_LEFT",
+  "FREE_SPACE",
+  "ADDED_ON",
+  "COMPLETION_ON",
+  "LAST_ACTIVITY",
+  "SEEDING_TIME",
+  "TIME_ACTIVE",
+  "ADDED_ON_AGE",
+  "COMPLETION_ON_AGE",
+  "LAST_ACTIVITY_AGE",
+  "RATIO",
+  "PROGRESS",
+  "AVAILABILITY",
+  "DL_SPEED",
+  "UP_SPEED",
+  "NUM_SEEDS",
+  "NUM_LEECHS",
+  "NUM_COMPLETE",
+  "NUM_INCOMPLETE",
+  "TRACKERS_COUNT",
+])
+
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+  .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
+  .map(field => ({ field, reason: "Not supported for simple sorting" }))
+
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+  .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
+  .map(field => ({ field, reason: "Not supported for score multipliers" }))
+
+function isSupportedSimpleSortField(field: string): field is ConditionField {
+  return SIMPLE_SORT_FIELD_SET.has(field as ConditionField)
+}
+
+function isSupportedScoreMultiplierField(field: string): field is ConditionField {
+  return SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField)
 }
 
 
@@ -1307,6 +1378,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     let sortingConfig: SortingConfig | undefined
     if (input.sortingType === "simple") {
+      if (!isSupportedSimpleSortField(input.simpleSortField)) {
+        throw new Error("Invalid sort field: not supported for simple sorting")
+      }
       sortingConfig = {
         schemaVersion: "1",
         type: "simple",
@@ -1320,6 +1394,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         direction: input.sortDirection!,
         scoreRules: input.scoreRules.flatMap((r): ScoreRule[] => {
           if (r.type === "field_multiplier" && r.fieldMultiplier) {
+            if (!isSupportedScoreMultiplierField(r.fieldMultiplier.field)) {
+              throw new Error("Invalid score rule: field is not supported for multipliers")
+            }
             const val = r.fieldMultiplier.multiplier
             const multiplier = typeof val === "string" ? parseFloat(val) : val
             if (Number.isFinite(multiplier)) {
@@ -1997,6 +2074,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     <FieldCombobox
                       value={formState.simpleSortField}
                       onChange={(val) => setFormState(prev => ({ ...prev, simpleSortField: val as ConditionField }))}
+                      disabledFields={SIMPLE_SORT_DISABLED_FIELDS}
                     />
                     <div className="flex items-center border rounded-md">
                       <Button
@@ -2087,9 +2165,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   setFormState(prev => ({ ...prev, scoreRules: newRules }))
                                 }
                               }}
-                              disabledFields={Object.keys(CONDITION_FIELDS)
-                                .filter(f => !isNumericField(f))
-                                .map(f => ({ field: f, reason: "Not a numeric field" }))}
+                              disabledFields={SCORE_MULTIPLIER_DISABLED_FIELDS}
                             />
 
                             <span className="text-sm text-muted-foreground">x</span>
@@ -3679,6 +3755,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         onExport={handleExport}
         isExporting={isExporting}
         isInitialLoading={isInitialLoading}
+        showScore={(previewInput?.sortingType ?? formState.sortingType) === "score"}
       />
 
       {activityRunDialog && (

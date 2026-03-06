@@ -915,11 +915,13 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cfg.normalize()
 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+	var deleteCondition *RuleCondition
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
+		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
-	s.setupMissingFilesContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -967,16 +969,23 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 	return hardlinkIndex
 }
 
-// setupMissingFilesContext sets up missing files detection if needed for delete preview.
-func (s *Service) setupMissingFilesContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, instance *models.Instance) {
+// setupMissingFilesContext sets up missing files detection if needed for preview sorting/conditions.
+func (s *Service) setupMissingFilesContext(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	cond *RuleCondition,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+	instance *models.Instance,
+) {
 	if instance == nil || !instance.HasLocalFilesystemAccess {
 		return
 	}
-	if rule.Conditions == nil || rule.Conditions.Delete == nil {
+	if rule == nil {
 		return
 	}
 
-	cond := rule.Conditions.Delete.Condition
 	if !ConditionUsesField(cond, FieldHasMissingFiles) && !sortingConfigUsesField(rule.SortingConfig, FieldHasMissingFiles) {
 		return
 	}
@@ -1513,6 +1522,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
+	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
