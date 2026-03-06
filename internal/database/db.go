@@ -1031,6 +1031,10 @@ func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
 		to   string
 	}{
 		{
+			from: "065_add_completion_bypass_torznab_cache.sql",
+			to:   "066_add_completion_bypass_torznab_cache.sql",
+		},
+		{
 			from: "061_add_notifications.sql",
 			to:   "062_add_notifications.sql",
 		},

@@ -42,6 +42,36 @@ func TestNormalizeMigrationFilenames_RenamesLicenseProviderDodo(t *testing.T) {
 	require.Equal(t, 1, count057)
 }
 
+func TestNormalizeMigrationFilenames_RenamesCompletionBypassTorznabCache065To066(t *testing.T) {
+	ctx := context.Background()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	conn, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
+	_, err = conn.ExecContext(ctx, `
+		CREATE TABLE migrations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			filename TEXT NOT NULL UNIQUE,
+			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+		INSERT INTO migrations (filename) VALUES ('065_add_completion_bypass_torznab_cache.sql');
+	`)
+	require.NoError(t, err)
+
+	db := &DB{writerConn: conn}
+	require.NoError(t, db.normalizeMigrationFilenames(ctx))
+
+	var count065 int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations WHERE filename = '065_add_completion_bypass_torznab_cache.sql'").Scan(&count065))
+	require.Zero(t, count065)
+
+	var count066 int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations WHERE filename = '066_add_completion_bypass_torznab_cache.sql'").Scan(&count066))
+	require.Equal(t, 1, count066)
+}
+
 func TestNormalizeMigrationFilenames_RenamesNotifications061To062(t *testing.T) {
 	ctx := context.Background()
 
