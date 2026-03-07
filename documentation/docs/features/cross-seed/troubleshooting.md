@@ -26,6 +26,12 @@ qui uses strict matching to ensure cross-seeds have identical files. Both releas
 
 By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
 
+### Prowlarr entry filters removed expected results
+
+When using Prowlarr-backed indexers, qui searches the exact Prowlarr indexer you selected. If that Prowlarr entry is configured with tracker-side restrictions such as **freeleech only**, those restrictions still apply during cross-seed searches.
+
+If you expect non-freeleech matches to appear for cross-seeding, use an unfiltered Prowlarr entry for qui or maintain a separate search/cross-seed variant of that tracker in Prowlarr.
+
 ## How do I see why a release was filtered?
 
 Enable trace logging to see detailed rejection reasons:
