@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -148,8 +149,14 @@ export function Sidebar() {
   const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
   const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
   const hasMultipleActiveInstances = activeInstances.length > 1
+  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
+  const persistedNormalizedIds = useMemo(
+    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
+    [persistedUnifiedFilter, activeInstanceIds]
+  )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isAllInstancesActive ? { ...(routeSearch || {}) } : {}
     const encoded = encodeUnifiedInstanceIds(normalizedIds)
 
@@ -164,7 +171,7 @@ export function Sidebar() {
       search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       replace: isAllInstancesActive,
     })
-  }, [activeInstanceIds, isAllInstancesActive, navigate, routeSearch])
+  }, [activeInstanceIds, isAllInstancesActive, navigate, routeSearch, saveUnifiedFilter])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
     const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
     const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
@@ -232,7 +239,7 @@ export function Sidebar() {
                 <>
                   <Link
                     to="/instances"
-                    search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                    search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : (persistedNormalizedIds.length > 0 ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(persistedNormalizedIds) } : undefined)}
                     className={cn(
                       "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                       isAllInstancesActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -246,18 +253,12 @@ export function Sidebar() {
                         isAllInstancesActive ? "border-sidebar-primary-foreground/35 text-sidebar-primary-foreground/90" : "border-sidebar-border text-sidebar-foreground/70"
                       )}
                     >
-                      {activeInstances.length} active
+                      {hasCustomUnifiedScope
+                        ? `${unifiedScopeSummary} active`
+                        : persistedNormalizedIds.length > 0
+                          ? `${persistedNormalizedIds.length}/${activeInstances.length} active`
+                          : `${activeInstances.length} active`}
                     </span>
-                    {hasCustomUnifiedScope && (
-                      <span
-                        className={cn(
-                          "rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none flex-shrink-0",
-                          isAllInstancesActive ? "border-sidebar-primary-foreground/35 text-sidebar-primary-foreground/90" : "border-sidebar-border text-sidebar-foreground/70"
-                        )}
-                      >
-                        {unifiedScopeSummary}
-                      </span>
-                    )}
                   </Link>
                   <div className="px-3">
                     <DropdownMenu>

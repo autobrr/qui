@@ -34,6 +34,7 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import {
@@ -107,8 +108,14 @@ export function Header({
   )
   const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
   const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
+  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
+  const persistedNormalizedIds = useMemo(
+    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
+    [persistedUnifiedFilter, activeInstanceIds]
+  )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isAllInstancesRoute ? { ...(routeSearch || {}) } : {}
     const encoded = encodeUnifiedInstanceIds(normalizedIds)
 
@@ -123,7 +130,7 @@ export function Header({
       search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       replace: isAllInstancesRoute,
     })
-  }, [activeInstanceIds, isAllInstancesRoute, navigate, routeSearch])
+  }, [activeInstanceIds, isAllInstancesRoute, navigate, routeSearch, saveUnifiedFilter])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
     const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
     const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
@@ -281,7 +288,7 @@ export function Header({
                   <DropdownMenuItem asChild>
                     <Link
                       to="/instances"
-                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : (persistedNormalizedIds.length > 0 ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(persistedNormalizedIds) } : undefined)}
                       className={cn(
                         "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
                         isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
@@ -726,7 +733,7 @@ export function Header({
                   <DropdownMenuItem asChild>
                     <Link
                       to="/instances"
-                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : (persistedNormalizedIds.length > 0 ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(persistedNormalizedIds) } : undefined)}
                       className={cn(
                         "flex cursor-pointer",
                         isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"

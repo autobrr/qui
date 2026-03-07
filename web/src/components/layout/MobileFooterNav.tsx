@@ -25,6 +25,7 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
+import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
@@ -149,8 +150,14 @@ export function MobileFooterNav() {
   const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
   const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
   const hasMultipleActiveInstances = activeInstances.length > 1
+  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
+  const persistedNormalizedIds = useMemo(
+    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
+    [persistedUnifiedFilter, activeInstanceIds]
+  )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
     const encoded = encodeUnifiedInstanceIds(normalizedIds)
 
@@ -165,7 +172,7 @@ export function MobileFooterNav() {
       search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       replace: isOnAllInstancesPage,
     })
-  }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch])
+  }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch, saveUnifiedFilter])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
     const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
     const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
@@ -294,7 +301,7 @@ export function MobileFooterNav() {
                   <DropdownMenuItem asChild>
                     <Link
                       to="/instances"
-                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : undefined}
+                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : (persistedNormalizedIds.length > 0 ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(persistedNormalizedIds) } : undefined)}
                       className="flex items-center gap-2 min-w-0"
                     >
                       <HardDrive className="h-4 w-4" />
