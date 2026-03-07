@@ -29,7 +29,7 @@ make dev-backend        # Backend only with hot-reload
 make dev-frontend       # Frontend only
 
 # Testing
-make test               # go test -race -count=3 -v ./...
+make test               # go test -race -count=1 -v ./...
 make test-openapi       # Validate OpenAPI spec after touching internal/web/swagger
 
 # Linting
@@ -85,7 +85,7 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run `make test` before every push and add `make test-openapi` when contracts change. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
 
-When running tests, always use `-race` and `-count=3` to catch race conditions.
+When running tests, always use `-race` and `-count=1`.
 
 For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
 
