@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -884,7 +886,7 @@ func (s *DirScanStore) pruneRunHistoryForDirectory(ctx context.Context, director
 
 func (s *DirScanStore) trimRunHistoryBestEffort(ctx context.Context, directoryID int) {
 	if err := s.pruneRunHistoryForDirectory(ctx, directoryID, dirScanRunHistoryLimit); err != nil {
-		_ = err
+		log.Warn().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to prune run history")
 	}
 }
 
@@ -992,7 +994,7 @@ func (s *DirScanStore) trimRunInjectionsBestEffort(ctx context.Context, runID in
 			  LIMIT ?
 		  )
 	`, runID, runID, dirScanRunInjectionMaxPerRun); err != nil {
-		_ = err
+		log.Warn().Err(err).Int64("runID", runID).Msg("dirscan: failed to prune run injections")
 	}
 }
 
