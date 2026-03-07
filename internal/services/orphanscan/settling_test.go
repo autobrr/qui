@@ -5,7 +5,6 @@ package orphanscan
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -77,7 +76,7 @@ func TestReadinessChecks(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.True(t, strings.Contains(err.Error(), tt.wantErrPart),
+				assert.Contains(t, err.Error(), tt.wantErrPart,
 					"error %q should contain %q", err.Error(), tt.wantErrPart)
 				return
 			}
