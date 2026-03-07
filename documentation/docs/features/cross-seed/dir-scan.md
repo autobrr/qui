@@ -235,6 +235,58 @@ If you want to force a directory to be re-processed from scratch, use **Reset Sc
 
 Both types can be canceled from the UI while running.
 
+### Webhook trigger
+
+You can trigger a scan from external tools (like Sonarr/Radarr custom scripts) using the webhook endpoint:
+
+```
+POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
+```
+
+The request body contains the path that was imported:
+
+```json
+{"path": "/data/media/movies/Movie Name (2024)"}
+```
+
+qui matches the path against your configured scan directories using longest-prefix matching and triggers a scan on the best match. The response includes the run and directory IDs:
+
+```json
+{"runId": 42, "directoryId": 3}
+```
+
+| Status Code | Meaning |
+|-------------|---------|
+| `202` | Scan started successfully |
+| `404` | No enabled directory matches the given path |
+| `409` | A scan is already in progress for the matched directory |
+
+#### Example: Sonarr/Radarr custom script
+
+Create a script that calls the webhook on import:
+
+```bash
+#!/bin/bash
+# qui-notify.sh — trigger Dir Scan on import
+# Set as a Custom Script connection in Sonarr/Radarr (On Import / On Upgrade)
+
+QUI_URL="http://localhost:7476"
+QUI_API_KEY="your-api-key-here"
+
+# Sonarr sets sonarr_series_path; Radarr sets radarr_movie_path
+PATH_VAR="${sonarr_series_path:-$radarr_movie_path}"
+
+if [ -n "$PATH_VAR" ]; then
+  curl -s -X POST "${QUI_URL}/api/dir-scan/webhook/scan?apikey=${QUI_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"path\": \"${PATH_VAR}\"}"
+fi
+```
+
+:::tip
+The webhook uses query-param API key authentication (`?apikey=...`), the same pattern as the cross-seed webhook. You can also use the `X-API-Key` header instead.
+:::
+
 ### Scan phases
 
 Each scan progresses through phases:
