@@ -100,9 +100,6 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		}
 	}
 
-	svc.markSettledForRecovery(1, recoveryTime)
-	svc.markSettledForRecovery(2, recoveryTime)
-
 	result, err := svc.buildFileMap(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
@@ -164,8 +161,6 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 		}, nil
 	}
 
-	svc.markSettledForRecovery(1, recoveryTime)
-
 	_, err := svc.buildFileMap(context.Background(), 1)
 	if err == nil {
 		t.Fatalf("expected error")
@@ -222,9 +217,6 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 			"a": {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
-
-	svc.markSettledForRecovery(1, recoveryTime)
-	svc.markSettledForRecovery(2, recoveryTime)
 
 	_, err := svc.buildFileMap(context.Background(), 1)
 	if err == nil {
@@ -287,9 +279,6 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 			return map[string]qbt.TorrentFiles{}, nil
 		}
 	}
-
-	svc.markSettledForRecovery(1, recoveryTime)
-	svc.markSettledForRecovery(2, recoveryTime)
 
 	result, err := svc.buildFileMap(context.Background(), 1)
 	if err != nil {
@@ -355,8 +344,6 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 			"a": {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
-
-	svc.markSettledForRecovery(1, recoveryTime)
 
 	_, err := svc.buildFileMap(context.Background(), 1)
 	if err == nil {
