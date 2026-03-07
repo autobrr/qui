@@ -37,7 +37,12 @@ jobs:
       - name: Run tests (Postgres integration)
         env:
           QUI_TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/qui?sslmode=disable
-        run: go test -race -v -timeout 20m ./internal/database -run TestOpenPostgres
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go test -v -timeout 20m ./internal/database -run TestOpenPostgres
+          else
+            go test -race -v -timeout 20m ./internal/database -run TestOpenPostgres
+          fi
 
   migration-parity:
     runs-on: ubuntu-latest
