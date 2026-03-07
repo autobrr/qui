@@ -29,12 +29,7 @@ import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedIn
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
-import {
-  encodeUnifiedInstanceIds,
-  normalizeUnifiedInstanceIds,
-  resolveUnifiedInstanceIds,
-  UNIFIED_INSTANCE_IDS_SEARCH_PARAM
-} from "@/lib/instances"
+import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -139,38 +134,19 @@ export function MobileFooterNav() {
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
   const isOnAllInstancesPage = location.pathname === "/instances" || location.pathname === "/instances/"
   const isOnInstancePage = isOnAllInstancesPage || location.pathname.startsWith("/instances/")
-  const effectiveUnifiedInstanceIds = useMemo(
-    () => resolveUnifiedInstanceIds(routeSearch?.[UNIFIED_INSTANCE_IDS_SEARCH_PARAM], activeInstanceIds),
-    [routeSearch, activeInstanceIds]
-  )
-  const normalizedUnifiedInstanceIds = useMemo(
-    () => normalizeUnifiedInstanceIds(effectiveUnifiedInstanceIds, activeInstanceIds),
-    [effectiveUnifiedInstanceIds, activeInstanceIds]
-  )
-  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
-  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
-  const hasMultipleActiveInstances = activeInstances.length > 1
   const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
-  const persistedNormalizedIds = useMemo(
+  const normalizedUnifiedInstanceIds = useMemo(
     () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
     [persistedUnifiedFilter, activeInstanceIds]
   )
-  const displayedUnifiedInstanceIds = hasCustomUnifiedScope
-    ? effectiveUnifiedInstanceIds
-    : persistedNormalizedIds.length > 0
-      ? persistedNormalizedIds
-      : effectiveUnifiedInstanceIds
+  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
+  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
+  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
+  const hasMultipleActiveInstances = activeInstances.length > 1
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
-    const encoded = encodeUnifiedInstanceIds(normalizedIds)
-
-    if (encoded) {
-      nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM] = encoded
-    } else {
-      delete nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM]
-    }
 
     navigate({
       to: "/instances",
@@ -179,15 +155,15 @@ export function MobileFooterNav() {
     })
   }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch, saveUnifiedFilter])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
-    const currentlySelected = displayedUnifiedInstanceIds.includes(instanceId)
-    const nextIds = currentlySelected? displayedUnifiedInstanceIds.filter(id => id !== instanceId): [...displayedUnifiedInstanceIds, instanceId]
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
 
     if (nextIds.length === 0) {
       return
     }
 
     applyUnifiedScope(nextIds)
-  }, [applyUnifiedScope, displayedUnifiedInstanceIds])
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
   const hasActiveInstances = activeInstances.length > 0
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
@@ -306,7 +282,6 @@ export function MobileFooterNav() {
                   <DropdownMenuItem asChild>
                     <Link
                       to="/instances"
-                      search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : (persistedNormalizedIds.length > 0 ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(persistedNormalizedIds) } : undefined)}
                       className="flex items-center gap-2 min-w-0"
                     >
                       <HardDrive className="h-4 w-4" />
@@ -335,7 +310,7 @@ export function MobileFooterNav() {
                     All active ({activeInstances.length})
                   </DropdownMenuItem>
                   {activeInstances.map((instance) => {
-                    const checked = displayedUnifiedInstanceIds.includes(instance.id)
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
                     return (
                       <DropdownMenuCheckboxItem
                         key={`mobile-scope-${instance.id}`}

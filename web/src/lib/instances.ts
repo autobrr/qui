@@ -4,7 +4,6 @@
  */
 
 export const ALL_INSTANCES_ID = 0
-export const UNIFIED_INSTANCE_IDS_SEARCH_PARAM = "instanceIds"
 
 export function isAllInstancesScope(instanceId: number): boolean {
   return instanceId === ALL_INSTANCES_ID
@@ -57,20 +56,6 @@ export function normalizeUnifiedInstanceIds(instanceIds: readonly number[], acti
   }
 
   return selectedFilteredSorted
-}
-
-export function resolveUnifiedInstanceIds(rawInstanceIds: unknown, activeInstanceIds: readonly number[]): number[] {
-  const activeUniqueSorted = Array.from(new Set(activeInstanceIds.filter(id => id > 0))).sort((left, right) => left - right)
-  if (activeUniqueSorted.length === 0) {
-    return []
-  }
-
-  const normalizedSelection = normalizeUnifiedInstanceIds(parseUnifiedInstanceIds(rawInstanceIds), activeUniqueSorted)
-  if (normalizedSelection.length === 0) {
-    return activeUniqueSorted
-  }
-
-  return normalizedSelection
 }
 
 export function encodeUnifiedInstanceIds(instanceIds: readonly number[]): string | undefined {

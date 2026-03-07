@@ -25,12 +25,7 @@ import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedIn
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
-import {
-  encodeUnifiedInstanceIds,
-  normalizeUnifiedInstanceIds,
-  resolveUnifiedInstanceIds,
-  UNIFIED_INSTANCE_IDS_SEARCH_PARAM
-} from "@/lib/instances"
+import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
@@ -137,39 +132,20 @@ export function Sidebar() {
     () => activeInstances.map(instance => instance.id),
     [activeInstances]
   )
-  const effectiveUnifiedInstanceIds = useMemo(
-    () => resolveUnifiedInstanceIds(routeSearch?.[UNIFIED_INSTANCE_IDS_SEARCH_PARAM], activeInstanceIds),
-    [routeSearch, activeInstanceIds]
-  )
+  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
   const normalizedUnifiedInstanceIds = useMemo(
-    () => normalizeUnifiedInstanceIds(effectiveUnifiedInstanceIds, activeInstanceIds),
-    [effectiveUnifiedInstanceIds, activeInstanceIds]
+    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
+    [persistedUnifiedFilter, activeInstanceIds]
   )
+  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
   const isAllInstancesActive = location.pathname === "/instances" || location.pathname === "/instances/"
   const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
   const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
   const hasMultipleActiveInstances = activeInstances.length > 1
-  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
-  const persistedNormalizedIds = useMemo(
-    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
-    [persistedUnifiedFilter, activeInstanceIds]
-  )
-  const displayedUnifiedInstanceIds = hasCustomUnifiedScope
-    ? effectiveUnifiedInstanceIds
-    : persistedNormalizedIds.length > 0
-      ? persistedNormalizedIds
-      : effectiveUnifiedInstanceIds
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isAllInstancesActive ? { ...(routeSearch || {}) } : {}
-    const encoded = encodeUnifiedInstanceIds(normalizedIds)
-
-    if (encoded) {
-      nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM] = encoded
-    } else {
-      delete nextSearch[UNIFIED_INSTANCE_IDS_SEARCH_PARAM]
-    }
 
     navigate({
       to: "/instances",
@@ -178,15 +154,15 @@ export function Sidebar() {
     })
   }, [activeInstanceIds, isAllInstancesActive, navigate, routeSearch, saveUnifiedFilter])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
-    const currentlySelected = displayedUnifiedInstanceIds.includes(instanceId)
-    const nextIds = currentlySelected? displayedUnifiedInstanceIds.filter(id => id !== instanceId): [...displayedUnifiedInstanceIds, instanceId]
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
 
     if (nextIds.length === 0) {
       return
     }
 
     applyUnifiedScope(nextIds)
-  }, [applyUnifiedScope, displayedUnifiedInstanceIds])
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
   const hasConfiguredInstances = (instances?.length ?? 0) > 0
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
@@ -244,7 +220,6 @@ export function Sidebar() {
                 <>
                   <Link
                     to="/instances"
-                    search={hasCustomUnifiedScope ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(normalizedUnifiedInstanceIds) } : (persistedNormalizedIds.length > 0 ? { [UNIFIED_INSTANCE_IDS_SEARCH_PARAM]: encodeUnifiedInstanceIds(persistedNormalizedIds) } : undefined)}
                     className={cn(
                       "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                       isAllInstancesActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -258,11 +233,7 @@ export function Sidebar() {
                         isAllInstancesActive ? "border-sidebar-primary-foreground/35 text-sidebar-primary-foreground/90" : "border-sidebar-border text-sidebar-foreground/70"
                       )}
                     >
-                      {hasCustomUnifiedScope
-                        ? `${unifiedScopeSummary} active`
-                        : persistedNormalizedIds.length > 0
-                          ? `${persistedNormalizedIds.length}/${activeInstances.length} active`
-                          : `${activeInstances.length} active`}
+                      {hasCustomUnifiedScope ? `${unifiedScopeSummary} active` : `${activeInstances.length} active`}
                     </span>
                   </Link>
                   <div className="px-3">
@@ -296,7 +267,7 @@ export function Sidebar() {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         {activeInstances.map((instance) => {
-                          const checked = displayedUnifiedInstanceIds.includes(instance.id)
+                          const checked = effectiveUnifiedInstanceIds.includes(instance.id)
                           return (
                             <DropdownMenuCheckboxItem
                               key={`sidebar-scope-${instance.id}`}
