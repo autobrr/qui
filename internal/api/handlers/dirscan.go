@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -631,4 +633,75 @@ func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request
 		RespondError(w, http.StatusInternalServerError, "Failed to validate directory")
 	}
 	return false
+}
+
+// webhookTriggerScanPayload is the request body for the webhook scan trigger.
+type webhookTriggerScanPayload struct {
+	Path string `json:"path"`
+}
+
+// WebhookTriggerScan triggers a directory scan by matching the provided path
+// against configured scan directories. This endpoint is designed for external
+// tools like Sonarr/Radarr custom scripts.
+func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Request) {
+	var payload webhookTriggerScanPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.Path == "" {
+		RespondError(w, http.StatusBadRequest, "Path is required")
+		return
+	}
+
+	// Clean and normalize the path
+	cleanPath := filepath.Clean(payload.Path)
+
+	dirs, err := h.service.ListDirectories(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: webhook failed to list directories")
+		RespondError(w, http.StatusInternalServerError, "Failed to list directories")
+		return
+	}
+
+	// Find the best matching directory using longest-prefix match
+	var bestMatch *models.DirScanDirectory
+	bestLen := 0
+	for _, dir := range dirs {
+		if !dir.Enabled {
+			continue
+		}
+		dirPath := filepath.Clean(dir.Path)
+		// The path must be equal to or a subdirectory of the configured directory
+		if cleanPath == dirPath || strings.HasPrefix(cleanPath, dirPath+string(filepath.Separator)) {
+			if len(dirPath) > bestLen {
+				bestMatch = dir
+				bestLen = len(dirPath)
+			}
+		}
+	}
+
+	if bestMatch == nil {
+		RespondError(w, http.StatusNotFound, "No matching directory found for the given path")
+		return
+	}
+
+	runID, err := h.service.StartManualScan(r.Context(), bestMatch.ID)
+	if err != nil {
+		if errors.Is(err, models.ErrDirScanRunAlreadyActive) {
+			RespondError(w, http.StatusConflict, "A scan is already in progress for this directory")
+			return
+		}
+		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", payload.Path).Msg("dirscan: webhook failed to start scan")
+		RespondError(w, http.StatusInternalServerError, "Failed to start scan")
+		return
+	}
+
+	log.Info().Int("directoryID", bestMatch.ID).Str("path", payload.Path).Int64("runID", runID).Msg("dirscan: webhook triggered scan")
+
+	RespondJSON(w, http.StatusAccepted, map[string]any{
+		"runId":       runID,
+		"directoryId": bestMatch.ID,
+	})
 }
