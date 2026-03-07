@@ -155,6 +155,11 @@ export function MobileFooterNav() {
     () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
     [persistedUnifiedFilter, activeInstanceIds]
   )
+  const displayedUnifiedInstanceIds = hasCustomUnifiedScope
+    ? effectiveUnifiedInstanceIds
+    : persistedNormalizedIds.length > 0
+      ? persistedNormalizedIds
+      : effectiveUnifiedInstanceIds
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     saveUnifiedFilter(normalizedIds)
@@ -174,15 +179,15 @@ export function MobileFooterNav() {
     })
   }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch, saveUnifiedFilter])
   const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
-    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
-    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
+    const currentlySelected = displayedUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected? displayedUnifiedInstanceIds.filter(id => id !== instanceId): [...displayedUnifiedInstanceIds, instanceId]
 
     if (nextIds.length === 0) {
       return
     }
 
     applyUnifiedScope(nextIds)
-  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
+  }, [applyUnifiedScope, displayedUnifiedInstanceIds])
   const hasActiveInstances = activeInstances.length > 0
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
@@ -330,7 +335,7 @@ export function MobileFooterNav() {
                     All active ({activeInstances.length})
                   </DropdownMenuItem>
                   {activeInstances.map((instance) => {
-                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    const checked = displayedUnifiedInstanceIds.includes(instance.id)
                     return (
                       <DropdownMenuCheckboxItem
                         key={`mobile-scope-${instance.id}`}
