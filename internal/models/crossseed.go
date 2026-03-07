@@ -402,14 +402,19 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var webhookSourceCategories, webhookSourceTags, webhookSourceExcludeCategories, webhookSourceExcludeTags sql.NullString
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var runExternalProgramID sql.NullInt64
-	var gazelleEnabled bool
+	var enabled, startPaused int
+	var findIndividualEpisodes, useCategoryFromIndexer int
+	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
+	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
+	var skipRecheck, skipPieceBoundarySafetyCheck int
+	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
 	var createdAt, updatedAt sql.NullTime
 
 	err := row.Scan(
-		&settings.Enabled,
+		&enabled,
 		&settings.RunIntervalMinutes,
-		&settings.StartPaused,
+		&startPaused,
 		&category,
 		&instancesJSON,
 		&indexersJSON,
@@ -422,26 +427,26 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&webhookSourceTags,
 		&webhookSourceExcludeCategories,
 		&webhookSourceExcludeTags,
-		&settings.FindIndividualEpisodes,
+		&findIndividualEpisodes,
 		&settings.SizeMismatchTolerancePercent,
-		&settings.UseCategoryFromIndexer,
+		&useCategoryFromIndexer,
 		&runExternalProgramID,
 		&rssAutomationTags,
 		&seededSearchTags,
 		&completionSearchTags,
 		&webhookTags,
-		&settings.InheritSourceTags,
-		&settings.UseCrossCategoryAffix,
+		&inheritSourceTags,
+		&useCrossCategoryAffix,
 		&settings.CategoryAffixMode,
 		&settings.CategoryAffix,
-		&settings.UseCustomCategory,
+		&useCustomCategory,
 		&settings.CustomCategory,
-		&settings.SkipAutoResumeRSS,
-		&settings.SkipAutoResumeSeededSearch,
-		&settings.SkipAutoResumeCompletion,
-		&settings.SkipAutoResumeWebhook,
-		&settings.SkipRecheck,
-		&settings.SkipPieceBoundarySafetyCheck,
+		&skipAutoResumeRSS,
+		&skipAutoResumeSeededSearch,
+		&skipAutoResumeCompletion,
+		&skipAutoResumeWebhook,
+		&skipRecheck,
+		&skipPieceBoundarySafetyCheck,
 		&gazelleEnabled,
 		&redactedAPIKeyEncrypted,
 		&orpheusAPIKeyEncrypted,
@@ -521,7 +526,20 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		settings.UpdatedAt = updatedAt.Time
 	}
 
-	settings.GazelleEnabled = gazelleEnabled
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.StartPaused = SQLiteIntToBool(startPaused)
+	settings.FindIndividualEpisodes = SQLiteIntToBool(findIndividualEpisodes)
+	settings.UseCategoryFromIndexer = SQLiteIntToBool(useCategoryFromIndexer)
+	settings.InheritSourceTags = SQLiteIntToBool(inheritSourceTags)
+	settings.UseCrossCategoryAffix = SQLiteIntToBool(useCrossCategoryAffix)
+	settings.UseCustomCategory = SQLiteIntToBool(useCustomCategory)
+	settings.SkipAutoResumeRSS = SQLiteIntToBool(skipAutoResumeRSS)
+	settings.SkipAutoResumeSeededSearch = SQLiteIntToBool(skipAutoResumeSeededSearch)
+	settings.SkipAutoResumeCompletion = SQLiteIntToBool(skipAutoResumeCompletion)
+	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
+	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
+	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.GazelleEnabled = SQLiteIntToBool(gazelleEnabled)
 	if redactedAPIKeyEncrypted.Valid {
 		settings.RedactedAPIKey = s.apiKeyRedacted(redactedAPIKeyEncrypted.String)
 	}
@@ -550,7 +568,7 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host str
 		return "", false, nil
 	}
 
-	var enabled bool
+	var enabled int
 	var encrypted sql.NullString
 	q := fmt.Sprintf(`SELECT gazelle_enabled, %s FROM cross_seed_settings WHERE id = 1`, col)
 	if err := s.db.QueryRowContext(ctx, q).Scan(&enabled, &encrypted); err != nil {
@@ -559,7 +577,7 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host str
 		}
 		return "", false, err
 	}
-	if !enabled || !encrypted.Valid || strings.TrimSpace(encrypted.String) == "" {
+	if !SQLiteIntToBool(enabled) || !encrypted.Valid || strings.TrimSpace(encrypted.String) == "" {
 		return "", false, nil
 	}
 	plain, err := s.decrypt(encrypted.String)
@@ -770,9 +788,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 
 	_, err = s.db.ExecContext(ctx, query,
 		1,
-		settings.Enabled,
+		BoolToSQLite(settings.Enabled),
 		settings.RunIntervalMinutes,
-		settings.StartPaused,
+		BoolToSQLite(settings.StartPaused),
 		category,
 		instanceJSON,
 		indexerJSON,
@@ -785,27 +803,27 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		webhookSourceTagsJSON,
 		webhookSourceExcludeCategoriesJSON,
 		webhookSourceExcludeTagsJSON,
-		settings.FindIndividualEpisodes,
+		BoolToSQLite(settings.FindIndividualEpisodes),
 		settings.SizeMismatchTolerancePercent,
-		settings.UseCategoryFromIndexer,
+		BoolToSQLite(settings.UseCategoryFromIndexer),
 		runExternalProgramID,
 		rssAutomationTags,
 		seededSearchTags,
 		completionSearchTags,
 		webhookTags,
-		settings.InheritSourceTags,
-		settings.UseCrossCategoryAffix,
+		BoolToSQLite(settings.InheritSourceTags),
+		BoolToSQLite(settings.UseCrossCategoryAffix),
 		settings.CategoryAffixMode,
 		settings.CategoryAffix,
-		settings.UseCustomCategory,
+		BoolToSQLite(settings.UseCustomCategory),
 		settings.CustomCategory,
-		settings.SkipAutoResumeRSS,
-		settings.SkipAutoResumeSeededSearch,
-		settings.SkipAutoResumeCompletion,
-		settings.SkipAutoResumeWebhook,
-		settings.SkipRecheck,
-		settings.SkipPieceBoundarySafetyCheck,
-		settings.GazelleEnabled,
+		BoolToSQLite(settings.SkipAutoResumeRSS),
+		BoolToSQLite(settings.SkipAutoResumeSeededSearch),
+		BoolToSQLite(settings.SkipAutoResumeCompletion),
+		BoolToSQLite(settings.SkipAutoResumeWebhook),
+		BoolToSQLite(settings.SkipRecheck),
+		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
+		BoolToSQLite(settings.GazelleEnabled),
 		redactedAPIKeyEncrypted,
 		orpheusAPIKeyEncrypted,
 	)
@@ -950,9 +968,11 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 			torrents_failed, torrents_skipped, message,
 			error_message, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := s.db.ExecContext(ctx, query,
+	var runID int64
+	err = s.db.QueryRowContext(ctx, query,
 		run.TriggeredBy,
 		run.Mode,
 		run.Status,
@@ -965,14 +985,9 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		run.Message,
 		run.ErrorMessage,
 		resultsJSON,
-	)
+	).Scan(&runID)
 	if err != nil {
 		return nil, fmt.Errorf("insert run: %w", err)
-	}
-
-	runID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get inserted run id: %w", err)
 	}
 
 	// Prune old runs, keeping only the 10 most recent
@@ -1144,9 +1159,11 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 			error_message, filters_json, indexer_ids_json, interval_seconds,
 			cooldown_minutes, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := s.db.ExecContext(ctx, query,
+	var insertedID int64
+	err = s.db.QueryRowContext(ctx, query,
 		run.InstanceID,
 		run.Status,
 		run.StartedAt,
@@ -1162,14 +1179,9 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 		run.IntervalSeconds,
 		run.CooldownMinutes,
 		resultsJSON,
-	)
+	).Scan(&insertedID)
 	if err != nil {
 		return nil, fmt.Errorf("insert search run: %w", err)
-	}
-
-	insertedID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get inserted search run id: %w", err)
 	}
 
 	// Prune old runs for this instance, keeping only the 10 most recent

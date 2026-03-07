@@ -54,13 +54,13 @@ import { api } from "@/lib/api"
 
 import { withBasePath } from "@/lib/base-url"
 import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
-import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import type { Instance, TorznabSearchCacheStats } from "@/types"
+import type { Instance, TorznabSearchCacheStats, User } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
-import type { FormEvent } from "react"
+import { Bell, Clock, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import type { FormEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -752,13 +752,349 @@ function TorznabSearchCachePanel() {
   )
 }
 
+function formatApplicationDate(value?: string): string {
+  if (!value || value.trim() === "") {
+    return "—"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  })
+}
+
+function formatRelativeDate(value?: string): string {
+  if (!value || value.trim() === "") {
+    return "—"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
+  const secondsDiff = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (Math.abs(secondsDiff) < 1) {
+    return "just now"
+  }
+
+  const duration = formatDuration(Math.abs(secondsDiff))
+  if (secondsDiff >= 0) {
+    return `${duration} ago`
+  }
+
+  return `in ${duration}`
+}
+
+function formatCurrentSessionAuth(user?: User): string {
+  if (!user) {
+    return "Unknown"
+  }
+
+  const methodRaw = user.auth_method?.trim() || ""
+  const method = methodRaw !== "" ? methodRaw : "builtin"
+  const username = user.username?.trim() || ""
+
+  if (username !== "") {
+    return `${method} (${username})`
+  }
+
+  return method
+}
+
+function isDevVersion(version?: string): boolean {
+  const value = version?.trim().toLowerCase() || ""
+  return value === "0.0.0-dev" || value.includes("dev") || value === "main"
+}
+
+function getLiveUptimeSeconds(baseUptime: number, startedAtMs: number): number {
+  const elapsed = Math.floor((Date.now() - startedAtMs) / 1000)
+  return Math.max(0, baseUptime + elapsed)
+}
+
+type ApplicationField = {
+  label: string
+  value: string
+  secondary?: string
+  copyValue?: string
+  monospace?: boolean
+}
+
+interface ApplicationSectionProps {
+  title: string
+  description: string
+  fields: ApplicationField[]
+  onCopy: (value: string, label: string) => Promise<void> | void
+  headerAction?: ReactNode
+}
+
+function ApplicationSection({ title, description, fields, onCopy, headerAction }: ApplicationSectionProps) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        {headerAction}
+      </CardHeader>
+      <CardContent className="p-0">
+        <dl className="divide-y">
+          {fields.map((field) => (
+            <div key={field.label} className="group px-4 py-3 sm:px-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <dt className="text-xs uppercase text-muted-foreground sm:w-44 sm:shrink-0">{field.label}</dt>
+                <dd className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`${field.monospace ? "font-mono text-xs sm:text-sm" : "text-sm font-medium"} break-all`}
+                        title={field.value}
+                      >
+                        {field.value}
+                      </p>
+                      {field.secondary && (
+                        <p className="mt-1 text-xs text-muted-foreground">{field.secondary}</p>
+                      )}
+                    </div>
+                    {field.copyValue && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => {
+                          void onCopy(field.copyValue || "", field.label)
+                        }}
+                        title={`Copy ${field.label}`}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ApplicationInfoPanel() {
+  const appInfoQuery = useQuery({
+    queryKey: ["application-info"],
+    queryFn: () => api.getApplicationInfo(),
+    staleTime: 30 * 1000,
+  })
+
+  const currentUserQuery = useQuery({
+    queryKey: ["auth-me", "application-tab"],
+    queryFn: () => api.checkAuth(),
+    staleTime: 60 * 1000,
+  })
+
+  const latestVersionQuery = useQuery({
+    queryKey: ["latest-version"],
+    queryFn: () => api.getLatestVersion(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const info = appInfoQuery.data
+  const user = currentUserQuery.data
+
+  const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!info) {
+      setLiveUptimeSeconds(0)
+      return
+    }
+
+    const baseUptime = Math.max(0, info.uptimeSeconds)
+    const startedAtMs = Date.now()
+    setLiveUptimeSeconds(baseUptime)
+
+    const timer = window.setInterval(() => {
+      setLiveUptimeSeconds(getLiveUptimeSeconds(baseUptime, startedAtMs))
+    }, 1000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [info])
+
+  let currentSessionAuth = "Unknown"
+  if (currentUserQuery.isLoading) {
+    currentSessionAuth = "Loading…"
+  } else if (currentUserQuery.isError) {
+    currentSessionAuth = "Unavailable"
+  } else {
+    currentSessionAuth = formatCurrentSessionAuth(user)
+  }
+
+  const updateStatus = useMemo(() => {
+    if (!info) {
+      return { label: "Unknown", detail: "Waiting for application metadata." }
+    }
+    if (!info.checkForUpdates) {
+      return { label: "Disabled", detail: "Update checks are disabled in config." }
+    }
+    if (isDevVersion(info.version)) {
+      return { label: "Dev build", detail: "" }
+    }
+    if (latestVersionQuery.isLoading || latestVersionQuery.isFetching) {
+      return { label: "Checking", detail: "Checking GitHub release cache." }
+    }
+    if (latestVersionQuery.data) {
+      return { label: "Update available", detail: latestVersionQuery.data.tag_name }
+    }
+    return { label: "Up to date", detail: "No newer release is currently cached." }
+  }, [info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
+
+  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0
+    ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString())
+    : "Not checked yet"
+
+  const buildFields: ApplicationField[] = info ? [
+    { label: "Version", value: info.version || "—", monospace: true },
+    { label: "Commit", value: info.commitShort || info.commit || "—", copyValue: info.commit || "", monospace: true },
+    {
+      label: "Build date",
+      value: formatApplicationDate(info.buildDate),
+      secondary: formatRelativeDate(info.buildDate),
+    },
+    {
+      label: "Update status",
+      value: updateStatus.label,
+      secondary: [updateStatus.detail, `Last checked: ${updateCheckedAt}`].filter(Boolean).join(" • "),
+    },
+  ] : []
+
+  const runtimeFields: ApplicationField[] = info ? [
+    { label: "Uptime", value: formatDuration(liveUptimeSeconds) },
+    { label: "Runtime", value: `${info.goVersion} • ${info.goOS}/${info.goArch}`, monospace: true },
+  ] : []
+
+  const authFields: ApplicationField[] = info ? [
+    { label: "Current session auth", value: currentSessionAuth, monospace: true },
+    { label: "OIDC enabled", value: info.oidcEnabled ? "Yes" : "No" },
+    { label: "Built-in login enabled", value: info.builtInLoginEnabled ? "Yes" : "No" },
+    { label: "OIDC issuer host", value: info.oidcIssuerHost || "—", monospace: true },
+  ] : []
+
+  const storageFields: ApplicationField[] = info ? [
+    {
+      label: "Database",
+      value: `${info.database.engine}${info.database.target ? ` (${info.database.target})` : ""}`,
+      monospace: true,
+    },
+    { label: "Bind", value: `${info.host}:${info.port}${info.baseUrl}`, monospace: true },
+    { label: "Config dir", value: info.configDir || "—", copyValue: info.configDir || "", monospace: true },
+    { label: "Data dir", value: info.dataDir || "—", copyValue: info.dataDir || "", monospace: true },
+  ] : []
+
+  const handleCopy = useCallback(async (value: string, label: string) => {
+    if (!value) {
+      return
+    }
+
+    try {
+      await copyTextToClipboard(value)
+      toast.success(`${label} copied`)
+    } catch {
+      toast.error(`Failed to copy ${label.toLowerCase()}`)
+    }
+  }, [])
+
+  return (
+    <div className="space-y-4">
+      {appInfoQuery.isLoading && (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading application info…
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {appInfoQuery.isError && (
+        <Card>
+          <CardContent className="py-6">
+            <p className="text-sm text-destructive">
+              {appInfoQuery.error instanceof Error ? appInfoQuery.error.message : "Failed to load application info"}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {info && (
+        <>
+          <ApplicationSection
+            title="Build"
+            description="Build identity and traceability."
+            fields={buildFields}
+            onCopy={handleCopy}
+            headerAction={(
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void appInfoQuery.refetch()
+                  void latestVersionQuery.refetch()
+                  void currentUserQuery.refetch()
+                }}
+                disabled={appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${(appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching) ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            )}
+          />
+          <ApplicationSection
+            title="Runtime"
+            description="Process runtime and host platform."
+            fields={runtimeFields}
+            onCopy={handleCopy}
+          />
+          <ApplicationSection
+            title="Authentication"
+            description="Authentication settings and current session."
+            fields={authFields}
+            onCopy={handleCopy}
+          />
+          <ApplicationSection
+            title="Storage & Network"
+            description="Active paths, bind target, and database endpoint."
+            fields={storageFields}
+            onCopy={handleCopy}
+          />
+        </>
+      )}
+
+    </div>
+  )
+}
+
 interface SettingsProps {
   search: SettingsSearch
   onSearchChange: (search: SettingsSearch) => void
 }
 
 export function Settings({ search, onSearchChange }: SettingsProps) {
-  const activeTab: SettingsTab = search.tab ?? "instances"
+  const activeTab: SettingsTab = search.tab ?? "application"
 
   const handleTabChange = (tab: SettingsTab) => {
     onSearchChange({ tab })
@@ -783,6 +1119,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="application">
+              <div className="flex items-center">
+                <Info className="w-4 h-4 mr-2" />
+                Application
+              </div>
+            </SelectItem>
             <SelectItem value="instances">
               <div className="flex items-center">
                 <Server className="w-4 h-4 mr-2" />
@@ -863,6 +1205,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         {/* Desktop Sidebar Navigation */}
         <div className="hidden md:block w-64 shrink-0">
           <nav className="space-y-1">
+            <button
+              onClick={() => handleTabChange("application")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "application" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Info className="w-4 h-4 mr-2" />
+              Application
+            </button>
             <button
               onClick={() => handleTabChange("instances")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -976,6 +1327,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
         {/* Main Content Area */}
         <div className="flex-1 min-w-0">
+          {activeTab === "application" && (
+            <div className="space-y-4">
+              <ApplicationInfoPanel />
+            </div>
+          )}
 
           {activeTab === "instances" && (
             <div className="space-y-4">

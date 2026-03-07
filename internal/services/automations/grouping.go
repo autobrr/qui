@@ -223,11 +223,15 @@ func getOrComputeGroupingConditionUsage(evalCtx *EvalContext, rule *models.Autom
 }
 
 func conditionTreesForRule(rule *models.Automation) []*models.RuleCondition {
-	if rule == nil || rule.Conditions == nil {
+	if rule == nil {
 		return nil
 	}
+	trees := sortingConfigConditionTrees(rule.SortingConfig)
+	if rule.Conditions == nil {
+		return trees
+	}
 	conditions := rule.Conditions
-	trees := []*models.RuleCondition{
+	trees = append(trees,
 		conditionFromSpeedLimitAction(conditions.SpeedLimits),
 		conditionFromShareLimitsAction(conditions.ShareLimits),
 		conditionFromPauseAction(conditions.Pause),
@@ -238,10 +242,26 @@ func conditionTreesForRule(rule *models.Automation) []*models.RuleCondition {
 		conditionFromCategoryAction(conditions.Category),
 		conditionFromMoveAction(conditions.Move),
 		conditionFromExternalProgramAction(conditions.ExternalProgram),
-	}
+	)
 	for _, action := range conditions.TagActions() {
 		trees = append(trees, conditionFromTagAction(action))
 	}
+	return trees
+}
+
+func sortingConfigConditionTrees(config *models.SortingConfig) []*models.RuleCondition {
+	if config == nil || config.Type != models.SortingTypeScore {
+		return nil
+	}
+
+	trees := make([]*models.RuleCondition, 0, len(config.ScoreRules))
+	for i := range config.ScoreRules {
+		rule := config.ScoreRules[i]
+		if rule.Conditional != nil {
+			trees = append(trees, rule.Conditional.Condition)
+		}
+	}
+
 	return trees
 }
 

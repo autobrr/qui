@@ -50,6 +50,7 @@ type Server struct {
 	logger  zerolog.Logger
 	config  *config.AppConfig
 	version string
+	started time.Time
 
 	authService                      *auth.Service
 	sessionManager                   *scs.SessionManager
@@ -136,6 +137,7 @@ func NewServer(deps *Dependencies) *Server {
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
 		version:                          deps.Version,
+		started:                          time.Now().UTC(),
 		authService:                      deps.AuthService,
 		sessionManager:                   deps.SessionManager,
 		instanceStore:                    deps.InstanceStore,
@@ -275,16 +277,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Use(compressor)
 	}
 
-	// CORS - mirror autobrr's permissive credentials setup
-	corsMiddleware := cors.New(cors.Options{
-		AllowCredentials: true,
-		AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
-		AllowOriginFunc:  func(origin string) bool { return true },
-		MaxAge:           300,
-		Debug:            false,
-	})
-	r.Use(corsMiddleware.Handler)
+	// CORS is disabled by default. Enable only for explicit trusted origins.
+	if len(s.config.Config.CORSAllowedOrigins) > 0 {
+		corsMiddleware := cors.New(cors.Options{
+			AllowCredentials: true,
+			AllowedOrigins:   s.config.Config.CORSAllowedOrigins,
+			AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
+			MaxAge:           300,
+			Debug:            false,
+		})
+		r.Use(corsMiddleware.Handler)
+	}
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
@@ -302,6 +306,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
@@ -442,6 +447,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
+			r.Get("/application/info", applicationHandler.GetInfo)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
@@ -454,6 +460,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
+					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
@@ -482,6 +489,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
 						})
 					})
 

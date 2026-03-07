@@ -74,11 +74,13 @@ var migrationsFS embed.FS
 
 // reader/writer fields on DB
 type DB struct {
-	writerConn  *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
-	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
-	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
-	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
-	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
+	writerConn      *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
+	readerPool      *sql.DB                            // Read-only connection pool for concurrent reads
+	writerStmts     *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
+	readerStmts     *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
+	stmtMu          sync.RWMutex                       // Protects stmt caches during Close and cache ops
+	dialect         Dialect
+	serializeWrites bool
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -99,6 +101,48 @@ type DB struct {
 
 	closeOnce sync.Once
 	closeErr  error
+}
+
+type migrationFilenameRename struct {
+	from string
+	to   string
+}
+
+var sharedMigrationFilenameRenames = []migrationFilenameRename{
+	// Keep historical migration filename rewrites here whenever an embedded
+	// migration filename changes. Migration tracking keys off the filename, so
+	// old names must be normalized before pending migrations are computed.
+	// Use direct old -> current mappings for each backend rather than chains.
+	{
+		from: "061_add_notifications.sql",
+		to:   "062_add_notifications.sql",
+	},
+	{
+		from: "052_add_dir_scan.sql",
+		to:   "053_add_dir_scan.sql",
+	},
+	{
+		from: "055_add_license_provider_dodo.sql",
+		to:   "057_add_license_provider_dodo.sql",
+	},
+}
+
+var sqliteMigrationFilenameRenames = []migrationFilenameRename{
+	{
+		from: "064_add_completion_bypass_torznab_cache.sql",
+		to:   "066_add_completion_bypass_torznab_cache.sql",
+	},
+	{
+		from: "065_add_completion_bypass_torznab_cache.sql",
+		to:   "066_add_completion_bypass_torznab_cache.sql",
+	},
+}
+
+var postgresMigrationFilenameRenames = []migrationFilenameRename{
+	{
+		from: "066_add_completion_bypass_torznab_cache.sql",
+		to:   "067_add_completion_bypass_torznab_cache.sql",
+	},
 }
 
 // Tx wraps sql.Tx to provide prepared statement caching for transaction queries
@@ -133,7 +177,7 @@ func (e txExecResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) 
 
 func (e txExecResult) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
 	e.tx.markQueryForCaching(query)
-	return e.tx.tx.ExecContext(ctx, query, args...)
+	return e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
 }
 
 func (txExecResult) getErr(sql.Result) error { return nil }
@@ -147,7 +191,7 @@ func (q txQueryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (
 
 func (q txQueryRows) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
 	q.tx.markQueryForCaching(query)
-	return q.tx.tx.QueryContext(ctx, query, args...)
+	return q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
 }
 
 func (txQueryRows) getErr(r *sql.Rows) error {
@@ -179,7 +223,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
 		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, query, args...)
+		return t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
 	}
 
 	row := stmt.QueryRowContext(ctx, args...)
@@ -193,7 +237,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
 		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, query, args...)
+		return t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
 	}
 	return stmt.QueryRowContext(ctx, args...)
 }
@@ -245,6 +289,7 @@ func (t *Tx) promoteStatementsToCache() {
 	defer cancel()
 
 	for query := range queries {
+		boundQuery := t.db.bindQuery(query)
 		// Skip promotion during shutdown
 		if t.db.closing.Load() {
 			return
@@ -269,19 +314,19 @@ func (t *Tx) promoteStatementsToCache() {
 		}
 
 		// Double-check it's not already cached (race condition protection)
-		if _, found := stmts.Get(query); found {
+		if _, found := stmts.Get(boundQuery); found {
 			t.db.stmtMu.RUnlock()
 			continue
 		}
 
 		// Prepare and cache the statement
-		stmt, err := conn.PrepareContext(ctx, query)
+		stmt, err := conn.PrepareContext(ctx, boundQuery)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
 			continue // silently skip - caching is best-effort
 		}
 
-		stmts.Set(query, stmt, ttlcache.DefaultTTL)
+		stmts.Set(boundQuery, stmt, ttlcache.DefaultTTL)
 		t.db.stmtMu.RUnlock()
 	}
 }
@@ -437,10 +482,12 @@ func New(databasePath string) (*DB, error) {
 	readerStmtsCache := ttlcache.New(readerStmtOpts)
 
 	db := &DB{
-		writerConn:  writerConn,
-		readerPool:  readerPool,
-		writerStmts: writerStmtsCache,
-		readerStmts: readerStmtsCache,
+		writerConn:      writerConn,
+		readerPool:      readerPool,
+		writerStmts:     writerStmtsCache,
+		readerStmts:     readerStmtsCache,
+		dialect:         DialectSQLite,
+		serializeWrites: true,
 	}
 
 	// Run migrations with writer connection
@@ -479,6 +526,7 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	if db.closing.Load() {
 		return nil, sql.ErrConnDone
 	}
+	query = db.bindQuery(query)
 
 	db.stmtMu.RLock()
 	defer db.stmtMu.RUnlock()
@@ -545,6 +593,7 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 }
 
 func (db *DB) deleteStmt(query string, isWrite bool) {
+	query = db.bindQuery(query)
 	db.stmtMu.RLock()
 	defer db.stmtMu.RUnlock()
 
@@ -639,10 +688,11 @@ func (queryRows) getTx() *Tx { return nil }
 func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query string, args []any, executor E) (T, error) {
 	stmt, err := db.getStmt(ctx, query, executor.getTx())
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return executor.execDirect(db.writerConn, ctx, query, args)
+			return executor.execDirect(db.writerConn, ctx, boundQuery, args)
 		}
-		return executor.execDirect(db.readerPool, ctx, query, args)
+		return executor.execDirect(db.readerPool, ctx, boundQuery, args)
 	}
 
 	result, execErr := executor.execStmt(stmt, ctx, args)
@@ -661,10 +711,11 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 
 	stmt, err = db.getStmt(ctx, query, executor.getTx())
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return executor.execDirect(db.writerConn, ctx, query, args)
+			return executor.execDirect(db.writerConn, ctx, boundQuery, args)
 		}
-		return executor.execDirect(db.readerPool, ctx, query, args)
+		return executor.execDirect(db.readerPool, ctx, boundQuery, args)
 	}
 
 	result, execErr = executor.execStmt(stmt, ctx, args)
@@ -679,8 +730,10 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		return execWithRetry(db, ctx, query, args, execResult{})
 	}
 
-	db.writerMu.Lock()
-	defer db.writerMu.Unlock()
+	if db.serializeWrites {
+		db.writerMu.Lock()
+		defer db.writerMu.Unlock()
+	}
 
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
@@ -692,8 +745,10 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 		return execWithRetry(db, ctx, query, args, queryRows{})
 	}
 
-	db.writerMu.Lock()
-	defer db.writerMu.Unlock()
+	if db.serializeWrites {
+		db.writerMu.Lock()
+		defer db.writerMu.Unlock()
+	}
 
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
@@ -701,7 +756,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	if isWriteQuery(query) {
+	if isWriteQuery(query) && db.serializeWrites {
 		db.writerMu.Lock()
 		row := db.queryRowUnlocked(ctx, query, args...)
 		db.writerMu.Unlock()
@@ -713,10 +768,11 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return db.writerConn.QueryRowContext(ctx, query, args...)
+			return db.writerConn.QueryRowContext(ctx, boundQuery, args...)
 		}
-		return db.readerPool.QueryRowContext(ctx, query, args...)
+		return db.readerPool.QueryRowContext(ctx, boundQuery, args...)
 	}
 
 	row := stmt.QueryRowContext(ctx, args...)
@@ -733,10 +789,11 @@ func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *
 
 	stmt, err = db.getStmt(ctx, query, nil)
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return db.writerConn.QueryRowContext(ctx, query, args...)
+			return db.writerConn.QueryRowContext(ctx, boundQuery, args...)
 		}
-		return db.readerPool.QueryRowContext(ctx, query, args...)
+		return db.readerPool.QueryRowContext(ctx, boundQuery, args...)
 	}
 	return stmt.QueryRowContext(ctx, args...)
 }
@@ -862,11 +919,15 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	// Write transactions: Lock mutex for the ENTIRE transaction lifetime.
 	// The mutex will be unlocked by Commit() or Rollback().
-	db.writerMu.Lock()
+	if db.serializeWrites {
+		db.writerMu.Lock()
+	}
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock()
+		if db.serializeWrites {
+			db.writerMu.Unlock()
+		}
 		if isSQLiteNestedTxErr(err) {
 			// This indicates a bug: a previous transaction failed to rollback properly,
 			// leaving the connection wedged. Log with stack trace to help diagnose.
@@ -886,7 +947,11 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		db:        db,
 		ctx:       ctx,
 		isWriteTx: true,
-		unlockFn:  db.writerMu.Unlock,
+		unlockFn: func() {
+			if db.serializeWrites {
+				db.writerMu.Unlock()
+			}
+		},
 	}, nil
 }
 
@@ -899,11 +964,13 @@ func (db *DB) Close() error {
 			db.cleanupCancel()
 		}
 
-		// Run PRAGMA optimize on writer connection before closing
-		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
-		defer cancel()
-		if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
-			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+		if db.dialect == DialectSQLite {
+			// Run PRAGMA optimize on writer connection before closing
+			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+			defer cancel()
+			if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+				log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+			}
 		}
 
 		db.stmtMu.Lock()
@@ -997,42 +1064,36 @@ func (db *DB) migrate() error {
 }
 
 func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
-	renames := []struct {
-		from string
-		to   string
-	}{
-		{
-			from: "061_add_notifications.sql",
-			to:   "062_add_notifications.sql",
-		},
-		{
-			from: "052_add_dir_scan.sql",
-			to:   "053_add_dir_scan.sql",
-		},
-		{
-			from: "055_add_license_provider_dodo.sql",
-			to:   "057_add_license_provider_dodo.sql",
-		},
-	}
+	return db.normalizeMigrationFilenamesWithExecer(ctx, db.writerConn, sharedMigrationFilenameRenames, sqliteMigrationFilenameRenames)
+}
 
-	for _, r := range renames {
-		// If both entries exist, keep the new name.
-		if _, err := db.writerConn.ExecContext(ctx, `
-			DELETE FROM migrations
-			WHERE filename = ?
-			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
-		`, r.from, r.to); err != nil {
-			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
-		}
+func (db *DB) normalizeMigrationFilenamesWithExecer(
+	ctx context.Context,
+	execer interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	},
+	renameSets ...[]migrationFilenameRename,
+) error {
+	for _, renames := range renameSets {
+		for _, r := range renames {
+			// If both entries exist, keep the new name.
+			if _, err := execer.ExecContext(ctx, db.bindQuery(`
+				DELETE FROM migrations
+				WHERE filename = ?
+				  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+			`), r.from, r.to); err != nil {
+				return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+			}
 
-		// Rename old -> new if the new entry doesn't already exist.
-		if _, err := db.writerConn.ExecContext(ctx, `
-			UPDATE migrations
-			SET filename = ?
-			WHERE filename = ?
-			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
-		`, r.to, r.from, r.to); err != nil {
-			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+			// Rename old -> new if the new entry doesn't already exist.
+			if _, err := execer.ExecContext(ctx, db.bindQuery(`
+				UPDATE migrations
+				SET filename = ?
+				WHERE filename = ?
+				  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+			`), r.to, r.from, r.to); err != nil {
+				return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+			}
 		}
 	}
 
@@ -1313,11 +1374,11 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// All string_pool references use ON DELETE RESTRICT which would prevent deletion
 	// even when there are no actual references. Deferring allows the transaction to
 	// complete and verify constraints at commit time rather than immediately.
-	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp_referenced_strings (string_id) SELECT string_id FROM (
+	_, err = tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
 `+referencedStringsInsertQuery+`
 		) AS subquery`)
 	if err != nil {
@@ -1386,10 +1447,12 @@ func NewForTest(conn *sql.DB) *DB {
 	stmtsCache := ttlcache.New(stmtOpts)
 
 	db := &DB{
-		writerConn:  conn,
-		readerPool:  conn,       // For tests, use same connection for both
-		writerStmts: stmtsCache, // For tests, use same cache for both
-		readerStmts: stmtsCache, // For tests, use same cache for both
+		writerConn:      conn,
+		readerPool:      conn,       // For tests, use same connection for both
+		writerStmts:     stmtsCache, // For tests, use same cache for both
+		readerStmts:     stmtsCache, // For tests, use same cache for both
+		dialect:         DialectSQLite,
+		serializeWrites: true,
 	}
 
 	// Note: stringPoolCleanupLoop is NOT started for tests

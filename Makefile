@@ -6,17 +6,26 @@ ifneq (,$(wildcard .env))
     export
 endif
 
+# Windows compatibility: run recipes through Git Bash so POSIX tools work
+ifeq ($(OS),Windows_NT)
+	GIT_BASH ?= C:/Progra~1/Git/bin/bash.exe
+	override SHELL := $(GIT_BASH)
+	override MAKESHELL := $(SHELL)
+	.SHELLFLAGS := -lc
+endif
+
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
 GIT_TAG := $(shell git describe --abbrev=0 --tags)
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 BINARY_NAME = qui
 BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
 # Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
+LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
 .PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
@@ -28,10 +37,10 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
-	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:
@@ -100,7 +109,7 @@ clean: themes-clean
 # Run tests
 test:
 	@echo "Running tests..."
-	go test -race -count=3 -v ./...
+	go test -race -v ./...
 
 # Validate OpenAPI specification
 test-openapi:

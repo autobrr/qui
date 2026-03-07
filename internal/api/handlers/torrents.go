@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -117,6 +118,9 @@ func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int
 func (h *TorrentsHandler) getAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
 	if h.torrentAdder != nil {
 		return h.torrentAdder.GetAppPreferences(ctx, instanceID)
+	}
+	if h.syncManager == nil {
+		return qbt.AppPreferences{}, errors.New("sync manager not configured")
 	}
 	return h.syncManager.GetAppPreferences(ctx, instanceID)
 }
@@ -2626,17 +2630,51 @@ func (h *TorrentsHandler) requireLocalAccess(w http.ResponseWriter, r *http.Requ
 }
 
 // resolveTorrentFilePath joins basePath with relativePath and validates against
-// directory traversal. Returns the cleaned absolute path or an error.
+// directory traversal, including symlink escapes. Returns the resolved absolute
+// path or an error.
 func resolveTorrentFilePath(basePath, relativePath string) (string, error) {
-	full := filepath.Join(basePath, filepath.FromSlash(relativePath))
 	cleanBase := filepath.Clean(basePath)
+	if !filepath.IsAbs(cleanBase) {
+		return "", errors.New("base path must be absolute")
+	}
+
+	full := filepath.Join(cleanBase, filepath.FromSlash(relativePath))
 	cleanFull := filepath.Clean(full)
 
 	rel, err := filepath.Rel(cleanBase, cleanFull)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", errors.New("path traversal detected")
 	}
-	return cleanFull, nil
+
+	// #nosec G703 -- cleanBase is validated as absolute and constrained by traversal checks above.
+	if _, err := os.Lstat(cleanBase); err != nil {
+		return "", fmt.Errorf("failed to access base path: %w", err)
+	}
+
+	evaluatedBase, err := filepath.EvalSymlinks(cleanBase)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base path symlinks: %w", err)
+	}
+
+	// #nosec G703 -- cleanFull is derived from a validated base path and traversal-checked relative input.
+	if _, err := os.Lstat(cleanFull); err != nil {
+		if os.IsNotExist(err) {
+			return cleanFull, nil
+		}
+		return "", fmt.Errorf("failed to access candidate path: %w", err)
+	}
+
+	evaluatedFull, err := filepath.EvalSymlinks(cleanFull)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve candidate path symlinks: %w", err)
+	}
+
+	rel, err = filepath.Rel(evaluatedBase, evaluatedFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	return evaluatedFull, nil
 }
 
 func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candidate string) []string {
@@ -2684,55 +2722,61 @@ func filePathCandidates(savePath, downloadPath, contentPath, relativePath string
 	return candidates
 }
 
-// DownloadTorrentContentFile serves a single file from a torrent's content on disk.
-// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download
-func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *http.Request) {
+type resolvedTorrentContentFile struct {
+	InstanceID   int
+	Hash         string
+	FileIndex    int
+	RelativePath string
+	ResolvedPath string
+}
+
+func parseTorrentContentFileParams(w http.ResponseWriter, r *http.Request) (int, string, int, bool) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
+		return 0, "", 0, false
 	}
 
-	hash := chi.URLParam(r, "hash")
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
 	if hash == "" {
 		RespondError(w, http.StatusBadRequest, "Missing torrent hash")
-		return
+		return 0, "", 0, false
 	}
 
 	fileIndex, err := strconv.Atoi(chi.URLParam(r, "fileIndex"))
 	if err != nil || fileIndex < 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid file index")
-		return
+		return 0, "", 0, false
 	}
 
-	if !h.requireLocalAccess(w, r, instanceID) {
-		return
-	}
+	return instanceID, hash, fileIndex, true
+}
 
-	// Get file list and find target file by index
-	var resolver torrentContentResolver
+func chooseTorrentContentResolver(h *TorrentsHandler, w http.ResponseWriter, unavailableMessage string) (torrentContentResolver, bool) {
 	switch {
 	case h.contentResolver != nil:
-		resolver = h.contentResolver
+		return h.contentResolver, true
 	case h.syncManager != nil:
-		resolver = h.syncManager
+		return h.syncManager, true
 	default:
-		RespondError(w, http.StatusInternalServerError, "Download service unavailable")
-		return
+		RespondError(w, http.StatusInternalServerError, unavailableMessage)
+		return nil, false
 	}
+}
 
-	files, err := resolver.GetTorrentFiles(r.Context(), instanceID, hash)
+func fetchTorrentFilesAndPropsForContentFile(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, fileIndex int, context string, w http.ResponseWriter) (string, int, *qbt.TorrentProperties, bool) {
+	files, err := resolver.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
-		if respondIfInstanceDisabled(w, err, instanceID, "torrents:downloadContentFile") {
-			return
+		if respondIfInstanceDisabled(w, err, instanceID, context) {
+			return "", 0, nil, false
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
-		return
+		return "", 0, nil, false
 	}
 	if files == nil {
 		RespondError(w, http.StatusNotFound, "Torrent files not found")
-		return
+		return "", 0, nil, false
 	}
 
 	var targetFileName string
@@ -2746,41 +2790,41 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	}
 	if !found {
 		RespondError(w, http.StatusNotFound, "File index not found in torrent")
-		return
+		return "", 0, nil, false
 	}
 
-	// Get torrent properties for save/download paths
-	props, err := resolver.GetTorrentProperties(r.Context(), instanceID, hash)
+	props, err := resolver.GetTorrentProperties(ctx, instanceID, hash)
 	if err != nil {
-		if respondIfInstanceDisabled(w, err, instanceID, "torrents:downloadContentFile") {
-			return
+		if respondIfInstanceDisabled(w, err, instanceID, context) {
+			return "", 0, nil, false
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent properties")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
-		return
+		return "", 0, nil, false
 	}
 	if props == nil {
 		log.Error().Int("instanceID", instanceID).Str("hash", hash).Msg("Torrent properties are nil")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
-		return
+		return "", 0, nil, false
 	}
 
+	return targetFileName, len(*files), props, true
+}
+
+func resolveTorrentContentFilePathOnDisk(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, props *qbt.TorrentProperties, targetFileName string, filesLen int, w http.ResponseWriter) (string, bool) {
 	contentPath := ""
-	if torrents, err := resolver.GetTorrents(r.Context(), instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
+	if torrents, err := resolver.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
 	} else if len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
 	}
 
-	candidates := filePathCandidates(props.SavePath, props.DownloadPath, contentPath, targetFileName, len(*files) == 1)
+	candidates := filePathCandidates(props.SavePath, props.DownloadPath, contentPath, targetFileName, filesLen == 1)
 	if len(candidates) == 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid file path")
-		return
+		return "", false
 	}
 
-	// Try each candidate path until we find the file
-	var file *os.File
-	var info os.FileInfo
 	for _, candidate := range candidates {
 		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
 		f, err := os.Open(candidate)
@@ -2790,25 +2834,86 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 
 		stat, err := f.Stat()
 		if err != nil {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file after stat error")
+			}
 			continue
 		}
 		if stat.IsDir() {
-			_ = f.Close()
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate directory handle")
+			}
+			continue
+		}
+		if cerr := f.Close(); cerr != nil {
+			log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file")
 			continue
 		}
 
-		file = f
-		info = stat
-		break
+		return candidate, true
 	}
-	if file == nil {
+
+	RespondError(w, http.StatusNotFound, "File not found on disk")
+	return "", false
+}
+
+func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *http.Request, unavailableMessage, context string) (resolvedTorrentContentFile, bool) {
+	instanceID, hash, fileIndex, ok := parseTorrentContentFileParams(w, r)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	if !h.requireLocalAccess(w, r, instanceID) {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	resolver, ok := chooseTorrentContentResolver(h, w, unavailableMessage)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	targetFileName, filesLen, props, ok := fetchTorrentFilesAndPropsForContentFile(r.Context(), resolver, instanceID, hash, fileIndex, context, w)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	resolvedPath, ok := resolveTorrentContentFilePathOnDisk(r.Context(), resolver, instanceID, hash, props, targetFileName, filesLen, w)
+	if !ok {
+		return resolvedTorrentContentFile{}, false
+	}
+
+	return resolvedTorrentContentFile{
+		InstanceID:   instanceID,
+		Hash:         hash,
+		FileIndex:    fileIndex,
+		RelativePath: targetFileName,
+		ResolvedPath: resolvedPath,
+	}, true
+}
+
+// DownloadTorrentContentFile serves a single file from a torrent's content on disk.
+// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download
+func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *http.Request) {
+	resolved, ok := h.resolveTorrentContentFile(w, r, "Download service unavailable", "torrents:downloadContentFile")
+	if !ok {
+		return
+	}
+
+	// #nosec G703,G304 -- resolved.ResolvedPath is constructed from validated base paths via resolveTorrentFilePath.
+	file, err := os.Open(resolved.ResolvedPath)
+	if err != nil {
 		RespondError(w, http.StatusNotFound, "File not found on disk")
 		return
 	}
 	defer file.Close()
 
-	filename := filepath.Base(targetFileName)
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+
+	filename := filepath.Base(resolved.RelativePath)
 
 	contentType := mime.TypeByExtension(filepath.Ext(filename))
 	if contentType == "" {
@@ -2825,4 +2930,225 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, filename, info.ModTime(), file)
+}
+
+type torrentFileMediaInfoField struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type torrentFileMediaInfoStream struct {
+	Kind   string                      `json:"kind"`
+	Fields []torrentFileMediaInfoField `json:"fields"`
+}
+
+type torrentFileMediaInfoResponse struct {
+	FileIndex    int                          `json:"fileIndex"`
+	RelativePath string                       `json:"relativePath"`
+	Streams      []torrentFileMediaInfoStream `json:"streams"`
+	RawJSON      string                       `json:"rawJSON"`
+}
+
+type contentPathMediaInfoResponse struct {
+	ContentPath   string          `json:"contentPath"`
+	SummaryTxt    string          `json:"summaryTxt"`
+	MediaInfoJSON json.RawMessage `json:"mediaInfoJson"`
+}
+
+func mapReportToMediaInfoStreams(report mediainfo.Report) []torrentFileMediaInfoStream {
+	streams := make([]torrentFileMediaInfoStream, 0, 1+len(report.Streams))
+	generalFields := make([]torrentFileMediaInfoField, 0, len(report.General.Fields))
+	for _, field := range report.General.Fields {
+		generalFields = append(generalFields, torrentFileMediaInfoField{Name: field.Name, Value: field.Value})
+	}
+	streams = append(streams, torrentFileMediaInfoStream{
+		Kind:   string(report.General.Kind),
+		Fields: generalFields,
+	})
+
+	for _, stream := range report.Streams {
+		fields := make([]torrentFileMediaInfoField, 0, len(stream.Fields))
+		for _, field := range stream.Fields {
+			fields = append(fields, torrentFileMediaInfoField{Name: field.Name, Value: field.Value})
+		}
+		streams = append(streams, torrentFileMediaInfoStream{
+			Kind:   string(stream.Kind),
+			Fields: fields,
+		})
+	}
+
+	return streams
+}
+
+func normalizeContentPathRelativeInput(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New("content path is required")
+	}
+
+	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
+	normalized := filepath.Clean(filepath.FromSlash(trimmed))
+	if filepath.IsAbs(normalized) {
+		return "", errors.New("absolute paths are not allowed")
+	}
+	if normalized == ".." || strings.HasPrefix(normalized, ".."+string(filepath.Separator)) {
+		return "", errors.New("path traversal detected")
+	}
+
+	return normalized, nil
+}
+
+func contentPathCandidatesFromPreferences(prefs qbt.AppPreferences, relativePath string) []string {
+	candidates := make([]string, 0, 2)
+	seen := make(map[string]struct{})
+
+	if p, err := resolveTorrentFilePath(prefs.SavePath, relativePath); err == nil {
+		candidates = appendUniqueCandidate(candidates, seen, p)
+	}
+
+	if prefs.TempPathEnabled {
+		if p, err := resolveTorrentFilePath(prefs.TempPath, relativePath); err == nil {
+			candidates = appendUniqueCandidate(candidates, seen, p)
+		}
+	}
+
+	return candidates
+}
+
+func findExistingContentFile(candidates []string) (string, bool) {
+	for _, candidate := range candidates {
+		// #nosec G703,G304 -- candidate is constructed from validated base paths via resolveTorrentFilePath.
+		f, err := os.Open(candidate)
+		if err != nil {
+			continue
+		}
+
+		stat, err := f.Stat()
+		if err != nil {
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file after stat error")
+			}
+			continue
+		}
+		if stat.IsDir() {
+			if cerr := f.Close(); cerr != nil {
+				log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate directory handle")
+			}
+			continue
+		}
+		if cerr := f.Close(); cerr != nil {
+			log.Warn().Err(cerr).Str("candidate", candidate).Msg("Failed to close candidate file")
+			continue
+		}
+
+		return candidate, true
+	}
+
+	return "", false
+}
+
+// GetTorrentFileMediaInfo returns MediaInfo output for a single torrent content file on disk.
+// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/mediainfo
+func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http.Request) {
+	resolved, ok := h.resolveTorrentContentFile(w, r, "MediaInfo service unavailable", "torrents:getFileMediaInfo")
+	if !ok {
+		return
+	}
+
+	// #nosec G304 -- resolved.ResolvedPath is constructed from validated base paths via resolveTorrentFilePath.
+	report, err := mediainfo.AnalyzeFile(resolved.ResolvedPath, mediainfo.WithParseSpeed(0.5))
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", resolved.InstanceID).Str("hash", resolved.Hash).Int("fileIndex", resolved.FileIndex).Msg("Failed to analyze file with MediaInfo")
+		RespondError(w, http.StatusInternalServerError, "Failed to analyze file")
+		return
+	}
+
+	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", resolved.InstanceID).Str("hash", resolved.Hash).Int("fileIndex", resolved.FileIndex).Msg("Failed to render MediaInfo JSON")
+		RespondError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, torrentFileMediaInfoResponse{
+		FileIndex:    resolved.FileIndex,
+		RelativePath: resolved.RelativePath,
+		Streams:      mapReportToMediaInfoStreams(report),
+		RawJSON:      rawJSON,
+	})
+}
+
+// GetContentPathMediaInfo returns MediaInfo summary text and JSON for an instance-relative content path.
+// GET /api/instances/{instanceID}/mediainfo?contentPath=...
+func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	if !h.requireLocalAccess(w, r, instanceID) {
+		return
+	}
+
+	rawContentPath := strings.TrimSpace(r.URL.Query().Get("contentPath"))
+	if rawContentPath == "" {
+		rawContentPath = strings.TrimSpace(r.URL.Query().Get("content_path"))
+	}
+
+	relativePath, err := normalizeContentPathRelativeInput(rawContentPath)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid content path")
+		return
+	}
+
+	prefs, err := h.getAppPreferences(r.Context(), instanceID)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getContentPathMediaInfo") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences for MediaInfo")
+		RespondError(w, http.StatusInternalServerError, "Failed to get app preferences")
+		return
+	}
+
+	candidates := contentPathCandidatesFromPreferences(prefs, relativePath)
+	if len(candidates) == 0 {
+		RespondError(w, http.StatusBadRequest, "No content roots configured for instance")
+		return
+	}
+
+	resolvedPath, ok := findExistingContentFile(candidates)
+	if !ok {
+		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+
+	// #nosec G304 -- resolvedPath is constructed from validated base paths via resolveTorrentFilePath.
+	report, err := mediainfo.AnalyzeFile(resolvedPath, mediainfo.WithParseSpeed(0.5))
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("contentPath", relativePath).Msg("Failed to analyze file with MediaInfo")
+		RespondError(w, http.StatusInternalServerError, "Failed to analyze file")
+		return
+	}
+
+	summaryTxt, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputText)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("contentPath", relativePath).Msg("Failed to render MediaInfo summary text")
+		RespondError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
+		return
+	}
+
+	rawJSON, err := mediainfo.Render([]mediainfo.Report{report}, mediainfo.OutputJSON)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("contentPath", relativePath).Msg("Failed to render MediaInfo JSON")
+		RespondError(w, http.StatusInternalServerError, "Failed to render MediaInfo")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, contentPathMediaInfoResponse{
+		ContentPath:   relativePath,
+		SummaryTxt:    summaryTxt,
+		MediaInfoJSON: json.RawMessage(rawJSON),
+	})
 }

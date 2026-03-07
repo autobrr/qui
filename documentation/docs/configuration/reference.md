@@ -44,12 +44,25 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `host` | `QUI__HOST` | string | `localhost` (or `0.0.0.0` in containers) | Bind address for the main HTTP server. |
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
 | `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). |
+| `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. Empty disables CORS. Origins must be `http(s)://host[:port]`; wildcards are rejected; default ports are normalized. Restart required. |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: changing breaks decryption of stored instance passwords; you must re-enter them in the UI. |
 | `logLevel` | `QUI__LOG_LEVEL` | string | `INFO` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty: logs to stdout. Relative paths resolve relative to the config directory. Applied immediately. |
 | `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | MiB threshold before rotation. Applied immediately. |
 | `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `3` | Rotated files retained. `0` keeps all. Applied immediately. |
-| `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Database `qui.db` lives here. Restart recommended. |
+| `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Always used for non-database assets (logs, tracker icon cache, etc.). When `databaseEngine=sqlite`, `qui.db` also lives here. Restart recommended. |
+| `databaseEngine` | `QUI__DATABASE_ENGINE` | string | `sqlite` | `sqlite` or `postgres`. Existing installs should keep `sqlite` unless you migrate. Restart required. |
+| `databaseDsn` | `QUI__DATABASE_DSN` / `QUI__DATABASE_DSN_FILE` | string | empty | Full Postgres DSN. Preferred when `databaseEngine=postgres`. |
+| `databaseHost` | `QUI__DATABASE_HOST` | string | `localhost` | Postgres host when not using `databaseDsn`. |
+| `databasePort` | `QUI__DATABASE_PORT` | int | `5432` | Postgres port when not using `databaseDsn`. |
+| `databaseUser` | `QUI__DATABASE_USER` | string | empty | Postgres user when not using `databaseDsn`. |
+| `databasePassword` | `QUI__DATABASE_PASSWORD` / `QUI__DATABASE_PASSWORD_FILE` | string | empty | Postgres password when not using `databaseDsn`. |
+| `databaseName` | `QUI__DATABASE_NAME` | string | `qui` | Postgres database name when not using `databaseDsn`. |
+| `databaseSSLMode` | `QUI__DATABASE_SSL_MODE` | string | `disable` | Common values: `disable`, `require`, `verify-ca`, `verify-full`. |
+| `databaseConnectTimeout` | `QUI__DATABASE_CONNECT_TIMEOUT` | int | `10` | Postgres connect timeout in seconds. |
+| `databaseMaxOpenConns` | `QUI__DATABASE_MAX_OPEN_CONNS` | int | `25` | Postgres pool max open connections. |
+| `databaseMaxIdleConns` | `QUI__DATABASE_MAX_IDLE_CONNS` | int | `5` | Postgres pool max idle connections. |
+| `databaseConnMaxLifetime` | `QUI__DATABASE_CONN_MAX_LIFETIME` | int | `300` | Postgres connection max lifetime in seconds. |
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart recommended. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable to prevent remote tracker favicon fetches. Applied immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | When enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. Can add 25+ minutes per torrent. Restart recommended. |
@@ -106,6 +119,23 @@ If you use private trackers, running qui without authentication is especially da
 :::
 
 If `QUI__AUTH_DISABLED` is set without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui will log a warning and keep authentication enabled.
+
+## CORS
+
+By default, qui does not send CORS allow headers. To allow browser requests from another trusted origin, set `corsAllowedOrigins` (or `QUI__CORS_ALLOWED_ORIGINS`) to an explicit allowlist:
+
+```bash
+QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com
+```
+
+Rules:
+
+- only explicit origins are allowed (`http://` or `https://` + host + optional non-default port)
+- wildcards are rejected (`*`, `https://*.example.com`, etc.)
+- path/query/fragment/userinfo are rejected
+- invalid values refuse startup; invalid live reloads are rejected and keep the last valid allowlist
+
+For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors).
 
 ## Example `config.toml`
 

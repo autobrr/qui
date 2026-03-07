@@ -9,8 +9,6 @@ import (
 	"errors"
 
 	"github.com/autobrr/qui/internal/dbinterface"
-	"modernc.org/sqlite"
-	lib "modernc.org/sqlite/lib"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -38,7 +36,7 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	defer tx.Rollback()
 
 	query := `
-		INSERT INTO user (id, username, password_hash) 
+		INSERT INTO "user" (id, username, password_hash)
 		VALUES (1, ?, ?)
 		RETURNING id, username, password_hash
 	`
@@ -51,12 +49,9 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	)
 
 	if err != nil {
-		var sqlErr *sqlite.Error
-		if errors.As(err, &sqlErr) {
-			// UNIQUE constraint on username or CHECK constraint on id = 1
-			if sqlErr.Code() == lib.SQLITE_CONSTRAINT_UNIQUE || sqlErr.Code() == lib.SQLITE_CONSTRAINT_CHECK {
-				return nil, ErrUserAlreadyExists
-			}
+		// UNIQUE constraint on username or CHECK constraint on id = 1
+		if isUniqueConstraintError(err) || isCheckConstraintError(err) {
+			return nil, ErrUserAlreadyExists
 		}
 		return nil, err
 	}
@@ -70,8 +65,8 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 
 func (s *UserStore) Get(ctx context.Context) (*User, error) {
 	query := `
-		SELECT id, username, password_hash 
-		FROM user 
+		SELECT id, username, password_hash
+		FROM "user"
 		WHERE id = 1
 	`
 
@@ -94,8 +89,8 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 
 func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
 	query := `
-		SELECT id, username, password_hash 
-		FROM user 
+		SELECT id, username, password_hash
+		FROM "user"
 		WHERE username = ?
 	`
 
@@ -124,8 +119,8 @@ func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) err
 	defer tx.Rollback()
 
 	query := `
-		UPDATE user 
-		SET password_hash = ? 
+		UPDATE "user"
+		SET password_hash = ?
 		WHERE id = 1
 	`
 
@@ -152,7 +147,7 @@ func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) err
 
 func (s *UserStore) Exists(ctx context.Context) (bool, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user").Scan(&count)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM "user"`).Scan(&count)
 	if err != nil {
 		return false, err
 	}

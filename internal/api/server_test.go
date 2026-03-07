@@ -61,6 +61,7 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/activity"}:           {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:           {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:              {},
+	{Method: http.MethodGet, Path: "/api/application/info"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                                   {},
 	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                                  {},
 	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                              {},

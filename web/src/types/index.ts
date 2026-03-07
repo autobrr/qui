@@ -16,6 +16,34 @@ export interface AuthResponse {
   message?: string
 }
 
+export interface ApplicationDatabaseInfo {
+  engine: string
+  target: string
+}
+
+export interface ApplicationInfo {
+  version: string
+  commit?: string
+  commitShort?: string
+  buildDate?: string
+  startedAt: string
+  uptimeSeconds: number
+  goVersion: string
+  goOS: string
+  goArch: string
+  baseUrl: string
+  host: string
+  port: number
+  configDir: string
+  dataDir: string
+  authMode: "builtin" | "oidc" | "disabled"
+  oidcEnabled: boolean
+  builtInLoginEnabled: boolean
+  oidcIssuerHost?: string
+  checkForUpdates: boolean
+  database: ApplicationDatabaseInfo
+}
+
 // Generic warning response for operations that succeed with caveats
 export interface WarningResponse {
   warning?: string
@@ -96,6 +124,7 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeCategories: string[]
   excludeTags: string[]
   indexerIds: number[]
+  bypassTorznabCache: boolean
 }
 
 /**
@@ -385,6 +414,36 @@ export type FreeSpaceSource =
 
 export type FreeSpaceSourceType = FreeSpaceSource["type"]
 
+export type ScoreRuleType = "field_multiplier" | "conditional"
+
+export interface FieldMultiplierScoreRule {
+  field: ConditionField
+  multiplier: number
+}
+
+export interface ConditionalScoreRule {
+  condition: RuleCondition
+  score: number
+}
+
+export type ScoreRule =
+  | { type: "field_multiplier"; fieldMultiplier: FieldMultiplierScoreRule }
+  | { type: "conditional"; conditional: ConditionalScoreRule }
+
+export type SortingConfig =
+  | {
+    schemaVersion: string
+    type: "simple"
+    field: ConditionField
+    direction: "ASC" | "DESC"
+  }
+  | {
+    schemaVersion: string
+    type: "score"
+    direction: "ASC" | "DESC"
+    scoreRules: ScoreRule[]
+  }
+
 export interface Automation {
   id: number
   instanceId: number
@@ -393,6 +452,7 @@ export interface Automation {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled: boolean
   dryRun: boolean
   sortOrder: number
@@ -407,6 +467,7 @@ export interface AutomationInput {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled?: boolean
   dryRun?: boolean
   sortOrder?: number
@@ -514,6 +575,7 @@ export interface AutomationPreviewTorrent {
   lastActivity: number
   completionOn: number
   totalSize: number
+  score?: number
 }
 
 export interface AutomationPreviewResult {
@@ -622,6 +684,23 @@ export interface TorrentFile {
   priority: number
   progress: number
   size: number
+}
+
+export interface TorrentFileMediaInfoField {
+  name: string
+  value: string
+}
+
+export interface TorrentFileMediaInfoStream {
+  kind: string
+  fields: TorrentFileMediaInfoField[]
+}
+
+export interface TorrentFileMediaInfoResponse {
+  fileIndex: number
+  relativePath: string
+  streams: TorrentFileMediaInfoStream[]
+  rawJSON: string
 }
 
 export interface Torrent {

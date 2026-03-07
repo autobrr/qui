@@ -6,6 +6,7 @@ package automations
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -277,6 +278,237 @@ func TestDetectCrossSeeds(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		rule  *models.Automation
+		field ConditionField
+		want  bool
+	}{
+		{
+			name: "simple sort field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "score conditional field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeConditional,
+							Conditional: &models.ConditionalScoreRule{
+								Condition: &models.RuleCondition{
+									Field:    models.FieldHasMissingFiles,
+									Operator: models.OperatorEqual,
+									Value:    "true",
+								},
+								Score: 10,
+							},
+						},
+					},
+				},
+			},
+			field: FieldHasMissingFiles,
+			want:  true,
+		},
+		{
+			name: "score field multiplier field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeFieldMultiplier,
+							FieldMultiplier: &models.FieldMultiplierScoreRule{
+								Field:      models.FieldFreeSpace,
+								Multiplier: 1,
+							},
+						},
+					},
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "disabled preview rule still counts",
+			rule: &models.Automation{
+				Enabled: false,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ruleUsesCondition(tt.rule, tt.field))
+		})
+	}
+}
+
+func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
+	ac := &models.ActionConditions{
+		Pause: &models.PauseAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldFreeSpace,
+				Operator: models.OperatorLessThan,
+				Value:    "100",
+			},
+		},
+		Tag: &models.TagAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldHasMissingFiles,
+				Operator: models.OperatorEqual,
+				Value:    "true",
+			},
+		},
+	}
+
+	require.False(t, actionConditionsUseField(ac, FieldFreeSpace))
+	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
+}
+
+func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
+	rule := &models.Automation{
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeFieldMultiplier,
+					FieldMultiplier: &models.FieldMultiplierScoreRule{
+						Field:      models.FieldFreeSpace,
+						Multiplier: 1,
+					},
+				},
+			},
+		},
+	}
+	torrents := []qbt.Torrent{{Hash: "a"}}
+	evalCtx := &EvalContext{FreeSpace: 100}
+
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+	evalCtx.FreeSpace = 25
+
+	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
+	require.NotNil(t, score)
+	require.InDelta(t, 100, *score, 0.001)
+}
+
+func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
+	rule := &models.Automation{
+		ID:             7,
+		Name:           "grouped sort",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Grouping: &models.GroupingConfig{},
+		},
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeConditional,
+					Conditional: &models.ConditionalScoreRule{
+						Condition: &models.RuleCondition{
+							Field:    models.FieldIsGrouped,
+							Operator: models.OperatorEqual,
+							Value:    "true",
+						},
+						Score: 100,
+					},
+				},
+			},
+		},
+	}
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/solo", SavePath: "/data"},
+		{Hash: "z", ContentPath: "/data/group", SavePath: "/data"},
+		{Hash: "y", ContentPath: "/data/group", SavePath: "/data"},
+	}
+
+	executeBatch(
+		1,
+		[]*models.Automation{rule},
+		torrents,
+		&EvalContext{},
+		nil,
+		nil,
+		map[int]*ruleRunStats{},
+		map[string]*torrentDesiredState{},
+	)
+
+	require.ElementsMatch(t, []string{"y", "z"}, []string{torrents[0].Hash, torrents[1].Hash})
+	require.Equal(t, "a", torrents[2].Hash)
+}
+
+func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T) {
+	scoreSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeScore,
+		Direction:     models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{
+			{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{
+					Condition: &models.RuleCondition{
+						Field:    models.FieldIsGrouped,
+						Operator: models.OperatorEqual,
+						Value:    "true",
+					},
+					Score: 100,
+				},
+			},
+		},
+	}
+
+	freeSpaceSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeSimple,
+		Field:         models.FieldFreeSpace,
+		Direction:     models.SortDirectionDESC,
+	}
+
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: scoreSort},
+		&models.Automation{SortingConfig: scoreSort},
+	))
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: freeSpaceSort},
+		&models.Automation{SortingConfig: freeSpaceSort},
+	))
 }
 
 func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
@@ -1705,6 +1937,104 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
 }
 
+func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireConditionForAllMembers(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "h1",
+			Name:        "Tagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "abcd",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "h2",
+			Name:        "Untagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Category: &models.CategoryAction{
+				Enabled:           true,
+				Category:          "new-category",
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "abcd",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	require.Contains(t, states, "h1")
+	require.NotContains(t, states, "h2")
+
+	categoryBatches := map[string][]string{
+		"new-category": {"h1"},
+	}
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": torrents[0],
+		"h2": torrents[1],
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		categoryBatches,
+		nil,
+		nil,
+		nil,
+		torrentByHash,
+		torrents,
+		states,
+		map[int]*models.Automation{1: rule},
+		nil,
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+
+	var details struct {
+		Categories map[string]int `json:"categories"`
+	}
+	require.NoError(t, json.Unmarshal(mockDB.activities[0].Details, &details))
+	assert.Equal(t, 2, details.Categories["new-category"])
+}
+
 func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 	mockDB := &mockQuerier{
 		activities: make([]*models.AutomationActivity, 0),
@@ -1972,6 +2302,9 @@ func (m *mockQuerier) ExecContext(_ context.Context, query string, args ...any) 
 			RuleName:    args[6].(string),
 			Outcome:     args[7].(string),
 			Reason:      args[8].(string),
+		}
+		if details, ok := args[9].(sql.NullString); ok && details.Valid {
+			activity.Details = json.RawMessage(details.String)
 		}
 		m.activities = append(m.activities, activity)
 	}
