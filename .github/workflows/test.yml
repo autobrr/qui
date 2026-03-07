@@ -133,7 +133,7 @@ jobs:
           declare -A PG_TABLES=()
           while IFS= read -r table; do
             [ -n "$table" ] && PG_TABLES["$table"]=1
-          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name != 'migrations' ORDER BY table_name;")
+          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != 'migrations' ORDER BY table_name;")
 
           while IFS= read -r table; do
             [ -z "$table" ] && continue
@@ -181,7 +181,7 @@ jobs:
               echo -e "table\t$table\tmissing\tpresent\textra_postgres_table" | tee -a "$DIAG_SCHEMA"
               fail=1
             fi
-          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name != 'migrations' ORDER BY table_name;")
+          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != 'migrations' ORDER BY table_name;")
 
           while IFS= read -r table; do
             [ -z "$table" ] && continue
