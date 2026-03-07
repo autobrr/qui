@@ -1202,9 +1202,6 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, ti
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	if len(torrents) == 0 {
-		return nil, errors.New("no torrents returned - instance not ready")
-	}
 
 	return scanRootsFromTorrents(torrents), nil
 }
@@ -1244,9 +1241,6 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 	torrents, err := s.getAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
-	}
-	if len(torrents) == 0 {
-		return nil, errors.New("no torrents returned - instance not ready")
 	}
 
 	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)

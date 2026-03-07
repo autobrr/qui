@@ -293,6 +293,43 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	}
 }
 
+func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	recoveryTime := now.Add(-10 * time.Minute)
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:      true,
+			recoveryTime: recoveryTime,
+			lastSync:     lastSync,
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{}, nil
+	}
+
+	svc.getLastCompletedRunProvider = func(_ context.Context, _ int) (*models.OrphanScanRun, error) {
+		return &models.OrphanScanRun{ScanPaths: []string{"/stale/root"}}, nil
+	}
+
+	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("instanceScanRootsForOverlap: %v", err)
+	}
+	if source != "live" {
+		t.Fatalf("source mismatch: got=%q want=%q", source, "live")
+	}
+	if len(roots) != 0 {
+		t.Fatalf("expected no roots for empty instance, got=%v", roots)
+	}
+}
+
 func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 	t.Parallel()
 
