@@ -1057,22 +1057,6 @@ func isTransientTorrentStateForOrphanScan(state qbt.TorrentState) bool {
 		qbt.TorrentStateAllocating,
 		qbt.TorrentStateMoving:
 		return true
-	case qbt.TorrentStateError,
-		qbt.TorrentStateMissingFiles,
-		qbt.TorrentStateUploading,
-		qbt.TorrentStatePausedUp,
-		qbt.TorrentStateStoppedUp,
-		qbt.TorrentStateQueuedUp,
-		qbt.TorrentStateStalledUp,
-		qbt.TorrentStateForcedUp,
-		qbt.TorrentStateDownloading,
-		qbt.TorrentStatePausedDl,
-		qbt.TorrentStateStoppedDl,
-		qbt.TorrentStateQueuedDl,
-		qbt.TorrentStateStalledDl,
-		qbt.TorrentStateForcedDl,
-		qbt.TorrentStateUnknown:
-		return false
 	default:
 		return false
 	}
