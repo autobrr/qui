@@ -136,7 +136,7 @@ func TestInternStringsLargeBatch(t *testing.T) {
 
 	// Create 2000 unique values (well over the 900 chunk limit)
 	largeValues := make([]string, 2000)
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		largeValues[i] = fmt.Sprintf("value_%d", i)
 	}
 
@@ -185,7 +185,7 @@ func BenchmarkInternStringsIndividual(b *testing.B) {
 
 	ctx := context.Background()
 	values := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		values[i] = "value" + string(rune(i))
 	}
 
@@ -226,7 +226,7 @@ func BenchmarkInternStringsBatch(b *testing.B) {
 
 	ctx := context.Background()
 	values := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		values[i] = "value" + string(rune(i))
 	}
 

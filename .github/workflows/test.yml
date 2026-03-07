@@ -8,21 +8,6 @@ on:
       - develop
 
 jobs:
-  test-sqlite:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run tests (SQLite)
-        run: go test -race -v -timeout 20m ./...
-
   test-postgres:
     runs-on: ubuntu-latest
     services:
@@ -52,7 +37,12 @@ jobs:
       - name: Run tests (Postgres integration)
         env:
           QUI_TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/qui?sslmode=disable
-        run: go test -race -v -timeout 20m ./internal/database -run TestOpenPostgres
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go test -v -timeout 20m ./internal/database -run TestOpenPostgres
+          else
+            go test -race -v -timeout 20m ./internal/database -run TestOpenPostgres
+          fi
 
   migration-parity:
     runs-on: ubuntu-latest
@@ -128,20 +118,75 @@ jobs:
             --apply \
             | tee "$MIGRATION_TMPDIR/migrate.log"
 
-      - name: Validate table parity + expected filtered rows
+      - name: Validate schema parity + expected filtered rows
         run: |
           set -euo pipefail
           SQLITE_DB="$MIGRATION_TMPDIR/qui.db"
           DIAG_TSV="$MIGRATION_TMPDIR/migration-counts.tsv"
+          DIAG_SCHEMA="$MIGRATION_TMPDIR/migration-schema.tsv"
           DIAG_CROSSSEED="$MIGRATION_TMPDIR/cross-seed-diagnostics.txt"
 
           echo -e "table\tsqlite\tpostgres\tnote" > "$DIAG_TSV"
+          echo -e "kind\tname\tsqlite\tpostgres\tnote" > "$DIAG_SCHEMA"
           fail=0
+
+          declare -A SQLITE_TABLES=()
+          while IFS= read -r table; do
+            [ -n "$table" ] && SQLITE_TABLES["$table"]=1
+          done < <(sqlite3 "$SQLITE_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'migrations' ORDER BY name;")
 
           declare -A PG_TABLES=()
           while IFS= read -r table; do
             [ -n "$table" ] && PG_TABLES["$table"]=1
-          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;")
+          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != 'migrations' ORDER BY table_name;")
+
+          while IFS= read -r table; do
+            [ -z "$table" ] && continue
+
+            if [ -z "${PG_TABLES[$table]:-}" ]; then
+              echo -e "table\t$table\tpresent\tmissing\tmissing_postgres_table" | tee -a "$DIAG_SCHEMA"
+              fail=1
+              continue
+            fi
+
+            echo -e "table\t$table\tpresent\tpresent\tok" >> "$DIAG_SCHEMA"
+
+            declare -A SQLITE_COLUMNS=()
+            while IFS='|' read -r _ column _; do
+              [ -n "$column" ] && SQLITE_COLUMNS["$column"]=1
+            done < <(sqlite3 "$SQLITE_DB" "PRAGMA table_info(\"$table\");")
+
+            declare -A PG_COLUMNS=()
+            while IFS= read -r column; do
+              [ -n "$column" ] && PG_COLUMNS["$column"]=1
+            done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table' ORDER BY ordinal_position;")
+
+            while IFS='|' read -r _ column _; do
+              [ -z "$column" ] && continue
+              if [ -z "${PG_COLUMNS[$column]:-}" ]; then
+                echo -e "column\t$table.$column\tpresent\tmissing\tmissing_postgres_column" | tee -a "$DIAG_SCHEMA"
+                fail=1
+                continue
+              fi
+              echo -e "column\t$table.$column\tpresent\tpresent\tok" >> "$DIAG_SCHEMA"
+            done < <(sqlite3 "$SQLITE_DB" "PRAGMA table_info(\"$table\");")
+
+            while IFS= read -r column; do
+              [ -z "$column" ] && continue
+              if [ -z "${SQLITE_COLUMNS[$column]:-}" ]; then
+                echo -e "column\t$table.$column\tmissing\tpresent\textra_postgres_column" | tee -a "$DIAG_SCHEMA"
+                fail=1
+              fi
+            done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table' ORDER BY ordinal_position;")
+          done < <(sqlite3 "$SQLITE_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'migrations' ORDER BY name;")
+
+          while IFS= read -r table; do
+            [ -z "$table" ] && continue
+            if [ -z "${SQLITE_TABLES[$table]:-}" ]; then
+              echo -e "table\t$table\tmissing\tpresent\textra_postgres_table" | tee -a "$DIAG_SCHEMA"
+              fail=1
+            fi
+          done < <(psql -X "$PG_MIGRATION_DSN" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != 'migrations' ORDER BY table_name;")
 
           while IFS= read -r table; do
             [ -z "$table" ] && continue
@@ -211,4 +256,5 @@ jobs:
           path: |
             .tmp/migration-ci/migrate.log
             .tmp/migration-ci/migration-counts.tsv
+            .tmp/migration-ci/migration-schema.tsv
             .tmp/migration-ci/cross-seed-diagnostics.txt

@@ -1005,10 +1005,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 			}
 
 			// Exponential backoff with cap
-			backoff = time.Duration(float64(backoff) * 2)
-			if backoff > downloadMaxBackoff {
-				backoff = downloadMaxBackoff
-			}
+			backoff = min(time.Duration(float64(backoff)*2), downloadMaxBackoff)
 		}
 
 		data, err := client.Download(ctx, downloadURL)
@@ -3177,10 +3174,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			group = parsed.Group
 		}
 
-		leechers := r.Peers - r.Seeders
-		if leechers < 0 {
-			leechers = 0
-		}
+		leechers := max(r.Peers-r.Seeders, 0)
 
 		result := SearchResult{
 			Indexer:              r.Tracker,
@@ -3374,8 +3368,8 @@ func extractInfoHashFromMagnet(magnetURL string) string {
 		return ""
 	}
 
-	params := strings.Split(parts[1], "&")
-	for _, param := range params {
+	params := strings.SplitSeq(parts[1], "&")
+	for param := range params {
 		if strings.HasPrefix(strings.ToLower(param), "xt=urn:btih:") {
 			// Extract the hash part after "xt=urn:btih:"
 			hashPart := param[12:] // len("xt=urn:btih:") == 12
