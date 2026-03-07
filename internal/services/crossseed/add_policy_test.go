@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"maps"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -290,9 +291,7 @@ func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
 			// This is the exact flow used by all modes (regular, hardlink, reflink)
 			policy := PolicyForSourceFiles(tt.files)
 			opts := make(map[string]string)
-			for k, v := range tt.initialOpts {
-				opts[k] = v
-			}
+			maps.Copy(opts, tt.initialOpts)
 			policy.ApplyToAddOptions(opts)
 
 			assert.Equal(t, tt.wantPaused, opts["paused"], "paused option mismatch")

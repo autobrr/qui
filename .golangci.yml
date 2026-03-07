@@ -36,18 +36,17 @@ linters:
     - testifylint
     - unconvert
     - whitespace
-    - modernize
 
   settings:
     exhaustive:
       default-signifies-exhaustive: false
-    
+
     misspell:
       ignore-rules:
         - alltime # Already used in metrics
         - hardlink
         - hardlinked
-    
+
     gosec:
       excludes:
         - G115
