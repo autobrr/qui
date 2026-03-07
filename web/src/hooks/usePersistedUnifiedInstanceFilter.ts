@@ -48,10 +48,10 @@ export function usePersistedUnifiedInstanceFilter(): [
       } else {
         localStorage.removeItem(STORAGE_KEY)
       }
+      window.dispatchEvent(new Event(CHANGE_EVENT))
     } catch (error) {
       console.error("Failed to save unified instance filter:", error)
     }
-    window.dispatchEvent(new Event(CHANGE_EVENT))
   }, [])
 
   return [persistedIds, saveFilter]
