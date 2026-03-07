@@ -278,6 +278,7 @@ In split-mount setups, the *arr app must send the same library path that qui see
 | `400` | Invalid JSON payload, or no supported path field was found in the request body |
 | `404` | No enabled directory matches the path in the payload |
 | `409` | A scan is already in progress for the matched directory |
+| `500` | Internal server error — scan could not be started due to an internal failure |
 
 #### Simple mode
 

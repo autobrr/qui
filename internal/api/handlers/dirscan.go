@@ -658,6 +658,11 @@ type webhookTriggerScanPayload struct {
 	} `json:"author"`
 }
 
+type webhookTriggerScanResponse struct {
+	RunID       int64 `json:"runId"`
+	DirectoryID int   `json:"directoryId"`
+}
+
 // resolvedPath extracts the path from whichever format was provided.
 func (p *webhookTriggerScanPayload) resolvedPath() string {
 	if p.Path != "" {
@@ -751,8 +756,8 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 
 	log.Info().Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Int64("runID", runID).Msg("dirscan: webhook triggered scan")
 
-	RespondJSON(w, http.StatusAccepted, map[string]any{
-		"runId":       runID,
-		"directoryId": bestMatch.ID,
+	RespondJSON(w, http.StatusAccepted, webhookTriggerScanResponse{
+		RunID:       runID,
+		DirectoryID: bestMatch.ID,
 	})
 }

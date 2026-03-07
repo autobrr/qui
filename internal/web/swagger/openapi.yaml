@@ -3311,33 +3311,60 @@ paths:
         content:
           application/json:
             schema:
-              type: object
               description: Plain path payload or native *arr webhook payload.
-              properties:
-                path:
-                  type: string
-                  description: Plain path to match against configured scan directories.
-                  example: "/data/media/movies/Movie Name (2024)"
-                series:
-                  type: object
+              oneOf:
+                - type: object
+                  required:
+                    - path
                   properties:
                     path:
                       type: string
-                movie:
-                  type: object
+                      description: Plain path to match against configured scan directories.
+                      example: "/data/media/movies/Movie Name (2024)"
+                - type: object
+                  required:
+                    - series
                   properties:
-                    folderPath:
-                      type: string
-                artist:
-                  type: object
+                    series:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - movie
                   properties:
-                    path:
-                      type: string
-                author:
-                  type: object
+                    movie:
+                      type: object
+                      required:
+                        - folderPath
+                      properties:
+                        folderPath:
+                          type: string
+                - type: object
+                  required:
+                    - artist
                   properties:
-                    path:
-                      type: string
+                    artist:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - author
+                  properties:
+                    author:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
       responses:
         '202':
           description: Scan started
@@ -7564,8 +7591,14 @@ components:
       properties:
         runId:
           type: integer
+          format: int64
+          description: Started scan run ID.
+        directoryId:
+          type: integer
+          description: Matched dir-scan directory ID.
       required:
         - runId
+        - directoryId
 
     DirScanIdleStatus:
       type: object
