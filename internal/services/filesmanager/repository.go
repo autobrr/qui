@@ -36,7 +36,7 @@ type fileRow struct {
 	size            int64
 	progress        float64
 	priority        int
-	isSeed          interface{}
+	isSeed          any
 	pieceRangeStart int64
 	pieceRangeEnd   int64
 	availability    float64
@@ -298,14 +298,11 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	t := time.Now()
 
 	// Pre-allocate args slice to reuse across batches
-	args := make([]interface{}, 0, fileBatchSize*12)
+	args := make([]any, 0, fileBatchSize*12)
 
 	// Batch insert files
 	for i := 0; i < len(allRows); i += fileBatchSize {
-		end := i + fileBatchSize
-		if end > len(allRows) {
-			end = len(allRows)
-		}
+		end := min(i+fileBatchSize, len(allRows))
 		batch := allRows[i:end]
 
 		// Reset args for this batch
@@ -578,14 +575,11 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, syncBatchSize)
 
 	// Pre-allocate args slice to reuse across batches
-	args := make([]interface{}, 0, syncBatchSize*5)
+	args := make([]any, 0, syncBatchSize*5)
 
 	// Batch insert sync infos
 	for i := 0; i < len(infos); i += syncBatchSize {
-		end := i + syncBatchSize
-		if end > len(infos) {
-			end = len(infos)
-		}
+		end := min(i+syncBatchSize, len(infos))
 		batch := infos[i:end]
 
 		// Reset args for this batch
@@ -730,10 +724,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	args := make([]any, 0, hashBatchSize)
 
 	for i := 0; i < len(currentHashes); i += hashBatchSize {
-		end := i + hashBatchSize
-		if end > len(currentHashes) {
-			end = len(currentHashes)
-		}
+		end := min(i+hashBatchSize, len(currentHashes))
 		batch := currentHashes[i:end]
 
 		// Reset args for this batch
@@ -885,10 +876,7 @@ func chunkHashes(hashes []string, size int) [][]string {
 	}
 	var chunks [][]string
 	for start := 0; start < len(hashes); start += size {
-		end := start + size
-		if end > len(hashes) {
-			end = len(hashes)
-		}
+		end := min(start+size, len(hashes))
 		chunks = append(chunks, hashes[start:end])
 	}
 	return chunks
@@ -900,10 +888,7 @@ func chunkInts(ints []int64, size int) [][]int64 {
 	}
 	var chunks [][]int64
 	for start := 0; start < len(ints); start += size {
-		end := start + size
-		if end > len(ints) {
-			end = len(ints)
-		}
+		end := min(start+size, len(ints))
 		chunks = append(chunks, ints[start:end])
 	}
 	return chunks
@@ -914,7 +899,7 @@ func buildPlaceholders(count int) string {
 		return ""
 	}
 	var sb strings.Builder
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i > 0 {
 			sb.WriteString(",")
 		}
