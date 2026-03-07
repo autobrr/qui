@@ -135,7 +135,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         excludeTrackers: [],
       },
       limit: 1,
-      instanceIds: unifiedScopeInstanceIds,
+      // Deep links should resolve even when the saved unified scope excludes the owning instance.
+      instanceIds: activeInstanceIds.length > 0 ? activeInstanceIds : undefined,
     }).then((response) => response.crossInstanceTorrents?.[0] ?? response.cross_instance_torrents?.[0] ?? null): api.getTorrents(instanceId, {
       filters: {
         expr: `Hash == "${escapedHash}"`,
@@ -182,7 +183,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     return () => {
       cancelled = true
     }
-  }, [instanceId, isAllInstances, search, onSearchChange, unifiedScopeInstanceIds])
+  }, [activeInstanceIds, instanceId, isAllInstances, onSearchChange, search])
 
   // Navigate to a cross-seed match torrent
   const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
