@@ -136,6 +136,10 @@ func (db *DB) migratePostgres() error {
 		return fmt.Errorf("create migrations table: %w", err)
 	}
 
+	if err := db.normalizeMigrationFilenamesWithExecer(ctx, tx, sharedMigrationFilenameRenames, postgresMigrationFilenameRenames); err != nil {
+		return fmt.Errorf("normalize postgres migration filenames: %w", err)
+	}
+
 	entries, err := postgresMigrationsFS.ReadDir("postgres_migrations")
 	if err != nil {
 		// No postgres migrations embedded: keep existing schema as-is.

@@ -41,6 +41,7 @@ func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCo
 			exclude_categories_json TEXT NOT NULL,
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
+			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL
 		);
 	`)
@@ -49,8 +50,8 @@ func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCo
 	_, err = q.ExecContext(context.Background(), `
 		INSERT OR REPLACE INTO instance_crossseed_completion_settings (
 			instance_id, enabled, categories_json, tags_json,
-			exclude_categories_json, exclude_tags_json, indexer_ids_json, updated_at
-		) VALUES (1, 1, '[]', '[]', '[]', '[]', '[]', ?);
+			exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, updated_at
+		) VALUES (1, 1, '[]', '[]', '[]', '[]', '[]', 0, ?);
 	`, time.Now().UTC())
 	require.NoError(t, err)
 

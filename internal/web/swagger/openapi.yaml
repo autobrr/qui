@@ -6065,6 +6065,10 @@ components:
           items:
             type: integer
           description: Limit completion searches to these Torznab indexer IDs (empty means all)
+        bypassTorznabCache:
+          type: boolean
+          default: false
+          description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
 
     InstanceCrossSeedCompletionSettingsRequest:
       type: object
@@ -6098,6 +6102,10 @@ components:
           items:
             type: integer
           description: Limit completion searches to these Torznab indexer IDs (empty means all)
+        bypassTorznabCache:
+          type: boolean
+          default: false
+          description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
 
     CrossSeedAutomationSettingsPatch:
       type: object

@@ -66,6 +66,7 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 - **Categories/Tags** - Filter which completed torrents trigger searches
 - **Target indexers** - Limit completion searches to specific indexers (empty means all enabled)
 - **Exclude categories/tags** - Skip torrents matching these filters
+- **Bypass Torznab cache** - When enabled for an instance, completion searches for that instance always perform a fresh Torznab search instead of using cached indexer results. Default: off. Does not affect Gazelle (OPS/RED) searches, which do not use the Torznab cache.
 
 ### Manual Search
 
