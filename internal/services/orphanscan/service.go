@@ -525,8 +525,10 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
+	allIgnorePaths := append(append([]string(nil), settings.IgnorePaths...), result.skippedRoots...)
+
 	// Normalize ignore paths
-	ignorePaths, err := NormalizeIgnorePaths(settings.IgnorePaths)
+	ignorePaths, err := NormalizeIgnorePaths(allIgnorePaths)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during ignore path normalization")
@@ -1072,6 +1074,39 @@ func sortedRoots(roots map[string]struct{}) []string {
 	return items
 }
 
+func mergeRootLists(rootLists ...[]string) []string {
+	merged := make(map[string]struct{})
+	for _, roots := range rootLists {
+		for _, root := range roots {
+			merged[filepath.Clean(root)] = struct{}{}
+		}
+	}
+	return sortedRoots(merged)
+}
+
+func isSameOrDescendantPath(path, base string) bool {
+	nPath := normalizePath(path)
+	nBase := normalizePath(base)
+	return nPath == nBase || isPathUnderNormalized(nPath, nBase)
+}
+
+func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []string {
+	filtered := make([]string, 0, len(scanRoots))
+	for _, root := range scanRoots {
+		covered := false
+		for _, skippedRoot := range skippedRoots {
+			if isSameOrDescendantPath(root, skippedRoot) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			filtered = append(filtered, filepath.Clean(root))
+		}
+	}
+	return filtered
+}
+
 // buildFileMapResult contains the file map plus metadata for storage
 type buildFileMapResult struct {
 	fileMap      *TorrentFileMap
@@ -1119,14 +1154,13 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 		return nil, fmt.Errorf("%d stable torrents returned no files - partial data detected", stableMissingFiles)
 	}
 
-	for root := range skippedRoots {
-		delete(scanRoots, root)
-	}
+	skippedRootList := sortedRoots(skippedRoots)
+	scanRootList := filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList)
 
 	return &buildFileMapResult{
 		fileMap:      tfm,
-		scanRoots:    sortedRoots(scanRoots),
-		skippedRoots: sortedRoots(skippedRoots),
+		scanRoots:    scanRootList,
+		skippedRoots: skippedRootList,
 		torrentCount: len(torrents),
 	}, nil
 }
@@ -1259,6 +1293,8 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileM
 		}
 
 		added := result.fileMap.MergeFrom(otherResult.fileMap)
+		result.skippedRoots = mergeRootLists(result.skippedRoots, otherResult.skippedRoots)
+		result.scanRoots = filterScanRootsCoveredBySkippedRoots(result.scanRoots, result.skippedRoots)
 		log.Debug().
 			Int("instance", inst.ID).
 			Int("filesAdded", added).

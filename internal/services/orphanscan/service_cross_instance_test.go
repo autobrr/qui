@@ -293,6 +293,142 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	}
 }
 
+func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	stableRoot := filepath.Join(root, "stable")
+	skippedRoot := filepath.Join(stableRoot, "partial")
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	recoveryTime := now.Add(-10 * time.Minute)
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:      true,
+			recoveryTime: recoveryTime,
+			lastSync:     lastSync,
+		}, nil
+	}
+
+	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{
+			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
+			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+		switch instanceID {
+		case 1:
+			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
+		case 2:
+			return []qbt.Torrent{{Hash: "B", SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		switch instanceID {
+		case 1:
+			return map[string]qbt.TorrentFiles{
+				"a": {{Name: "one.mkv", Size: 1}},
+			}, nil
+		case 2:
+			return map[string]qbt.TorrentFiles{}, nil
+		default:
+			return map[string]qbt.TorrentFiles{}, nil
+		}
+	}
+
+	result, err := svc.buildFileMap(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("buildFileMap: %v", err)
+	}
+
+	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+		t.Fatalf("expected instance 1 file to be protected")
+	}
+	if !slices.Equal(result.scanRoots, []string{filepath.Clean(stableRoot)}) {
+		t.Fatalf("scanRoots mismatch: got=%v want=%v", result.scanRoots, []string{filepath.Clean(stableRoot)})
+	}
+	if !slices.Equal(result.skippedRoots, []string{filepath.Clean(skippedRoot)}) {
+		t.Fatalf("skippedRoots mismatch: got=%v want=%v", result.skippedRoots, []string{filepath.Clean(skippedRoot)})
+	}
+}
+
+func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	skippedRoot := filepath.Join(root, "partial")
+	stableRoot := filepath.Join(skippedRoot, "complete")
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	recoveryTime := now.Add(-10 * time.Minute)
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:      true,
+			recoveryTime: recoveryTime,
+			lastSync:     lastSync,
+		}, nil
+	}
+
+	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{
+			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
+			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+		switch instanceID {
+		case 1:
+			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
+		case 2:
+			return []qbt.Torrent{{Hash: "B", SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		switch instanceID {
+		case 1:
+			return map[string]qbt.TorrentFiles{
+				"a": {{Name: "one.mkv", Size: 1}},
+			}, nil
+		case 2:
+			return map[string]qbt.TorrentFiles{}, nil
+		default:
+			return map[string]qbt.TorrentFiles{}, nil
+		}
+	}
+
+	result, err := svc.buildFileMap(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("buildFileMap: %v", err)
+	}
+
+	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+		t.Fatalf("expected instance 1 file to be protected")
+	}
+	if len(result.scanRoots) != 0 {
+		t.Fatalf("expected scanRoots to be empty, got=%v", result.scanRoots)
+	}
+	if !slices.Equal(result.skippedRoots, []string{filepath.Clean(skippedRoot)}) {
+		t.Fatalf("skippedRoots mismatch: got=%v want=%v", result.skippedRoots, []string{filepath.Clean(skippedRoot)})
+	}
+}
+
 func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	t.Parallel()
 

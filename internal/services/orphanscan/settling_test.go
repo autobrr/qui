@@ -161,3 +161,41 @@ func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(
 	assert.Equal(t, []string{filepath.Clean(root)}, result.skippedRoots)
 	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(root, "movie.mkv"))))
 }
+
+func TestFilterScanRootsCoveredBySkippedRoots(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "library")
+	child := filepath.Join(root, "transient")
+	descendant := filepath.Join(child, "nested")
+	sibling := filepath.Join(root, "stable")
+
+	tests := []struct {
+		name         string
+		scanRoots    []string
+		skippedRoots []string
+		want         []string
+	}{
+		{
+			name:         "keeps parent root when skipped root is child",
+			scanRoots:    []string{root, sibling},
+			skippedRoots: []string{child},
+			want:         []string{filepath.Clean(root), filepath.Clean(sibling)},
+		},
+		{
+			name:         "drops descendant root covered by skipped ancestor",
+			scanRoots:    []string{descendant, sibling},
+			skippedRoots: []string{child},
+			want:         []string{filepath.Clean(sibling)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := filterScanRootsCoveredBySkippedRoots(tt.scanRoots, tt.skippedRoots)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
