@@ -5,7 +5,6 @@ package models_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,7 +41,7 @@ func TestDirScanStore_CreateDirectory_RejectsDuplicateCleanedPath(t *testing.T) 
 		ScanIntervalMinutes: 60,
 	})
 	require.Error(t, err)
-	require.True(t, errors.Is(err, models.ErrDuplicateDirScanDirectoryPath))
+	require.ErrorIs(t, err, models.ErrDuplicateDirScanDirectoryPath)
 }
 
 func TestDirScanStore_UpdateDirectory_RejectsDuplicateCleanedPath(t *testing.T) {
@@ -77,5 +76,5 @@ func TestDirScanStore_UpdateDirectory_RejectsDuplicateCleanedPath(t *testing.T) 
 		Path: &updatedPath,
 	})
 	require.Error(t, err)
-	require.True(t, errors.Is(err, models.ErrDuplicateDirScanDirectoryPath))
+	require.ErrorIs(t, err, models.ErrDuplicateDirScanDirectoryPath)
 }
