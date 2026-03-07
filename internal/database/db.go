@@ -102,6 +102,48 @@ type DB struct {
 	closeErr  error
 }
 
+type migrationFilenameRename struct {
+	from string
+	to   string
+}
+
+var sharedMigrationFilenameRenames = []migrationFilenameRename{
+	// Keep historical migration filename rewrites here whenever an embedded
+	// migration filename changes. Migration tracking keys off the filename, so
+	// old names must be normalized before pending migrations are computed.
+	// Use direct old -> current mappings for each backend rather than chains.
+	{
+		from: "061_add_notifications.sql",
+		to:   "062_add_notifications.sql",
+	},
+	{
+		from: "052_add_dir_scan.sql",
+		to:   "053_add_dir_scan.sql",
+	},
+	{
+		from: "055_add_license_provider_dodo.sql",
+		to:   "057_add_license_provider_dodo.sql",
+	},
+}
+
+var sqliteMigrationFilenameRenames = []migrationFilenameRename{
+	{
+		from: "064_add_completion_bypass_torznab_cache.sql",
+		to:   "066_add_completion_bypass_torznab_cache.sql",
+	},
+	{
+		from: "065_add_completion_bypass_torznab_cache.sql",
+		to:   "066_add_completion_bypass_torznab_cache.sql",
+	},
+}
+
+var postgresMigrationFilenameRenames = []migrationFilenameRename{
+	{
+		from: "066_add_completion_bypass_torznab_cache.sql",
+		to:   "067_add_completion_bypass_torznab_cache.sql",
+	},
+}
+
 // Tx wraps sql.Tx to provide prepared statement caching for transaction queries
 type Tx struct {
 	tx         *sql.Tx
@@ -1026,42 +1068,36 @@ func (db *DB) migrate() error {
 }
 
 func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
-	renames := []struct {
-		from string
-		to   string
-	}{
-		{
-			from: "061_add_notifications.sql",
-			to:   "062_add_notifications.sql",
-		},
-		{
-			from: "052_add_dir_scan.sql",
-			to:   "053_add_dir_scan.sql",
-		},
-		{
-			from: "055_add_license_provider_dodo.sql",
-			to:   "057_add_license_provider_dodo.sql",
-		},
-	}
+	return db.normalizeMigrationFilenamesWithExecer(ctx, db.writerConn, sharedMigrationFilenameRenames, sqliteMigrationFilenameRenames)
+}
 
-	for _, r := range renames {
-		// If both entries exist, keep the new name.
-		if _, err := db.writerConn.ExecContext(ctx, `
-			DELETE FROM migrations
-			WHERE filename = ?
-			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
-		`, r.from, r.to); err != nil {
-			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
-		}
+func (db *DB) normalizeMigrationFilenamesWithExecer(
+	ctx context.Context,
+	execer interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	},
+	renameSets ...[]migrationFilenameRename,
+) error {
+	for _, renames := range renameSets {
+		for _, r := range renames {
+			// If both entries exist, keep the new name.
+			if _, err := execer.ExecContext(ctx, db.bindQuery(`
+				DELETE FROM migrations
+				WHERE filename = ?
+				  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+			`), r.from, r.to); err != nil {
+				return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+			}
 
-		// Rename old -> new if the new entry doesn't already exist.
-		if _, err := db.writerConn.ExecContext(ctx, `
-			UPDATE migrations
-			SET filename = ?
-			WHERE filename = ?
-			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
-		`, r.to, r.from, r.to); err != nil {
-			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+			// Rename old -> new if the new entry doesn't already exist.
+			if _, err := execer.ExecContext(ctx, db.bindQuery(`
+				UPDATE migrations
+				SET filename = ?
+				WHERE filename = ?
+				  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+			`), r.to, r.from, r.to); err != nil {
+				return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+			}
 		}
 	}
 
