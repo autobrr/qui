@@ -17,14 +17,12 @@ import (
 )
 
 type stubHealthChecker struct {
-	healthy      bool
-	recoveryTime time.Time
-	lastSync     time.Time
+	healthy  bool
+	lastSync time.Time
 }
 
-func (s stubHealthChecker) IsHealthy() bool                { return s.healthy }
-func (s stubHealthChecker) GetLastRecoveryTime() time.Time { return s.recoveryTime }
-func (s stubHealthChecker) GetLastSyncUpdate() time.Time   { return s.lastSync }
+func (s stubHealthChecker) IsHealthy() bool              { return s.healthy }
+func (s stubHealthChecker) GetLastSyncUpdate() time.Time { return s.lastSync }
 
 func TestGetOtherLocalInstances(t *testing.T) {
 	t.Parallel()
@@ -56,14 +54,12 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -100,9 +96,6 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		}
 	}
 
-	svc.markSettledForRecovery(1, recoveryTime)
-	svc.markSettledForRecovery(2, recoveryTime)
-
 	result, err := svc.buildFileMap(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
@@ -131,7 +124,6 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	offlineErr := errors.New("offline")
@@ -141,9 +133,8 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 			return nil, offlineErr
 		}
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -164,8 +155,6 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 		}, nil
 	}
 
-	svc.markSettledForRecovery(1, recoveryTime)
-
 	_, err := svc.buildFileMap(context.Background(), 1)
 	if err == nil {
 		t.Fatalf("expected error")
@@ -183,16 +172,14 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	offlineErr := errors.New("offline")
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -223,9 +210,6 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 		}, nil
 	}
 
-	svc.markSettledForRecovery(1, recoveryTime)
-	svc.markSettledForRecovery(2, recoveryTime)
-
 	_, err := svc.buildFileMap(context.Background(), 1)
 	if err == nil {
 		t.Fatalf("expected error")
@@ -244,14 +228,12 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -288,9 +270,6 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		}
 	}
 
-	svc.markSettledForRecovery(1, recoveryTime)
-	svc.markSettledForRecovery(2, recoveryTime)
-
 	result, err := svc.buildFileMap(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
@@ -304,6 +283,173 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	}
 }
 
+func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:  true,
+			lastSync: lastSync,
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{}, nil
+	}
+
+	svc.getLastCompletedRunProvider = func(_ context.Context, _ int) (*models.OrphanScanRun, error) {
+		return &models.OrphanScanRun{ScanPaths: []string{"/stale/root"}}, nil
+	}
+
+	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("instanceScanRootsForOverlap: %v", err)
+	}
+	if source != "live" {
+		t.Fatalf("source mismatch: got=%q want=%q", source, "live")
+	}
+	if len(roots) != 0 {
+		t.Fatalf("expected no roots for empty instance, got=%v", roots)
+	}
+}
+
+func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	stableRoot := filepath.Join(root, "stable")
+	skippedRoot := filepath.Join(stableRoot, "partial")
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:  true,
+			lastSync: lastSync,
+		}, nil
+	}
+
+	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{
+			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
+			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+		switch instanceID {
+		case 1:
+			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
+		case 2:
+			return []qbt.Torrent{{Hash: "B", SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		switch instanceID {
+		case 1:
+			return map[string]qbt.TorrentFiles{
+				"a": {{Name: "one.mkv", Size: 1}},
+			}, nil
+		case 2:
+			return map[string]qbt.TorrentFiles{}, nil
+		default:
+			return map[string]qbt.TorrentFiles{}, nil
+		}
+	}
+
+	result, err := svc.buildFileMap(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("buildFileMap: %v", err)
+	}
+
+	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+		t.Fatalf("expected instance 1 file to be protected")
+	}
+	if !slices.Equal(result.scanRoots, []string{filepath.Clean(stableRoot)}) {
+		t.Fatalf("scanRoots mismatch: got=%v want=%v", result.scanRoots, []string{filepath.Clean(stableRoot)})
+	}
+	if !slices.Equal(result.skippedRoots, []string{filepath.Clean(skippedRoot)}) {
+		t.Fatalf("skippedRoots mismatch: got=%v want=%v", result.skippedRoots, []string{filepath.Clean(skippedRoot)})
+	}
+}
+
+func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	skippedRoot := filepath.Join(root, "partial")
+	stableRoot := filepath.Join(skippedRoot, "complete")
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:  true,
+			lastSync: lastSync,
+		}, nil
+	}
+
+	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{
+			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
+			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+		switch instanceID {
+		case 1:
+			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
+		case 2:
+			return []qbt.Torrent{{Hash: "B", SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		switch instanceID {
+		case 1:
+			return map[string]qbt.TorrentFiles{
+				"a": {{Name: "one.mkv", Size: 1}},
+			}, nil
+		case 2:
+			return map[string]qbt.TorrentFiles{}, nil
+		default:
+			return map[string]qbt.TorrentFiles{}, nil
+		}
+	}
+
+	result, err := svc.buildFileMap(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("buildFileMap: %v", err)
+	}
+
+	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+		t.Fatalf("expected instance 1 file to be protected")
+	}
+	if len(result.scanRoots) != 0 {
+		t.Fatalf("expected scanRoots to be empty, got=%v", result.scanRoots)
+	}
+	if !slices.Equal(result.skippedRoots, []string{filepath.Clean(skippedRoot)}) {
+		t.Fatalf("skippedRoots mismatch: got=%v want=%v", result.skippedRoots, []string{filepath.Clean(skippedRoot)})
+	}
+}
+
 func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	t.Parallel()
 
@@ -313,7 +459,6 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	offlineErr := errors.New("offline")
@@ -323,9 +468,8 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 			return nil, offlineErr
 		}
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -355,8 +499,6 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 			"a": {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
-
-	svc.markSettledForRecovery(1, recoveryTime)
 
 	_, err := svc.buildFileMap(context.Background(), 1)
 	if err == nil {

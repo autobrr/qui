@@ -77,6 +77,13 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 **Single-user self-hosted context:** qui runs on someone's home server, not as a multi-tenant SaaS with untrusted input and complex failure modes. Skip paranoid defensive programming for impossible or purely theoretical scenarios. Code that guards against states that can't happen adds complexity without value. Prioritize readable, maintainable code over excessive robustness.
 
+## Code Shape
+
+- Prefer behavior-bearing branches only. If multiple `switch` cases return the same value as `default`, collapse them.
+- In boolean classifiers, list only the exceptional cases (`true` cases or error cases). Let `default` handle the common path.
+- Do not add documentation-only branches unless they enforce something mechanically via compiler, linter, or tests.
+- When a branch only enumerates known states, ask whether it changes behavior, improves safety, or provides exhaustiveness checking. If not, delete it.
+
 ## React Effects
 
 - Use `useEffect` only to sync with external systems (DOM, subscriptions, network).
