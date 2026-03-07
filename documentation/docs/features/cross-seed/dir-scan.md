@@ -274,7 +274,7 @@ In split-mount setups, the *arr app must send the same library path that qui see
 
 | Status Code | Meaning |
 |-------------|---------|
-| `202` | Scan started successfully |
+| `202` | Scan started successfully. Example: `{"runId": 42, "directoryId": 3}` |
 | `400` | Invalid JSON payload, or no supported path field was found in the request body |
 | `404` | No enabled directory matches the path in the payload |
 | `409` | A scan is already in progress for the matched directory |

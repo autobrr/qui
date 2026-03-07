@@ -368,7 +368,10 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, map[string]int64{"runId": runID})
+	RespondJSON(w, http.StatusAccepted, webhookTriggerScanResponse{
+		RunID:       runID,
+		DirectoryID: dirID,
+	})
 }
 
 // CancelScan cancels a running scan for a directory.
