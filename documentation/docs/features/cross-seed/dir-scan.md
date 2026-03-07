@@ -237,55 +237,54 @@ Both types can be canceled from the UI while running.
 
 ### Webhook trigger
 
-You can trigger a scan from external tools (like Sonarr/Radarr custom scripts) using the webhook endpoint:
+You can trigger a scan automatically when Sonarr, Radarr, Lidarr, or Readarr imports content. The webhook endpoint natively understands *arr webhook payloads — no custom scripts needed.
 
 ```
 POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
 ```
 
-The request body contains the path that was imported:
+qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against your configured scan directories, and triggers a scan on the best match.
 
-```json
-{"path": "/data/media/movies/Movie Name (2024)"}
-```
+#### Setting up in Sonarr / Radarr
 
-qui matches the path against your configured scan directories using longest-prefix matching and triggers a scan on the best match. The response includes the run and directory IDs:
+1. Go to **Settings → Connect → Add → Webhook**.
+2. Set **Name** to something like `qui Dir Scan`.
+3. Under **Notification Triggers**, enable **On Import** and **On Upgrade** (and any other events you want to trigger a scan).
+4. Set **Webhook URL** to:
+   ```
+   http://your-qui-host:7476/api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
+   ```
+5. Set **Method** to `POST`.
+6. Leave **Username** and **Password** empty (auth is handled by the API key in the URL).
+7. Click **Test** then **Save**.
 
-```json
-{"runId": 42, "directoryId": 3}
-```
-
-| Status Code | Meaning |
-|-------------|---------|
-| `202` | Scan started successfully |
-| `404` | No enabled directory matches the given path |
-| `409` | A scan is already in progress for the matched directory |
-
-#### Example: Sonarr/Radarr custom script
-
-Create a script that calls the webhook on import:
-
-```bash
-#!/bin/bash
-# qui-notify.sh — trigger Dir Scan on import
-# Set as a Custom Script connection in Sonarr/Radarr (On Import / On Upgrade)
-
-QUI_URL="http://localhost:7476"
-QUI_API_KEY="your-api-key-here"
-
-# Sonarr sets sonarr_series_path; Radarr sets radarr_movie_path
-PATH_VAR="${sonarr_series_path:-$radarr_movie_path}"
-
-if [ -n "$PATH_VAR" ]; then
-  curl -s -X POST "${QUI_URL}/api/dir-scan/webhook/scan?apikey=${QUI_API_KEY}" \
-    -H "Content-Type: application/json" \
-    -d "{\"path\": \"${PATH_VAR}\"}"
-fi
-```
+The same steps apply to Lidarr and Readarr.
 
 :::tip
 The webhook uses query-param API key authentication (`?apikey=...`), the same pattern as the cross-seed webhook. You can also use the `X-API-Key` header instead.
 :::
+
+#### How path matching works
+
+qui uses longest-prefix matching to find the right scan directory. For example, if you have directories configured for `/data/media/movies` and `/data/media/tv`, and Sonarr sends `series.path: "/data/media/tv/Show Name"`, qui matches it to `/data/media/tv`.
+
+#### Response codes
+
+| Status Code | Meaning |
+|-------------|---------|
+| `202` | Scan started successfully |
+| `404` | No enabled directory matches the path in the payload |
+| `409` | A scan is already in progress for the matched directory |
+
+#### Simple mode
+
+You can also call the webhook directly with a plain path (useful for scripts or other tools):
+
+```bash
+curl -X POST "http://localhost:7476/api/dir-scan/webhook/scan?apikey=YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/data/media/movies/Movie Name (2024)"}'
+```
 
 ### Scan phases
 

@@ -635,14 +635,52 @@ func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request
 	return false
 }
 
-// webhookTriggerScanPayload is the request body for the webhook scan trigger.
+// webhookTriggerScanPayload accepts both a direct {"path": "..."} and native
+// *arr webhook payloads (Sonarr, Radarr, Lidarr, Readarr).
 type webhookTriggerScanPayload struct {
+	// Direct path (simple mode)
 	Path string `json:"path"`
+	// Sonarr: series.path
+	Series *struct {
+		Path string `json:"path"`
+	} `json:"series"`
+	// Radarr: movie.folderPath
+	Movie *struct {
+		FolderPath string `json:"folderPath"`
+	} `json:"movie"`
+	// Lidarr: artist.path
+	Artist *struct {
+		Path string `json:"path"`
+	} `json:"artist"`
+	// Readarr: author.path
+	Author *struct {
+		Path string `json:"path"`
+	} `json:"author"`
+}
+
+// resolvedPath extracts the path from whichever format was provided.
+func (p *webhookTriggerScanPayload) resolvedPath() string {
+	if p.Path != "" {
+		return p.Path
+	}
+	if p.Series != nil && p.Series.Path != "" {
+		return p.Series.Path
+	}
+	if p.Movie != nil && p.Movie.FolderPath != "" {
+		return p.Movie.FolderPath
+	}
+	if p.Artist != nil && p.Artist.Path != "" {
+		return p.Artist.Path
+	}
+	if p.Author != nil && p.Author.Path != "" {
+		return p.Author.Path
+	}
+	return ""
 }
 
 // WebhookTriggerScan triggers a directory scan by matching the provided path
-// against configured scan directories. This endpoint is designed for external
-// tools like Sonarr/Radarr custom scripts.
+// against configured scan directories. Accepts native Sonarr/Radarr/Lidarr/Readarr
+// webhook payloads or a simple {"path": "..."} body.
 func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Request) {
 	var payload webhookTriggerScanPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -650,13 +688,14 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if payload.Path == "" {
-		RespondError(w, http.StatusBadRequest, "Path is required")
+	resolvedPath := payload.resolvedPath()
+	if resolvedPath == "" {
+		RespondError(w, http.StatusBadRequest, "Could not determine path from request body (expected 'path', 'series.path', 'movie.folderPath', 'artist.path', or 'author.path')")
 		return
 	}
 
 	// Clean and normalize the path
-	cleanPath := filepath.Clean(payload.Path)
+	cleanPath := filepath.Clean(resolvedPath)
 
 	dirs, err := h.service.ListDirectories(r.Context())
 	if err != nil {
@@ -693,12 +732,12 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 			RespondError(w, http.StatusConflict, "A scan is already in progress for this directory")
 			return
 		}
-		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", payload.Path).Msg("dirscan: webhook failed to start scan")
+		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Msg("dirscan: webhook failed to start scan")
 		RespondError(w, http.StatusInternalServerError, "Failed to start scan")
 		return
 	}
 
-	log.Info().Int("directoryID", bestMatch.ID).Str("path", payload.Path).Int64("runID", runID).Msg("dirscan: webhook triggered scan")
+	log.Info().Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Int64("runID", runID).Msg("dirscan: webhook triggered scan")
 
 	RespondJSON(w, http.StatusAccepted, map[string]any{
 		"runId":       runID,
