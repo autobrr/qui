@@ -6,6 +6,9 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +39,9 @@ var (
 type Client struct {
 	*qbt.Client
 	instanceID               int
+	host                     string
+	basicUsername            string
+	basicPassword            string
 	webAPIVersion            string
 	supportsSetTags          bool
 	supportsTorrentCreation  bool
@@ -85,10 +91,14 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		TLSSkipVerify: tlsSkipVerify,
 	}
 
+	var basicUser string
+	var basicPass string
 	if basicUsername != nil && *basicUsername != "" {
 		cfg.BasicUser = *basicUsername
+		basicUser = *basicUsername
 		if basicPassword != nil {
 			cfg.BasicPass = *basicPassword
+			basicPass = *basicPassword
 		}
 	}
 
@@ -104,6 +114,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	client := &Client{
 		Client:           qbtClient,
 		instanceID:       instanceID,
+		host:             strings.TrimRight(instanceHost, "/"),
+		basicUsername:    basicUser,
+		basicPassword:    basicPass,
 		lastHealthCheck:  time.Now(),
 		lastRecoveryTime: time.Now(), // Treat fresh client as "just recovered"
 		isHealthy:        true,
@@ -161,6 +174,74 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Msg("qBittorrent client created successfully")
 
 	return client, nil
+}
+
+// ReannounceTrackersCtx forces a reannounce for a torrent and optionally limits the request
+// to specific tracker URLs.
+//
+// qBittorrent accepts a pipe-separated list of hashes and a pipe-separated list of "urls".
+// When urls are provided, only those tracker URLs are reannounced. When omitted, it
+// reannounces all trackers and also triggers a DHT announce.
+//
+// We implement this locally (instead of in go-qbittorrent) so we can reannounce specific
+// trackers when available, but still work against older versions (extra params are ignored).
+func (c *Client) ReannounceTrackersCtx(ctx context.Context, hashes []string, trackerURLs []string) error {
+	if c == nil || len(hashes) == 0 {
+		return nil
+	}
+
+	endpoint := c.host + "/api/v2/torrents/reannounce"
+	hv := strings.Join(hashes, "|")
+
+	var body strings.Builder
+	body.WriteString("hashes=")
+	body.WriteString(url.QueryEscape(hv))
+
+	if len(trackerURLs) > 0 {
+		escaped := make([]string, 0, len(trackerURLs))
+		seen := make(map[string]struct{}, len(trackerURLs))
+		for _, u := range trackerURLs {
+			trimmed := strings.TrimSpace(u)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			escaped = append(escaped, url.QueryEscape(trimmed))
+		}
+		if len(escaped) > 0 {
+			body.WriteString("&urls=")
+			// Do not escape the pipe separator; the API splits on '|'.
+			body.WriteString(strings.Join(escaped, "|"))
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(body.String()))
+	if err != nil {
+		return fmt.Errorf("reannounce: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if c.basicUsername != "" {
+		req.SetBasicAuth(c.basicUsername, c.basicPassword)
+	}
+
+	resp, err := c.GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("reannounce: request failed: %w", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent:
+		return nil
+	default:
+		return fmt.Errorf("reannounce: unexpected status code: %d", resp.StatusCode)
+	}
 }
 
 func (c *Client) GetInstanceID() int {

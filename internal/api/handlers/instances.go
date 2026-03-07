@@ -435,6 +435,8 @@ type InstanceReannounceSettingsPayload struct {
 	MaxRetries                int      `json:"maxRetries"`
 	Aggressive                bool     `json:"aggressive"`
 	MonitorAll                bool     `json:"monitorAll"`
+	HealthFocusTrackers       []string `json:"healthFocusTrackers"`
+	HealthIgnoreTrackers      []string `json:"healthIgnoreTrackers"`
 	ExcludeCategories         bool     `json:"excludeCategories"`
 	Categories                []string `json:"categories"`
 	ExcludeTags               bool     `json:"excludeTags"`
@@ -470,6 +472,8 @@ func (p *InstanceReannounceSettingsPayload) toModel(instanceID int, base *models
 	target.MaxRetries = p.MaxRetries
 	target.Aggressive = p.Aggressive
 	target.MonitorAll = p.MonitorAll
+	target.HealthFocusTrackers = append([]string{}, p.HealthFocusTrackers...)
+	target.HealthIgnoreTrackers = append([]string{}, p.HealthIgnoreTrackers...)
 	target.ExcludeCategories = p.ExcludeCategories
 	target.Categories = append([]string{}, p.Categories...)
 	target.ExcludeTags = p.ExcludeTags
@@ -491,6 +495,8 @@ func payloadFromModel(settings *models.InstanceReannounceSettings) InstanceReann
 		MaxRetries:                settings.MaxRetries,
 		Aggressive:                settings.Aggressive,
 		MonitorAll:                settings.MonitorAll,
+		HealthFocusTrackers:       append([]string{}, settings.HealthFocusTrackers...),
+		HealthIgnoreTrackers:      append([]string{}, settings.HealthIgnoreTrackers...),
 		ExcludeCategories:         settings.ExcludeCategories,
 		Categories:                append([]string{}, settings.Categories...),
 		ExcludeTags:               settings.ExcludeTags,
