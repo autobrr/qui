@@ -3290,6 +3290,70 @@ paths:
         '500':
           description: Failed to cancel scan
 
+  /api/dir-scan/webhook/scan:
+    post:
+      tags:
+        - Dir Scan
+      summary: Trigger a directory scan from an external webhook
+      description: |
+        Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
+        qui extracts the path, matches it against enabled scan directories using longest-prefix matching,
+        and starts a manual scan for the best match.
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for external webhook integrations).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Plain path payload or native *arr webhook payload.
+              properties:
+                path:
+                  type: string
+                  description: Plain path to match against configured scan directories.
+                  example: "/data/media/movies/Movie Name (2024)"
+                series:
+                  type: object
+                  properties:
+                    path:
+                      type: string
+                movie:
+                  type: object
+                  properties:
+                    folderPath:
+                      type: string
+                artist:
+                  type: object
+                  properties:
+                    path:
+                      type: string
+                author:
+                  type: object
+                  properties:
+                    path:
+                      type: string
+      responses:
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanTriggerResponse'
+        '400':
+          description: Invalid request body or no supported path found in payload
+        '404':
+          description: No enabled directory matched the provided path
+        '409':
+          description: A scan is already in progress for the matched directory
+        '500':
+          description: Failed to start scan
+
   /api/dir-scan/directories/{directoryID}/status:
     get:
       tags:

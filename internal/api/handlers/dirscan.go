@@ -678,6 +678,19 @@ func (p *webhookTriggerScanPayload) resolvedPath() string {
 	return ""
 }
 
+func pathMatchesDirectory(cleanPath, dirPath string) bool {
+	if cleanPath == dirPath {
+		return true
+	}
+
+	rel, err := filepath.Rel(dirPath, cleanPath)
+	if err != nil {
+		return false
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // WebhookTriggerScan triggers a directory scan by matching the provided path
 // against configured scan directories. Accepts native Sonarr/Radarr/Lidarr/Readarr
 // webhook payloads or a simple {"path": "..."} body.
@@ -712,8 +725,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 		dirPath := filepath.Clean(dir.Path)
-		// The path must be equal to or a subdirectory of the configured directory
-		if cleanPath == dirPath || strings.HasPrefix(cleanPath, dirPath+string(filepath.Separator)) {
+		if pathMatchesDirectory(cleanPath, dirPath) {
 			if len(dirPath) > bestLen {
 				bestMatch = dir
 				bestLen = len(dirPath)
