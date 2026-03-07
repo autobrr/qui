@@ -7,15 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 // Config represents the application configuration
 type Config struct {
-	Version                  string
-	Host                     string `toml:"host" mapstructure:"host"`
-	Port                     int    `toml:"port" mapstructure:"port"`
-	BaseURL                  string `toml:"baseUrl" mapstructure:"baseUrl"`
+	Version            string
+	Host               string   `toml:"host" mapstructure:"host"`
+	Port               int      `toml:"port" mapstructure:"port"`
+	BaseURL            string   `toml:"baseUrl" mapstructure:"baseUrl"`
+	CORSAllowedOrigins []string `toml:"corsAllowedOrigins" mapstructure:"corsAllowedOrigins"`
+	//nolint:gosec // Config schema requires this field name; value is provided by runtime configuration.
 	SessionSecret            string `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	LogLevel                 string `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath                  string `toml:"logPath" mapstructure:"logPath"`
@@ -125,4 +131,119 @@ func (c *Config) ValidateAuthDisabledConfig() error {
 	}
 
 	return nil
+}
+
+// NormalizeCORSAllowedOrigins validates and canonicalizes CORS allowlist entries.
+// Empty values are ignored, wildcard origins are rejected, and valid entries are
+// normalized to browser-style origins (scheme://host[:port]).
+func (c *Config) NormalizeCORSAllowedOrigins() error {
+	if len(c.CORSAllowedOrigins) == 0 {
+		c.CORSAllowedOrigins = nil
+		return nil
+	}
+
+	normalized := make([]string, 0, len(c.CORSAllowedOrigins))
+	seen := make(map[string]struct{}, len(c.CORSAllowedOrigins))
+
+	for _, raw := range c.CORSAllowedOrigins {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+
+		origin, err := normalizeCORSOrigin(entry)
+		if err != nil {
+			return fmt.Errorf("invalid corsAllowedOrigins entry %q: %w", entry, err)
+		}
+
+		if _, exists := seen[origin]; exists {
+			continue
+		}
+		seen[origin] = struct{}{}
+		normalized = append(normalized, origin)
+	}
+
+	c.CORSAllowedOrigins = normalized
+	return nil
+}
+
+func normalizeCORSOrigin(origin string) (string, error) {
+	if strings.Contains(origin, "*") {
+		return "", errors.New("wildcards are not allowed")
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return "", err
+	}
+
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", errors.New("scheme must be http or https")
+	}
+
+	if parsed.User != nil {
+		return "", errors.New("userinfo is not allowed")
+	}
+
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("query and fragment are not allowed")
+	}
+
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", errors.New("path is not allowed")
+	}
+
+	if parsed.Path == "/" {
+		return "", errors.New("trailing slash is not allowed")
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return "", errors.New("host is required")
+	}
+
+	if strings.Contains(host, "*") {
+		return "", errors.New("wildcards are not allowed")
+	}
+
+	if parsed.Opaque != "" {
+		return "", errors.New("opaque origins are not allowed")
+	}
+
+	if _, err := netip.ParseAddr(host); err != nil {
+		asciiHost, asciiErr := idna.Lookup.ToASCII(host)
+		if asciiErr != nil {
+			return "", fmt.Errorf("invalid hostname: %w", asciiErr)
+		}
+		host = strings.ToLower(asciiHost)
+	}
+
+	port := parsed.Port()
+	if port != "" {
+		portNum, convErr := strconv.Atoi(port)
+		if convErr != nil {
+			return "", errors.New("port must be numeric")
+		}
+		if portNum < 1 || portNum > 65535 {
+			return "", errors.New("port must be between 1 and 65535")
+		}
+
+		if (scheme == "http" && portNum == 80) || (scheme == "https" && portNum == 443) {
+			port = ""
+		} else {
+			port = strconv.Itoa(portNum)
+		}
+	}
+
+	canonicalHost := host
+	if strings.Contains(canonicalHost, ":") {
+		canonicalHost = "[" + canonicalHost + "]"
+	}
+
+	if port != "" {
+		canonicalHost += ":" + port
+	}
+
+	return scheme + "://" + canonicalHost, nil
 }
