@@ -17,14 +17,12 @@ import (
 )
 
 type stubHealthChecker struct {
-	healthy      bool
-	recoveryTime time.Time
-	lastSync     time.Time
+	healthy  bool
+	lastSync time.Time
 }
 
-func (s stubHealthChecker) IsHealthy() bool                { return s.healthy }
-func (s stubHealthChecker) GetLastRecoveryTime() time.Time { return s.recoveryTime }
-func (s stubHealthChecker) GetLastSyncUpdate() time.Time   { return s.lastSync }
+func (s stubHealthChecker) IsHealthy() bool              { return s.healthy }
+func (s stubHealthChecker) GetLastSyncUpdate() time.Time { return s.lastSync }
 
 func TestGetOtherLocalInstances(t *testing.T) {
 	t.Parallel()
@@ -56,14 +54,12 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -128,7 +124,6 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	offlineErr := errors.New("offline")
@@ -138,9 +133,8 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 			return nil, offlineErr
 		}
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -178,16 +172,14 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	offlineErr := errors.New("offline")
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -236,14 +228,12 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -299,14 +289,12 @@ func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -340,14 +328,12 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -408,14 +394,12 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
@@ -475,7 +459,6 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
 
 	now := time.Now()
-	recoveryTime := now.Add(-10 * time.Minute)
 	lastSync := now.Add(-10 * time.Second)
 
 	offlineErr := errors.New("offline")
@@ -485,9 +468,8 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 			return nil, offlineErr
 		}
 		return stubHealthChecker{
-			healthy:      true,
-			recoveryTime: recoveryTime,
-			lastSync:     lastSync,
+			healthy:  true,
+			lastSync: lastSync,
 		}, nil
 	}
 
