@@ -14,13 +14,14 @@ import (
 
 func newMigrationRenameTestDB(t *testing.T, dialect Dialect) (*DB, *sql.DB) {
 	t.Helper()
+	ctx := context.Background()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	conn, err := sql.Open("sqlite", dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	_, err = conn.Exec(`
+	_, err = conn.ExecContext(ctx, `
 		CREATE TABLE migrations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			filename TEXT NOT NULL UNIQUE,
