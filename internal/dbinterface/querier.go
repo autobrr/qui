@@ -82,7 +82,6 @@ func BuildQueryWithPlaceholders(queryTemplate string, placeholdersPerRow int, nu
 	if numRows <= 0 {
 		return fmt.Sprintf(queryTemplate, "")
 	}
-
 	var sb strings.Builder
 	// Estimate size: each row has 2*placeholdersPerRow chars for ?, plus 2 for (), plus comma space
 	totalLen := numRows*(2*placeholdersPerRow+2) + (numRows-1)*2
