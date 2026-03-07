@@ -462,7 +462,10 @@ func TestResolveTorrentFilePath_ResolvesSymlinkPathWithinBase(t *testing.T) {
 
 	resolved, err := resolveTorrentFilePath(baseDir, "alias.mkv")
 	require.NoError(t, err)
-	require.Equal(t, target, resolved)
+
+	expected, err := filepath.EvalSymlinks(target)
+	require.NoError(t, err)
+	require.Equal(t, expected, resolved)
 }
 
 func TestResolveTorrentFilePath_RejectsSymlinkEscapeOutsideBase(t *testing.T) {

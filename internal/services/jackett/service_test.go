@@ -31,8 +31,8 @@ func TestDetectContentType(t *testing.T) {
 			name: "detects TV show by episode",
 			req: &TorznabSearchRequest{
 				Query:   "Breaking Bad",
-				Season:  intPtr(1),
-				Episode: intPtr(1),
+				Season:  new(1),
+				Episode: new(1),
 			},
 			expected: contentTypeTVShow,
 		},
@@ -40,7 +40,7 @@ func TestDetectContentType(t *testing.T) {
 			name: "detects TV show by season pack",
 			req: &TorznabSearchRequest{
 				Query:  "The Wire",
-				Season: intPtr(2),
+				Season: new(2),
 			},
 			expected: contentTypeTVShow,
 		},
@@ -812,8 +812,8 @@ func TestBuildSearchParams(t *testing.T) {
 			name: "query with season and episode",
 			req: &TorznabSearchRequest{
 				Query:   "Game of Thrones",
-				Season:  intPtr(1),
-				Episode: intPtr(1),
+				Season:  new(1),
+				Episode: new(1),
 			},
 			searchMode: "tvsearch",
 			expected: map[string]string{
@@ -842,8 +842,8 @@ func TestBuildSearchParams(t *testing.T) {
 				Query:      "Breaking Bad",
 				Categories: []int{CategoryTV},
 				TVDbID:     "81189",
-				Season:     intPtr(1),
-				Episode:    intPtr(1),
+				Season:     new(1),
+				Episode:    new(1),
 				Limit:      50,
 				Offset:     10,
 			},
@@ -1059,8 +1059,8 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 			name: "auto-detects TV categories",
 			req: &TorznabSearchRequest{
 				Query:   "Breaking Bad",
-				Season:  intPtr(1),
-				Episode: intPtr(1),
+				Season:  new(1),
+				Episode: new(1),
 			},
 			expectedCats:     []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K},
 			shouldAutoDetect: true,
@@ -1380,8 +1380,10 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 }
 
 // Helper functions
+//
+//go:fix inline
 func intPtr(i int) *int {
-	return &i
+	return new(i)
 }
 
 // Mock store for testing
