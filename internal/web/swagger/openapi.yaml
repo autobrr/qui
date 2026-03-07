@@ -7604,9 +7604,13 @@ components:
         directoryId:
           type: integer
           description: Matched dir-scan directory ID.
+        directoryPath:
+          type: string
+          description: Matched dir-scan directory path.
       required:
         - runId
         - directoryId
+        - directoryPath
 
     DirScanIdleStatus:
       type: object

@@ -368,9 +368,17 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, webhookTriggerScanResponse{
-		RunID:       runID,
-		DirectoryID: dirID,
+	dir, err := h.service.GetDirectory(r.Context(), dirID)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to load directory after starting scan")
+		RespondError(w, http.StatusInternalServerError, "Failed to load directory")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
+		RunID:         runID,
+		DirectoryID:   dirID,
+		DirectoryPath: dir.Path,
 	})
 }
 
@@ -661,9 +669,10 @@ type webhookTriggerScanPayload struct {
 	} `json:"author"`
 }
 
-type webhookTriggerScanResponse struct {
-	RunID       int64 `json:"runId"`
-	DirectoryID int   `json:"directoryId"`
+type dirScanTriggerResponse struct {
+	RunID         int64  `json:"runId"`
+	DirectoryID   int    `json:"directoryId"`
+	DirectoryPath string `json:"directoryPath"`
 }
 
 // resolvedPath extracts the path from whichever format was provided.
@@ -759,8 +768,9 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 
 	log.Info().Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Int64("runID", runID).Msg("dirscan: webhook triggered scan")
 
-	RespondJSON(w, http.StatusAccepted, webhookTriggerScanResponse{
-		RunID:       runID,
-		DirectoryID: bestMatch.ID,
+	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
+		RunID:         runID,
+		DirectoryID:   bestMatch.ID,
+		DirectoryPath: bestMatch.Path,
 	})
 }
