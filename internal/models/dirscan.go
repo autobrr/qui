@@ -449,6 +449,33 @@ func (s *DirScanStore) ListDirectories(ctx context.Context) ([]*DirScanDirectory
 	return s.scanDirectoriesFromRows(rows)
 }
 
+// ListDirectoryIDs retrieves all scan directory IDs.
+func (s *DirScanStore) ListDirectoryIDs(ctx context.Context) ([]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id
+		FROM dir_scan_directories
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query directory ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan directory id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate directory ids: %w", err)
+	}
+
+	return ids, nil
+}
+
 // DirScanDirectoryUpdateParams holds optional fields for updating a directory.
 type DirScanDirectoryUpdateParams struct {
 	Path                *string
@@ -717,17 +744,17 @@ func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]
 
 // PruneRunHistory trims each directory to the most recent retained runs.
 func (s *DirScanStore) PruneRunHistory(ctx context.Context) error {
-	directories, err := s.ListDirectories(ctx)
+	directoryIDs, err := s.ListDirectoryIDs(ctx)
 	if err != nil {
 		return fmt.Errorf("list directories for run pruning: %w", err)
 	}
 
-	for _, dir := range directories {
-		if dir == nil || dir.ID <= 0 {
+	for _, directoryID := range directoryIDs {
+		if directoryID <= 0 {
 			continue
 		}
-		if err := s.pruneRunHistoryForDirectory(ctx, dir.ID, dirScanRunHistoryLimit); err != nil {
-			return fmt.Errorf("prune run history for directory %d: %w", dir.ID, err)
+		if err := s.pruneRunHistoryForDirectory(ctx, directoryID, dirScanRunHistoryLimit); err != nil {
+			return fmt.Errorf("prune run history for directory %d: %w", directoryID, err)
 		}
 	}
 
