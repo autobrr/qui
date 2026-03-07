@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-full help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-fast test-full help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps docs-dev docs-build
 
 # Default target
 all: build
@@ -109,6 +109,11 @@ clean: themes-clean
 # Run tests
 test:
 	@echo "Running tests..."
+	go test -race -count=3 -v ./...
+
+# Run fast tests (1x for quick local iteration)
+test-fast:
+	@echo "Running fast tests..."
 	go test -race -count=1 -v ./...
 
 # Run full tests (3x for race flake detection)
@@ -194,7 +199,8 @@ help:
 	@echo "  make dev-expose     - Run frontend dev server exposed on 0.0.0.0"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test           - Run all tests with race detection (count=1)"
+	@echo "  make test           - Run all tests with race detection (count=3)"
+	@echo "  make test-fast      - Run all tests with race detection (count=1)"
 	@echo "  make test-full      - Run all tests with race detection (count=3)"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo ""

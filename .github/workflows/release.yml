@@ -126,18 +126,10 @@ jobs:
       - name: Run tests
         run: |
           TEST_COUNT=3
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TEST_COUNT=1
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            go test -v -race -count="${TEST_COUNT}" ./...
-          else
-            go test -v -race -count="${TEST_COUNT}" -coverprofile=coverage.out ./...
-            go tool cover -html=coverage.out -o coverage.html
-          fi
+          go test -v -race -count="${TEST_COUNT}" -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report
@@ -166,17 +158,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-
-      - name: Run GoReleaser build
-        if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean --skip=validate,publish --parallelism 5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDER: ${{ github.actor }}@github-actions
 
       - name: Run GoReleaser build and publish tags
         if: startsWith(github.ref, 'refs/tags/')
@@ -241,7 +222,6 @@ jobs:
             type=semver,pattern={{version}},prefix=v
             type=semver,pattern={{major}}.{{minor}},prefix=v
             type=ref,event=branch
-            type=ref,event=pr
           flavor: |
             latest=auto
 
@@ -258,7 +238,7 @@ jobs:
           context: .
           file: ./distrib/docker/ci.Dockerfile
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && 'true' || 'false' }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -288,7 +268,6 @@ jobs:
 
   docker-merge:
     name: Publish Docker multi-arch manifest
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     needs: [docker]
     steps:
@@ -318,7 +297,6 @@ jobs:
             type=semver,pattern={{version}},prefix=v
             type=semver,pattern={{major}}.{{minor}},prefix=v
             type=ref,event=branch
-            type=ref,event=pr
           flavor: |
             latest=auto
 
