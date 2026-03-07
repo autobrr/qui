@@ -3299,13 +3299,10 @@ paths:
         Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
         qui extracts the path, matches it against enabled scan directories using longest-prefix matching,
         and starts a manual scan for the best match.
-      parameters:
-        - name: apikey
-          in: query
-          required: false
-          schema:
-            type: string
-          description: API key (prefer X-API-Key header; query supported for external webhook integrations).
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
       requestBody:
         required: true
         content:
@@ -5245,6 +5242,11 @@ components:
       in: header
       name: X-API-Key
       description: API key for authentication
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: apikey
+      description: API key via query parameter for external webhook integrations
     SessionAuth:
       type: apiKey
       in: cookie

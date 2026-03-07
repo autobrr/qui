@@ -353,7 +353,15 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.requireDirectory(w, r, dirID) {
+	dir, err := h.service.GetDirectory(r.Context(), dirID)
+	switch {
+	case err == nil:
+	case errors.Is(err, models.ErrDirectoryNotFound):
+		RespondError(w, http.StatusNotFound, "Directory not found")
+		return
+	default:
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to validate directory")
+		RespondError(w, http.StatusInternalServerError, "Failed to validate directory")
 		return
 	}
 
@@ -365,13 +373,6 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to start scan")
 		RespondError(w, http.StatusInternalServerError, "Failed to start scan")
-		return
-	}
-
-	dir, err := h.service.GetDirectory(r.Context(), dirID)
-	if err != nil {
-		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to load directory after starting scan")
-		RespondError(w, http.StatusInternalServerError, "Failed to load directory")
 		return
 	}
 
