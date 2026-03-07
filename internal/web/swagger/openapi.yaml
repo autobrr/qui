@@ -3290,6 +3290,94 @@ paths:
         '500':
           description: Failed to cancel scan
 
+  /api/dir-scan/webhook/scan:
+    post:
+      tags:
+        - Dir Scan
+      summary: Trigger a directory scan from an external webhook
+      description: |
+        Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
+        qui extracts the path, matches it against enabled scan directories using longest-prefix matching,
+        and starts a manual scan for the best match.
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Plain path payload or native *arr webhook payload.
+              oneOf:
+                - type: object
+                  required:
+                    - path
+                  properties:
+                    path:
+                      type: string
+                      description: Plain path to match against configured scan directories.
+                      example: "/data/media/movies/Movie Name (2024)"
+                - type: object
+                  required:
+                    - series
+                  properties:
+                    series:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - movie
+                  properties:
+                    movie:
+                      type: object
+                      required:
+                        - folderPath
+                      properties:
+                        folderPath:
+                          type: string
+                - type: object
+                  required:
+                    - artist
+                  properties:
+                    artist:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - author
+                  properties:
+                    author:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+      responses:
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanTriggerResponse'
+        '400':
+          description: Invalid request body or no supported path found in payload
+        '404':
+          description: No enabled directory matched the provided path
+        '409':
+          description: A scan is already in progress for the matched directory
+        '500':
+          description: Failed to start scan
+
   /api/dir-scan/directories/{directoryID}/status:
     get:
       tags:
@@ -5154,6 +5242,11 @@ components:
       in: header
       name: X-API-Key
       description: API key for authentication
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: apikey
+      description: API key via query parameter for external webhook integrations
     SessionAuth:
       type: apiKey
       in: cookie
@@ -7508,8 +7601,18 @@ components:
       properties:
         runId:
           type: integer
+          format: int64
+          description: Started scan run ID.
+        directoryId:
+          type: integer
+          description: Matched dir-scan directory ID.
+        directoryPath:
+          type: string
+          description: Matched dir-scan directory path.
       required:
         - runId
+        - directoryId
+        - directoryPath
 
     DirScanIdleStatus:
       type: object
