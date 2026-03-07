@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,4 +125,56 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		require.NoError(t, getErr)
 		return run == nil
 	}, 5*time.Second, 50*time.Millisecond)
+}
+
+func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T) {
+	ctx := t.Context()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
+	localAccess := true
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	require.NoError(t, err)
+
+	service := dirscan.NewService(
+		dirscan.DefaultConfig(),
+		models.NewDirScanStore(db),
+		nil,
+		instanceStore,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	handler := NewDirScanHandler(service, instanceStore)
+
+	dupePath := filepath.Join(t.TempDir(), "library")
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO dir_scan_directories
+			(path, enabled, target_instance_id, scan_interval_minutes)
+		VALUES (?, ?, ?, ?), (?, ?, ?, ?)
+	`, dupePath, 1, instance.ID, 60, dupePath+string(filepath.Separator), 1, instance.ID, 60)
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		"/api/dir-scan/webhook/scan",
+		strings.NewReader(`{"path":"`+filepath.Join(dupePath, "Show Name")+`"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.WebhookTriggerScan(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Contains(t, rec.Body.String(), "Multiple directories match the given path")
 }

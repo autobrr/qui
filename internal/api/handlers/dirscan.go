@@ -200,6 +200,10 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 
 	created, err := h.service.CreateDirectory(r.Context(), dir)
 	if err != nil {
+		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
+			RespondError(w, http.StatusConflict, "A directory with this path already exists")
+			return
+		}
 		log.Error().Err(err).Msg("dirscan: failed to create directory")
 		RespondError(w, http.StatusInternalServerError, "Failed to create directory")
 		return
@@ -316,6 +320,10 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		if errors.Is(err, models.ErrDirectoryNotFound) {
 			RespondError(w, http.StatusNotFound, "Directory not found")
+			return
+		}
+		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
+			RespondError(w, http.StatusConflict, "A directory with this path already exists")
 			return
 		}
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to update directory")
@@ -738,6 +746,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 	// Find the best matching directory using longest-prefix match
 	var bestMatch *models.DirScanDirectory
 	bestLen := 0
+	ambiguous := false
 	for _, dir := range dirs {
 		if !dir.Enabled {
 			continue
@@ -747,12 +756,19 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 			if len(dirPath) > bestLen {
 				bestMatch = dir
 				bestLen = len(dirPath)
+				ambiguous = false
+			} else if len(dirPath) == bestLen {
+				ambiguous = true
 			}
 		}
 	}
 
 	if bestMatch == nil {
 		RespondError(w, http.StatusNotFound, "No matching directory found for the given path")
+		return
+	}
+	if ambiguous {
+		RespondError(w, http.StatusConflict, "Multiple directories match the given path")
 		return
 	}
 

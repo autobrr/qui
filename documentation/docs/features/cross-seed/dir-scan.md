@@ -249,14 +249,14 @@ qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, 
 
 1. Go to **Settings → Connect → Add → Webhook**.
 2. Set **Name** to something like `qui Dir Scan`.
-3. Under **Notification Triggers**, enable **On Import** and **On Upgrade** (and any other events you want to trigger a scan).
+3. Under **Notification Triggers**, enable **On File Import**. Optionally enable **On File Upgrade** if you also want scans after upgrades. In Sonarr, **On Import Complete** also works.
 4. Set **Webhook URL** to:
    ```text
    http://your-qui-host:7476/api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
    ```
 5. Set **Method** to `POST`.
 6. Leave **Username** and **Password** empty (auth is handled by the API key in the URL).
-7. Click **Test** then **Save**.
+7. Click **Save**. The built-in **Test** action usually sends a placeholder path, so it may fail to match a configured Dir Scan directory even when the webhook is set up correctly.
 
 The same steps apply to Lidarr and Readarr.
 
