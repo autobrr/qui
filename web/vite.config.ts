@@ -7,9 +7,9 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { defineConfig } from "vite"
 import { nodePolyfills } from "vite-plugin-node-polyfills"
 import { VitePWA } from "vite-plugin-pwa"
-import { defineConfig } from "vitest/config"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
@@ -144,9 +144,5 @@ export default defineConfig(() => ({
     },
     chunkSizeWarningLimit: 750,
     sourcemap: true,
-  },
-  test: {
-    environment: "jsdom",
-    setupFiles: "./src/test/setup.ts",
   },
 }));
