@@ -62,7 +62,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bell, Clock, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent, ReactNode } from "react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
@@ -963,9 +963,7 @@ function ApplicationInfoPanel() {
     return { label: "Up to date", detail: "No newer release is currently cached." }
   }, [info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
 
-  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0
-    ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString())
-    : "Not checked yet"
+  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString()) : "Not checked yet"
 
   const buildFields: ApplicationField[] = info ? [
     { label: "Version", value: info.version || "—", monospace: true },
@@ -1094,9 +1092,70 @@ interface SettingsProps {
   onSearchChange: (search: SettingsSearch) => void
 }
 
+interface SettingsScrollPanelProps {
+  children: ReactNode
+  contentClassName?: string
+}
+
+function SettingsScrollPanel({ children, contentClassName }: SettingsScrollPanelProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const [showTopFade, setShowTopFade] = useState(false)
+  const [showBottomFade, setShowBottomFade] = useState(false)
+
+  useEffect(() => {
+    const scrollElement = scrollRef.current
+    const contentElement = contentRef.current
+
+    if (!scrollElement) {
+      return
+    }
+
+    const updateFades = () => {
+      setShowTopFade(scrollElement.scrollTop > 4)
+      setShowBottomFade(scrollElement.scrollTop + scrollElement.clientHeight < scrollElement.scrollHeight - 4)
+    }
+
+    updateFades()
+
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+      updateFades()
+    })
+
+    scrollElement.addEventListener("scroll", updateFades, { passive: true })
+    window.addEventListener("resize", updateFades)
+    resizeObserver?.observe(scrollElement)
+    if (contentElement) {
+      resizeObserver?.observe(contentElement)
+    }
+
+    return () => {
+      scrollElement.removeEventListener("scroll", updateFades)
+      window.removeEventListener("resize", updateFades)
+      resizeObserver?.disconnect()
+    }
+  }, [children])
+
+  return (
+    <div className="relative flex h-full min-h-0 flex-col">
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-linear-to-b from-background/80 via-background/50 to-transparent transition-opacity duration-150 ${showTopFade ? "opacity-100" : "opacity-0"}`}
+      />
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-linear-to-t from-background/80 via-background/50 to-transparent transition-opacity duration-150 ${showBottomFade ? "opacity-100" : "opacity-0"}`}
+      />
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto md:pr-4">
+        <div ref={contentRef} className={contentClassName}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Settings({ search, onSearchChange }: SettingsProps) {
   const activeTab: SettingsTab = search.tab ?? "application"
-  const scrollPanelClassName = "h-full min-h-0 space-y-4 overflow-y-auto pr-4"
+  const scrollPanelContentClassName = "space-y-4"
 
   const handleTabChange = (tab: SettingsTab) => {
     onSearchChange({ tab })
@@ -1330,13 +1389,13 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         {/* Main Content Area */}
         <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
           {activeTab === "application" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <ApplicationInfoPanel />
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "instances" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card className="flex min-h-full flex-col">
                 <CardHeader>
                   <CardTitle>Instances</CardTitle>
@@ -1348,23 +1407,23 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <InstancesManager search={search} onSearchChange={onSearchChange} />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "indexers" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <IndexersPage withContainer={false} />
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "search-cache" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <TorznabSearchCachePanel />
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "integrations" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>ARR Integrations</CardTitle>
@@ -1376,11 +1435,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ArrInstancesManager />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "client-api" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Client Proxy API Keys</CardTitle>
@@ -1392,11 +1451,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ClientApiKeysManager />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "api" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -1422,11 +1481,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ApiKeysManager />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "external-programs" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>External Programs</CardTitle>
@@ -1438,11 +1497,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ExternalProgramsManager />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "notifications" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Notifications</CardTitle>
@@ -1454,11 +1513,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <NotificationsManager />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "datetime" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Date & Time Preferences</CardTitle>
@@ -1470,22 +1529,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <DateTimePreferencesForm />
                 </CardContent>
               </Card>
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "themes" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <LicenseManager
                 checkoutStatus={search.checkout}
                 checkoutPaymentStatus={search.status}
                 onCheckoutConsumed={() => onSearchChange({ tab: "themes" })}
               />
               <ThemeSelector />
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "security" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Change Password</CardTitle>
@@ -1532,13 +1591,13 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   </CardContent>
                 </Card>
               )}
-            </div>
+            </SettingsScrollPanel>
           )}
 
           {activeTab === "logs" && (
-            <div className={scrollPanelClassName}>
+            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <LogSettingsPanel />
-            </div>
+            </SettingsScrollPanel>
           )}
         </div>
       </div>
