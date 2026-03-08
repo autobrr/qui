@@ -71,13 +71,13 @@ export function PreferencesFormShell({
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           className={cn(
-            "pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-linear-to-b from-background/80 via-background/50 to-transparent transition-opacity duration-150",
+            "pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-linear-to-b from-background via-background/50 to-transparent transition-opacity duration-150",
             showTopFade ? "opacity-100" : "opacity-0",
           )}
         />
         <div
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-linear-to-t from-background/80 via-background/50 to-transparent transition-opacity duration-150",
+            "pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-linear-to-t from-background via-background/50 to-transparent transition-opacity duration-150",
             showBottomFade ? "opacity-100" : "opacity-0",
           )}
         />
