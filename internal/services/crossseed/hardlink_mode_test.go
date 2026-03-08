@@ -239,7 +239,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 
 			req := &CrossSeedRequest{}
 
-			result := s.buildHardlinkDestDir(
+			result, err := s.buildHardlinkDestDir(
 				context.Background(),
 				instance,
 				tt.baseDir,
@@ -249,6 +249,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 				req,
 				tt.candidateFiles,
 			)
+			require.NoError(t, err)
 
 			normalized := filepath.ToSlash(result)
 
@@ -286,7 +287,7 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 		{Path: "movie.mkv", Size: 1000},
 	}
 
-	result := s.buildHardlinkDestDir(
+	result, err := s.buildHardlinkDestDir(
 		context.Background(),
 		instance,
 		instance.HardlinkBaseDir,
@@ -296,6 +297,7 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 		req,
 		candidateFiles,
 	)
+	require.NoError(t, err)
 
 	// Should not contain illegal path characters
 	for _, c := range []string{"<", ">", ":", "\"", "|", "?", "*"} {

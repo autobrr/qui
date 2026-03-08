@@ -10485,7 +10485,15 @@ func (s *Service) processHardlinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	destDir, err := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Msg("[CROSSSEED] Hardlink mode: invalid destination directory configuration")
+		return handleError(fmt.Sprintf("Invalid destination directory configuration: %v", err))
+	}
 
 	// Build existing files list (all files on disk from matched torrent).
 	// We pass all existing files to BuildPlan so it can use path/name matching
@@ -10753,10 +10761,17 @@ func (s *Service) buildHardlinkDestDir(
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
-) string {
-	groupName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
+) (string, error) {
+	groupName := ""
+	if instance.HardlinkDirPreset == "by-tracker" {
+		groupName = s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
+	}
 	if instance.HardlinkDirPreset == "by-instance" {
-		groupName = linkdir.EffectiveInstanceDirName(instance.Name, instance.LinkDirName)
+		var err error
+		groupName, err = linkdir.EffectiveInstanceDirName(instance.Name, instance.LinkDirName)
+		if err != nil {
+			return "", err
+		}
 	}
 	return linkdir.BuildDestDir(baseDir, instance.HardlinkDirPreset, groupName, torrentHash, torrentName, candidateFiles)
 }
@@ -10956,7 +10971,15 @@ func (s *Service) processReflinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	destDir, err := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Msg("[CROSSSEED] Reflink mode: invalid destination directory configuration")
+		return handleError(fmt.Sprintf("Invalid destination directory configuration: %v", err))
+	}
 
 	// Build existing files list (all files on disk from matched torrent)
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))

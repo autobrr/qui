@@ -284,7 +284,7 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -347,6 +347,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var basicPasswordEncrypted sql.NullString
 	var tlsSkipVerifyResult int
 	var hasLocalFilesystemAccessResult int
+	var linkDirNameResult string
 	var sortOrder int
 	var isActive int
 
@@ -354,6 +355,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	localAccess := false
 	if hasLocalFilesystemAccess != nil {
 		localAccess = *hasLocalFilesystemAccess
+	}
+
+	linkDirValue := ""
+	if linkDirName != nil {
+		linkDirValue = *linkDirName
 	}
 
 	err = tx.QueryRowContext(ctx, `
@@ -369,10 +375,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 			basic_password_encrypted,
 			tls_skip_verify,
 			has_local_filesystem_access,
+			link_dir_name,
 			sort_order
 		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
-		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, link_dir_name
 		`,
 		nameID,
 		hostID,
@@ -382,6 +389,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword,
 		BoolToSQLite(tlsSkipVerify),
 		BoolToSQLite(localAccess),
+		linkDirValue,
 	).Scan(
 		&instanceID,
 		&passwordEncrypted,
@@ -390,6 +398,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&sortOrder,
 		&isActive,
 		&hasLocalFilesystemAccessResult,
+		&linkDirNameResult,
 	)
 	if err != nil {
 		return nil, err
@@ -405,6 +414,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccessResult),
 		SortOrder:                sortOrder,
 		IsActive:                 SQLiteIntToBool(isActive),
+		LinkDirName:              linkDirNameResult,
 	}
 
 	if basicUsername != nil {

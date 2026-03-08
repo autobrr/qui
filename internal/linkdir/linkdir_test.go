@@ -17,14 +17,26 @@ import (
 func TestEffectiveInstanceDirName(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "movies-xseed", EffectiveInstanceDirName("Movies", " movies-xseed "))
-	assert.Equal(t, "Movies", EffectiveInstanceDirName("Movies", " "))
+	name, err := EffectiveInstanceDirName("Movies", " movies-xseed ")
+	require.NoError(t, err)
+	assert.Equal(t, "movies-xseed", name)
+
+	name, err = EffectiveInstanceDirName("Movies", " ")
+	require.NoError(t, err)
+	assert.Equal(t, "Movies", name)
+}
+
+func TestEffectiveInstanceDirName_RejectsTraversal(t *testing.T) {
+	t.Parallel()
+
+	_, err := EffectiveInstanceDirName("Movies", "../escape")
+	require.ErrorContains(t, err, "path separators")
 }
 
 func TestBuildDestDir_ByInstanceUsesOverride(t *testing.T) {
 	t.Parallel()
 
-	dest := BuildDestDir(
+	dest, err := BuildDestDir(
 		"/hardlinks",
 		"by-instance",
 		"movies-xseed",
@@ -32,6 +44,7 @@ func TestBuildDestDir_ByInstanceUsesOverride(t *testing.T) {
 		"My.Movie.2024",
 		[]hardlinktree.TorrentFile{{Path: "movie.mkv", Size: 1000}},
 	)
+	require.NoError(t, err)
 
 	normalized := filepath.ToSlash(dest)
 	assert.Contains(t, normalized, "/hardlinks/movies-xseed/")
@@ -41,7 +54,7 @@ func TestBuildDestDir_ByInstanceUsesOverride(t *testing.T) {
 func TestBuildDestDir_ByTrackerFallsBackToUnknown(t *testing.T) {
 	t.Parallel()
 
-	dest := BuildDestDir(
+	dest, err := BuildDestDir(
 		"/hardlinks",
 		"by-tracker",
 		"",
@@ -49,8 +62,23 @@ func TestBuildDestDir_ByTrackerFallsBackToUnknown(t *testing.T) {
 		"My.Movie.2024",
 		[]hardlinktree.TorrentFile{{Path: "Release/movie.mkv", Size: 1000}},
 	)
+	require.NoError(t, err)
 
 	assert.Equal(t, filepath.Join("/hardlinks", "Unknown"), dest)
+}
+
+func TestBuildDestDir_ByInstanceRejectsTraversal(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildDestDir(
+		"/hardlinks",
+		"by-instance",
+		"..",
+		"abcdef1234567890",
+		"My.Movie.2024",
+		[]hardlinktree.TorrentFile{{Path: "movie.mkv", Size: 1000}},
+	)
+	require.ErrorContains(t, err, "traversal segment")
 }
 
 func TestFindMatchingBaseDir(t *testing.T) {

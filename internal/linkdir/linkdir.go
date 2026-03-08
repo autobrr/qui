@@ -15,14 +15,38 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
+func validateInstanceDirName(name string) error {
+	switch trimmed := strings.TrimSpace(name); {
+	case trimmed == "":
+		return errors.New("instance directory name cannot be empty")
+	case strings.ContainsAny(trimmed, `/\`):
+		return fmt.Errorf("instance directory name %q must not contain path separators", trimmed)
+	case trimmed == "." || trimmed == "..":
+		return fmt.Errorf("instance directory name %q must not be a traversal segment", trimmed)
+	default:
+		return nil
+	}
+}
+
+func groupDestDir(baseDir, groupName, isolationFolder string) string {
+	groupDir := filepath.Join(baseDir, pathutil.SanitizePathSegment(groupName))
+	if isolationFolder == "" {
+		return groupDir
+	}
+	return filepath.Join(groupDir, isolationFolder)
+}
+
 // EffectiveInstanceDirName returns the configured by-instance directory name.
 // Falls back to the instance name when no override is set.
-func EffectiveInstanceDirName(instanceName, override string) string {
-	override = strings.TrimSpace(override)
-	if override != "" {
-		return override
+func EffectiveInstanceDirName(instanceName, override string) (string, error) {
+	name := strings.TrimSpace(override)
+	if name == "" {
+		name = instanceName
 	}
-	return instanceName
+	if err := validateInstanceDirName(name); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 // FindMatchingBaseDir returns the first configured base dir on the same filesystem as sourcePath.
@@ -64,7 +88,7 @@ func FindMatchingBaseDir(configuredDirs, sourcePath string) (string, error) {
 }
 
 // BuildDestDir returns the final hardlink/reflink tree root for the configured preset.
-func BuildDestDir(baseDir, preset, groupName, torrentHash, torrentName string, candidateFiles []hardlinktree.TorrentFile) string {
+func BuildDestDir(baseDir, preset, groupName, torrentHash, torrentName string, candidateFiles []hardlinktree.TorrentFile) (string, error) {
 	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
 	isolationFolder := ""
 	if needsIsolation || preset == "flat" || preset == "" {
@@ -76,16 +100,13 @@ func BuildDestDir(baseDir, preset, groupName, torrentHash, torrentName string, c
 		if strings.TrimSpace(groupName) == "" {
 			groupName = "Unknown"
 		}
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(groupName), isolationFolder)
-		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(groupName))
+		return groupDestDir(baseDir, groupName, isolationFolder), nil
 	case "by-instance":
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(groupName), isolationFolder)
+		if err := validateInstanceDirName(groupName); err != nil {
+			return "", err
 		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(groupName))
+		return groupDestDir(baseDir, groupName, isolationFolder), nil
 	default:
-		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName)), nil
 	}
 }

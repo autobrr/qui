@@ -208,11 +208,13 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with host
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil)
+	linkDirName := "movies-xseed"
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, &linkDirName)
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 	assert.False(t, instance.TLSSkipVerify)
 	assert.Equal(t, 0, instance.SortOrder)
+	assert.Equal(t, linkDirName, instance.LinkDirName)
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
@@ -221,13 +223,24 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	assert.False(t, retrieved.TLSSkipVerify)
 	assert.True(t, retrieved.IsActive)
 	assert.False(t, retrieved.HasLocalFilesystemAccess)
+	assert.Equal(t, linkDirName, retrieved.LinkDirName)
 
 	// Test updating the instance
 	newTLSSetting := true
-	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &InstanceUpdateParams{TLSSkipVerify: &newTLSSetting})
+	updatedLinkDirName := "series-xseed"
+	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &InstanceUpdateParams{
+		TLSSkipVerify: &newTLSSetting,
+		LinkDirName:   &updatedLinkDirName,
+	})
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 	assert.True(t, updated.TLSSkipVerify)
+	assert.Equal(t, updatedLinkDirName, updated.LinkDirName)
+
+	instances, err := store.List(ctx)
+	require.NoError(t, err, "Failed to list instances")
+	require.Len(t, instances, 1)
+	assert.Equal(t, updatedLinkDirName, instances[0].LinkDirName)
 
 	// Test toggling activation flag
 	disabled, err := store.SetActiveState(ctx, instance.ID, false)
@@ -330,7 +343,7 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with empty username (localhost bypass)
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "", nil, nil, false, nil, nil)
 	require.NoError(t, err, "Failed to create instance with empty username")
 	assert.Equal(t, "", instance.Username, "username should be empty")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
@@ -435,7 +448,7 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// This should work even without pre-inserted empty string (self-healing)
-	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, false, nil)
+	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "", nil, nil, false, nil, nil)
 	require.NoError(t, err, "Create with empty username should work even when empty string not pre-inserted")
 	assert.Equal(t, "", instance.Username, "username should be empty")
 	password, err := store.GetDecryptedPassword(instance)
@@ -532,7 +545,7 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// First create an instance with non-empty username (this works without empty string)
-	instance, err := store.Create(ctx, "Regular Instance", "http://localhost:8080", "admin", "pass", nil, nil, false, nil)
+	instance, err := store.Create(ctx, "Regular Instance", "http://localhost:8080", "admin", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err, "Create with non-empty username should work")
 	assert.Equal(t, "admin", instance.Username, "username should be admin")
 
@@ -631,9 +644,9 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	first, err := store.Create(ctx, "First", "http://first.local", "user1", "pass1", nil, nil, false, nil)
+	first, err := store.Create(ctx, "First", "http://first.local", "user1", "pass1", nil, nil, false, nil, nil)
 	require.NoError(t, err)
-	second, err := store.Create(ctx, "Second", "http://second.local", "user2", "pass2", nil, nil, false, nil)
+	second, err := store.Create(ctx, "Second", "http://second.local", "user2", "pass2", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, first.SortOrder)

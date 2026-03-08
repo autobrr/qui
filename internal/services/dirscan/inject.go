@@ -442,9 +442,15 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 		return nil, "", fmt.Errorf("select hardlink base dir: %w", err)
 	}
 
-	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
-	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
-	destDir := buildLinkDestDir(instance, selectedBaseDir, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, trackerDisplayName, incomingFiles)
+	trackerDisplayName := ""
+	if instance.HardlinkDirPreset == "by-tracker" {
+		incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
+		trackerDisplayName = i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
+	}
+	destDir, err := buildLinkDestDir(instance, selectedBaseDir, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, trackerDisplayName, incomingFiles)
+	if err != nil {
+		return nil, "", fmt.Errorf("build link destination: %w", err)
+	}
 
 	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 	if err != nil {
@@ -557,10 +563,14 @@ func (i *Injector) createLinkTree(instance *models.Instance, baseDir string, pla
 	return "", errors.New("no link mode enabled")
 }
 
-func buildLinkDestDir(instance *models.Instance, baseDir, torrentHash, torrentName, trackerDisplayName string, incomingFiles []hardlinktree.TorrentFile) string {
+func buildLinkDestDir(instance *models.Instance, baseDir, torrentHash, torrentName, trackerDisplayName string, incomingFiles []hardlinktree.TorrentFile) (string, error) {
 	groupName := trackerDisplayName
 	if instance.HardlinkDirPreset == "by-instance" {
-		groupName = linkdir.EffectiveInstanceDirName(instance.Name, instance.LinkDirName)
+		var err error
+		groupName, err = linkdir.EffectiveInstanceDirName(instance.Name, instance.LinkDirName)
+		if err != nil {
+			return "", err
+		}
 	}
 	return linkdir.BuildDestDir(
 		baseDir,

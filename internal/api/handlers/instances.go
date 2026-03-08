@@ -381,6 +381,7 @@ type CreateInstanceRequest struct {
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            bool                               `json:"tlsSkipVerify,omitempty"`
 	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	LinkDirName              *string                            `json:"linkDirName,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
@@ -601,8 +602,21 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	req.LinkDirName = normalizeOptionalString(req.LinkDirName)
+
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess)
+	instance, err := h.instanceStore.Create(
+		r.Context(),
+		req.Name,
+		req.Host,
+		req.Username,
+		req.Password,
+		req.BasicUsername,
+		req.BasicPassword,
+		req.TLSSkipVerify,
+		req.HasLocalFilesystemAccess,
+		req.LinkDirName,
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -667,6 +681,8 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
+
+	req.LinkDirName = normalizeOptionalString(req.LinkDirName)
 
 	// Validate hardlink/reflink settings
 	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
@@ -759,6 +775,15 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	go h.testConnectionAsync(instance.ID)
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func normalizeOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
 }
 
 // DeleteInstance deletes an instance
