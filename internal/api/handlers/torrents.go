@@ -278,8 +278,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" {
-		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, or full_path")
+	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" {
+		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, or tags")
 		return
 	}
 
@@ -335,6 +335,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				value = preferredCrossInstanceHashValue(torrent)
 			case "full_path":
 				value = fullPathValue(torrent.SavePath, torrent.Name)
+			case "tags":
+				value = strings.TrimSpace(torrent.Tags)
 			}
 
 			if value != "" {

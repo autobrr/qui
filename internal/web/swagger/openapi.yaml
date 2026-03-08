@@ -1623,7 +1623,7 @@ paths:
       tags:
         - Torrents
       summary: Get torrent field values
-      description: Returns field values for torrents matching the given filters. Used for select all copy operations (copy name, hash, or full path).
+      description: Returns field values for torrents matching the given filters. Used for select all copy operations and bulk tag baselines.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1642,6 +1642,7 @@ paths:
                     - name
                     - hash
                     - full_path
+                    - tags
                 sort:
                   type: string
                   description: Sort field. Defaults to added_on.

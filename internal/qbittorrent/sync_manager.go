@@ -1267,7 +1267,7 @@ type TorrentFieldResponse struct {
 }
 
 // GetTorrentField returns field values for torrents matching the given filters.
-// Supported fields: "name", "hash", "full_path" (save_path/name).
+// Supported fields: "name", "hash", "full_path" (save_path/name), "tags".
 // excludeHashes removes specific torrents from the result
 func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, field, sort, order, search string, filters FilterOptions, excludeHashes []string) (*TorrentFieldResponse, error) {
 	response, err := sm.GetTorrentsWithFilters(ctx, instanceID, 0, 0, sort, order, search, filters)
@@ -1317,6 +1317,8 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 					v = savePath + "/" + t.Name
 				}
 			}
+		case "tags":
+			v = t.Tags
 		}
 		if v != "" {
 			values = append(values, v)
