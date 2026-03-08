@@ -111,6 +111,66 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 	}
 }
 
+func TestInjector_Inject_HumanizesLinkPlanMismatchError(t *testing.T) {
+	tmp := t.TempDir()
+
+	hardlinkBase := filepath.Join(tmp, "links")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          hardlinkBase,
+		FallbackToRegularMode:    false,
+	}
+
+	injector := NewInjector(nil, &recordingTorrentManager{}, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: tmp,
+			Files: []*ScannedFile{{
+				Path:    filepath.Join(tmp, "file.mkv"),
+				RelPath: "file.mkv",
+				Size:    3,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: filepath.Join(tmp, "file.mkv"), RelPath: "file.mkv", Size: 3},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			IsMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	want := "couldn't prepare linked files for this release: a required local file is missing or does not match on disk (Example.Release/file.mkv)"
+	if err.Error() != want {
+		t.Fatalf("expected error %q, got %q", want, err.Error())
+	}
+	if res.ErrorMessage != want {
+		t.Fatalf("expected result error %q, got %q", want, res.ErrorMessage)
+	}
+}
+
 type recordingTorrentManager struct {
 	addOptions map[string]string
 

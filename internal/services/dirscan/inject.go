@@ -450,7 +450,13 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 
 	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("build link plan: %w", err)
+		log.Warn().
+			Err(err).
+			Int("instanceID", instance.ID).
+			Str("instanceName", instance.Name).
+			Str("torrentName", req.ParsedTorrent.Name).
+			Msg("dirscan: failed to build link plan")
+		return nil, "", humanizeLinkPlanError(err)
 	}
 
 	mode, err := i.createLinkTree(instance, existingFiles, plan)
@@ -459,6 +465,28 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 	}
 
 	return plan, mode, nil
+}
+
+func humanizeLinkPlanError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	const prefix = "couldn't prepare linked files for this release"
+
+	switch {
+	case strings.HasPrefix(err.Error(), "no matching file for: "):
+		file := strings.TrimPrefix(err.Error(), "no matching file for: ")
+		return fmt.Errorf("%s: a required local file is missing or does not match on disk (%s)", prefix, file)
+	case strings.HasPrefix(err.Error(), "no available match for: "):
+		file := strings.TrimPrefix(err.Error(), "no available match for: ")
+		return fmt.Errorf("%s: no usable local source file remained for (%s)", prefix, file)
+	case strings.HasPrefix(err.Error(), "could not match file: "):
+		file := strings.TrimPrefix(err.Error(), "could not match file: ")
+		return fmt.Errorf("%s: couldn't map a required release file to a local source file (%s)", prefix, file)
+	default:
+		return errors.New(prefix)
+	}
 }
 
 func (i *Injector) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain, indexerName string) string {
