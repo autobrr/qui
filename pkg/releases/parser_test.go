@@ -6,6 +6,7 @@ package releases
 import (
 	"testing"
 
+	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,4 +81,16 @@ func TestParser_EnrichesHDRAliases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTrimTrailingGroupOrSite_RemovesExposedTrailingTokens(t *testing.T) {
+	t.Parallel()
+
+	release := &rls.Release{
+		Group: "DV",
+		Site:  "SITE",
+	}
+
+	trimmed := trimTrailingGroupOrSite("Movie.2024.2160p.BluRay.x265-DV [SITE]", release)
+	require.Equal(t, "Movie.2024.2160p.BluRay.x265", trimmed)
 }

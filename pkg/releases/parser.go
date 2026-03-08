@@ -161,8 +161,14 @@ func trimTrailingGroupOrSite(rawName string, release *rls.Release) string {
 		return trimmed
 	}
 
-	for _, token := range []string{release.Group, release.Site} {
-		trimmed = trimTrailingParsedToken(trimmed, token)
+	for {
+		prev := trimmed
+		for _, token := range []string{release.Group, release.Site} {
+			trimmed = trimTrailingParsedToken(trimmed, token)
+		}
+		if trimmed == prev {
+			break
+		}
 	}
 
 	return trimmed
