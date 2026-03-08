@@ -314,6 +314,7 @@ function HardlinkModeSettings() {
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+    linkDirName: string
     fallbackToRegularMode: boolean
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
@@ -338,6 +339,7 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      linkDirName: instance.linkDirName || "",
       fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
@@ -404,6 +406,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        linkDirName: form.linkDirName,
         fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
@@ -574,6 +577,20 @@ function HardlinkModeSettings() {
                                 </SelectContent>
                               </Select>
                             </div>
+
+                            {form.hardlinkDirPreset === "by-instance" && (
+                              <div className="space-y-2">
+                                <Label>Instance directory name</Label>
+                                <Input
+                                  placeholder={`${instance.name}-xseed`}
+                                  value={form.linkDirName}
+                                  onChange={(e) => handleFormChange(instance.id, "linkDirName", e.target.value, form)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Optional. Overrides the folder name used under the shared base directory for this instance.
+                                </p>
+                              </div>
+                            )}
 
                             <div className="flex items-start gap-3">
                               <Checkbox

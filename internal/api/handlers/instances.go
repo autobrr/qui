@@ -207,6 +207,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				UseHardlinks:             instances[i].UseHardlinks,
 				HardlinkBaseDir:          instances[i].HardlinkBaseDir,
 				HardlinkDirPreset:        instances[i].HardlinkDirPreset,
+				LinkDirName:              instances[i].LinkDirName,
 				UseReflinks:              instances[i].UseReflinks,
 				Connected:                false,
 				HasDecryptionError:       false,
@@ -255,6 +256,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		UseHardlinks:             instance.UseHardlinks,
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		LinkDirName:              instance.LinkDirName,
 		UseReflinks:              instance.UseReflinks,
 		FallbackToRegularMode:    instance.FallbackToRegularMode,
 		Connected:                healthy,
@@ -297,6 +299,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		UseHardlinks:             instance.UseHardlinks,
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		LinkDirName:              instance.LinkDirName,
 		UseReflinks:              instance.UseReflinks,
 		FallbackToRegularMode:    instance.FallbackToRegularMode,
 		Connected:                false, // Will be updated asynchronously
@@ -394,6 +397,7 @@ type UpdateInstanceRequest struct {
 	UseHardlinks             *bool                              `json:"useHardlinks,omitempty"`
 	HardlinkBaseDir          *string                            `json:"hardlinkBaseDir,omitempty"`
 	HardlinkDirPreset        *string                            `json:"hardlinkDirPreset,omitempty"`
+	LinkDirName              *string                            `json:"linkDirName,omitempty"`
 	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
 	FallbackToRegularMode    *bool                              `json:"fallbackToRegularMode,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
@@ -415,6 +419,7 @@ type InstanceResponse struct {
 	UseHardlinks             bool                              `json:"useHardlinks"`
 	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
 	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
+	LinkDirName              string                            `json:"linkDirName"`
 	UseReflinks              bool                              `json:"useReflinks"`
 	FallbackToRegularMode    bool                              `json:"fallbackToRegularMode"`
 	Connected                bool                              `json:"connected"`
@@ -716,6 +721,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		UseHardlinks:             req.UseHardlinks,
 		HardlinkBaseDir:          req.HardlinkBaseDir,
 		HardlinkDirPreset:        req.HardlinkDirPreset,
+		LinkDirName:              req.LinkDirName,
 		UseReflinks:              req.UseReflinks,
 		FallbackToRegularMode:    req.FallbackToRegularMode,
 	}

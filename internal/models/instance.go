@@ -40,6 +40,7 @@ type Instance struct {
 	UseHardlinks      bool   `json:"useHardlinks"`
 	HardlinkBaseDir   string `json:"hardlinkBaseDir"`
 	HardlinkDirPreset string `json:"hardlinkDirPreset"` // "flat", "by-tracker", "by-instance"
+	LinkDirName       string `json:"linkDirName"`       // Custom directory name for "by-instance" link layout
 	// Reflink mode (copy-on-write clones) - mutually exclusive with hardlink mode
 	UseReflinks bool `json:"useReflinks"`
 	// Fallback to regular mode when reflink/hardlink fails
@@ -62,6 +63,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		UseHardlinks             bool       `json:"useHardlinks"`
 		HardlinkBaseDir          string     `json:"hardlinkBaseDir"`
 		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
+		LinkDirName              string     `json:"linkDirName"`
 		UseReflinks              bool       `json:"useReflinks"`
 		FallbackToRegularMode    bool       `json:"fallbackToRegularMode"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
@@ -88,6 +90,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		UseHardlinks:             i.UseHardlinks,
 		HardlinkBaseDir:          i.HardlinkBaseDir,
 		HardlinkDirPreset:        i.HardlinkDirPreset,
+		LinkDirName:              i.LinkDirName,
 		UseReflinks:              i.UseReflinks,
 		FallbackToRegularMode:    i.FallbackToRegularMode,
 	})
@@ -109,6 +112,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		UseHardlinks             *bool      `json:"useHardlinks,omitempty"`
 		HardlinkBaseDir          *string    `json:"hardlinkBaseDir,omitempty"`
 		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
+		LinkDirName              *string    `json:"linkDirName,omitempty"`
 		UseReflinks              *bool      `json:"useReflinks,omitempty"`
 		FallbackToRegularMode    *bool      `json:"fallbackToRegularMode,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
@@ -152,6 +156,9 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	}
 	if temp.HardlinkDirPreset != nil {
 		i.HardlinkDirPreset = *temp.HardlinkDirPreset
+	}
+	if temp.LinkDirName != nil {
+		i.LinkDirName = *temp.LinkDirName
 	}
 	// Reflink setting (defaults to false if not provided)
 	if temp.UseReflinks != nil {
@@ -416,7 +423,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		WHERE id = ?
 	`
@@ -429,7 +436,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var isActive int
 	var hasLocalFilesystemAccess int
 	var useHardlinks int
-	var hardlinkBaseDir, hardlinkDirPreset string
+	var hardlinkBaseDir, hardlinkDirPreset, linkDirName string
 	var useReflinks int
 	var fallbackToRegularMode int
 
@@ -448,6 +455,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&useHardlinks,
 		&hardlinkBaseDir,
 		&hardlinkDirPreset,
+		&linkDirName,
 		&useReflinks,
 		&fallbackToRegularMode,
 	)
@@ -471,6 +479,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		UseHardlinks:             SQLiteIntToBool(useHardlinks),
 		HardlinkBaseDir:          hardlinkBaseDir,
 		HardlinkDirPreset:        hardlinkDirPreset,
+		LinkDirName:              linkDirName,
 		UseReflinks:              SQLiteIntToBool(useReflinks),
 		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
 	}
@@ -492,7 +501,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		ORDER BY sort_order ASC, %s ASC, id ASC
 	`, orderByName)
@@ -513,7 +522,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var isActive int
 		var hasLocalFilesystemAccess int
 		var useHardlinks int
-		var hardlinkBaseDir, hardlinkDirPreset string
+		var hardlinkBaseDir, hardlinkDirPreset, linkDirName string
 		var useReflinks int
 		var fallbackToRegularMode int
 
@@ -532,6 +541,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&useHardlinks,
 			&hardlinkBaseDir,
 			&hardlinkDirPreset,
+			&linkDirName,
 			&useReflinks,
 			&fallbackToRegularMode,
 		)
@@ -552,6 +562,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			UseHardlinks:             SQLiteIntToBool(useHardlinks),
 			HardlinkBaseDir:          hardlinkBaseDir,
 			HardlinkDirPreset:        hardlinkDirPreset,
+			LinkDirName:              linkDirName,
 			UseReflinks:              SQLiteIntToBool(useReflinks),
 			FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
 		}
@@ -580,6 +591,7 @@ type InstanceUpdateParams struct {
 	UseHardlinks             *bool
 	HardlinkBaseDir          *string
 	HardlinkDirPreset        *string
+	LinkDirName              *string
 	UseReflinks              *bool
 	FallbackToRegularMode    *bool
 }
@@ -697,6 +709,11 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		if params.HardlinkDirPreset != nil {
 			query += ", hardlink_dir_preset = ?"
 			args = append(args, *params.HardlinkDirPreset)
+		}
+
+		if params.LinkDirName != nil {
+			query += ", link_dir_name = ?"
+			args = append(args, *params.LinkDirName)
 		}
 
 		if params.UseReflinks != nil {

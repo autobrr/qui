@@ -168,6 +168,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			link_dir_name TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
@@ -195,6 +196,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
+			i.link_dir_name,
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
@@ -288,6 +290,7 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			link_dir_name TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
@@ -315,6 +318,7 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
+			i.link_dir_name,
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
@@ -394,6 +398,7 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			link_dir_name TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
@@ -418,6 +423,7 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
+			i.link_dir_name,
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
@@ -489,6 +495,7 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			link_dir_name TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
@@ -513,6 +520,7 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
+			i.link_dir_name,
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
@@ -584,6 +592,7 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			link_dir_name TEXT NOT NULL DEFAULT '',
 			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
@@ -611,6 +620,7 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			i.use_hardlinks,
 			i.hardlink_base_dir,
 			i.hardlink_dir_preset,
+			i.link_dir_name,
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
