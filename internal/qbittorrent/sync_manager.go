@@ -107,6 +107,11 @@ type CrossInstanceTorrentView struct {
 	InstanceName string `json:"instance_name"`
 }
 
+type TorrentTarget struct {
+	InstanceID int
+	Hash       string
+}
+
 type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -1268,8 +1273,15 @@ type TorrentFieldResponse struct {
 
 // GetTorrentField returns field values for torrents matching the given filters.
 // Supported fields: "name", "hash", "full_path" (save_path/name), "tags".
-// excludeHashes removes specific torrents from the result
-func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, field, sort, order, search string, filters FilterOptions, excludeHashes []string) (*TorrentFieldResponse, error) {
+// excludeHashes and excludeTargets remove specific torrents from the result.
+func (sm *SyncManager) GetTorrentField(
+	ctx context.Context,
+	instanceID int,
+	field, sort, order, search string,
+	filters FilterOptions,
+	excludeHashes []string,
+	excludeTargets []TorrentTarget,
+) (*TorrentFieldResponse, error) {
 	response, err := sm.GetTorrentsWithFilters(ctx, instanceID, 0, 0, sort, order, search, filters)
 	if err != nil {
 		return nil, err
@@ -1280,14 +1292,37 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 	if len(excludeHashes) > 0 {
 		excluded = make(map[string]struct{}, len(excludeHashes))
 		for _, h := range excludeHashes {
-			excluded[h] = struct{}{}
+			normalized := normalizeTorrentFieldHash(h)
+			if normalized != "" {
+				excluded[normalized] = struct{}{}
+			}
+		}
+	}
+
+	var excludedTargets map[string]struct{}
+	if len(excludeTargets) > 0 {
+		excludedTargets = make(map[string]struct{}, len(excludeTargets))
+		for _, target := range excludeTargets {
+			if target.InstanceID != instanceID {
+				continue
+			}
+			normalized := normalizeTorrentFieldHash(target.Hash)
+			if normalized != "" {
+				excludedTargets[normalized] = struct{}{}
+			}
 		}
 	}
 
 	values := make([]string, 0, len(response.Torrents))
 	for _, t := range response.Torrents {
+		normalizedHash := normalizeTorrentFieldHash(t.Hash)
 		if excluded != nil {
-			if _, skip := excluded[t.Hash]; skip {
+			if _, skip := excluded[normalizedHash]; skip {
+				continue
+			}
+		}
+		if excludedTargets != nil {
+			if _, skip := excludedTargets[normalizedHash]; skip {
 				continue
 			}
 		}
@@ -1329,6 +1364,10 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 		Values: values,
 		Total:  len(values),
 	}, nil
+}
+
+func normalizeTorrentFieldHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
 }
 
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.

@@ -430,6 +430,14 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
 			return
 		}
+		if response.PartialResults && req.Field == "tags" {
+			log.Error().
+				Int("instanceID", instanceID).
+				Str("field", req.Field).
+				Msg("Cross-instance torrent field returned partial results for tag baseline")
+			RespondError(w, http.StatusInternalServerError, "Failed to resolve the full tag baseline")
+			return
+		}
 
 		excludeHashes := buildExcludeHashSet(req.ExcludeHashes)
 		excludeTargets := buildExcludeTargetSet(req.ExcludeTargets)
@@ -464,7 +472,17 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	fieldResponse, err := h.syncManager.GetTorrentField(r.Context(), instanceID, req.Field, req.Sort, req.Order, req.Search, req.Filters, req.ExcludeHashes)
+	fieldResponse, err := h.syncManager.GetTorrentField(
+		r.Context(),
+		instanceID,
+		req.Field,
+		req.Sort,
+		req.Order,
+		req.Search,
+		req.Filters,
+		req.ExcludeHashes,
+		toQBittorrentTargets(req.ExcludeTargets),
+	)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:metadata") {
 			return
@@ -498,6 +516,22 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 
 func shouldIncludeTorrentFieldValue(field, value string) bool {
 	return field == "tags" || value != ""
+}
+
+func toQBittorrentTargets(targets []BulkActionTarget) []qbittorrent.TorrentTarget {
+	if len(targets) == 0 {
+		return nil
+	}
+
+	result := make([]qbittorrent.TorrentTarget, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, qbittorrent.TorrentTarget{
+			InstanceID: target.InstanceID,
+			Hash:       target.Hash,
+		})
+	}
+
+	return result
 }
 
 // CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
