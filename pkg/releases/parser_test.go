@@ -75,6 +75,9 @@ func TestParser_EnrichesHDRAliases(t *testing.T) {
 			t.Parallel()
 
 			release := parser.Parse(tt.input)
+			if len(tt.wantHDR) == 0 {
+				require.Nil(t, release.HDR)
+			}
 			require.ElementsMatch(t, tt.wantHDR, release.HDR)
 			for _, tag := range tt.notHDR {
 				require.NotContains(t, release.HDR, tag)

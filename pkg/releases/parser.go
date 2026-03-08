@@ -142,6 +142,10 @@ func normalizeHDRTags(tags []string) []string {
 		delete(seen, "HDR10")
 	}
 
+	if len(seen) == 0 {
+		return nil
+	}
+
 	normalized := make([]string, 0, len(seen))
 	for tag := range seen {
 		normalized = append(normalized, tag)
