@@ -788,9 +788,8 @@ backupLoop:
 							Msg("qBittorrent became unavailable during backup; finalizing partial backup")
 						break backupLoop
 					}
-
 					continue
-				default:
+				case exportFailureFatal:
 					return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
 				}
 			}

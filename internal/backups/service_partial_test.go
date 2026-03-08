@@ -48,7 +48,7 @@ func TestHandleJobMarksPartialBackupSuccessWhenExportRecovers(t *testing.T) {
 	}
 	svc.probeInstance = func(context.Context, int) error { return nil }
 
-	run := createBackupRun(t, ctx, store, instanceID, svc.now())
+	run := createBackupRun(ctx, t, store, instanceID, svc.now())
 	svc.handleJob(ctx, job{runID: run.ID, instanceID: instanceID, kind: models.BackupRunKindManual})
 
 	savedRun, err := store.GetRun(ctx, run.ID)
@@ -104,7 +104,7 @@ func TestHandleJobStopsEarlyAndKeepsPartialBackupWhenInstanceDies(t *testing.T) 
 	}
 	svc.probeInstance = func(context.Context, int) error { return errors.New("connection refused") }
 
-	run := createBackupRun(t, ctx, store, instanceID, svc.now())
+	run := createBackupRun(ctx, t, store, instanceID, svc.now())
 	svc.handleJob(ctx, job{runID: run.ID, instanceID: instanceID, kind: models.BackupRunKindManual})
 
 	savedRun, err := store.GetRun(ctx, run.ID)
@@ -138,7 +138,7 @@ func TestHandleJobFailsWhenInstanceDiesBeforeAnyTorrentExports(t *testing.T) {
 	}
 	svc.probeInstance = func(context.Context, int) error { return errors.New("connection refused") }
 
-	run := createBackupRun(t, ctx, store, instanceID, svc.now())
+	run := createBackupRun(ctx, t, store, instanceID, svc.now())
 	svc.handleJob(ctx, job{runID: run.ID, instanceID: instanceID, kind: models.BackupRunKindManual})
 
 	savedRun, err := store.GetRun(ctx, run.ID)
@@ -149,7 +149,7 @@ func TestHandleJobFailsWhenInstanceDiesBeforeAnyTorrentExports(t *testing.T) {
 
 	items, err := store.ListItems(ctx, run.ID)
 	require.NoError(t, err)
-	require.Len(t, items, 0)
+	require.Empty(t, items)
 }
 
 func TestLoadManifestFallsBackToDatabaseForLegacyRuns(t *testing.T) {
@@ -161,7 +161,7 @@ func TestLoadManifestFallsBackToDatabaseForLegacyRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "legacy-manifest")
 
 	svc := newBackupTestService(t, store)
-	run := createBackupRun(t, ctx, store, instanceID, svc.now())
+	run := createBackupRun(ctx, t, store, instanceID, svc.now())
 
 	now := svc.now()
 	require.NoError(t, store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
@@ -204,7 +204,7 @@ func newBackupTestService(t *testing.T, store *models.BackupStore) *Service {
 	return svc
 }
 
-func createBackupRun(t *testing.T, ctx context.Context, store *models.BackupStore, instanceID int, now time.Time) *models.BackupRun {
+func createBackupRun(ctx context.Context, t *testing.T, store *models.BackupStore, instanceID int, now time.Time) *models.BackupRun {
 	t.Helper()
 
 	run := &models.BackupRun{
@@ -240,7 +240,7 @@ func TestLoadManifestPrefersSavedManifestFileForWarnings(t *testing.T) {
 		return nil, "", "", errors.New("status code: 503: service unavailable")
 	}
 
-	run := createBackupRun(t, ctx, store, instanceID, svc.now())
+	run := createBackupRun(ctx, t, store, instanceID, svc.now())
 	svc.handleJob(ctx, job{runID: run.ID, instanceID: instanceID, kind: models.BackupRunKindManual})
 
 	savedRun, err := store.GetRun(ctx, run.ID)
