@@ -181,10 +181,11 @@ func trimTrailingParsedToken(rawName, token string) string {
 	}
 
 	quoted := regexp.QuoteMeta(token)
+	ext := `(?:\.[^./\\]+)?$`
 	patterns := []string{
-		`(?i)[\s._-]+` + quoted + `$`,
-		`(?i)\[` + quoted + `\]$`,
-		`(?i)\(` + quoted + `\)$`,
+		`(?i)[\s._-]+` + quoted + ext,
+		`(?i)\[` + quoted + `\]` + ext,
+		`(?i)\(` + quoted + `\)` + ext,
 	}
 
 	trimmed := rawName
