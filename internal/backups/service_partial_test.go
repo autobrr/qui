@@ -88,7 +88,7 @@ func TestHandleJobStopsEarlyAndKeepsPartialBackupWhenInstanceDies(t *testing.T) 
 			{Hash: "hash-c", Name: "Charlie", TotalSize: 33},
 		}, nil
 	}
-	seedCachedTorrent(t, ctx, svc, store, instanceID, "hash-c", "cached-charlie")
+	seedCachedTorrent(ctx, t, svc, store, instanceID, "hash-c", "cached-charlie")
 
 	exported := make([]string, 0, 3)
 	svc.exportTorrent = func(_ context.Context, _ int, hash string) ([]byte, string, string, error) {
@@ -206,7 +206,7 @@ func newBackupTestService(t *testing.T, store *models.BackupStore) *Service {
 	return svc
 }
 
-func seedCachedTorrent(t *testing.T, ctx context.Context, svc *Service, store *models.BackupStore, instanceID int, hash string, data string) {
+func seedCachedTorrent(ctx context.Context, t *testing.T, svc *Service, store *models.BackupStore, instanceID int, hash string, data string) {
 	t.Helper()
 
 	run := &models.BackupRun{
@@ -221,7 +221,7 @@ func seedCachedTorrent(t *testing.T, ctx context.Context, svc *Service, store *m
 	blobPath := filepath.ToSlash(filepath.Join("backups", "torrents", hash+".torrent"))
 	absPath := filepath.Join(svc.cfg.DataDir, blobPath)
 	require.NoError(t, os.MkdirAll(filepath.Dir(absPath), 0o755))
-	require.NoError(t, os.WriteFile(absPath, []byte(data), 0o644))
+	require.NoError(t, os.WriteFile(absPath, []byte(data), 0o600))
 	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
 		RunID:           run.ID,
 		TorrentHash:     hash,

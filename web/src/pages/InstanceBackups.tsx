@@ -913,7 +913,19 @@ export function InstanceBackups() {
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
+                      <div className="space-y-1">
+                        <Badge
+                          variant={statusVariants[lastRun.status]}
+                          className={hasBackupWarnings(lastRun)
+                            ? "capitalize border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-50"
+                            : "capitalize"}
+                        >
+                          {backupStatusLabel(lastRun)}
+                        </Badge>
+                        {hasBackupWarnings(lastRun) ? (
+                          <p className="max-w-xs text-xs text-amber-700">{lastRun.errorMessage}</p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 </div>

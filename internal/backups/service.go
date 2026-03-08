@@ -1126,7 +1126,6 @@ func isRecoverableExportFailure(err error) bool {
 		strings.Contains(message, "connection refused") ||
 		strings.Contains(message, "broken pipe") ||
 		strings.Contains(message, "unexpected eof") ||
-		strings.Contains(message, "eof") ||
 		strings.Contains(message, "status code: 500") ||
 		strings.Contains(message, "status code: 502") ||
 		strings.Contains(message, "status code: 503") ||
