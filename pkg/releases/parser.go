@@ -78,14 +78,12 @@ func enrichReleaseHDR(rawName string, release *rls.Release) {
 	}
 
 	tags := make([]string, 0, len(release.HDR)+2)
-
-	for _, tag := range release.HDR {
-		tags = append(tags, tag)
-	}
+	tags = append(tags, release.HDR...)
 
 	if shouldScanRawHDR(release) {
+		scanName := trimTrailingGroupOrSite(rawName, release)
 		for _, matcher := range hdrTagMatchers {
-			if matcher.re.MatchString(rawName) {
+			if matcher.re.MatchString(scanName) {
 				tags = append(tags, matcher.tag)
 			}
 		}
@@ -151,6 +149,47 @@ func normalizeHDRTags(tags []string) []string {
 
 	sort.Strings(normalized)
 	return normalized
+}
+
+func trimTrailingGroupOrSite(rawName string, release *rls.Release) string {
+	if release == nil {
+		return rawName
+	}
+
+	trimmed := strings.TrimSpace(rawName)
+	if trimmed == "" {
+		return trimmed
+	}
+
+	for _, token := range []string{release.Group, release.Site} {
+		trimmed = trimTrailingParsedToken(trimmed, token)
+	}
+
+	return trimmed
+}
+
+func trimTrailingParsedToken(rawName, token string) string {
+	token = strings.TrimSpace(token)
+	if rawName == "" || token == "" {
+		return rawName
+	}
+
+	quoted := regexp.QuoteMeta(token)
+	patterns := []string{
+		`(?i)[\s._-]+` + quoted + `$`,
+		`(?i)\[` + quoted + `\]$`,
+		`(?i)\(` + quoted + `\)$`,
+	}
+
+	trimmed := rawName
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		if idx := re.FindStringIndex(trimmed); idx != nil {
+			trimmed = strings.TrimRight(trimmed[:idx[0]], " ._-")
+		}
+	}
+
+	return strings.TrimSpace(trimmed)
 }
 
 func canonicalHDRTag(tag string) string {

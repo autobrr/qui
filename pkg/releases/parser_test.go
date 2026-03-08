@@ -61,6 +61,12 @@ func TestParser_EnrichesHDRAliases(t *testing.T) {
 			wantHDR: nil,
 			notHDR:  []string{"DV", "HDR", "HDR10", "HDR10+", "HLG"},
 		},
+		{
+			name:    "movie trailing DV group does not become HDR",
+			input:   "Movie.2024.2160p.BluRay.x265-GROUP-DV",
+			wantHDR: nil,
+			notHDR:  []string{"DV", "HDR", "HDR10", "HDR10+", "HLG"},
+		},
 	}
 
 	for _, tt := range tests {
