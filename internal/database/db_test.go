@@ -185,6 +185,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "use_hardlinks", Type: "BOOLEAN"},
 		{Name: "hardlink_base_dir", Type: "TEXT"},
 		{Name: "hardlink_dir_preset", Type: "TEXT"},
+		{Name: "link_dir_name", Type: "TEXT"},
 		{Name: "use_reflinks", Type: "BOOLEAN"},
 		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
 	},
