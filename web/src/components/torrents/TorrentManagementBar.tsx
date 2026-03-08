@@ -230,6 +230,54 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     () => buildTorrentActionTargets(selectedTorrents, actionInstanceId),
     [selectedTorrents, actionInstanceId]
   )
+  const selectedRequestTargets = useMemo(() => {
+    const seen = new Set<string>()
+    const targets: Array<{ instanceId: number; hash: string }> = []
+
+    for (const selectedHash of selectedHashes) {
+      const trimmed = selectedHash.trim()
+      if (!trimmed) {
+        continue
+      }
+
+      const separatorIndex = trimmed.indexOf(":")
+      const target = separatorIndex > 0
+        ? {
+            instanceId: Number(trimmed.slice(0, separatorIndex)),
+            hash: trimmed.slice(separatorIndex + 1),
+          }
+        : {
+            instanceId: actionInstanceId,
+            hash: trimmed,
+          }
+
+      if (target.instanceId <= 0 || !target.hash) {
+        continue
+      }
+
+      const dedupeKey = `${target.instanceId}:${target.hash.toLowerCase()}`
+      if (seen.has(dedupeKey)) {
+        continue
+      }
+
+      seen.add(dedupeKey)
+      targets.push(target)
+    }
+
+    return targets
+  }, [actionInstanceId, selectedHashes])
+  const selectedRequestHashes = useMemo(
+    () => Array.from(new Set(selectedHashes.map((selectedHash) => {
+      const trimmed = selectedHash.trim()
+      if (!trimmed) {
+        return ""
+      }
+
+      const separatorIndex = trimmed.indexOf(":")
+      return separatorIndex > 0 ? trimmed.slice(separatorIndex + 1) : trimmed
+    }).filter(Boolean))),
+    [selectedHashes]
+  )
   const actionOptions = useMemo(() => ({
     instanceIds,
     targets: isAllSelected ? undefined : actionTargets,
@@ -754,10 +802,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         selectionRequest={{
           instanceId: metadataInstanceId,
           instanceIds,
-          filters,
-          search,
-          excludeHashes,
-          excludeTargets,
+          hashes: !isAllSelected ? selectedRequestHashes : undefined,
+          targets: !isAllSelected && selectedRequestTargets.length === selectedRequestHashes.length ? selectedRequestTargets : undefined,
+          selectAll: isAllSelected,
+          filters: isAllSelected ? filters : undefined,
+          search: isAllSelected ? search : undefined,
+          excludeHashes: isAllSelected ? excludeHashes : undefined,
+          excludeTargets: isAllSelected ? excludeTargets : undefined,
         }}
         onConfirm={handleTagsWrapper}
         isPending={isPending}

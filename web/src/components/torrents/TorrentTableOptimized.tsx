@@ -2041,6 +2041,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
     excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
   }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  const normalizedSelectionFilters = useMemo(() => {
+    const sourceFilters = selectAllFilters ?? filters
+    if (!sourceFilters) {
+      return undefined
+    }
+
+    return {
+      ...sourceFilters,
+      categories: sourceFilters.expandedCategories ?? sourceFilters.categories ?? [],
+      excludeCategories: sourceFilters.expandedExcludeCategories ?? sourceFilters.excludeCategories ?? [],
+    }
+  }, [selectAllFilters, filters])
 
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
@@ -3015,7 +3027,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           selectionRequest={{
             instanceId,
             instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-            filters: isAllSelected ? (selectAllFilters ?? filters) : undefined,
+            hashes: !isAllSelected ? contextHashes : undefined,
+            targets: !isAllSelected && (contextClientMeta.actionTargets?.length ?? 0) === contextHashes.length ? contextClientMeta.actionTargets : undefined,
+            selectAll: isAllSelected,
+            filters: isAllSelected ? normalizedSelectionFilters : undefined,
             search: isAllSelected ? effectiveSearch : undefined,
             excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
             excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,

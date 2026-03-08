@@ -817,6 +817,9 @@ class ApiClient {
     params: {
       sort?: string
       order?: "asc" | "desc"
+      hashes?: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
+      selectAll?: boolean
       search?: string
       filters?: TorrentFilters
       excludeHashes?: string[]
@@ -832,6 +835,9 @@ class ApiClient {
           field,
           sort: params.sort,
           order: params.order,
+          hashes: params.hashes,
+          targets: params.targets,
+          selectAll: params.selectAll,
           search: params.search,
           filters: params.filters,
           excludeHashes: params.excludeHashes,

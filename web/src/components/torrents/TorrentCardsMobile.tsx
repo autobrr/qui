@@ -2407,7 +2407,10 @@ export function TorrentCardsMobile({
         selectionRequest={{
           instanceId,
           instanceIds,
-          filters: isAllSelected ? filters : undefined,
+          hashes: !isAllSelected ? selectedRequestHashes : undefined,
+          targets: !isAllSelected && selectedActionTargets.length === selectedRequestHashes.length ? selectedActionTargets : undefined,
+          selectAll: isAllSelected,
+          filters: isAllSelected ? effectiveFilters : undefined,
           search: isAllSelected ? effectiveSearch : undefined,
           excludeHashes: isAllSelected ? excludeHashesForRequest : undefined,
           excludeTargets: isAllSelected

@@ -56,6 +56,9 @@ interface TagEditorDialogProps {
   selectionRequest?: {
     instanceId: number
     instanceIds?: number[]
+    hashes?: string[]
+    targets?: Array<{ instanceId: number; hash: string }>
+    selectAll?: boolean
     filters?: TorrentFilters
     search?: string
     excludeHashes?: string[]
@@ -82,7 +85,6 @@ export const TagEditorDialog = memo(function TagEditorDialog({
   const [selectionTagValues, setSelectionTagValues] = useState<string[]>([])
   const [isLoadingSelectionTags, setIsLoadingSelectionTags] = useState(false)
   const hasEditedRef = useRef(false)
-  const wasOpenRef = useRef(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -92,37 +94,44 @@ export const TagEditorDialog = memo(function TagEditorDialog({
       setSelectionTagValues([])
       setIsLoadingSelectionTags(false)
       hasEditedRef.current = false
-      wasOpenRef.current = false
       return
     }
 
-    if (wasOpenRef.current) {
-      return
-    }
-
-    wasOpenRef.current = true
     setNewTag("")
     hasEditedRef.current = false
 
-    const needsSelectionTagFetch =
-      hashCount > selectedTorrents.length &&
-      typeof selectionRequest?.instanceId === "number" &&
-      selectionRequest.instanceId >= 0
+    const requiresRemoteBaseline = hashCount > selectedTorrents.length
+    const hasValidInstance = typeof selectionRequest?.instanceId === "number" && selectionRequest.instanceId >= 0
+    const hasExplicitSelection = (selectionRequest?.targets?.length ?? 0) > 0 || (selectionRequest?.hashes?.length ?? 0) > 0
+    const canFetchRemoteBaseline = hasValidInstance && (selectionRequest?.selectAll === true || hasExplicitSelection)
 
-    if (!needsSelectionTagFetch) {
+    if (!requiresRemoteBaseline) {
       setSelectionTagValues(selectedTorrents.map(torrent => torrent.tags))
       setIsLoadingSelectionTags(false)
       return
     }
 
     let cancelled = false
+
+    if (!canFetchRemoteBaseline) {
+      setSelectionTagValues([])
+      setIsLoadingSelectionTags(false)
+      return () => {
+        cancelled = true
+        setIsLoadingSelectionTags(false)
+      }
+    }
+
     setIsLoadingSelectionTags(true)
 
     void api.getTorrentField(selectionRequest.instanceId, "tags", {
-      filters: selectionRequest.filters,
-      search: selectionRequest.search,
-      excludeHashes: selectionRequest.excludeHashes,
-      excludeTargets: selectionRequest.excludeTargets,
+      hashes: selectionRequest.hashes,
+      targets: selectionRequest.targets,
+      selectAll: selectionRequest.selectAll,
+      filters: selectionRequest.selectAll ? selectionRequest.filters : undefined,
+      search: selectionRequest.selectAll ? selectionRequest.search : undefined,
+      excludeHashes: selectionRequest.selectAll ? selectionRequest.excludeHashes : undefined,
+      excludeTargets: selectionRequest.selectAll ? selectionRequest.excludeTargets : undefined,
       instanceIds: selectionRequest.instanceIds,
     }).then((response) => {
       if (cancelled) {
@@ -146,6 +155,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
 
     return () => {
       cancelled = true
+      setIsLoadingSelectionTags(false)
     }
   }, [hashCount, onOpenChange, open, selectedTorrents, selectionRequest])
 
@@ -192,7 +202,9 @@ export const TagEditorDialog = memo(function TagEditorDialog({
   }, [onOpenChange])
 
   const toggleTag = useCallback((tag: string): void => {
-    hasEditedRef.current = true
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
+    }
     setItems(prev => prev.map((item) => {
       if (item.tag !== tag) {
         return item
@@ -203,14 +215,20 @@ export const TagEditorDialog = memo(function TagEditorDialog({
         state: cycleTagSelectionState(item.state),
       }
     }))
-  }, [])
+  }, [isLoadingSelectionTags, isLoadingTags])
 
   const clearAll = useCallback((): void => {
-    hasEditedRef.current = true
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
+    }
     setItems(prev => prev.map(item => item.state === "off" ? item : { ...item, state: "off" }))
-  }, [])
+  }, [isLoadingSelectionTags, isLoadingTags])
 
   const addNewTag = useCallback((tagToAdd: string): void => {
+    if (isLoadingTags || isLoadingSelectionTags) {
+      return
+    }
+
     const trimmedTag = tagToAdd.trim()
     if (!trimmedTag) {
       return
@@ -236,7 +254,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
       })
     })
     setNewTag("")
-  }, [])
+  }, [isLoadingSelectionTags, isLoadingTags])
 
   const renderTagRow = useCallback((item: TagEditorItem) => {
     const isNew = !knownTagSet.has(item.tag)
@@ -351,6 +369,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
                 value={newTag}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
                 placeholder="Enter new tag"
+                disabled={isLoadingState}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === "Enter" && newTag.trim()) {
                     e.preventDefault()
@@ -363,7 +382,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
                 size="sm"
                 variant="outline"
                 onClick={() => addNewTag(newTag)}
-                disabled={!newTag.trim()}
+                disabled={isLoadingState || !newTag.trim()}
               >
                 <Plus className="h-4 w-4" />
               </Button>

@@ -241,8 +241,8 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// GetTorrentField returns field values for torrents matching the given filters.
-// Used for select all copy operations (Copy Name, Copy Hash, Copy Full Path).
+// GetTorrentField returns field values for torrents matching either the current filters
+// or an explicit selection payload. Used for copy operations and tag baseline lookups.
 func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -255,6 +255,9 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		Sort           string                    `json:"sort"`
 		Order          string                    `json:"order"`
 		Search         string                    `json:"search"`
+		Hashes         []string                  `json:"hashes"`
+		Targets        []BulkActionTarget        `json:"targets"`
+		SelectAll      bool                      `json:"selectAll"`
 		Filters        qbittorrent.FilterOptions `json:"filters"`
 		InstanceIDs    []int                     `json:"instanceIds"`
 		ExcludeHashes  []string                  `json:"excludeHashes"`
@@ -277,6 +280,10 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		RespondError(w, http.StatusBadRequest, "Too many exclude hashes provided (maximum 512)")
 		return
 	}
+	if req.SelectAll && (len(req.Hashes) > 0 || len(req.Targets) > 0) {
+		RespondError(w, http.StatusBadRequest, "Cannot specify hashes/targets together with selectAll")
+		return
+	}
 
 	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" {
 		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, or tags")
@@ -288,6 +295,120 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	}
 	if req.Order == "" {
 		req.Order = "desc"
+	}
+
+	if len(req.Targets) > 0 || len(req.Hashes) > 0 {
+		targetsByInstance := make(map[int][]string)
+		seenTargets := make(map[int]map[string]struct{})
+
+		for _, target := range req.Targets {
+			targetInstanceID := target.InstanceID
+			if targetInstanceID <= 0 {
+				if instanceID == allInstancesID {
+					continue
+				}
+				targetInstanceID = instanceID
+			}
+			if instanceID != allInstancesID && targetInstanceID != instanceID {
+				continue
+			}
+			addBulkTarget(targetsByInstance, seenTargets, targetInstanceID, target.Hash)
+		}
+
+		if len(req.Hashes) > 0 {
+			if instanceID == allInstancesID && len(req.Targets) == 0 {
+				requestedHashes := buildExcludeHashSet(req.Hashes)
+				response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
+					r.Context(),
+					0,
+					0,
+					"",
+					"",
+					"",
+					qbittorrent.FilterOptions{},
+					req.InstanceIDs,
+				)
+				if crossErr != nil {
+					log.Error().Err(crossErr).Str("field", req.Field).Msg("Failed to resolve hash targets for torrent field request")
+					RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
+					return
+				}
+				if response.PartialResults {
+					log.Warn().
+						Str("field", req.Field).
+						Ints("instanceIDs", req.InstanceIDs).
+						Msg("Cross-instance hash resolution aborted due to partial results")
+					RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
+					return
+				}
+
+				for _, torrent := range response.CrossInstanceTorrents {
+					normalized := normalizeHashValue(torrent.Hash)
+					if requestedHashes == nil {
+						continue
+					}
+					if _, ok := requestedHashes[normalized]; !ok {
+						continue
+					}
+					addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, torrent.Hash)
+				}
+			} else if instanceID != allInstancesID {
+				for _, hash := range req.Hashes {
+					addBulkTarget(targetsByInstance, seenTargets, instanceID, hash)
+				}
+			}
+		}
+
+		if len(targetsByInstance) == 0 {
+			RespondError(w, http.StatusBadRequest, "No torrents match the selection criteria")
+			return
+		}
+
+		targetInstanceIDs := make([]int, 0, len(targetsByInstance))
+		for targetInstanceID := range targetsByInstance {
+			targetInstanceIDs = append(targetInstanceIDs, targetInstanceID)
+		}
+		slices.Sort(targetInstanceIDs)
+
+		values := make([]string, 0, len(flattenTargetHashes(targetsByInstance)))
+		for _, targetInstanceID := range targetInstanceIDs {
+			torrents, fieldErr := h.syncManager.GetCachedInstanceTorrents(r.Context(), targetInstanceID)
+			if fieldErr != nil {
+				if instanceID != allInstancesID {
+					if respondIfInstanceDisabled(w, fieldErr, targetInstanceID, "torrents:metadata") {
+						return
+					}
+				}
+				log.Error().
+					Err(fieldErr).
+					Int("instanceID", targetInstanceID).
+					Str("field", req.Field).
+					Msg("Failed to get cached torrents for explicit field request")
+				RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
+				return
+			}
+
+			requestedHashes := buildExcludeHashSet(targetsByInstance[targetInstanceID])
+			for _, torrent := range torrents {
+				normalized := normalizeHashValue(torrent.Hash)
+				if requestedHashes != nil {
+					if _, ok := requestedHashes[normalized]; !ok {
+						continue
+					}
+				}
+
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
+				if shouldIncludeTorrentFieldValue(req.Field, value) {
+					values = append(values, value)
+				}
+			}
+		}
+
+		RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+			Values: values,
+			Total:  len(values),
+		})
+		return
 	}
 
 	if instanceID == allInstancesID {
@@ -327,19 +448,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				}
 			}
 
-			var value string
-			switch req.Field {
-			case "name":
-				value = strings.TrimSpace(torrent.Name)
-			case "hash":
-				value = preferredCrossInstanceHashValue(torrent)
-			case "full_path":
-				value = fullPathValue(torrent.SavePath, torrent.Name)
-			case "tags":
-				value = strings.TrimSpace(torrent.Tags)
-			}
-
-			if value != "" {
+			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
+			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
 			}
 		}
@@ -362,6 +472,29 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	}
 
 	RespondJSON(w, http.StatusOK, fieldResponse)
+}
+
+func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags string) string {
+	switch field {
+	case "name":
+		return strings.TrimSpace(name)
+	case "hash":
+		return preferredHashValue(&qbt.Torrent{
+			Hash:       hash,
+			InfohashV1: infohashV1,
+			InfohashV2: infohashV2,
+		})
+	case "full_path":
+		return fullPathValue(savePath, name)
+	case "tags":
+		return tags
+	default:
+		return ""
+	}
+}
+
+func shouldIncludeTorrentFieldValue(field, value string) bool {
+	return field == "tags" || value != ""
 }
 
 // CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.

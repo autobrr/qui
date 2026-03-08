@@ -83,8 +83,47 @@ interface ClientMeta {
   excludeTargets?: Array<{ instanceId: number; hash: string }>
 }
 
+type TagBulkActionResult = {
+  action: "add" | "remove"
+  status: "success" | "failed"
+  error?: Error
+}
+
+class TagBulkActionError extends Error {
+  results: TagBulkActionResult[]
+
+  constructor(results: TagBulkActionResult[]) {
+    const succeeded = results.filter(result => result.status === "success").map(result => result.action)
+    const failed = results.filter(result => result.status === "failed").map(result => result.action)
+    const summary = [
+      failed.length > 0 ? `failed to ${failed.join(" and ")}` : "",
+      succeeded.length > 0 ? `after ${succeeded.join(" and ")}` : "",
+    ].filter(Boolean).join(" ")
+
+    super(summary || "Failed to update tags")
+    this.name = "TagBulkActionError"
+    this.results = results
+  }
+}
+
 export function useTorrentActions({ instanceId, instanceIds, onActionComplete }: UseTorrentActionsProps) {
   const queryClient = useQueryClient()
+  const invalidateTorrentCaches = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["torrents-list", instanceId],
+        exact: false,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["torrent-counts", instanceId],
+        exact: false,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-metadata", instanceId],
+        exact: false,
+      }),
+    ])
+  }, [instanceId, queryClient])
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -277,22 +316,39 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         excludeHashes: data.excludeHashes,
         excludeTargets: data.excludeTargets,
       }
+      const results: TagBulkActionResult[] = []
+
+      const runTagBulkAction = async (action: "add" | "remove", tags: string[]) => {
+        try {
+          await api.bulkAction(instanceId, {
+            ...sharedPayload,
+            action: action === "remove" ? "removeTags" : "addTags",
+            tags: tags.join(","),
+          })
+          results.push({ action, status: "success" })
+        } catch (error) {
+          results.push({
+            action,
+            status: "failed",
+            error: error instanceof Error ? error : new Error("Unknown tag update failure"),
+          })
+        }
+      }
 
       if (data.remove.length > 0) {
-        await api.bulkAction(instanceId, {
-          ...sharedPayload,
-          action: "removeTags",
-          tags: data.remove.join(","),
-        })
+        await runTagBulkAction("remove", data.remove)
       }
 
       if (data.add.length > 0) {
-        await api.bulkAction(instanceId, {
-          ...sharedPayload,
-          action: "addTags",
-          tags: data.add.join(","),
-        })
+        await runTagBulkAction("add", data.add)
       }
+
+      if (results.some(result => result.status === "failed")) {
+        await invalidateTorrentCaches()
+        throw new TagBulkActionError(results)
+      }
+
+      return { results }
     },
     onSuccess: async (_, variables) => {
       setTimeout(() => {
@@ -327,6 +383,27 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     onError: (error: Error, variables) => {
       const count = variables.clientCount ?? variables.hashes.length ?? 1
       const torrentText = count === 1 ? "torrent" : "torrents"
+      if (error instanceof TagBulkActionError) {
+        const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
+        const failed = error.results.filter(result => result.status === "failed")
+        const succeededLabel = succeeded.length > 0
+          ? `${succeeded.join(" and ")} ${succeeded.length === 1 ? "succeeded" : "succeeded"}`
+          : ""
+        const failedLabel = failed.length > 0
+          ? `${failed.map(result => result.action).join(" and ")} failed`
+          : "tag update failed"
+        const description = failed
+          .map(result => result.error?.message)
+          .filter((message): message is string => Boolean(message))
+          .join("; ")
+
+        toast.error(`Partially updated tags for ${count} ${torrentText}`, {
+          description: [succeededLabel, failedLabel, description].filter(Boolean).join(". "),
+        })
+        return
+      }
+
+      void invalidateTorrentCaches()
       toast.error(`Failed to update tags for ${count} ${torrentText}`, {
         description: error.message || "An unexpected error occurred",
       })

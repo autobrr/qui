@@ -1320,7 +1320,7 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 		case "tags":
 			v = t.Tags
 		}
-		if v != "" {
+		if field == "tags" || v != "" {
 			values = append(values, v)
 		}
 	}
