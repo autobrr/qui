@@ -81,7 +81,7 @@ export function PreferencesFormShell({
             showBottomFade ? "opacity-100" : "opacity-0",
           )}
         />
-        <div ref={scrollRef} className={cn("min-h-0 flex-1 overflow-y-auto pr-4 pb-8", contentClassName)}>
+        <div ref={scrollRef} className={cn("min-h-0 flex-1 overflow-y-auto md:pr-4 pb-8", contentClassName)}>
           <div ref={contentRef}>
             {children}
           </div>
@@ -89,7 +89,7 @@ export function PreferencesFormShell({
       </div>
       <div
         className={cn(
-          "shrink-0 border-t pt-5 pr-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur supports-backdrop-filter:bg-background/80",
+          "shrink-0 border-t pt-5 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur supports-backdrop-filter:bg-background/80",
           footerClassName,
         )}
       >

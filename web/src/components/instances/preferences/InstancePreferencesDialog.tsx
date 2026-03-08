@@ -276,7 +276,7 @@ export function InstancePreferencesDialog({
 
           <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
             <div className="relative shrink-0">
-              <TabsList className="flex w-full justify-start overflow-x-auto -mx-1 px-1 h-11 sm:h-9">
+              <TabsList className="flex w-full justify-start overflow-x-auto h-11 sm:h-9">
                 <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
                   <Server className="h-4 w-4" />
                   <span className="text-xs sm:text-sm">Instance</span>
