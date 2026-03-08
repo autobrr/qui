@@ -64,7 +64,7 @@ export function PreferencesFormShell({
       window.removeEventListener("resize", updateFades)
       resizeObserver?.disconnect()
     }
-  }, [children])
+  }, [])
 
   return (
     <form onSubmit={onSubmit} className={cn("flex min-h-0 flex-1 flex-col", className)}>
