@@ -4,7 +4,9 @@
 package backups
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -27,15 +29,38 @@ func TestIsExportMetadataUnavailable(t *testing.T) {
 }
 
 func TestClassifyExportFailure(t *testing.T) {
-	if kind := classifyExportFailure(errors.New("context deadline exceeded")); kind != exportFailureRecoverable {
-		t.Fatalf("expected deadline exceeded to be recoverable, got %v", kind)
+	tests := []struct {
+		name string
+		err  error
+		want exportFailureKind
+	}{
+		{
+			name: "deadline exceeded",
+			err:  context.DeadlineExceeded,
+			want: exportFailureRecoverable,
+		},
+		{
+			name: "wrapped deadline exceeded",
+			err:  fmt.Errorf("wrap: %w", context.DeadlineExceeded),
+			want: exportFailureRecoverable,
+		},
+		{
+			name: "metadata unavailable",
+			err:  qbt.ErrTorrentMetdataNotDownloadedYet,
+			want: exportFailureMetadataUnavailable,
+		},
+		{
+			name: "fatal 400 response",
+			err:  errors.New("status code: 400: bad request"),
+			want: exportFailureFatal,
+		},
 	}
 
-	if kind := classifyExportFailure(qbt.ErrTorrentMetdataNotDownloadedYet); kind != exportFailureMetadataUnavailable {
-		t.Fatalf("expected metadata-not-downloaded to be classified as metadata unavailable, got %v", kind)
-	}
-
-	if kind := classifyExportFailure(errors.New("status code: 400: bad request")); kind != exportFailureFatal {
-		t.Fatalf("expected 400 to be fatal, got %v", kind)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifyExportFailure(tt.err); got != tt.want {
+				t.Fatalf("expected %v, got %v", tt.want, got)
+			}
+		})
 	}
 }

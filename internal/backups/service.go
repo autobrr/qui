@@ -703,6 +703,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	items := make([]models.BackupItem, 0, len(torrents))
 	manifestItems := make([]ManifestItem, 0, len(torrents))
 	manifestWarnings := make([]ManifestWarning, 0)
+	instanceAvailable := true
 	usedPaths := make(map[string]int)
 	categoryCounts := make(map[string]int)
 	var totalBytes int64
@@ -716,7 +717,6 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.progressMu.Unlock()
 
-backupLoop:
 	for idx, torrent := range torrents {
 		select {
 		case <-ctx.Done():
@@ -744,6 +744,16 @@ backupLoop:
 		}
 
 		if data == nil {
+			if !instanceAvailable {
+				manifestWarnings = append(manifestWarnings, ManifestWarning{
+					Hash:   torrent.Hash,
+					Name:   torrent.Name,
+					Reason: "qBittorrent unavailable after earlier export failure",
+				})
+				s.updateProgress(j.runID, idx+1)
+				continue
+			}
+
 			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
 				return nil, err
 			}
@@ -781,12 +791,12 @@ backupLoop:
 							return nil, fmt.Errorf("backup aborted after qBittorrent export failure and instance became unavailable: %w", err)
 						}
 
+						instanceAvailable = false
 						log.Warn().
 							Err(probeErr).
 							Int("instanceID", j.instanceID).
 							Int64("runID", j.runID).
-							Msg("qBittorrent became unavailable during backup; finalizing partial backup")
-						break backupLoop
+							Msg("qBittorrent became unavailable during backup; continuing with cached torrents only")
 					}
 					continue
 				case exportFailureFatal:

@@ -141,6 +141,7 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
 }
 
 const hasBackupWarnings = (run: BackupRun) => run.status === "success" && Boolean(run.errorMessage?.trim())
+const backupStatusLabel = (run: BackupRun) => (hasBackupWarnings(run) ? "success with warnings" : run.status)
 
 export function InstanceBackups() {
   const { instances } = useInstances()
@@ -1752,7 +1753,7 @@ export function InstanceBackups() {
                                   ? "capitalize border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-50"
                                   : "capitalize"}
                               >
-                                {run.status}
+                                {backupStatusLabel(run)}
                               </Badge>
                               {hasBackupWarnings(run) ? (
                                 <p className="max-w-xs text-xs text-amber-700">{run.errorMessage}</p>

@@ -88,6 +88,7 @@ func TestHandleJobStopsEarlyAndKeepsPartialBackupWhenInstanceDies(t *testing.T) 
 			{Hash: "hash-c", Name: "Charlie", TotalSize: 33},
 		}, nil
 	}
+	seedCachedTorrent(t, ctx, svc, store, instanceID, "hash-c", "cached-charlie")
 
 	exported := make([]string, 0, 3)
 	svc.exportTorrent = func(_ context.Context, _ int, hash string) ([]byte, string, string, error) {
@@ -110,13 +111,14 @@ func TestHandleJobStopsEarlyAndKeepsPartialBackupWhenInstanceDies(t *testing.T) 
 	savedRun, err := store.GetRun(ctx, run.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.BackupRunStatusSuccess, savedRun.Status)
-	require.Equal(t, 1, savedRun.TorrentCount)
+	require.Equal(t, 2, savedRun.TorrentCount)
 	require.Equal(t, []string{"hash-a", "hash-b"}, exported)
 
 	manifest, err := svc.LoadManifest(ctx, run.ID)
 	require.NoError(t, err)
-	require.Len(t, manifest.Items, 1)
+	require.Len(t, manifest.Items, 2)
 	require.Equal(t, "hash-a", manifest.Items[0].Hash)
+	require.Equal(t, "hash-c", manifest.Items[1].Hash)
 	require.Len(t, manifest.Warnings, 1)
 	require.Equal(t, "hash-b", manifest.Warnings[0].Hash)
 }
@@ -194,7 +196,7 @@ func newBackupTestService(t *testing.T, store *models.BackupStore) *Service {
 	svc := NewService(store, &qb.SyncManager{}, nil, Config{
 		DataDir:        t.TempDir(),
 		WorkerCount:    1,
-		ExportThrottle: 0,
+		ExportThrottle: time.Nanosecond,
 	}, nil)
 	svc.now = func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
 	svc.getCategories = func(context.Context, int) (map[string]qbt.Category, error) { return map[string]qbt.Category{}, nil }
@@ -202,6 +204,31 @@ func newBackupTestService(t *testing.T, store *models.BackupStore) *Service {
 	svc.getWebAPIVersion = func(context.Context, int) (string, error) { return "2.8.11", nil }
 	svc.probeInstance = func(context.Context, int) error { return nil }
 	return svc
+}
+
+func seedCachedTorrent(t *testing.T, ctx context.Context, svc *Service, store *models.BackupStore, instanceID int, hash string, data string) {
+	t.Helper()
+
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "cache-seed",
+		RequestedAt: time.Unix(1_699_999_000, 0).UTC(),
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	blobPath := filepath.ToSlash(filepath.Join("backups", "torrents", hash+".torrent"))
+	absPath := filepath.Join(svc.cfg.DataDir, blobPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(absPath), 0o755))
+	require.NoError(t, os.WriteFile(absPath, []byte(data), 0o644))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     hash,
+		Name:            "Cached " + hash,
+		SizeBytes:       int64(len(data)),
+		TorrentBlobPath: &blobPath,
+	}}))
 }
 
 func createBackupRun(ctx context.Context, t *testing.T, store *models.BackupStore, instanceID int, now time.Time) *models.BackupRun {
