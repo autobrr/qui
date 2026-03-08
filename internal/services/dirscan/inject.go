@@ -477,7 +477,7 @@ func humanizeLinkPlanError(err error) error {
 	switch {
 	case strings.HasPrefix(err.Error(), "no matching file for: "):
 		file := strings.TrimPrefix(err.Error(), "no matching file for: ")
-		return fmt.Errorf("%s: a required local file is missing or does not match on disk (%s)", prefix, file)
+		return fmt.Errorf("%s: no matching local source file was found for a required release file (%s). The local file may be missing, renamed, or a different size", prefix, file)
 	case strings.HasPrefix(err.Error(), "no available match for: "):
 		file := strings.TrimPrefix(err.Error(), "no available match for: ")
 		return fmt.Errorf("%s: no usable local source file remained for (%s)", prefix, file)

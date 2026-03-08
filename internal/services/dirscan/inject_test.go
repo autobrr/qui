@@ -162,7 +162,7 @@ func TestInjector_Inject_HumanizesLinkPlanMismatchError(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	want := "couldn't prepare linked files for this release: a required local file is missing or does not match on disk (Example.Release/file.mkv)"
+	want := "couldn't prepare linked files for this release: no matching local source file was found for a required release file (Example.Release/file.mkv). The local file may be missing, renamed, or a different size"
 	if err.Error() != want {
 		t.Fatalf("expected error %q, got %q", want, err.Error())
 	}
