@@ -280,7 +280,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   )
   const actionOptions = useMemo(() => ({
     instanceIds,
-    targets: isAllSelected ? undefined : actionTargets,
+    targets: isAllSelected || selectedRequestTargets.length !== selectedRequestHashes.length ? undefined : selectedRequestTargets,
     selectAll: isAllSelected,
     filters: isAllSelected ? filters : undefined,
     search: isAllSelected ? search : undefined,
@@ -288,14 +288,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     excludeTargets: isAllSelected ? excludeTargets : undefined,
     clientHashes: selectedHashes,
     clientCount: selectionCount,
-  }), [instanceIds, actionTargets, isAllSelected, filters, search, excludeHashes, excludeTargets, selectedHashes, selectionCount])
+  }), [instanceIds, isAllSelected, selectedRequestTargets, selectedRequestHashes.length, filters, search, excludeHashes, excludeTargets, selectedHashes, selectionCount])
 
   const clientMeta = useMemo(() => ({
     clientHashes: selectedHashes,
     totalSelected: selectionCount,
-    actionTargets: isAllSelected ? undefined : actionTargets,
+    actionTargets: isAllSelected || selectedRequestTargets.length !== selectedRequestHashes.length ? undefined : selectedRequestTargets,
     excludeTargets,
-  }), [selectedHashes, selectionCount, isAllSelected, actionTargets, excludeTargets])
+  }), [selectedHashes, selectionCount, isAllSelected, selectedRequestTargets, selectedRequestHashes.length, excludeTargets])
 
   const deleteDialogTotalSize = useMemo(() => {
     if (totalSelectionSize > 0) {
@@ -363,14 +363,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
     handleUpdateTags(
       plan,
-      selectedHashes,
+      selectedRequestHashes,
       isAllSelected,
       filters,
       search,
       excludeHashes,
       clientMeta
     )
-  }, [handleUpdateTags, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+  }, [handleUpdateTags, selectedRequestHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(

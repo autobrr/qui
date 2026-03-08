@@ -2148,12 +2148,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       plan,
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      normalizedSelectionFilters ?? selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleUpdateTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleUpdateTags, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(

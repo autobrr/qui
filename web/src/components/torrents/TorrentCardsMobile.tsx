@@ -1777,7 +1777,7 @@ export function TorrentCardsMobile({
       plan,
       hashes,
       isAllSelected,
-      isAllSelected ? filters : undefined,
+      isAllSelected ? effectiveFilters : undefined,
       isAllSelected ? effectiveSearch : undefined,
       isAllSelected ? excludeHashesForRequest : undefined,
       {
@@ -1790,7 +1790,7 @@ export function TorrentCardsMobile({
       }
     )
     setActionTorrents([])
-  }, [isAllSelected, selectedRequestHashes, handleUpdateTags, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
+  }, [isAllSelected, selectedRequestHashes, handleUpdateTags, effectiveFilters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
 
   const handleSetCategoryWrapper = useCallback(async (category: string) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes

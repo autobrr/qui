@@ -384,6 +384,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       const count = variables.clientCount ?? variables.hashes.length ?? 1
       const torrentText = count === 1 ? "torrent" : "torrents"
       if (error instanceof TagBulkActionError) {
+        setShowTagsDialog(false)
+        setContextHashes([])
+        setContextTorrents([])
         const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
         const failed = error.results.filter(result => result.status === "failed")
         const succeededLabel = succeeded.length > 0
@@ -403,6 +406,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         return
       }
 
+      setShowTagsDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
       void invalidateTorrentCaches()
       toast.error(`Failed to update tags for ${count} ${torrentText}`, {
         description: error.message || "An unexpected error occurred",

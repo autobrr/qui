@@ -371,6 +371,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		slices.Sort(targetInstanceIDs)
 
 		values := make([]string, 0, len(flattenTargetHashes(targetsByInstance)))
+		requestedCount := 0
+		resolvedCount := 0
 		for _, targetInstanceID := range targetInstanceIDs {
 			torrents, fieldErr := h.syncManager.GetCachedInstanceTorrents(r.Context(), targetInstanceID)
 			if fieldErr != nil {
@@ -389,6 +391,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			}
 
 			requestedHashes := buildExcludeHashSet(targetsByInstance[targetInstanceID])
+			requestedCount += len(targetsByInstance[targetInstanceID])
 			for _, torrent := range torrents {
 				normalized := normalizeHashValue(torrent.Hash)
 				if requestedHashes != nil {
@@ -400,8 +403,13 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
+					resolvedCount++
 				}
 			}
+		}
+		if req.Field == "tags" && resolvedCount < requestedCount {
+			RespondError(w, http.StatusConflict, "Could not resolve the full tag baseline for the selected torrents")
+			return
 		}
 
 		RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{

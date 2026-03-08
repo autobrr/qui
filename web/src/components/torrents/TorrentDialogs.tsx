@@ -84,8 +84,26 @@ export const TagEditorDialog = memo(function TagEditorDialog({
   const [newTag, setNewTag] = useState("")
   const [selectionTagValues, setSelectionTagValues] = useState<string[]>([])
   const [isLoadingSelectionTags, setIsLoadingSelectionTags] = useState(false)
+  const [selectionBaselineError, setSelectionBaselineError] = useState<string | null>(null)
   const hasEditedRef = useRef(false)
+  const previousOpenRef = useRef(false)
+  const previousSelectionRequestKeyRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const selectionRequestKey = useMemo(() => JSON.stringify({
+    instanceId: selectionRequest?.instanceId,
+    instanceIds: selectionRequest?.instanceIds ?? [],
+    hashes: selectionRequest?.hashes ?? [],
+    targets: selectionRequest?.targets ?? [],
+    selectAll: selectionRequest?.selectAll ?? false,
+    filters: selectionRequest?.filters ?? null,
+    search: selectionRequest?.search ?? "",
+    excludeHashes: selectionRequest?.excludeHashes ?? [],
+    excludeTargets: selectionRequest?.excludeTargets ?? [],
+  }), [selectionRequest])
+  const requiresRemoteBaseline = hashCount > selectedTorrents.length
+  const hasValidInstance = typeof selectionRequest?.instanceId === "number" && selectionRequest.instanceId >= 0
+  const hasExplicitSelection = (selectionRequest?.targets?.length ?? 0) > 0 || (selectionRequest?.hashes?.length ?? 0) > 0
+  const canFetchRemoteBaseline = hasValidInstance && (selectionRequest?.selectAll === true || hasExplicitSelection)
 
   useEffect(() => {
     if (!open) {
@@ -93,17 +111,22 @@ export const TagEditorDialog = memo(function TagEditorDialog({
       setNewTag("")
       setSelectionTagValues([])
       setIsLoadingSelectionTags(false)
+      setSelectionBaselineError(null)
       hasEditedRef.current = false
+      previousOpenRef.current = false
+      previousSelectionRequestKeyRef.current = null
       return
     }
 
-    setNewTag("")
-    hasEditedRef.current = false
-
-    const requiresRemoteBaseline = hashCount > selectedTorrents.length
-    const hasValidInstance = typeof selectionRequest?.instanceId === "number" && selectionRequest.instanceId >= 0
-    const hasExplicitSelection = (selectionRequest?.targets?.length ?? 0) > 0 || (selectionRequest?.hashes?.length ?? 0) > 0
-    const canFetchRemoteBaseline = hasValidInstance && (selectionRequest?.selectAll === true || hasExplicitSelection)
+    const didOpen = !previousOpenRef.current
+    const selectionRequestChanged = previousSelectionRequestKeyRef.current !== selectionRequestKey
+    if (didOpen || selectionRequestChanged) {
+      setNewTag("")
+      hasEditedRef.current = false
+    }
+    previousOpenRef.current = true
+    previousSelectionRequestKeyRef.current = selectionRequestKey
+    setSelectionBaselineError(null)
 
     if (!requiresRemoteBaseline) {
       setSelectionTagValues(selectedTorrents.map(torrent => torrent.tags))
@@ -114,11 +137,10 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     let cancelled = false
 
     if (!canFetchRemoteBaseline) {
-      setSelectionTagValues([])
-      setIsLoadingSelectionTags(false)
+      setIsLoadingSelectionTags(true)
+      setSelectionBaselineError("Could not build the full tag baseline for this selection")
       return () => {
         cancelled = true
-        setIsLoadingSelectionTags(false)
       }
     }
 
@@ -139,13 +161,14 @@ export const TagEditorDialog = memo(function TagEditorDialog({
       }
 
       setSelectionTagValues(response.values)
+      setSelectionBaselineError(null)
       setIsLoadingSelectionTags(false)
     }).catch((error: Error) => {
       if (cancelled) {
         return
       }
 
-      setSelectionTagValues([])
+      setSelectionBaselineError(error.message || "Could not build the full tag baseline")
       setIsLoadingSelectionTags(false)
       onOpenChange(false)
       toast.error("Failed to load selected torrent tags", {
@@ -155,17 +178,16 @@ export const TagEditorDialog = memo(function TagEditorDialog({
 
     return () => {
       cancelled = true
-      setIsLoadingSelectionTags(false)
     }
-  }, [hashCount, onOpenChange, open, selectedTorrents, selectionRequest])
+  }, [canFetchRemoteBaseline, hashCount, onOpenChange, open, requiresRemoteBaseline, selectedTorrents, selectionRequest, selectionRequestKey])
 
   useEffect(() => {
-    if (!open || isLoadingTags || isLoadingSelectionTags || hasEditedRef.current) {
+    if (!open || isLoadingTags || isLoadingSelectionTags || hasEditedRef.current || selectionBaselineError) {
       return
     }
 
     setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
-  }, [availableTags, hashCount, isLoadingSelectionTags, isLoadingTags, open, selectionTagValues])
+  }, [availableTags, hashCount, isLoadingSelectionTags, isLoadingTags, open, selectionBaselineError, selectionTagValues])
 
   const knownTagSet = useMemo(() => new Set(availableTags ?? []), [availableTags])
   const updatePlan = useMemo(() => buildTagUpdatePlan(items), [items])
@@ -293,7 +315,11 @@ export const TagEditorDialog = memo(function TagEditorDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
-          {isLoadingState ? (
+          {selectionBaselineError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              {selectionBaselineError}
+            </div>
+          ) : isLoadingState ? (
             <div className="space-y-2">
               <Label>Available Tags</Label>
               <div className="h-48 border rounded-md p-3 flex items-center justify-center">
