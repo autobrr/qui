@@ -6,8 +6,8 @@
 import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
-import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
+import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
@@ -40,7 +40,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select,
+import {
+  Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -1095,14 +1096,15 @@ interface SettingsProps {
 
 export function Settings({ search, onSearchChange }: SettingsProps) {
   const activeTab: SettingsTab = search.tab ?? "application"
+  const scrollPanelClassName = "h-full min-h-0 space-y-4 overflow-y-auto pr-4"
 
   const handleTabChange = (tab: SettingsTab) => {
     onSearchChange({ tab })
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-6">
-      <div className="mb-4 md:mb-6">
+    <div className="container mx-auto flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6">
+      <div className="mb-4 shrink-0 md:mb-6">
         <h1 className="text-2xl md:text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
           Manage your application preferences and security
@@ -1110,7 +1112,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
       </div>
 
       {/* Mobile Dropdown Navigation */}
-      <div className="md:hidden mb-4">
+      <div className="mb-4 shrink-0 md:hidden">
         <Select
           value={activeTab}
           onValueChange={(value) => handleTabChange(value as SettingsTab)}
@@ -1201,9 +1203,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         </Select>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 md:flex-row">
         {/* Desktop Sidebar Navigation */}
-        <div className="hidden md:block w-64 shrink-0">
+        <div className="hidden w-64 shrink-0 overflow-y-auto md:block">
           <nav className="space-y-1">
             <button
               onClick={() => handleTabChange("application")}
@@ -1326,23 +1328,23 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
           {activeTab === "application" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <ApplicationInfoPanel />
             </div>
           )}
 
           {activeTab === "instances" && (
-            <div className="space-y-4">
-              <Card>
+            <div className={scrollPanelClassName}>
+              <Card className="flex min-h-full flex-col">
                 <CardHeader>
                   <CardTitle>Instances</CardTitle>
                   <CardDescription>
                     Manage your qBittorrent connection settings
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="min-h-0 flex-1">
                   <InstancesManager search={search} onSearchChange={onSearchChange} />
                 </CardContent>
               </Card>
@@ -1350,19 +1352,19 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "indexers" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <IndexersPage withContainer={false} />
             </div>
           )}
 
           {activeTab === "search-cache" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <TorznabSearchCachePanel />
             </div>
           )}
 
           {activeTab === "integrations" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>ARR Integrations</CardTitle>
@@ -1378,7 +1380,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "client-api" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Client Proxy API Keys</CardTitle>
@@ -1394,7 +1396,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "api" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -1424,7 +1426,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "external-programs" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>External Programs</CardTitle>
@@ -1440,7 +1442,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "notifications" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Notifications</CardTitle>
@@ -1456,7 +1458,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "datetime" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Date & Time Preferences</CardTitle>
@@ -1472,7 +1474,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "themes" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <LicenseManager
                 checkoutStatus={search.checkout}
                 checkoutPaymentStatus={search.status}
@@ -1483,7 +1485,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "security" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <Card>
                 <CardHeader>
                   <CardTitle>Change Password</CardTitle>
@@ -1534,7 +1536,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           )}
 
           {activeTab === "logs" && (
-            <div className="space-y-4">
+            <div className={scrollPanelClassName}>
               <LogSettingsPanel />
             </div>
           )}
