@@ -344,9 +344,6 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 				for _, torrent := range response.CrossInstanceTorrents {
 					normalized := normalizeHashValue(torrent.Hash)
-					if requestedHashes == nil {
-						continue
-					}
 					if _, ok := requestedHashes[normalized]; !ok {
 						continue
 					}
@@ -394,10 +391,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			requestedCount += len(targetsByInstance[targetInstanceID])
 			for _, torrent := range torrents {
 				normalized := normalizeHashValue(torrent.Hash)
-				if requestedHashes != nil {
-					if _, ok := requestedHashes[normalized]; !ok {
-						continue
-					}
+				if _, ok := requestedHashes[normalized]; !ok {
+					continue
 				}
 
 				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)

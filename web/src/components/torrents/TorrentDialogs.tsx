@@ -100,10 +100,29 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     excludeHashes: selectionRequest?.excludeHashes ?? [],
     excludeTargets: selectionRequest?.excludeTargets ?? [],
   }), [selectionRequest])
+  const selectionRequestSnapshot = useMemo(() => ({
+    instanceId: selectionRequest?.instanceId ?? -1,
+    instanceIds: selectionRequest?.instanceIds,
+    hashes: selectionRequest?.hashes,
+    targets: selectionRequest?.targets,
+    selectAll: selectionRequest?.selectAll,
+    filters: selectionRequest?.filters,
+    search: selectionRequest?.search,
+    excludeHashes: selectionRequest?.excludeHashes,
+    excludeTargets: selectionRequest?.excludeTargets,
+  }), [selectionRequestKey])
+  const selectedTorrentTagsKey = useMemo(
+    () => JSON.stringify(selectedTorrents.map(torrent => torrent.tags)),
+    [selectedTorrents]
+  )
+  const selectedTorrentTagValues = useMemo(
+    () => JSON.parse(selectedTorrentTagsKey) as string[],
+    [selectedTorrentTagsKey]
+  )
   const requiresRemoteBaseline = hashCount > selectedTorrents.length
-  const hasValidInstance = typeof selectionRequest?.instanceId === "number" && selectionRequest.instanceId >= 0
-  const hasExplicitSelection = (selectionRequest?.targets?.length ?? 0) > 0 || (selectionRequest?.hashes?.length ?? 0) > 0
-  const canFetchRemoteBaseline = hasValidInstance && (selectionRequest?.selectAll === true || hasExplicitSelection)
+  const hasValidInstance = selectionRequestSnapshot.instanceId >= 0
+  const hasExplicitSelection = (selectionRequestSnapshot.targets?.length ?? 0) > 0 || (selectionRequestSnapshot.hashes?.length ?? 0) > 0
+  const canFetchRemoteBaseline = hasValidInstance && (selectionRequestSnapshot.selectAll === true || hasExplicitSelection)
 
   useEffect(() => {
     if (!open) {
@@ -123,13 +142,14 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     if (didOpen || selectionRequestChanged) {
       setNewTag("")
       hasEditedRef.current = false
+      setItems([])
     }
     previousOpenRef.current = true
     previousSelectionRequestKeyRef.current = selectionRequestKey
     setSelectionBaselineError(null)
 
     if (!requiresRemoteBaseline) {
-      setSelectionTagValues(selectedTorrents.map(torrent => torrent.tags))
+      setSelectionTagValues(selectedTorrentTagValues)
       setIsLoadingSelectionTags(false)
       return
     }
@@ -146,15 +166,15 @@ export const TagEditorDialog = memo(function TagEditorDialog({
 
     setIsLoadingSelectionTags(true)
 
-    void api.getTorrentField(selectionRequest.instanceId, "tags", {
-      hashes: selectionRequest.hashes,
-      targets: selectionRequest.targets,
-      selectAll: selectionRequest.selectAll,
-      filters: selectionRequest.selectAll ? selectionRequest.filters : undefined,
-      search: selectionRequest.selectAll ? selectionRequest.search : undefined,
-      excludeHashes: selectionRequest.selectAll ? selectionRequest.excludeHashes : undefined,
-      excludeTargets: selectionRequest.selectAll ? selectionRequest.excludeTargets : undefined,
-      instanceIds: selectionRequest.instanceIds,
+    void api.getTorrentField(selectionRequestSnapshot.instanceId, "tags", {
+      hashes: selectionRequestSnapshot.hashes,
+      targets: selectionRequestSnapshot.targets,
+      selectAll: selectionRequestSnapshot.selectAll,
+      filters: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.filters : undefined,
+      search: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.search : undefined,
+      excludeHashes: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeHashes : undefined,
+      excludeTargets: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeTargets : undefined,
+      instanceIds: selectionRequestSnapshot.instanceIds,
     }).then((response) => {
       if (cancelled) {
         return
@@ -179,7 +199,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     return () => {
       cancelled = true
     }
-  }, [canFetchRemoteBaseline, hashCount, onOpenChange, open, requiresRemoteBaseline, selectedTorrents, selectionRequest, selectionRequestKey])
+  }, [canFetchRemoteBaseline, hashCount, onOpenChange, open, requiresRemoteBaseline, selectedTorrentTagValues, selectionRequestKey, selectionRequestSnapshot])
 
   useEffect(() => {
     if (!open || isLoadingTags || isLoadingSelectionTags || hasEditedRef.current || selectionBaselineError) {
@@ -432,7 +452,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={isPending || !hasChanges}>Apply</Button>
+          <Button onClick={handleConfirm} disabled={isPending || !hasChanges || isLoadingState || Boolean(selectionBaselineError)}>Apply</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
