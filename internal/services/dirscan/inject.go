@@ -474,15 +474,20 @@ func humanizeLinkPlanError(err error) error {
 
 	const prefix = "couldn't prepare linked files for this release"
 
+	var linkErr *hardlinktree.LinkPlanError
+	if !errors.As(err, &linkErr) {
+		return errors.New(prefix)
+	}
+
 	switch {
-	case strings.HasPrefix(err.Error(), "no matching file for: "):
-		file := strings.TrimPrefix(err.Error(), "no matching file for: ")
+	case errors.Is(err, hardlinktree.ErrNoMatchingFile):
+		file := linkErr.File
 		return fmt.Errorf("%s: no matching local source file was found for a required release file (%s). The local file may be missing, renamed, or a different size", prefix, file)
-	case strings.HasPrefix(err.Error(), "no available match for: "):
-		file := strings.TrimPrefix(err.Error(), "no available match for: ")
+	case errors.Is(err, hardlinktree.ErrNoAvailableFile):
+		file := linkErr.File
 		return fmt.Errorf("%s: no usable local source file remained for (%s)", prefix, file)
-	case strings.HasPrefix(err.Error(), "could not match file: "):
-		file := strings.TrimPrefix(err.Error(), "could not match file: ")
+	case errors.Is(err, hardlinktree.ErrCouldNotMatch):
+		file := linkErr.File
 		return fmt.Errorf("%s: couldn't map a required release file to a local source file (%s)", prefix, file)
 	default:
 		return errors.New(prefix)
