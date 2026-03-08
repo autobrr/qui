@@ -412,17 +412,25 @@ func joinNormalizedHDRSlice(slice []string) string {
 	}
 
 	seen := make(map[string]struct{}, len(slice))
-	normalized := make([]string, 0, len(slice))
+	hasHDR10Plus := false
 	for _, tag := range slice {
 		n := normalizeHDRVariant(tag)
 		if n == "" {
 			continue
 		}
-		if _, ok := seen[n]; ok {
-			continue
+		if n == "HDR10+" {
+			hasHDR10Plus = true
 		}
 		seen[n] = struct{}{}
-		normalized = append(normalized, n)
+	}
+
+	if hasHDR10Plus {
+		delete(seen, "HDR10")
+	}
+
+	normalized := make([]string, 0, len(seen))
+	for tag := range seen {
+		normalized = append(normalized, tag)
 	}
 
 	sort.Strings(normalized)

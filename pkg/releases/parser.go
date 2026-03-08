@@ -22,7 +22,7 @@ var hdrTagMatchers = []struct {
 	re  *regexp.Regexp
 }{
 	{tag: "DV", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])(?:DV|DOVI|DOLBY[ ._-]?VISION)(?:$|[^A-Z0-9])`)},
-	{tag: "HDR10+", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HDR(?:[ ._-]?10(?:\+|P|PLUS))(?:$|[^A-Z0-9])`)},
+	{tag: "HDR10+", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HDR(?:[ ._-]?10(?:[ ._-]?(?:\+|P(?:LUS)?)))(?:$|[^A-Z0-9])`)},
 	{tag: "HDR10", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HDR(?:[ ._-]?10)(?:$|[^A-Z0-9+P])`)},
 	{tag: "HDR", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HDR(?:$|[^A-Z0-9+])`)},
 	{tag: "HLG", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HLG(?:$|[^A-Z0-9])`)},
@@ -77,33 +77,80 @@ func enrichReleaseHDR(rawName string, release *rls.Release) {
 		return
 	}
 
-	normalized := make([]string, 0, len(release.HDR)+2)
-	seen := make(map[string]struct{}, len(release.HDR)+2)
-
-	add := func(tag string) {
-		canonical := canonicalHDRTag(tag)
-		if canonical == "" {
-			return
-		}
-		if _, ok := seen[canonical]; ok {
-			return
-		}
-		seen[canonical] = struct{}{}
-		normalized = append(normalized, canonical)
-	}
+	tags := make([]string, 0, len(release.HDR)+2)
 
 	for _, tag := range release.HDR {
-		add(tag)
+		tags = append(tags, tag)
 	}
 
-	for _, matcher := range hdrTagMatchers {
-		if matcher.re.MatchString(rawName) {
-			add(matcher.tag)
+	if shouldScanRawHDR(release) {
+		for _, matcher := range hdrTagMatchers {
+			if matcher.re.MatchString(rawName) {
+				tags = append(tags, matcher.tag)
+			}
 		}
+	}
+
+	release.HDR = normalizeHDRTags(tags)
+}
+
+func shouldScanRawHDR(release *rls.Release) bool {
+	if release == nil {
+		return false
+	}
+
+	if release.Type.Is(rls.Movie, rls.Series, rls.Episode) {
+		return true
+	}
+
+	if release.Resolution != "" || release.Source != "" {
+		return true
+	}
+
+	for _, codec := range release.Codec {
+		switch canonicalHDRTag(codec) {
+		case "DV", "HDR", "HDR10", "HDR10+", "HLG":
+			return true
+		}
+	}
+
+	for _, codec := range release.Codec {
+		upper := strings.ToUpper(strings.TrimSpace(codec))
+		switch upper {
+		case "X264", "H264", "H.264", "AVC", "X265", "H265", "H.265", "HEVC", "AV1", "XVID", "DIVX":
+			return true
+		}
+	}
+
+	return false
+}
+
+func normalizeHDRTags(tags []string) []string {
+	seen := make(map[string]struct{}, len(tags))
+	hasHDR10Plus := false
+
+	for _, tag := range tags {
+		canonical := canonicalHDRTag(tag)
+		if canonical == "" {
+			continue
+		}
+		if canonical == "HDR10+" {
+			hasHDR10Plus = true
+		}
+		seen[canonical] = struct{}{}
+	}
+
+	if hasHDR10Plus {
+		delete(seen, "HDR10")
+	}
+
+	normalized := make([]string, 0, len(seen))
+	for tag := range seen {
+		normalized = append(normalized, tag)
 	}
 
 	sort.Strings(normalized)
-	release.HDR = normalized
+	return normalized
 }
 
 func canonicalHDRTag(tag string) string {
