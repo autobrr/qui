@@ -103,6 +103,29 @@ interface InstancePreferencesDialogProps {
   defaultTab?: string
 }
 
+interface PreferencesTabSectionProps {
+  value: string
+  title: string
+  description: string
+  children: ReactNode
+}
+
+function PreferencesTabSection({ value, title, description, children }: PreferencesTabSectionProps) {
+  return (
+    <TabsContent value={value} className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="space-y-1 mb-6 shrink-0">
+        <h3 className="text-lg font-medium">{title}</h3>
+        <p className="text-sm text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {children}
+      </div>
+    </TabsContent>
+  )
+}
+
 export function InstancePreferencesDialog({
   open,
   onOpenChange,
@@ -130,31 +153,31 @@ export function InstancePreferencesDialog({
 
   const SpeedLimitsForm = useMemo(
     () => lazy(() => import("./SpeedLimitsForm").then(m => ({ default: m.SpeedLimitsForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const QueueManagementForm = useMemo(
     () => lazy(() => import("./QueueManagementForm").then(m => ({ default: m.QueueManagementForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const FileManagementForm = useMemo(
     () => lazy(() => import("./FileManagementForm").then(m => ({ default: m.FileManagementForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const SeedingLimitsForm = useMemo(
     () => lazy(() => import("./SeedingLimitsForm").then(m => ({ default: m.SeedingLimitsForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const ConnectionSettingsForm = useMemo(
     () => lazy(() => import("./ConnectionSettingsForm").then(m => ({ default: m.ConnectionSettingsForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const NetworkDiscoveryForm = useMemo(
     () => lazy(() => import("./NetworkDiscoveryForm").then(m => ({ default: m.NetworkDiscoveryForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const AdvancedNetworkForm = useMemo(
     () => lazy(() => import("./AdvancedNetworkForm").then(m => ({ default: m.AdvancedNetworkForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
 
   const handleSuccess = () => {
@@ -208,8 +231,8 @@ export function InstancePreferencesDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto top-[5%] left-[50%] translate-x-[-50%] translate-y-0">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden top-[5%] left-[50%] translate-x-[-50%] translate-y-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Cog className="h-5 w-5" />
               <span>Instance Settings</span>
@@ -251,15 +274,9 @@ export function InstancePreferencesDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue={defaultTab ?? "instance"} className="w-full">
-            {/* Scrollable container with fade indicators */}
-            <div className="relative">
-              {/* Left fade indicator */}
-              <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none sm:hidden" />
-              {/* Right fade indicator */}
-              <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none sm:hidden" />
-
-              <TabsList className="flex w-full overflow-x-auto -mx-1 px-1 h-11 sm:h-9">
+          <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
+            <div className="relative shrink-0">
+              <TabsList className="flex w-full justify-start overflow-x-auto -mx-1 px-1 h-11 sm:h-9">
                 <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
                   <Server className="h-4 w-4" />
                   <span className="text-xs sm:text-sm">Instance</span>
@@ -296,13 +313,11 @@ export function InstancePreferencesDialog({
               </TabsList>
             </div>
 
-            <TabsContent value="instance" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Instance Configuration</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure connection settings, authentication, and access options
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="instance"
+              title="Instance Configuration"
+              description="Configure connection settings, authentication, and access options"
+            >
               {currentInstance ? (
                 <InstanceSettingsPanel instance={currentInstance} onSuccess={handleSuccess} />
               ) : (
@@ -310,105 +325,91 @@ export function InstancePreferencesDialog({
                   Instance data not available. Please close and reopen this dialog.
                 </p>
               )}
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="speed" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Speed Limits</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure download and upload speed limits
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="speed"
+              title="Speed Limits"
+              description="Configure download and upload speed limits"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="queue" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Queue Management</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure torrent queue settings and active torrent limits
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="queue"
+              title="Queue Management"
+              description="Configure torrent queue settings and active torrent limits"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="files" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">File Management</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure file paths and torrent management settings
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="files"
+              title="File Management"
+              description="Configure file paths and torrent management settings"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="seeding" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Seeding Limits</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure share ratio and seeding time limits
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="seeding"
+              title="Seeding Limits"
+              description="Configure share ratio and seeding time limits"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="connection" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Connection Settings</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure listening port, protocol settings, and connection limits
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="connection"
+              title="Connection Settings"
+              description="Configure listening port, protocol settings, and connection limits"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="discovery" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Network Discovery</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure peer discovery protocols and tracker settings
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="discovery"
+              title="Network Discovery"
+              description="Configure peer discovery protocols and tracker settings"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
-            <TabsContent value="advanced" className="mt-6">
-              <div className="space-y-1 mb-6">
-                <h3 className="text-lg font-medium">Advanced Settings</h3>
-                <p className="text-sm text-muted-foreground">
-                  Performance tuning, disk I/O, peer management, and security settings
-                </p>
-              </div>
+            <PreferencesTabSection
+              value="advanced"
+              title="Advanced Settings"
+              description="Performance tuning, disk I/O, peer management, and security settings"
+            >
               <TabErrorBoundary onRetry={handleLazyRetry}>
                 <Suspense fallback={<TabLoadingFallback />}>
                   <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
                 </Suspense>
               </TabErrorBoundary>
-            </TabsContent>
+            </PreferencesTabSection>
 
           </Tabs>
         </DialogContent>
