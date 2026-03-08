@@ -300,8 +300,8 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 	// HDR must match if either is present (HDR vs SDR are different encodes)
 	// If one release has HDR metadata and the other doesn't, they cannot match
-	sourceHDR := joinNormalizedSlice(source.HDR)
-	candidateHDR := joinNormalizedSlice(candidate.HDR)
+	sourceHDR := joinNormalizedHDRSlice(source.HDR)
+	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
 	if sourceHDR != candidateHDR {
 		return false
 	}
@@ -404,6 +404,53 @@ func joinNormalizedSlice(slice []string) string {
 	}
 	sort.Strings(normalized)
 	return strings.Join(normalized, " ")
+}
+
+func joinNormalizedHDRSlice(slice []string) string {
+	if len(slice) == 0 {
+		return ""
+	}
+
+	seen := make(map[string]struct{}, len(slice))
+	normalized := make([]string, 0, len(slice))
+	for _, tag := range slice {
+		n := normalizeHDRVariant(tag)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		normalized = append(normalized, n)
+	}
+
+	sort.Strings(normalized)
+	return strings.Join(normalized, " ")
+}
+
+func normalizeHDRVariant(value string) string {
+	upper := normalizeVariant(value)
+	if upper == "" {
+		return ""
+	}
+
+	key := strings.NewReplacer(" ", "", ".", "", "_", "", "-", "").Replace(upper)
+
+	switch key {
+	case "DOVI", "DOLBYVISION", "DV":
+		return "DV"
+	case "HDR10PLUS", "HDR10P", "HDR10+":
+		return "HDR10+"
+	case "HDR10":
+		return "HDR10"
+	case "HDR":
+		return "HDR"
+	case "HLG":
+		return "HLG"
+	default:
+		return upper
+	}
 }
 
 // videoCodecAliases maps equivalent video codec names to a canonical form.
