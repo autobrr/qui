@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
@@ -27,6 +28,8 @@ var hdrTagMatchers = []struct {
 	{tag: "HDR", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HDR(?:$|[^A-Z0-9+])`)},
 	{tag: "HLG", re: regexp.MustCompile(`(?i)(?:^|[^A-Z0-9])HLG(?:$|[^A-Z0-9])`)},
 }
+
+var trailingTokenRegexCache sync.Map
 
 // Parser caches rls parsing results so we do not repeatedly parse the same release names.
 type Parser struct {
@@ -184,23 +187,70 @@ func trimTrailingParsedToken(rawName, token string) string {
 		return rawName
 	}
 
-	quoted := regexp.QuoteMeta(token)
-	ext := `(?:\.[^./\\]+)?$`
-	patterns := []string{
-		`(?i)[\s._-]+` + quoted + ext,
-		`(?i)\[` + quoted + `\]` + ext,
-		`(?i)\(` + quoted + `\)` + ext,
+	if trimmed, ok := trimTrailingDelimitedToken(rawName, token); ok {
+		return trimmed
+	}
+	if trimmed, ok := trimTrailingWrappedToken(rawName, "["+token+"]"); ok {
+		return trimmed
+	}
+	if trimmed, ok := trimTrailingWrappedToken(rawName, "("+token+")"); ok {
+		return trimmed
 	}
 
 	trimmed := rawName
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+	for _, re := range trailingTokenRegexes(token) {
 		if idx := re.FindStringIndex(trimmed); idx != nil {
 			trimmed = strings.TrimRight(trimmed[:idx[0]], " ._-")
 		}
 	}
 
 	return strings.TrimSpace(trimmed)
+}
+
+func trimTrailingDelimitedToken(rawName, token string) (string, bool) {
+	if len(rawName) <= len(token) {
+		return "", false
+	}
+
+	start := len(rawName) - len(token)
+	if !strings.EqualFold(rawName[start:], token) {
+		return "", false
+	}
+
+	prefix := rawName[:start]
+	trimmed := strings.TrimRight(prefix, " ._-")
+	if len(trimmed) == len(prefix) {
+		return "", false
+	}
+
+	return strings.TrimSpace(trimmed), true
+}
+
+func trimTrailingWrappedToken(rawName, wrapped string) (string, bool) {
+	if len(rawName) < len(wrapped) {
+		return "", false
+	}
+	if !strings.EqualFold(rawName[len(rawName)-len(wrapped):], wrapped) {
+		return "", false
+	}
+	return strings.TrimSpace(rawName[:len(rawName)-len(wrapped)]), true
+}
+
+func trailingTokenRegexes(token string) []*regexp.Regexp {
+	if cached, ok := trailingTokenRegexCache.Load(token); ok {
+		return cached.([]*regexp.Regexp)
+	}
+
+	quoted := regexp.QuoteMeta(token)
+	ext := `(?:\.[^./\\]+)?$`
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)[\s._-]+` + quoted + ext),
+		regexp.MustCompile(`(?i)\[` + quoted + `\]` + ext),
+		regexp.MustCompile(`(?i)\(` + quoted + `\)` + ext),
+	}
+
+	actual, _ := trailingTokenRegexCache.LoadOrStore(token, patterns)
+	return actual.([]*regexp.Regexp)
 }
 
 func canonicalHDRTag(tag string) string {

@@ -108,3 +108,14 @@ func TestTrimTrailingGroupOrSite_RemovesTrailingTokenBeforeExtension(t *testing.
 	trimmed := trimTrailingGroupOrSite("Movie.2024.2160p.BluRay.x265-DV.mkv", release)
 	require.Equal(t, "Movie.2024.2160p.BluRay.x265", trimmed)
 }
+
+func TestTrimTrailingGroupOrSite_RemovesTrailingTokenWithoutExtension(t *testing.T) {
+	t.Parallel()
+
+	release := &rls.Release{
+		Group: "DV",
+	}
+
+	trimmed := trimTrailingGroupOrSite("Movie.2024.2160p.BluRay.x265-DV", release)
+	require.Equal(t, "Movie.2024.2160p.BluRay.x265", trimmed)
+}
