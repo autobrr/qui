@@ -1623,7 +1623,7 @@ paths:
       tags:
         - Torrents
       summary: Get torrent field values
-      description: Returns field values for torrents matching the given filters. Used for select all copy operations (copy name, hash, or full path).
+      description: Returns field values for torrents matching the given filters. Used for select all copy operations and bulk tag baselines.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1637,11 +1637,12 @@ paths:
               properties:
                 field:
                   type: string
-                  description: The torrent field to retrieve.
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents.
                   enum:
                     - name
                     - hash
                     - full_path
+                    - tags
                 sort:
                   type: string
                   description: Sort field. Defaults to added_on.
@@ -1651,6 +1652,27 @@ paths:
                   enum:
                     - asc
                     - desc
+                hashes:
+                  type: array
+                  description: Explicit torrent hashes to query when not using filter scope.
+                  items:
+                    type: string
+                targets:
+                  type: array
+                  description: Explicit instance/hash targets to query when not using filter scope.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: When true, query all torrents matching filters/search/exclusions.
                 search:
                   type: string
                   description: Optional search query to filter torrents.
@@ -1691,7 +1713,10 @@ paths:
                     type: array
                     items:
                       type: string
-                    description: List of field values for matching torrents.
+                    description: |
+                      List of per-torrent field values for the matching torrents. When `field=tags`, each item is the raw
+                      comma-separated tag string returned for one matching torrent, and an empty string indicates
+                      an untagged torrent.
 
   /api/instances/{instanceID}/torrents/{hash}/export:
     get:
