@@ -311,7 +311,7 @@ func TestRetryTransport_ReauthsAndReplaysForbiddenPOST(t *testing.T) {
 	}})
 
 	session := &stubSessionRefresher{}
-	session.login = func(ctx context.Context) error {
+	session.login = func(_ context.Context) error {
 		jar.SetCookies(instanceURL, []*http.Cookie{{
 			Name:  "SID",
 			Value: "fresh",
@@ -321,7 +321,7 @@ func TestRetryTransport_ReauthsAndReplaysForbiddenPOST(t *testing.T) {
 
 	var requestBodies []string
 
-	transport := NewRetryTransportWithSelector(nil, func(req *http.Request) http.RoundTripper {
+	transport := NewRetryTransportWithSelector(nil, func(_ *http.Request) http.RoundTripper {
 		return retryRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			body, readErr := io.ReadAll(req.Body)
 			require.NoError(t, readErr)
@@ -380,7 +380,7 @@ func TestRetryTransport_DoesNotReplayLargeForbiddenPOST(t *testing.T) {
 	session := &stubSessionRefresher{}
 	attempts := 0
 
-	transport := NewRetryTransportWithSelector(nil, func(req *http.Request) http.RoundTripper {
+	transport := NewRetryTransportWithSelector(nil, func(_ *http.Request) http.RoundTripper {
 		return retryRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			attempts++
 			return &http.Response{
