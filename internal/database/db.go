@@ -587,11 +587,7 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 			return nil, errors.New("statement not cacheable")
 		}
 	} else if isTempTableDDL(query) {
-		if isWriteQuery(query) {
-			db.deleteStmt(query, true)
-		} else {
-			db.deleteStmt(query, false)
-		}
+		db.deleteStmt(query, true)
 		return nil, errors.New("statement not cacheable")
 	}
 
