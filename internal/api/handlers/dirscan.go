@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -388,6 +389,7 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		RunID:         runID,
 		DirectoryID:   dirID,
 		DirectoryPath: dir.Path,
+		ScanRoot:      dir.Path,
 	})
 }
 
@@ -658,6 +660,7 @@ func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request
 // webhookTriggerScanPayload accepts both a direct {"path": "..."} and native
 // *arr webhook payloads (Sonarr, Radarr, Lidarr, Readarr).
 type webhookTriggerScanPayload struct {
+	EventType string `json:"eventType"`
 	// Direct path (simple mode)
 	Path string `json:"path"`
 	// Sonarr: series.path
@@ -682,6 +685,7 @@ type dirScanTriggerResponse struct {
 	RunID         int64  `json:"runId"`
 	DirectoryID   int    `json:"directoryId"`
 	DirectoryPath string `json:"directoryPath"`
+	ScanRoot      string `json:"scanRoot"`
 }
 
 // resolvedPath extracts the path from whichever format was provided.
@@ -704,6 +708,19 @@ func (p *webhookTriggerScanPayload) resolvedPath() string {
 	return ""
 }
 
+func (p *webhookTriggerScanPayload) isTestEvent() bool {
+	return strings.EqualFold(p.EventType, "test")
+}
+
+func normalizeScanRoot(path string) string {
+	cleanPath := filepath.Clean(path)
+	info, err := os.Stat(cleanPath)
+	if err == nil && !info.IsDir() {
+		return filepath.Dir(cleanPath)
+	}
+	return cleanPath
+}
+
 func pathMatchesDirectory(cleanPath, dirPath string) bool {
 	if cleanPath == dirPath {
 		return true
@@ -724,6 +741,12 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 	var payload webhookTriggerScanPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.isTestEvent() {
+		log.Debug().Msg("dirscan: webhook test payload accepted")
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -772,7 +795,8 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	runID, err := h.service.StartManualScan(r.Context(), bestMatch.ID)
+	scanRoot := normalizeScanRoot(cleanPath)
+	runID, err := h.service.StartWebhookScan(r.Context(), bestMatch.ID, scanRoot)
 	if err != nil {
 		if errors.Is(err, models.ErrDirScanRunAlreadyActive) {
 			RespondError(w, http.StatusConflict, "A scan is already in progress for this directory")
@@ -783,11 +807,17 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	log.Info().Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Int64("runID", runID).Msg("dirscan: webhook triggered scan")
+	log.Info().
+		Int("directoryID", bestMatch.ID).
+		Str("path", resolvedPath).
+		Str("scanRoot", scanRoot).
+		Int64("runID", runID).
+		Msg("dirscan: webhook triggered scan")
 
 	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
 		RunID:         runID,
 		DirectoryID:   bestMatch.ID,
 		DirectoryPath: bestMatch.Path,
+		ScanRoot:      scanRoot,
 	})
 }

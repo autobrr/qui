@@ -243,7 +243,7 @@ You can trigger a scan automatically when Sonarr, Radarr, Lidarr, or Readarr imp
 POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
 ```
 
-qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against the Dir Scan **Directory Path** values configured in qui, and triggers a scan on the best match. It does not use qBittorrent path prefixes for this lookup. On success, the response includes `runId`, `directoryId`, and `directoryPath`.
+qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against the Dir Scan **Directory Path** values configured in qui, and uses the provided path itself as the scan root. It does not use qBittorrent path prefixes for this lookup. On success, the response includes `runId`, `directoryId`, `directoryPath`, and `scanRoot`.
 
 #### Setting up in Sonarr / Radarr
 
@@ -256,7 +256,7 @@ qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, 
    ```
 5. Set **Method** to `POST`.
 6. Leave **Username** and **Password** empty (auth is handled by the API key in the URL).
-7. Click **Save**. The built-in **Test** action usually sends a placeholder path, so it may fail to match a configured Dir Scan directory even when the webhook is set up correctly.
+7. Click **Test** or **Save**. The built-in **Test** action is accepted as a no-op health check and does not start a scan.
 
 The same steps apply to Lidarr and Readarr.
 
@@ -266,7 +266,7 @@ The webhook uses query-param API key authentication (`?apikey=...`), the same pa
 
 #### How path matching works
 
-qui uses longest-prefix matching against the configured Dir Scan **Directory Path** values. For example, if you have directories configured for `/data/media/movies` and `/data/media/tv`, and Sonarr sends `series.path: "/data/media/tv/Show Name"`, qui matches it to `/data/media/tv`.
+qui uses longest-prefix matching against the configured Dir Scan **Directory Path** values to choose which directory settings apply. The actual scan root is the path from the webhook payload. For example, if you have directories configured for `/data/media/movies` and `/data/media/tv`, and Sonarr sends `series.path: "/data/media/tv/Show Name"`, qui matches `/data/media/tv` and scans `/data/media/tv/Show Name`.
 
 In split-mount setups, the *arr app must send the same library path that qui sees on disk. If Sonarr/Radarr uses a different mount path than qui, the webhook will not find a matching directory.
 
@@ -274,7 +274,8 @@ In split-mount setups, the *arr app must send the same library path that qui see
 
 | Status Code | Meaning |
 |-------------|---------|
-| `202` | Scan started successfully. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv"}` |
+| `202` | Scan started successfully. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
+| `204` | Test webhook accepted. No scan started |
 | `400` | Invalid JSON payload, or no supported path field was found in the request body |
 | `404` | No enabled directory matches the path in the payload |
 | `409` | A scan is already in progress for the matched directory |
