@@ -11081,7 +11081,11 @@ func (s *Service) processReflinkMode(
 
 	// Create reflink tree on disk
 	if err := reflinktree.Create(plan); err != nil {
-		log.Error().
+		logEvent := log.Error()
+		if errors.Is(err, reflinktree.ErrReflinkUnsupported) {
+			logEvent = log.Warn()
+		}
+		logEvent.
 			Err(err).
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).

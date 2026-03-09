@@ -391,6 +391,56 @@ func TestCloneFile_UsesResolvedSparseSourceMetadata(t *testing.T) {
 	}
 }
 
+func TestCloneFile_UsesResolvedDestinationParentForVolumeChecks(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "src.bin")
+	dstParent := filepath.Join(tmpDir, "dst-parent")
+	resolvedDstParent := filepath.Join(tmpDir, "resolved-dst-parent")
+	dstPath := filepath.Join(dstParent, "dst.bin")
+	if err := os.WriteFile(srcPath, []byte("01234567"), 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+	if err := os.MkdirAll(dstParent, 0o755); err != nil {
+		t.Fatalf("failed to create destination parent: %v", err)
+	}
+
+	restoreWindowsHelpers(t)
+	resolveSourcePathFn = func(src string) (string, error) {
+		if filepath.Clean(src) != filepath.Clean(srcPath) {
+			t.Fatalf("unexpected source path passed to resolver: %s", src)
+		}
+		return srcPath, nil
+	}
+	evalSymlinksFn = func(path string) (string, error) {
+		if filepath.Clean(path) != filepath.Clean(dstParent) {
+			t.Fatalf("unexpected path passed to evalSymlinksFn: %s", path)
+		}
+		return resolvedDstParent, nil
+	}
+	volumeRootForPathFn = func(path string) (string, error) {
+		switch filepath.Clean(path) {
+		case filepath.Clean(srcPath), filepath.Clean(resolvedDstParent):
+			return `R:\`, nil
+		default:
+			t.Fatalf("volumeRootForPathFn received unresolved path: %s", path)
+			return "", nil
+		}
+	}
+	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
+	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
+	duplicateExtentFn = func(_ windows.Handle, _ windows.Handle, _, _, _ int64) error {
+		return nil
+	}
+	copyFileTailFn = func(*os.File, *os.File, int64, int64) error {
+		t.Fatal("tail copy should not run for fully cloneable file")
+		return nil
+	}
+
+	if err := cloneFile(srcPath, dstPath); err != nil {
+		t.Fatalf("cloneFile failed: %v", err)
+	}
+}
+
 func TestCloneFile_FailsWhenMarkSparseFails(t *testing.T) {
 	tmpDir := t.TempDir()
 	srcPath := filepath.Join(tmpDir, "src.bin")
@@ -564,6 +614,38 @@ func TestCloneFile_WrapsDuplicateExtentError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "duplicate extents") {
 		t.Fatalf("expected duplicate extents context, got %v", err)
+	}
+}
+
+func TestCloneFile_MapsUnsupportedDuplicateExtentToReflinkUnsupported(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "src.bin")
+	dstPath := filepath.Join(tmpDir, "dst.bin")
+	if err := os.WriteFile(srcPath, []byte("01234567"), 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	restoreWindowsHelpers(t)
+	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
+	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
+	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
+	duplicateExtentFn = func(windows.Handle, windows.Handle, int64, int64, int64) error {
+		return windows.ERROR_NOT_SUPPORTED
+	}
+	copyFileTailFn = func(*os.File, *os.File, int64, int64) error {
+		t.Fatal("tail copy should not run when clone fails")
+		return nil
+	}
+
+	err := cloneFile(srcPath, dstPath)
+	if err == nil {
+		t.Fatal("expected unsupported duplicate extents failure")
+	}
+	if !errors.Is(err, ErrReflinkUnsupported) {
+		t.Fatalf("expected reflink unsupported error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "duplicate extents unsupported") {
+		t.Fatalf("expected unsupported duplicate extents context, got %v", err)
 	}
 }
 

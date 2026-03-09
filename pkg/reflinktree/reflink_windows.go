@@ -146,8 +146,12 @@ func cloneFile(src, dst string) (retErr error) {
 	if dstParent == "" {
 		dstParent = "."
 	}
+	resolvedDstParent, err := evalSymlinksFn(dstParent)
+	if err != nil {
+		return fmt.Errorf("resolve destination parent: %w", err)
+	}
 
-	volumeRoot, err := ensureSameVolume(resolvedSrc, dstParent)
+	volumeRoot, err := ensureSameVolume(resolvedSrc, resolvedDstParent)
 	if err != nil {
 		return err
 	}
@@ -189,6 +193,9 @@ func cloneFile(src, dst string) (retErr error) {
 	for offset := int64(0); offset < cloneableSize; offset += maxCloneChunkSize {
 		chunkSize := min(maxCloneChunkSize, cloneableSize-offset)
 		if err := duplicateExtentFn(dstHandle, srcHandle, offset, offset, chunkSize); err != nil {
+			if errors.Is(err, windows.ERROR_NOT_SUPPORTED) {
+				return fmt.Errorf("%w: duplicate extents unsupported for this file or volume", ErrReflinkUnsupported)
+			}
 			return fmt.Errorf("duplicate extents: %w", err)
 		}
 	}
