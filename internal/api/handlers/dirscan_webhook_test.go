@@ -259,8 +259,8 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 	second := filepath.Join(root, "Movie Two (2024)")
 	require.NoError(t, os.Mkdir(first, 0o755))
 	require.NoError(t, os.Mkdir(second, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(first, "movie-one.mkv"), []byte("one"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(second, "movie-two.mkv"), []byte("two"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(first, "movie-one.mkv"), []byte("one"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(second, "movie-two.mkv"), []byte("two"), 0o600))
 
 	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{
 		Path:                root,
