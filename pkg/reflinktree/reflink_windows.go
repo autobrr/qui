@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -39,6 +40,11 @@ var (
 	clusterSizeForVolFn    = getClusterSize
 	duplicateExtentFn      = duplicateExtent
 	copyFileTailFn         = copyFileTail
+	copyBufferPool         = sync.Pool{
+		New: func() any {
+			return make([]byte, copyBufferSize)
+		},
+	}
 )
 
 // SupportsReflink tests whether the given directory supports reflinks
@@ -286,7 +292,9 @@ func copyFileTail(srcFile, dstFile *os.File, offset, length int64) error {
 		return fmt.Errorf("seek destination: %w", err)
 	}
 
-	buffer := make([]byte, copyBufferSize)
+	buffer := copyBufferPool.Get().([]byte)
+	defer copyBufferPool.Put(buffer)
+
 	copied, err := io.CopyBuffer(dstFile, io.LimitReader(srcFile, length), buffer)
 	if err != nil {
 		return err
