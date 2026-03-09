@@ -155,18 +155,49 @@ type Tx struct {
 	unlockOnce sync.Once       // ensures unlock happens only once
 
 	// Track statements prepared during this transaction for promotion to DB cache after commit
-	txStmts map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
-	txMu    sync.Mutex          // protects txStmts map
+	txStmts    map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
+	tempTables map[string]struct{} // temp table names created/used in this transaction
+	txMu       sync.Mutex          // protects transaction-local cache metadata
 }
 
 // markQueryForCaching marks a query for promotion to the DB cache
 func (t *Tx) markQueryForCaching(query string) {
 	t.txMu.Lock()
+	if !t.trackCacheableQueryLocked(query) {
+		t.txMu.Unlock()
+		return
+	}
 	if t.txStmts == nil {
 		t.txStmts = make(map[string]struct{})
 	}
 	t.txStmts[query] = struct{}{}
 	t.txMu.Unlock()
+}
+
+func (t *Tx) shouldBypassStatementCache(query string) bool {
+	t.txMu.Lock()
+	defer t.txMu.Unlock()
+
+	return !t.trackCacheableQueryLocked(query)
+}
+
+func (t *Tx) trackCacheableQueryLocked(query string) bool {
+	if name, ok := tempTableNameFromCreate(query); ok {
+		if t.tempTables == nil {
+			t.tempTables = make(map[string]struct{})
+		}
+		t.tempTables[name] = struct{}{}
+		return false
+	}
+
+	if name, ok := tableNameFromDrop(query); ok {
+		if _, exists := t.tempTables[name]; exists {
+			delete(t.tempTables, name)
+			return false
+		}
+	}
+
+	return !queryReferencesTempTable(query, t.tempTables)
 }
 
 type txExecResult struct{ tx *Tx }
@@ -528,6 +559,24 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	}
 	query = db.bindQuery(query)
 
+	if tx != nil {
+		if tx.shouldBypassStatementCache(query) {
+			if tx.isWriteTx {
+				db.deleteStmt(query, true)
+			} else {
+				db.deleteStmt(query, false)
+			}
+			return nil, errors.New("statement not cacheable")
+		}
+	} else if isTempTableDDL(query) {
+		if isWriteQuery(query) {
+			db.deleteStmt(query, true)
+		} else {
+			db.deleteStmt(query, false)
+		}
+		return nil, errors.New("statement not cacheable")
+	}
+
 	db.stmtMu.RLock()
 	defer db.stmtMu.RUnlock()
 
@@ -634,6 +683,75 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "ALTER") ||
 		strings.HasPrefix(upper, "DROP") ||
 		strings.HasPrefix(upper, "VACUUM")
+}
+
+func isTempTableDDL(query string) bool {
+	_, ok := tempTableNameFromCreate(query)
+	return ok
+}
+
+func tempTableNameFromCreate(query string) (string, bool) {
+	tokens := sqlKeywordTokens(query)
+	if len(tokens) < 4 || tokens[0] != "create" {
+		return "", false
+	}
+
+	next := 1
+	if tokens[next] != "temp" && tokens[next] != "temporary" {
+		return "", false
+	}
+	next++
+
+	if next >= len(tokens) || tokens[next] != "table" {
+		return "", false
+	}
+	next++
+
+	if next+2 < len(tokens) && tokens[next] == "if" && tokens[next+1] == "not" && tokens[next+2] == "exists" {
+		next += 3
+	}
+	if next >= len(tokens) {
+		return "", false
+	}
+
+	return tokens[next], true
+}
+
+func tableNameFromDrop(query string) (string, bool) {
+	tokens := sqlKeywordTokens(query)
+	if len(tokens) < 3 || tokens[0] != "drop" || tokens[1] != "table" {
+		return "", false
+	}
+
+	next := 2
+	if next+1 < len(tokens) && tokens[next] == "if" && tokens[next+1] == "exists" {
+		next += 2
+	}
+	if next >= len(tokens) {
+		return "", false
+	}
+
+	return tokens[next], true
+}
+
+func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool {
+	if len(tempTables) == 0 {
+		return false
+	}
+
+	for _, token := range sqlKeywordTokens(query) {
+		if _, ok := tempTables[token]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func sqlKeywordTokens(query string) []string {
+	return strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	})
 }
 
 const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
@@ -1345,24 +1463,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 	defer db.cleanupRunning.Store(false)
 
-	// Drop temp table if it exists from previous run
-	_, _ = db.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
-
-	// Ensure temp table is cleaned up at the end
-	defer func() {
-		_, _ = db.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
-	}()
-
-	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
-	_, err := db.ExecContext(ctx, `
-		CREATE TEMP TABLE temp_referenced_strings (
-			string_id INTEGER PRIMARY KEY
-		)
-	`)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create temp table: %w", err)
-	}
-
 	// Begin transaction for the actual cleanup work
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1376,6 +1476,16 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// complete and verify constraints at commit time rather than immediately.
 	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
+	}
+
+	// Temp tables are connection-local on Postgres, so create and use them on the same tx.
+	_, err = tx.ExecContext(ctx, `
+		CREATE TEMP TABLE temp_referenced_strings (
+			string_id INTEGER PRIMARY KEY
+		)
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
@@ -1395,6 +1505,11 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete unused strings: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `DROP TABLE temp_referenced_strings`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to drop temp table: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
