@@ -160,44 +160,50 @@ type Tx struct {
 	txMu       sync.Mutex          // protects transaction-local cache metadata
 }
 
-// markQueryForCaching marks a query for promotion to the DB cache
+// markQueryForCaching records a successfully executed query for post-commit
+// statement promotion and tracks temp-table lifecycle within the transaction.
 func (t *Tx) markQueryForCaching(query string) {
 	t.txMu.Lock()
-	if !t.trackCacheableQueryLocked(query) {
-		t.txMu.Unlock()
+	defer t.txMu.Unlock()
+
+	if name, ok := tempTableNameFromCreate(query); ok {
+		if t.tempTables == nil {
+			t.tempTables = make(map[string]struct{})
+		}
+		t.tempTables[name] = struct{}{}
 		return
 	}
+
+	if name, ok := tableNameFromDrop(query); ok {
+		delete(t.tempTables, name)
+		return
+	}
+
+	if queryReferencesTempTable(query, t.tempTables) {
+		return
+	}
+
 	if t.txStmts == nil {
 		t.txStmts = make(map[string]struct{})
 	}
 	t.txStmts[query] = struct{}{}
-	t.txMu.Unlock()
 }
 
 func (t *Tx) shouldBypassStatementCache(query string) bool {
 	t.txMu.Lock()
 	defer t.txMu.Unlock()
 
-	return !t.trackCacheableQueryLocked(query)
-}
-
-func (t *Tx) trackCacheableQueryLocked(query string) bool {
-	if name, ok := tempTableNameFromCreate(query); ok {
-		if t.tempTables == nil {
-			t.tempTables = make(map[string]struct{})
-		}
-		t.tempTables[name] = struct{}{}
-		return false
+	if _, ok := tempTableNameFromCreate(query); ok {
+		return true
 	}
 
 	if name, ok := tableNameFromDrop(query); ok {
 		if _, exists := t.tempTables[name]; exists {
-			delete(t.tempTables, name)
-			return false
+			return true
 		}
 	}
 
-	return !queryReferencesTempTable(query, t.tempTables)
+	return queryReferencesTempTable(query, t.tempTables)
 }
 
 type txExecResult struct{ tx *Tx }
@@ -207,8 +213,11 @@ func (e txExecResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) 
 }
 
 func (e txExecResult) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
-	e.tx.markQueryForCaching(query)
-	return e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
+	result, err := e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
+	if err == nil {
+		e.tx.markQueryForCaching(query)
+	}
+	return result, err
 }
 
 func (txExecResult) getErr(sql.Result) error { return nil }
@@ -221,8 +230,11 @@ func (q txQueryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (
 }
 
 func (q txQueryRows) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
-	q.tx.markQueryForCaching(query)
-	return q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
+	rows, err := q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
+	if err == nil {
+		q.tx.markQueryForCaching(query)
+	}
+	return rows, err
 }
 
 func (txQueryRows) getErr(r *sql.Rows) error {
@@ -253,8 +265,11 @@ func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		row := t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		if row.Err() == nil {
+			t.markQueryForCaching(query)
+		}
+		return row
 	}
 
 	row := stmt.QueryRowContext(ctx, args...)

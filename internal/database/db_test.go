@@ -547,6 +547,9 @@ func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
 	)
 
 	require.True(t, tx.shouldBypassStatementCache(createTemp))
+	require.Empty(t, tx.tempTables)
+
+	tx.markQueryForCaching(createTemp)
 	require.Contains(t, tx.tempTables, "current_hashes")
 
 	tx.markQueryForCaching(insertTemp)
@@ -557,6 +560,10 @@ func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
 	require.Contains(t, tx.txStmts, normalStmt)
 
 	require.True(t, tx.shouldBypassStatementCache(dropTemp))
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(dropTemp)
+	require.NotContains(t, tx.txStmts, dropTemp)
 	require.NotContains(t, tx.tempTables, "current_hashes")
 }
 
