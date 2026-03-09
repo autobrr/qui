@@ -27,117 +27,319 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import type { Category, Torrent } from "@/types"
+import { api } from "@/lib/api"
+import {
+  buildTagEditorItems,
+  buildTagUpdatePlan,
+  cycleTagSelectionState,
+  hasTagUpdatePlan,
+  sortTags,
+  type TagEditorItem,
+  type TagUpdatePlan
+} from "@/lib/tag-editor"
+import { cn } from "@/lib/utils"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
+import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
+import { AlertTriangle, Loader2, Plus } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
-interface SetTagsDialogProps {
+interface TagEditorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   availableTags: string[] | null
+  selectedTorrents: Torrent[]
   hashCount: number
-  onConfirm: (tags: string[]) => void
+  selectionRequest?: {
+    instanceId: number
+    instanceIds?: number[]
+    hashes?: string[]
+    targets?: Array<{ instanceId: number; hash: string }>
+    selectAll?: boolean
+    filters?: TorrentFilters
+    search?: string
+    excludeHashes?: string[]
+    excludeTargets?: Array<{ instanceId: number; hash: string }>
+  }
+  onConfirm: (plan: TagUpdatePlan) => void
   isPending?: boolean
-  initialTags?: string[]
   isLoadingTags?: boolean
 }
 
-interface AddTagsDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  availableTags: string[] | null
-  hashCount: number
-  onConfirm: (tags: string[]) => void
-  isPending?: boolean
-  initialTags?: string[]
-  isLoadingTags?: boolean
-}
-
-export const AddTagsDialog = memo(function AddTagsDialog({
+export const TagEditorDialog = memo(function TagEditorDialog({
   open,
   onOpenChange,
   availableTags,
+  selectedTorrents,
   hashCount,
+  selectionRequest,
   onConfirm,
   isPending = false,
-  initialTags = [],
   isLoadingTags = false,
-}: AddTagsDialogProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+}: TagEditorDialogProps) {
+  const [items, setItems] = useState<TagEditorItem[]>([])
   const [newTag, setNewTag] = useState("")
-  const [temporaryTags, setTemporaryTags] = useState<string[]>([])
-  const wasOpen = useRef(false)
+  const [selectionTagValues, setSelectionTagValues] = useState<string[]>([])
+  const [isLoadingSelectionTags, setIsLoadingSelectionTags] = useState(false)
+  const [selectionBaselineError, setSelectionBaselineError] = useState<string | null>(null)
+  const hasEditedRef = useRef(false)
+  const previousOpenRef = useRef(false)
+  const previousSelectionRequestKeyRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const selectionRequestKey = useMemo(() => JSON.stringify({
+    instanceId: selectionRequest?.instanceId,
+    instanceIds: selectionRequest?.instanceIds ?? [],
+    hashes: selectionRequest?.hashes ?? [],
+    targets: selectionRequest?.targets ?? [],
+    selectAll: selectionRequest?.selectAll ?? false,
+    filters: selectionRequest?.filters ?? null,
+    search: selectionRequest?.search ?? "",
+    excludeHashes: selectionRequest?.excludeHashes ?? [],
+    excludeTargets: selectionRequest?.excludeTargets ?? [],
+  }), [selectionRequest])
+  const selectionRequestSnapshot = useMemo(() => ({
+    instanceId: selectionRequest?.instanceId ?? -1,
+    instanceIds: selectionRequest?.instanceIds,
+    hashes: selectionRequest?.hashes,
+    targets: selectionRequest?.targets,
+    selectAll: selectionRequest?.selectAll,
+    filters: selectionRequest?.filters,
+    search: selectionRequest?.search,
+    excludeHashes: selectionRequest?.excludeHashes,
+    excludeTargets: selectionRequest?.excludeTargets,
+  }), [selectionRequestKey])
+  const selectedTorrentTagsKey = useMemo(
+    () => JSON.stringify(selectedTorrents.map(torrent => torrent.tags)),
+    [selectedTorrents]
+  )
+  const selectedTorrentTagValues = useMemo(
+    () => JSON.parse(selectedTorrentTagsKey) as string[],
+    [selectedTorrentTagsKey]
+  )
+  const requiresRemoteBaseline = hashCount > selectedTorrents.length
+  const hasValidInstance = selectionRequestSnapshot.instanceId >= 0
+  const hasExplicitSelection = (selectionRequestSnapshot.targets?.length ?? 0) > 0 || (selectionRequestSnapshot.hashes?.length ?? 0) > 0
+  const canFetchRemoteBaseline = hasValidInstance && (selectionRequestSnapshot.selectAll === true || hasExplicitSelection)
 
-  // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
-    if (open && !wasOpen.current) {
-      setSelectedTags([]) // Start with empty selection for add operation
-      setTemporaryTags([])
+    if (!open) {
+      setItems([])
+      setNewTag("")
+      setSelectionTagValues([])
+      setIsLoadingSelectionTags(false)
+      setSelectionBaselineError(null)
+      hasEditedRef.current = false
+      previousOpenRef.current = false
+      previousSelectionRequestKeyRef.current = null
+      return
     }
-    wasOpen.current = open
-  }, [open, initialTags])
 
-  // Combine server tags with temporary tags for display
-  const displayTags = [...(availableTags || []), ...temporaryTags].sort()
+    const didOpen = !previousOpenRef.current
+    const selectionRequestChanged = previousSelectionRequestKeyRef.current !== selectionRequestKey
+    if (didOpen || selectionRequestChanged) {
+      setNewTag("")
+      hasEditedRef.current = false
+      setItems([])
+    }
+    previousOpenRef.current = true
+    previousSelectionRequestKeyRef.current = selectionRequestKey
+    setSelectionBaselineError(null)
 
-  // Only use virtualization for large tag lists (>50 tags)
-  const shouldUseVirtualization = displayTags.length > 50
+    if (!requiresRemoteBaseline) {
+      setSelectionTagValues(selectedTorrentTagValues)
+      setIsLoadingSelectionTags(false)
+      return
+    }
 
-  // Virtualization for large tag lists
+    let cancelled = false
+
+    if (!canFetchRemoteBaseline) {
+      setIsLoadingSelectionTags(true)
+      setSelectionBaselineError("Could not build the full tag baseline for this selection")
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setIsLoadingSelectionTags(true)
+
+    void api.getTorrentField(selectionRequestSnapshot.instanceId, "tags", {
+      hashes: selectionRequestSnapshot.hashes,
+      targets: selectionRequestSnapshot.targets,
+      selectAll: selectionRequestSnapshot.selectAll,
+      filters: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.filters : undefined,
+      search: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.search : undefined,
+      excludeHashes: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeHashes : undefined,
+      excludeTargets: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeTargets : undefined,
+      instanceIds: selectionRequestSnapshot.instanceIds,
+    }).then((response) => {
+      if (cancelled) {
+        return
+      }
+
+      setSelectionTagValues(response.values)
+      setSelectionBaselineError(null)
+      setIsLoadingSelectionTags(false)
+    }).catch((error: Error) => {
+      if (cancelled) {
+        return
+      }
+
+      setSelectionBaselineError(error.message || "Could not build the full tag baseline")
+      setIsLoadingSelectionTags(false)
+      onOpenChange(false)
+      toast.error("Failed to load selected torrent tags", {
+        description: error.message || "Could not build the full tag baseline",
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [canFetchRemoteBaseline, hashCount, onOpenChange, open, requiresRemoteBaseline, selectedTorrentTagValues, selectionRequestKey, selectionRequestSnapshot])
+
+  useEffect(() => {
+    if (!open || isLoadingTags || isLoadingSelectionTags || hasEditedRef.current || selectionBaselineError) {
+      return
+    }
+
+    setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
+  }, [availableTags, hashCount, isLoadingSelectionTags, isLoadingTags, open, selectionBaselineError, selectionTagValues])
+
+  const knownTagSet = useMemo(() => new Set(availableTags ?? []), [availableTags])
+  const updatePlan = useMemo(() => buildTagUpdatePlan(items), [items])
+  const hasChanges = hasTagUpdatePlan(updatePlan)
+  const isLoadingState = isLoadingTags || isLoadingSelectionTags
+  const shouldUseVirtualization = items.length > 50
+
   const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? displayTags.length : 0,
+    count: shouldUseVirtualization ? items.length : 0,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 32, // Approximate height of each tag item
+    estimateSize: () => 40,
     overscan: 5,
   })
 
-  const handleConfirm = useCallback((): void => {
-    const allTags = [...selectedTags]
-    if (newTag.trim() && !allTags.includes(newTag.trim())) {
-      allTags.push(newTag.trim())
-    }
-    onConfirm(allTags)
-    setSelectedTags([])
+  const resetItems = useCallback(() => {
+    hasEditedRef.current = false
+    setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
     setNewTag("")
-    setTemporaryTags([])
-  }, [selectedTags, newTag, onConfirm])
+  }, [availableTags, hashCount, selectionTagValues])
+
+  const handleConfirm = useCallback((): void => {
+    if (!hasChanges) {
+      onOpenChange(false)
+      return
+    }
+
+    onConfirm(updatePlan)
+    setNewTag("")
+  }, [hasChanges, onConfirm, onOpenChange, updatePlan])
 
   const handleCancel = useCallback((): void => {
-    setSelectedTags([])
     setNewTag("")
-    setTemporaryTags([])
     onOpenChange(false)
   }, [onOpenChange])
 
-  const addNewTag = useCallback((tagToAdd: string): void => {
-    const trimmedTag = tagToAdd.trim()
-    if (trimmedTag && !displayTags.includes(trimmedTag)) {
-      // Add to temporary tags if it's not already in server tags
-      if (!availableTags?.includes(trimmedTag)) {
-        setTemporaryTags(prev => [...prev, trimmedTag])
-      }
-      // Add to selected tags
-      setSelectedTags(prev => [...prev, trimmedTag])
-      setNewTag("")
+  const toggleTag = useCallback((tag: string): void => {
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
     }
-  }, [displayTags, availableTags])
+    setItems(prev => prev.map((item) => {
+      if (item.tag !== tag) {
+        return item
+      }
+
+      return {
+        ...item,
+        state: cycleTagSelectionState(item.state),
+      }
+    }))
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const clearAll = useCallback((): void => {
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
+    }
+    setItems(prev => prev.map(item => item.state === "off" ? item : { ...item, state: "off" }))
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const addNewTag = useCallback((tagToAdd: string): void => {
+    if (isLoadingTags || isLoadingSelectionTags) {
+      return
+    }
+
+    const trimmedTag = tagToAdd.trim()
+    if (!trimmedTag) {
+      return
+    }
+
+    hasEditedRef.current = true
+    setItems((prev) => {
+      const existing = prev.find(item => item.tag === trimmedTag)
+      if (existing) {
+        return prev.map(item => item.tag === trimmedTag ? { ...item, state: "on" } : item)
+      }
+
+      return sortTags([...prev.map(item => item.tag), trimmedTag]).map((tag) => {
+        if (tag !== trimmedTag) {
+          return prev.find(item => item.tag === tag) as TagEditorItem
+        }
+
+        return {
+          tag,
+          initialState: "off",
+          state: "on",
+        }
+      })
+    })
+    setNewTag("")
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const renderTagRow = useCallback((item: TagEditorItem) => {
+    const isNew = !knownTagSet.has(item.tag)
+
+    return (
+      <button
+        key={item.tag}
+        type="button"
+        onClick={() => toggleTag(item.tag)}
+        className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted/60"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Checkbox
+            checked={item.state === "mixed" ? "indeterminate" : item.state === "on"}
+            className="pointer-events-none"
+          />
+          <span className={cn("truncate text-sm font-medium", isNew && "text-primary italic")}>
+            {item.tag}
+          </span>
+          {isNew && <span className="text-xs text-muted-foreground">(new)</span>}
+        </div>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {item.state === "mixed" ? "Mixed" : item.state === "on" ? "On" : "Off"}
+        </span>
+      </button>
+    )
+  }, [knownTagSet, toggleTag])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Tags to {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>Set Tags for {hashCount} torrent(s)</DialogTitle>
           <DialogDescription>
-            Select tags to add to the selected torrents. These tags will be added to any existing tags on each torrent.
+            Mixed tags stay unchanged until clicked. Click a row to cycle Mixed to On, On to Off, and Off to On.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
-          {/* Existing tags */}
-          {isLoadingTags ? (
+          {selectionBaselineError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              {selectionBaselineError}
+            </div>
+          ) : isLoadingState ? (
             <div className="space-y-2">
               <Label>Available Tags</Label>
               <div className="h-48 border rounded-md p-3 flex items-center justify-center">
@@ -147,26 +349,24 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                 </div>
               </div>
             </div>
-          ) : displayTags && displayTags.length > 0 ? (
+          ) : items.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Available Tags</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSelectedTags([])}
-                  disabled={selectedTags.length === 0}
-                >
-                  Deselect All
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={resetItems} disabled={!hasChanges}>
+                    Reset
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={clearAll}>
+                    Clear All
+                  </Button>
+                </div>
               </div>
               <div
                 ref={scrollContainerRef}
                 className="h-48 border rounded-md p-3 overflow-y-auto"
               >
                 {shouldUseVirtualization ? (
-                  // Virtualized rendering for large tag lists
                   <div
                     style={{
                       height: `${virtualizer.getTotalSize()}px`,
@@ -175,11 +375,10 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                     }}
                   >
                     {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const tag = displayTags[virtualRow.index]
-                      const isTemporary = temporaryTags.includes(tag)
+                      const item = items[virtualRow.index]
                       return (
                         <div
-                          key={virtualRow.key}
+                          key={item.tag}
                           data-index={virtualRow.index}
                           ref={virtualizer.measureElement}
                           style={{
@@ -190,314 +389,24 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                             transform: `translateY(${virtualRow.start}px)`,
                           }}
                         >
-                          <div className="flex items-center space-x-2 py-1">
-                            <Checkbox
-                              id={`add-tag-${tag}`}
-                              checked={selectedTags.includes(tag)}
-                              onCheckedChange={(checked: boolean | string) => {
-                                if (checked) {
-                                  setSelectedTags([...selectedTags, tag])
-                                } else {
-                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`add-tag-${tag}`}
-                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                                isTemporary ? "text-primary italic" : ""
-                              }`}
-                            >
-                              {tag}
-                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                            </label>
-                          </div>
+                          {renderTagRow(item)}
                         </div>
                       )
                     })}
                   </div>
                 ) : (
-                  // Simple rendering for small tag lists - faster!
                   <div className="space-y-1">
-                    {displayTags.map((tag) => {
-                      const isTemporary = temporaryTags.includes(tag)
-                      return (
-                        <div key={tag} className="flex items-center space-x-2 py-1">
-                          <Checkbox
-                            id={`add-tag-${tag}`}
-                            checked={selectedTags.includes(tag)}
-                            onCheckedChange={(checked: boolean | string) => {
-                              if (checked) {
-                                setSelectedTags([...selectedTags, tag])
-                              } else {
-                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`add-tag-${tag}`}
-                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                              isTemporary ? "text-primary italic" : ""
-                            }`}
-                          >
-                            {tag}
-                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                          </label>
-                        </div>
-                      )
-                    })}
+                    {items.map(renderTagRow)}
                   </div>
                 )}
               </div>
             </div>
-          ) : null}
-
-          {/* Add new tag */}
-          <div className="space-y-2">
-            <Label htmlFor="newTag">Create New Tag</Label>
-            <div className="flex gap-2">
-              <Input
-                id="newTag"
-                value={newTag}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
-                placeholder="Enter new tag"
-                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter" && newTag.trim()) {
-                    e.preventDefault()
-                    addNewTag(newTag)
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => addNewTag(newTag)}
-                disabled={!newTag.trim() || displayTags.includes(newTag.trim())}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Selected tags summary */}
-          {selectedTags.length > 0 && (
-            <div className="text-sm text-muted-foreground">
-              Tags to add: {selectedTags.join(", ")}
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No tags available yet. Add one below.
             </div>
           )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending || selectedTags.length === 0}
-          >
-            Add Tags
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-})
 
-export const SetTagsDialog = memo(function SetTagsDialog({
-  open,
-  onOpenChange,
-  availableTags,
-  hashCount,
-  onConfirm,
-  isPending = false,
-  initialTags = [],
-  isLoadingTags = false,
-}: SetTagsDialogProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [newTag, setNewTag] = useState("")
-  const [temporaryTags, setTemporaryTags] = useState<string[]>([]) // New state for temporarily created tags
-  const wasOpen = useRef(false)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-
-  // Initialize selected tags only when dialog transitions from closed to open
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      setSelectedTags(initialTags)
-      setTemporaryTags([]) // Clear temporary tags when opening dialog
-    }
-    wasOpen.current = open
-  }, [open, initialTags])
-
-  // Combine server tags with temporary tags for display
-  const displayTags = [...(availableTags || []), ...temporaryTags].sort()
-
-  // Only use virtualization for large tag lists (>50 tags)
-  const shouldUseVirtualization = displayTags.length > 50
-
-  // Virtualization for large tag lists
-  const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? displayTags.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 32, // Approximate height of each tag item
-    overscan: 5,
-  })
-
-  const handleConfirm = useCallback((): void => {
-    const allTags = [...selectedTags]
-    if (newTag.trim() && !allTags.includes(newTag.trim())) {
-      allTags.push(newTag.trim())
-    }
-    onConfirm(allTags)
-    setSelectedTags([])
-    setNewTag("")
-    setTemporaryTags([]) // Clear temporary tags after confirming
-  }, [selectedTags, newTag, onConfirm])
-
-  const handleCancel = useCallback((): void => {
-    setSelectedTags([])
-    setNewTag("")
-    setTemporaryTags([]) // Clear temporary tags when cancelling
-    onOpenChange(false)
-  }, [onOpenChange])
-
-  const addNewTag = useCallback((tagToAdd: string): void => {
-    const trimmedTag = tagToAdd.trim()
-    if (trimmedTag && !displayTags.includes(trimmedTag)) {
-      // Add to temporary tags if it's not already in server tags
-      if (!availableTags?.includes(trimmedTag)) {
-        setTemporaryTags(prev => [...prev, trimmedTag])
-      }
-      // Add to selected tags
-      setSelectedTags(prev => [...prev, trimmedTag])
-      setNewTag("")
-    }
-  }, [displayTags, availableTags])
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Replace Tags for {hashCount} torrent(s)</DialogTitle>
-          <DialogDescription>
-            Select tags from the list or add a new one. Selected tags will replace all existing tags on the torrents. Leave all unchecked to remove all tags.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-4 space-y-4">
-          {/* Existing tags */}
-          {isLoadingTags ? (
-            <div className="space-y-2">
-              <Label>Available Tags</Label>
-              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Loading tags...</span>
-                </div>
-              </div>
-            </div>
-          ) : displayTags && displayTags.length > 0 ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Available Tags</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSelectedTags([])}
-                  disabled={selectedTags.length === 0}
-                >
-                  Deselect All
-                </Button>
-              </div>
-              <div
-                ref={scrollContainerRef}
-                className="h-48 border rounded-md p-3 overflow-y-auto"
-              >
-                {shouldUseVirtualization ? (
-                  // Virtualized rendering for large tag lists
-                  <div
-                    style={{
-                      height: `${virtualizer.getTotalSize()}px`,
-                      width: "100%",
-                      position: "relative",
-                    }}
-                  >
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const tag = displayTags[virtualRow.index]
-                      const isTemporary = temporaryTags.includes(tag)
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={virtualizer.measureElement}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          <div className="flex items-center space-x-2 py-1">
-                            <Checkbox
-                              id={`tag-${tag}`}
-                              checked={selectedTags.includes(tag)}
-                              onCheckedChange={(checked: boolean | string) => {
-                                if (checked) {
-                                  setSelectedTags([...selectedTags, tag])
-                                } else {
-                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`tag-${tag}`}
-                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                                isTemporary ? "text-primary italic" : ""
-                              }`}
-                            >
-                              {tag}
-                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                            </label>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  // Simple rendering for small tag lists - faster!
-                  <div className="space-y-1">
-                    {displayTags.map((tag) => {
-                      const isTemporary = temporaryTags.includes(tag)
-                      return (
-                        <div key={tag} className="flex items-center space-x-2 py-1">
-                          <Checkbox
-                            id={`tag-${tag}`}
-                            checked={selectedTags.includes(tag)}
-                            onCheckedChange={(checked: boolean | string) => {
-                              if (checked) {
-                                setSelectedTags([...selectedTags, tag])
-                              } else {
-                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`tag-${tag}`}
-                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                              isTemporary ? "text-primary italic" : ""
-                            }`}
-                          >
-                            {tag}
-                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                          </label>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Add new tag */}
           <div className="space-y-2">
             <Label htmlFor="newTag">Add New Tag</Label>
             <div className="flex gap-2">
@@ -506,6 +415,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                 value={newTag}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
                 placeholder="Enter new tag"
+                disabled={isLoadingState}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === "Enter" && newTag.trim()) {
                     e.preventDefault()
@@ -518,28 +428,31 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                 size="sm"
                 variant="outline"
                 onClick={() => addNewTag(newTag)}
-                disabled={!newTag.trim() || displayTags.includes(newTag.trim())}
+                disabled={isLoadingState || !newTag.trim()}
               >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
           </div>
 
-          {/* Selected tags summary */}
-          {selectedTags.length > 0 && (
+          {hasChanges ? (
             <div className="text-sm text-muted-foreground">
-              Selected: {selectedTags.join(", ")}
+              {updatePlan.add.length > 0 && (
+                <div>Add everywhere: {updatePlan.add.join(", ")}</div>
+              )}
+              {updatePlan.remove.length > 0 && (
+                <div>Remove everywhere: {updatePlan.remove.join(", ")}</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              No tag changes.
             </div>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending}
-          >
-            Replace Tags
-          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || !hasChanges || isLoadingState || Boolean(selectionBaselineError)}>Apply</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -565,6 +478,8 @@ interface SetLocationDialogProps {
   onConfirm: (location: string) => void
   isPending?: boolean
   initialLocation?: string
+  instanceId?: number
+  capabilities?: InstanceCapabilities | null
 }
 
 export const SetLocationDialog = memo(function SetLocationDialog({
@@ -574,20 +489,40 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   onConfirm,
   isPending = false,
   initialLocation = "",
+  instanceId = 0,
+  capabilities,
 }: SetLocationDialogProps) {
   const [location, setLocation] = useState("")
   const wasOpen = useRef(false)
+
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
+
+  const {
+    suggestions,
+    handleInputChange: handleAutocompleteChange,
+    handleSelect,
+    handleKeyDown: handleAutocompleteKeyDown,
+    handleBlur: handleAutocompleteBlur,
+    highlightedIndex,
+    showSuggestions,
+    inputRef: autocompleteInputRef,
+  } = usePathAutocomplete(setLocation, instanceId)
+
   const inputRef = useRef<HTMLInputElement>(null)
+  const effectiveInputRef = supportsPathAutocomplete ? autocompleteInputRef : inputRef
 
   // Initialize location only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
       setLocation(initialLocation)
+      if (supportsPathAutocomplete) {
+        handleAutocompleteChange(initialLocation)
+      }
       // Focus the input when dialog opens
-      setTimeout(() => inputRef.current?.focus(), 0)
+      setTimeout(() => effectiveInputRef.current?.focus(), 0)
     }
     wasOpen.current = open
-  }, [open, initialLocation])
+  }, [open, initialLocation, supportsPathAutocomplete, handleAutocompleteChange, effectiveInputRef])
 
   const handleConfirm = useCallback(() => {
     if (location.trim()) {
@@ -602,11 +537,14 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   }, [onOpenChange])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !isPending && location.trim()) {
+    if (supportsPathAutocomplete) {
+      handleAutocompleteKeyDown(e)
+    }
+    if (e.key === "Enter" && !e.defaultPrevented && !isPending && location.trim()) {
       e.preventDefault()
       handleConfirm()
     }
-  }, [isPending, location, handleConfirm])
+  }, [isPending, location, handleConfirm, supportsPathAutocomplete, handleAutocompleteKeyDown])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -621,15 +559,46 @@ export const SetLocationDialog = memo(function SetLocationDialog({
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
             <Input
-              ref={inputRef}
+              ref={effectiveInputRef}
               id="location"
               type="text"
+              autoComplete="off"
+              spellCheck={false}
               value={location}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setLocation(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                setLocation(e.target.value)
+                if (supportsPathAutocomplete) {
+                  handleAutocompleteChange(e.target.value)
+                }
+              }}
               onKeyDown={handleKeyDown}
+              onBlur={supportsPathAutocomplete ? handleAutocompleteBlur : undefined}
               placeholder="/path/to/save/location"
               disabled={isPending}
             />
+            {supportsPathAutocomplete && showSuggestions && suggestions.length > 0 && (
+              <div className="relative">
+                <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                  <div className="max-h-55 overflow-y-auto py-1">
+                    {suggestions.map((entry, idx) => (
+                      <button
+                        key={entry}
+                        type="button"
+                        title={entry}
+                        className={cn(
+                          "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                          (highlightedIndex === idx) ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSelect(entry)}
+                      >
+                        <span className="block truncate text-left">{entry}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
@@ -1406,184 +1375,6 @@ export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCatego
   )
 })
 
-interface RemoveTagsDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  availableTags: string[] | null
-  hashCount: number
-  onConfirm: (tags: string[]) => void
-  isPending?: boolean
-  currentTags?: string[]
-}
-
-export const RemoveTagsDialog = memo(function RemoveTagsDialog({
-  open,
-  onOpenChange,
-  availableTags,
-  hashCount,
-  onConfirm,
-  isPending = false,
-  currentTags = [],
-}: RemoveTagsDialogProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const wasOpen = useRef(false)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-
-  // Initialize with current tags when dialog opens
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      // Reset selection when dialog opens
-      setSelectedTags([])
-    }
-    wasOpen.current = open
-  }, [open, currentTags, availableTags])
-
-  const handleConfirm = useCallback(() => {
-    if (selectedTags.length > 0) {
-      onConfirm(selectedTags)
-      setSelectedTags([])
-    }
-  }, [selectedTags, onConfirm])
-
-  const handleCancel = useCallback(() => {
-    setSelectedTags([])
-    onOpenChange(false)
-  }, [onOpenChange])
-
-  // Filter available tags to only show those that are on the selected torrents
-  const relevantTags = (availableTags || []).filter(tag => currentTags.includes(tag))
-
-  // Only use virtualization for large tag lists (>50 tags)
-  const shouldUseVirtualization = relevantTags.length > 50
-
-  // Virtualization for large tag lists
-  const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? relevantTags.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 32, // Approximate height of each tag item
-    overscan: 5,
-  })
-
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Remove Tags from {hashCount} torrent(s)</AlertDialogTitle>
-          <AlertDialogDescription>
-            Select which tags to remove from the selected torrents.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="py-4 space-y-4">
-          {relevantTags.length > 0 ? (
-            <div className="space-y-2">
-              <Label>Tags to Remove</Label>
-              <div
-                ref={scrollContainerRef}
-                className="h-48 border rounded-md p-3 overflow-y-auto"
-              >
-                {shouldUseVirtualization ? (
-                  // Virtualized rendering for large tag lists (>50 tags)
-                  <div
-                    style={{
-                      height: `${virtualizer.getTotalSize()}px`,
-                      width: "100%",
-                      position: "relative",
-                    }}
-                  >
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const tag = relevantTags[virtualRow.index]
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={virtualizer.measureElement}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          <div className="flex items-center space-x-2 py-1">
-                            <Checkbox
-                              id={`remove-tag-${tag}`}
-                              checked={selectedTags.includes(tag)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setSelectedTags([...selectedTags, tag])
-                                } else {
-                                  setSelectedTags(selectedTags.filter(t => t !== tag))
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`remove-tag-${tag}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                            >
-                              {tag}
-                            </label>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  // Simple rendering for small tag lists (≤50 tags)
-                  <div className="space-y-1">
-                    {relevantTags.map((tag) => (
-                      <div key={tag} className="flex items-center space-x-2 py-1">
-                        <Checkbox
-                          id={`remove-tag-${tag}`}
-                          checked={selectedTags.includes(tag)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedTags([...selectedTags, tag])
-                            } else {
-                              setSelectedTags(selectedTags.filter(t => t !== tag))
-                            }
-                          }}
-                        />
-                        <label
-                          htmlFor={`remove-tag-${tag}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {tag}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No tags found on the selected torrents.
-            </div>
-          )}
-
-          {/* Selected tags summary */}
-          {selectedTags.length > 0 && (
-            <div className="text-sm text-muted-foreground">
-              Will remove: {selectedTags.join(", ")}
-            </div>
-          )}
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleConfirm}
-            disabled={selectedTags.length === 0 || isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            <X className="mr-2 h-4 w-4" />
-            Remove Tags
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-})
 
 interface EditTrackerDialogProps {
   open: boolean
