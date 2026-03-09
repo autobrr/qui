@@ -180,7 +180,7 @@ func closeResponseBody(resp *http.Response) {
 }
 
 func canRetryForbidden(req *http.Request, proxyCtx *proxyContext, replay requestReplayState, authRetried bool) bool {
-	if authRetried || proxyCtx == nil {
+	if authRetried || proxyCtx == nil || proxyCtx.session == nil {
 		return false
 	}
 

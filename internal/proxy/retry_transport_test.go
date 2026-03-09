@@ -414,6 +414,47 @@ func TestRetryTransport_DoesNotReplayLargeForbiddenPOST(t *testing.T) {
 	assert.Equal(t, 0, session.loginCalls)
 }
 
+func TestRetryTransport_ReturnsForbiddenWhenSessionRefreshUnavailable(t *testing.T) {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	instanceURL, err := url.Parse("http://qbittorrent.example")
+	require.NoError(t, err)
+
+	attempts := 0
+
+	transport := NewRetryTransportWithSelector(nil, func(_ *http.Request) http.RoundTripper {
+		return retryRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader("Forbidden")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		})
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://proxy.example/api/v2/torrents/info", http.NoBody)
+	require.NoError(t, err)
+
+	ctx := context.WithValue(req.Context(), proxyContextKey, &proxyContext{
+		instanceURL: instanceURL,
+		httpClient:  &http.Client{Jar: jar},
+	})
+	req = req.WithContext(ctx)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, 1, attempts)
+}
+
 func TestRetryTransport_MaxRetries(t *testing.T) {
 	mock := &mockRoundTripper{
 		err:        syscall.ECONNREFUSED,
