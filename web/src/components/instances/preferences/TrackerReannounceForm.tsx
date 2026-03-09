@@ -254,7 +254,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const sanitized = sanitizeSettings(settings)
-    const wasEnabled = instance.reannounceSettings?.enabled ?? DEFAULT_SETTINGS.enabled
+    const wasEnabled = instance?.reannounceSettings?.enabled ?? DEFAULT_SETTINGS.enabled
 
     if (!wasEnabled && sanitized.enabled) {
       setPendingEnableSettings(sanitized)
