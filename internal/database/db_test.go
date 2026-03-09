@@ -567,6 +567,18 @@ func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
 	require.NotContains(t, tx.tempTables, "current_hashes")
 }
 
+func TestTempTableNameParsingUsesFinalIdentifierSegment(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE "pg_temp"."current_hashes" (hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+
+	dropName, ok := tableNameFromDrop("DROP TABLE IF EXISTS [pg_temp].[current_hashes];")
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", dropName)
+}
+
 // TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
 // after a successful commit.
 func TestTransactionCommitSuccessMutexRelease(t *testing.T) {

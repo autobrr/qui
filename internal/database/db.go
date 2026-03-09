@@ -282,8 +282,11 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		row := t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		if row.Err() == nil {
+			t.markQueryForCaching(query)
+		}
+		return row
 	}
 	return stmt.QueryRowContext(ctx, args...)
 }
@@ -706,49 +709,64 @@ func isTempTableDDL(query string) bool {
 }
 
 func tempTableNameFromCreate(query string) (string, bool) {
-	tokens := sqlKeywordTokens(query)
-	if len(tokens) < 4 || tokens[0] != "create" {
+	fields := strings.Fields(query)
+	if len(fields) < 4 || !strings.EqualFold(fields[0], "create") {
 		return "", false
 	}
 
 	next := 1
-	if tokens[next] != "temp" && tokens[next] != "temporary" {
+	if !strings.EqualFold(fields[next], "temp") && !strings.EqualFold(fields[next], "temporary") {
 		return "", false
 	}
 	next++
 
-	if next >= len(tokens) || tokens[next] != "table" {
+	if next >= len(fields) || !strings.EqualFold(fields[next], "table") {
 		return "", false
 	}
 	next++
 
-	if next+2 < len(tokens) && tokens[next] == "if" && tokens[next+1] == "not" && tokens[next+2] == "exists" {
+	if next+2 < len(fields) &&
+		strings.EqualFold(fields[next], "if") &&
+		strings.EqualFold(fields[next+1], "not") &&
+		strings.EqualFold(fields[next+2], "exists") {
 		next += 3
 	}
-	if next >= len(tokens) {
+	if next >= len(fields) {
 		return "", false
 	}
 
-	return tokens[next], true
+	name := normalizeIdentifier(fields[next])
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
 func tableNameFromDrop(query string) (string, bool) {
-	tokens := sqlKeywordTokens(query)
-	if len(tokens) < 3 || tokens[0] != "drop" || tokens[1] != "table" {
+	fields := strings.Fields(query)
+	if len(fields) < 3 || !strings.EqualFold(fields[0], "drop") || !strings.EqualFold(fields[1], "table") {
 		return "", false
 	}
 
 	next := 2
-	if next+1 < len(tokens) && tokens[next] == "if" && tokens[next+1] == "exists" {
+	if next+1 < len(fields) && strings.EqualFold(fields[next], "if") && strings.EqualFold(fields[next+1], "exists") {
 		next += 2
 	}
-	if next >= len(tokens) {
+	if next >= len(fields) {
 		return "", false
 	}
 
-	return tokens[next], true
+	name := normalizeIdentifier(fields[next])
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
+// queryReferencesTempTable uses lightweight token matching over internal SQL.
+// It intentionally does not parse string literals or comments, so a literal like
+// 'current_hashes' could produce a false positive. That's acceptable here
+// because this helper only guards our fixed-format temp-table maintenance SQL.
 func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool {
 	if len(tempTables) == 0 {
 		return false
@@ -763,10 +781,26 @@ func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool
 	return false
 }
 
+// sqlKeywordTokens is a lightweight tokenizer for internal SQL snippets. It
+// lowercases and splits on non-identifier runes, but it does not understand SQL
+// literals or comments.
 func sqlKeywordTokens(query string) []string {
 	return strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
 	})
+}
+
+func normalizeIdentifier(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, ";,(")
+	if raw == "" {
+		return ""
+	}
+
+	parts := strings.Split(raw, ".")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	name = strings.Trim(name, "\"`[]")
+	return strings.ToLower(name)
 }
 
 const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
