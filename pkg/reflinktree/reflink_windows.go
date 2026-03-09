@@ -20,10 +20,14 @@ import (
 
 const (
 	fsctlDuplicateExtentsToFile = 0x00098344
+	fsctlSetSparse              = 0x000900C4
 	maxCloneChunkSize           = 1024 * 1024 * 1024
 	copyBufferSize              = 1024 * 1024
 	refsFilesystemName          = "REFS"
 	reflinkProbeData            = "reflink probe test data"
+	fileAttributeSparseFile     = 0x00000200
+	invalidFileAttributes       = 0xFFFFFFFF
+	fileBegin                   = 0
 )
 
 type duplicateExtentsData struct {
@@ -36,6 +40,15 @@ type duplicateExtentsData struct {
 var (
 	kernel32DLL            = windows.NewLazySystemDLL("kernel32.dll")
 	procGetDiskFreeSpaceW  = kernel32DLL.NewProc("GetDiskFreeSpaceW")
+	procGetFileAttributesW = kernel32DLL.NewProc("GetFileAttributesW")
+	procSetFilePointerEx   = kernel32DLL.NewProc("SetFilePointerEx")
+	procSetEndOfFile       = kernel32DLL.NewProc("SetEndOfFile")
+	resolveSourcePathFn    = resolveSourcePath
+	lstatPathFn            = os.Lstat
+	evalSymlinksFn         = filepath.EvalSymlinks
+	isSparseFileFn         = isSparseFile
+	markFileSparseFn       = markFileSparse
+	setFileEndFn           = setFileEnd
 	volumeRootForPathFn    = getVolumeRoot
 	filesystemNameForVolFn = getFilesystemName
 	clusterSizeForVolFn    = getClusterSize
@@ -113,7 +126,12 @@ func writeProbeFile(srcFile *os.File, clusterSize int64) error {
 }
 
 func cloneFile(src, dst string) (retErr error) {
-	srcFile, err := os.Open(src)
+	resolvedSrc, err := resolveSourcePathFn(src)
+	if err != nil {
+		return fmt.Errorf("resolve source: %w", err)
+	}
+
+	srcFile, err := os.Open(resolvedSrc)
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
@@ -129,7 +147,7 @@ func cloneFile(src, dst string) (retErr error) {
 		dstParent = "."
 	}
 
-	volumeRoot, err := ensureSameVolume(src, dstParent)
+	volumeRoot, err := ensureSameVolume(resolvedSrc, dstParent)
 	if err != nil {
 		return err
 	}
@@ -137,6 +155,11 @@ func cloneFile(src, dst string) (retErr error) {
 	clusterSize, err := ensureRefsVolume(volumeRoot)
 	if err != nil {
 		return err
+	}
+
+	sourceIsSparse, err := isSparseFileFn(resolvedSrc)
+	if err != nil {
+		return fmt.Errorf("check source sparse flag: %w", err)
 	}
 
 	dstFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_EXCL, srcInfo.Mode())
@@ -150,12 +173,17 @@ func cloneFile(src, dst string) (retErr error) {
 		}
 	}()
 
-	if err := dstFile.Truncate(srcInfo.Size()); err != nil {
+	srcHandle := windows.Handle(srcFile.Fd())
+	dstHandle := windows.Handle(dstFile.Fd())
+	if sourceIsSparse {
+		if err := markFileSparseFn(dstHandle, dst); err != nil {
+			return fmt.Errorf("mark destination sparse: %w", err)
+		}
+	}
+	if err := setFileEndFn(dstHandle, dst, srcInfo.Size()); err != nil {
 		return fmt.Errorf("resize destination: %w", err)
 	}
 
-	srcHandle := windows.Handle(srcFile.Fd())
-	dstHandle := windows.Handle(dstFile.Fd())
 	cloneableSize := srcInfo.Size() - (srcInfo.Size() % clusterSize)
 
 	for offset := int64(0); offset < cloneableSize; offset += maxCloneChunkSize {
@@ -172,6 +200,20 @@ func cloneFile(src, dst string) (retErr error) {
 	}
 
 	return nil
+}
+
+func resolveSourcePath(src string) (string, error) {
+	_, err := lstatPathFn(src)
+	if err != nil {
+		return "", err
+	}
+
+	resolvedSrc, err := evalSymlinksFn(src)
+	if err != nil {
+		return "", err
+	}
+
+	return resolvedSrc, nil
 }
 
 func ensureSameVolume(src, dst string) (string, error) {
@@ -293,6 +335,67 @@ func getClusterSize(volumeRoot string) (int64, error) {
 	}
 
 	return int64(sectorsPerCluster) * int64(bytesPerSector), nil
+}
+
+func isSparseFile(path string) (bool, error) {
+	pathPtr, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return false, fmt.Errorf("convert path: %w", err)
+	}
+
+	r1, _, callErr := procGetFileAttributesW.Call(uintptr(unsafe.Pointer(pathPtr)))
+	if uint32(r1) == invalidFileAttributes {
+		if callErr != nil && !errors.Is(callErr, windows.ERROR_SUCCESS) {
+			return false, fmt.Errorf("get file attributes: %w", callErr)
+		}
+		return false, errors.New("get file attributes: unknown error")
+	}
+
+	return uint32(r1)&fileAttributeSparseFile != 0, nil
+}
+
+func markFileSparse(fileHandle windows.Handle, path string) error {
+	var bytesReturned uint32
+	if err := windows.DeviceIoControl(
+		fileHandle,
+		fsctlSetSparse,
+		nil,
+		0,
+		nil,
+		0,
+		&bytesReturned,
+		nil,
+	); err != nil {
+		return fmt.Errorf("set sparse %s: %w", path, err)
+	}
+
+	return nil
+}
+
+func setFileEnd(fileHandle windows.Handle, path string, size int64) error {
+	var newPosition int64
+	r1, _, callErr := procSetFilePointerEx.Call(
+		uintptr(fileHandle),
+		uintptr(size),
+		uintptr(unsafe.Pointer(&newPosition)),
+		uintptr(fileBegin),
+	)
+	if r1 == 0 {
+		if callErr != nil && !errors.Is(callErr, windows.ERROR_SUCCESS) {
+			return fmt.Errorf("seek EOF for %s: %w", path, callErr)
+		}
+		return fmt.Errorf("seek EOF for %s: unknown error", path)
+	}
+
+	r1, _, callErr = procSetEndOfFile.Call(uintptr(fileHandle))
+	if r1 == 0 {
+		if callErr != nil && !errors.Is(callErr, windows.ERROR_SUCCESS) {
+			return fmt.Errorf("set EOF for %s: %w", path, callErr)
+		}
+		return fmt.Errorf("set EOF for %s: unknown error", path)
+	}
+
+	return nil
 }
 
 func duplicateExtent(targetHandle, sourceHandle windows.Handle, sourceOffset, targetOffset, byteCount int64) error {
