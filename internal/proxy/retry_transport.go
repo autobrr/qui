@@ -155,7 +155,7 @@ func prepareRequestReplay(req *http.Request) (requestReplayState, error) {
 
 func cloneRequestForAttempt(req *http.Request) (*http.Request, error) {
 	reqClone := req.Clone(req.Context())
-	if req == nil || req.Body == nil {
+	if req.Body == nil {
 		return reqClone, nil
 	}
 

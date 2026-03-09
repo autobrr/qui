@@ -297,8 +297,6 @@ func TestRetryTransport_IdempotentMethods(t *testing.T) {
 }
 
 func TestRetryTransport_ReauthsAndReplaysForbiddenPOST(t *testing.T) {
-	t.Helper()
-
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 
@@ -369,8 +367,6 @@ func TestRetryTransport_ReauthsAndReplaysForbiddenPOST(t *testing.T) {
 }
 
 func TestRetryTransport_DoesNotReplayLargeForbiddenPOST(t *testing.T) {
-	t.Helper()
-
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 
@@ -415,8 +411,6 @@ func TestRetryTransport_DoesNotReplayLargeForbiddenPOST(t *testing.T) {
 }
 
 func TestRetryTransport_ReturnsForbiddenWhenSessionRefreshUnavailable(t *testing.T) {
-	t.Helper()
-
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 
