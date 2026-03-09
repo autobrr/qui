@@ -1315,16 +1315,8 @@ func (sm *SyncManager) GetTorrentField(
 
 	values := make([]string, 0, len(response.Torrents))
 	for _, t := range response.Torrents {
-		normalizedHash := normalizeTorrentFieldHash(t.Hash)
-		if excluded != nil {
-			if _, skip := excluded[normalizedHash]; skip {
-				continue
-			}
-		}
-		if excludedTargets != nil {
-			if _, skip := excludedTargets[normalizedHash]; skip {
-				continue
-			}
+		if torrentFieldHashExcluded(excluded, excludedTargets, t.Hash, t.InfohashV1, t.InfohashV2) {
+			continue
 		}
 
 		var v string
@@ -1368,6 +1360,47 @@ func (sm *SyncManager) GetTorrentField(
 
 func normalizeTorrentFieldHash(hash string) string {
 	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
+	candidates := []string{
+		hash,
+		infohashV1,
+		infohashV2,
+		canonicalizeHash(hash),
+		canonicalizeHash(infohashV1),
+		canonicalizeHash(infohashV2),
+	}
+	seen := make(map[string]struct{}, len(candidates))
+	var variants []string
+	for _, candidate := range candidates {
+		normalized := normalizeTorrentFieldHash(candidate)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func torrentFieldHashExcluded(excluded, excludedTargets map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
+	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
+		if excluded != nil {
+			if _, skip := excluded[candidate]; skip {
+				return true
+			}
+		}
+		if excludedTargets != nil {
+			if _, skip := excludedTargets[candidate]; skip {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.

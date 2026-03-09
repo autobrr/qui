@@ -343,11 +343,10 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				}
 
 				for _, torrent := range response.CrossInstanceTorrents {
-					normalized := normalizeHashValue(torrent.Hash)
-					if _, ok := requestedHashes[normalized]; !ok {
+					if !matchesRequestedHashSet(requestedHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 						continue
 					}
-					addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, torrent.Hash)
+					addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, resolvedTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2))
 				}
 			} else if instanceID != allInstancesID {
 				for _, hash := range req.Hashes {
@@ -390,8 +389,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			requestedHashes := buildExcludeHashSet(targetsByInstance[targetInstanceID])
 			requestedCount += len(targetsByInstance[targetInstanceID])
 			for _, torrent := range torrents {
-				normalized := normalizeHashValue(torrent.Hash)
-				if _, ok := requestedHashes[normalized]; !ok {
+				if !matchesRequestedHashSet(requestedHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 					continue
 				}
 
@@ -435,7 +433,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				Int("instanceID", instanceID).
 				Str("field", req.Field).
 				Msg("Cross-instance torrent field returned partial results for tag baseline")
-			RespondError(w, http.StatusInternalServerError, "Failed to resolve the full tag baseline")
+			RespondError(w, http.StatusServiceUnavailable, "Failed to resolve the full tag baseline")
 			return
 		}
 
@@ -443,20 +441,14 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		excludeTargets := buildExcludeTargetSet(req.ExcludeTargets)
 		values := make([]string, 0, len(response.CrossInstanceTorrents))
 		for _, torrent := range response.CrossInstanceTorrents {
-			normalized := normalizeHashValue(torrent.Hash)
-			if normalized == "" {
+			if !hasTorrentFieldHash(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 				continue
 			}
-			if excludeHashes != nil {
-				if _, skip := excludeHashes[normalized]; skip {
-					continue
-				}
+			if matchesRequestedHashSet(excludeHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
+				continue
 			}
-			if excludeTargets != nil {
-				key := fmt.Sprintf("%d:%s", torrent.InstanceID, normalized)
-				if _, skip := excludeTargets[key]; skip {
-					continue
-				}
+			if matchesExcludedTargetSet(excludeTargets, torrent.InstanceID, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
+				continue
 			}
 
 			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
@@ -516,6 +508,69 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 
 func shouldIncludeTorrentFieldValue(field, value string) bool {
 	return field == "tags" || value != ""
+}
+
+func resolvedTorrentFieldHash(hash, infohashV1, infohashV2 string) string {
+	preferred := preferredHashValue(&qbt.Torrent{
+		Hash:       hash,
+		InfohashV1: infohashV1,
+		InfohashV2: infohashV2,
+	})
+	if preferred != "" {
+		return preferred
+	}
+	return strings.TrimSpace(hash)
+}
+
+func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
+	candidates := []string{
+		hash,
+		infohashV1,
+		infohashV2,
+		resolvedTorrentFieldHash(hash, infohashV1, infohashV2),
+	}
+	seen := make(map[string]struct{}, len(candidates))
+	var variants []string
+	for _, candidate := range candidates {
+		normalized := normalizeHashValue(candidate)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func hasTorrentFieldHash(hash, infohashV1, infohashV2 string) bool {
+	return len(torrentFieldHashVariants(hash, infohashV1, infohashV2)) > 0
+}
+
+func matchesRequestedHashSet(requestedHashes map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
+	if len(requestedHashes) == 0 {
+		return false
+	}
+	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
+		if _, ok := requestedHashes[candidate]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesExcludedTargetSet(excludeTargets map[string]struct{}, instanceID int, hash, infohashV1, infohashV2 string) bool {
+	if len(excludeTargets) == 0 {
+		return false
+	}
+	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
+		if _, ok := excludeTargets[fmt.Sprintf("%d:%s", instanceID, candidate)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func toQBittorrentTargets(targets []BulkActionTarget) []qbittorrent.TorrentTarget {
