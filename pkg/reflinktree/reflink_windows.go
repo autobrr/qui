@@ -23,6 +23,7 @@ const (
 	maxCloneChunkSize           = 1024 * 1024 * 1024
 	copyBufferSize              = 1024 * 1024
 	refsFilesystemName          = "REFS"
+	reflinkProbeData            = "reflink probe test data"
 )
 
 type duplicateExtentsData struct {
@@ -62,7 +63,19 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 	srcPath := srcFile.Name()
 	defer os.Remove(srcPath)
 
-	if _, err := srcFile.WriteString("reflink probe test data"); err != nil {
+	volumeRoot, err := volumeRootForPathFn(srcPath)
+	if err != nil {
+		srcFile.Close()
+		return false, fmt.Sprintf("reflink not supported: get source volume: %v", err)
+	}
+
+	clusterSize, err := ensureRefsVolume(volumeRoot)
+	if err != nil {
+		srcFile.Close()
+		return false, fmt.Sprintf("reflink not supported: %v", err)
+	}
+
+	if err := writeProbeFile(srcFile, clusterSize); err != nil {
 		srcFile.Close()
 		return false, fmt.Sprintf("cannot write to temp file: %v", err)
 	}
@@ -78,6 +91,25 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 	}
 
 	return true, "reflink supported (ReFS block cloning)"
+}
+
+func writeProbeFile(srcFile *os.File, clusterSize int64) error {
+	if _, err := srcFile.WriteString(reflinkProbeData); err != nil {
+		return err
+	}
+
+	probeSize := max(clusterSize+1, int64(len(reflinkProbeData)))
+	if probeSize == int64(len(reflinkProbeData)) {
+		return nil
+	}
+	if err := srcFile.Truncate(probeSize); err != nil {
+		return err
+	}
+	if _, err := srcFile.WriteAt([]byte{'\n'}, probeSize-1); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func cloneFile(src, dst string) (retErr error) {

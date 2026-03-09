@@ -102,8 +102,19 @@ func TestSupportsReflink_ReportsWindowsProbeSuccess(t *testing.T) {
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4096, nil }
-	duplicateExtentFn = func(windows.Handle, windows.Handle, int64, int64, int64) error { return nil }
-	copyFileTailFn = copyFileTail
+	var cloneCalls int
+	duplicateExtentFn = func(_ windows.Handle, _ windows.Handle, sourceOffset, targetOffset, byteCount int64) error {
+		cloneCalls++
+		if sourceOffset != 0 || targetOffset != 0 || byteCount != 4096 {
+			t.Fatalf("unexpected clone call: source=%d target=%d bytes=%d", sourceOffset, targetOffset, byteCount)
+		}
+		return nil
+	}
+	var tailCopyCalled bool
+	copyFileTailFn = func(*os.File, *os.File, int64, int64) error {
+		tailCopyCalled = true
+		return nil
+	}
 
 	supported, reason := SupportsReflink(tmpDir)
 	if !supported {
@@ -111,6 +122,12 @@ func TestSupportsReflink_ReportsWindowsProbeSuccess(t *testing.T) {
 	}
 	if !strings.Contains(reason, "ReFS") {
 		t.Fatalf("expected ReFS reason, got %q", reason)
+	}
+	if cloneCalls != 1 {
+		t.Fatalf("expected probe to call duplicate extents once, got %d", cloneCalls)
+	}
+	if !tailCopyCalled {
+		t.Fatal("expected probe to copy the tail after the cloned prefix")
 	}
 }
 
