@@ -113,7 +113,13 @@ func writeProbeFile(srcFile *os.File, clusterSize int64) error {
 }
 
 func cloneFile(src, dst string) (retErr error) {
-	srcInfo, err := os.Stat(src)
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer srcFile.Close()
+
+	srcInfo, err := srcFile.Stat()
 	if err != nil {
 		return fmt.Errorf("stat source: %w", err)
 	}
@@ -132,12 +138,6 @@ func cloneFile(src, dst string) (retErr error) {
 	if err != nil {
 		return err
 	}
-
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open source: %w", err)
-	}
-	defer srcFile.Close()
 
 	dstFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_EXCL, srcInfo.Mode())
 	if err != nil {
