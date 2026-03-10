@@ -579,6 +579,14 @@ func TestTempTableNameParsingUsesFinalIdentifierSegment(t *testing.T) {
 	require.Equal(t, "current_hashes", dropName)
 }
 
+func TestTempTableNameParsingWithoutSpaceBeforeColumns(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE current_hashes(hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+}
+
 // TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
 // after a successful commit.
 func TestTransactionCommitSuccessMutexRelease(t *testing.T) {

@@ -731,7 +731,7 @@ func tempTableNameFromCreate(query string) (string, bool) {
 		return "", false
 	}
 
-	name := normalizeIdentifier(fields[next])
+	name := normalizeIdentifier(trimIdentifierToken(fields[next]))
 	if name == "" {
 		return "", false
 	}
@@ -752,7 +752,7 @@ func tableNameFromDrop(query string) (string, bool) {
 		return "", false
 	}
 
-	name := normalizeIdentifier(fields[next])
+	name := normalizeIdentifier(trimIdentifierToken(fields[next]))
 	if name == "" {
 		return "", false
 	}
@@ -797,6 +797,19 @@ func normalizeIdentifier(raw string) string {
 	name := strings.TrimSpace(parts[len(parts)-1])
 	name = strings.Trim(name, "\"`[]")
 	return strings.ToLower(name)
+}
+
+func trimIdentifierToken(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	if idx := strings.IndexAny(raw, "(,;"); idx >= 0 {
+		raw = raw[:idx]
+	}
+
+	return strings.TrimSpace(raw)
 }
 
 const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
