@@ -112,10 +112,22 @@ When "Launch in terminal window" is enabled, qui automatically detects and uses 
    - Terminal.app
 5. **Fallback**: If no terminal is found, the command runs in the background via `sh -c`
 
-On Windows, `cmd.exe` is always used.
+On Windows, qui launches the configured program directly. It does not wrap executions in `cmd.exe`, so torrent metadata is passed as literal arguments instead of shell-parsed text.
+
+:::warning Windows shell scripts
+`.bat`, `.cmd`, and shell-style command snippets are not launched implicitly on Windows.
+
+If you need custom script logic, prefer a wrapper that receives literal arguments, for example:
+
+- `C:\Program Files\PowerShell\7\pwsh.exe` with args `-File C:\path\to\script.ps1 {name}`
+
+Avoid `cmd.exe` or batch-file wrappers when passing torrent-derived placeholders such as `{name}` or `{content_path}`.
+:::
 
 :::tip
-Terminal windows stay open after the command finishes, allowing you to inspect output. Close the window manually when done.
+On Linux and macOS, terminal windows usually stay open after the command finishes so you can inspect output.
+
+On Windows, qui opens the program in a new console but does not keep that window open after the process exits. If you want a persistent terminal, use an explicit wrapper that holds the window open.
 :::
 
 ## Executing Programs

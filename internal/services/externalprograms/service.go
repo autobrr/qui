@@ -210,50 +210,28 @@ func (s *Service) executeAsync(
 	// Use background context for activity logging since parent context may be cancelled
 	ctx := context.Background()
 
-	if runtime.GOOS == "windows" {
-		// Windows: Use Run() which waits for cmd.exe to complete
-		// The 'start' command will spawn the process and cmd.exe will exit quickly
-		execErr := cmd.Run()
-		if execErr != nil {
-			log.Error().
-				Err(execErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("external program failed to start")
-			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("program failed to start: %v", execErr))
-			return
-		}
-		// Log success - on Windows, Run() completing without error means the program started
-		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
-	} else {
-		// Unix/Linux: Start the terminal emulator or direct process
-		execErr := cmd.Start()
-		if execErr != nil {
-			log.Error().
-				Err(execErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("external program failed to start")
-			// Log failure activity
-			s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
-			return
-		}
+	execErr := cmd.Start()
+	if execErr != nil {
+		log.Error().
+			Err(execErr).
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("external program failed to start")
+		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, false, fmt.Sprintf("failed to start: %v", execErr))
+		return
+	}
 
-		// Log success - the program has actually started
-		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
+	s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 
-		// Wait for the process to prevent zombie processes
-		waitErr := cmd.Wait()
-		if waitErr != nil {
-			log.Warn().
-				Err(waitErr).
-				Str("program", program.Name).
-				Str("hash", req.Torrent.Hash).
-				Str("command", fmt.Sprintf("%v", cmd.Args)).
-				Msg("process exited with error (may be normal for terminal emulators)")
-		}
+	waitErr := cmd.Wait()
+	if waitErr != nil {
+		log.Warn().
+			Err(waitErr).
+			Str("program", program.Name).
+			Str("hash", req.Torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("process exited with error (may be normal for terminal emulators)")
 	}
 
 	log.Info().
@@ -274,11 +252,8 @@ func (s *Service) buildCommand(ctx context.Context, program *models.ExternalProg
 // buildTerminalCommand creates a command that opens in a terminal window.
 func (s *Service) buildTerminalCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
-		// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
-		cmdArgs := make([]string, 0, 6+len(args))
-		cmdArgs = append(cmdArgs, "/c", "start", "", "cmd", "/k", program.Path)
-		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
+		// Windows: launch the target directly in a new console to avoid cmd.exe injection.
+		return buildNativeCommand(ctx, program.Path, args, true)
 	}
 
 	// Unix/Linux: Build command string and spawn in a terminal
@@ -290,18 +265,12 @@ func (s *Service) buildTerminalCommand(ctx context.Context, program *models.Exte
 // buildDirectCommand creates a command that runs directly without a terminal.
 func (s *Service) buildDirectCommand(ctx context.Context, program *models.ExternalProgram, args []string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
-		// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
-		cmdArgs := make([]string, 0, 5+len(args))
-		cmdArgs = append(cmdArgs, "/c", "start", "", "/b", program.Path)
-		cmdArgs = append(cmdArgs, args...)
-		return exec.CommandContext(ctx, "cmd.exe", cmdArgs...) //nolint:gosec // intentional external program execution
+		// Windows: launch the target directly without cmd.exe to keep args literal.
+		return buildNativeCommand(ctx, program.Path, args, false)
 	}
 
 	// Unix/Linux: Direct execution
-	if len(args) > 0 {
-		return exec.CommandContext(ctx, program.Path, args...) //nolint:gosec // intentional external program execution
-	}
-	return exec.CommandContext(ctx, program.Path) //nolint:gosec // intentional external program execution
+	return buildNativeCommand(ctx, program.Path, args, false)
 }
 
 // terminalCandidate represents a terminal emulator to check for availability.
