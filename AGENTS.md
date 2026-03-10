@@ -95,11 +95,11 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 ## Testing Guidelines
 
-Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run `make test` before every push and add `make test-openapi` when contracts change. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
+Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run targeted local tests for touched packages and add `make test-openapi` when contracts change. CI covers the full `make test` suite unless explicitly requested locally. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
 
 When running tests, always use `-race` and `-count=3` to catch race conditions.
 
-For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
+For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first. Skip local full `make test` by default; CI covers it unless explicitly requested.
 
 ## Commit & Pull Request Guidelines
 
@@ -110,12 +110,12 @@ Follow the conventional commit style in history (`feat(scope):`, `fix(scope):`, 
 - "Co-Authored-By: Claude" or any AI co-author credits
 - Any advertising or attribution in commit messages
 
-PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm `make lint`, `make test`, and a fresh `make build` succeed before requesting review.
+PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm local targeted verification, `make lint`, and a fresh `make build` succeed before requesting review; rely on CI for the full `make test` suite unless explicitly requested.
 
 ## Pre-Commit Checklist
 
 1. `make precommit` passes (`fmt` + `gofix-changed` + `lint`, changed files only)
-2. `make test` passes
+2. Targeted local tests for touched packages pass (full `make test` covered by CI unless explicitly requested)
 3. `make build` succeeds
 4. If touched `internal/web/swagger`, run `make test-openapi`
 
