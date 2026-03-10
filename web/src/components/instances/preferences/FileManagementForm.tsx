@@ -23,6 +23,8 @@ import { useForm } from "@tanstack/react-form"
 import React from "react"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 const LEGACY_AUTORUN_PLACEHOLDERS: Array<{ token: string; label: string }> = [
   { token: "%N", label: "Torrent name" },
   { token: "%L", label: "Category" },
@@ -222,184 +224,238 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       <div className="space-y-6">
-        <form.Field name="auto_tmm_enabled">
-          {(field) => (
-            <SwitchSetting
-              label="Automatic Torrent Management"
-              checked={field.state.value as boolean}
-              onCheckedChange={field.handleChange}
-              description="Use category-based paths for downloads"
-            />
-          )}
-        </form.Field>
-
-        <form.Subscribe selector={(state) => state.values.auto_tmm_enabled}>
-          {(autoTmmEnabled) =>
-            autoTmmEnabled && (
-              <div className="ml-6 pl-4 border-l-2 border-muted space-y-4">
-                <form.Field name="torrent_changed_tmm_enabled">
-                  {(field) => (
-                    <SwitchSetting
-                      label="Relocate on Category Change"
-                      checked={field.state.value as boolean}
-                      onCheckedChange={field.handleChange}
-                      description="Relocate torrent when its category changes (disable to switch to Manual Mode instead)"
-                    />
-                  )}
-                </form.Field>
-
-                <form.Field name="save_path_changed_tmm_enabled">
-                  {(field) => (
-                    <SwitchSetting
-                      label="Relocate on Default Save Path Change"
-                      checked={field.state.value as boolean}
-                      onCheckedChange={field.handleChange}
-                      description="Relocate affected torrents when default save path changes (disable to switch to Manual Mode instead)"
-                    />
-                  )}
-                </form.Field>
-
-                <form.Field name="category_changed_tmm_enabled">
-                  {(field) => (
-                    <SwitchSetting
-                      label="Relocate on Category Save Path Change"
-                      checked={field.state.value as boolean}
-                      onCheckedChange={field.handleChange}
-                      description="Relocate affected torrents when category save path changes (disable to switch to Manual Mode instead)"
-                    />
-                  )}
-                </form.Field>
-              </div>
-            )
-          }
-        </form.Subscribe>
-
-        {supportsSubcategories && (
-          <form.Field name="use_subcategories">
+        <div className="space-y-6">
+          <form.Field name="auto_tmm_enabled">
             {(field) => (
               <SwitchSetting
-                label="Enable Subcategories"
+                label="Automatic Torrent Management"
                 checked={field.state.value as boolean}
                 onCheckedChange={field.handleChange}
-                description="Allow creating nested categories using slash separator (e.g., Movies/4K)"
+                description="Use category-based paths for downloads"
               />
             )}
           </form.Field>
-        )}
 
-        <form.Field name="start_paused_enabled">
-          {(field) => (
-            <SwitchSetting
-              label="Start Torrents Paused"
-              checked={field.state.value as boolean}
-              onCheckedChange={field.handleChange}
-              description="New torrents start in paused state"
-            />
+          <form.Subscribe selector={(state) => state.values.auto_tmm_enabled}>
+            {(autoTmmEnabled) =>
+              autoTmmEnabled && (
+                <div className="ml-6 pl-4 border-l-2 border-muted space-y-4">
+                  <form.Field name="torrent_changed_tmm_enabled">
+                    {(field) => (
+                      <SwitchSetting
+                        label="Relocate on Category Change"
+                        checked={field.state.value as boolean}
+                        onCheckedChange={field.handleChange}
+                        description="Relocate torrent when its category changes (disable to switch to Manual Mode instead)"
+                      />
+                    )}
+                  </form.Field>
+
+                  <form.Field name="save_path_changed_tmm_enabled">
+                    {(field) => (
+                      <SwitchSetting
+                        label="Relocate on Default Save Path Change"
+                        checked={field.state.value as boolean}
+                        onCheckedChange={field.handleChange}
+                        description="Relocate affected torrents when default save path changes (disable to switch to Manual Mode instead)"
+                      />
+                    )}
+                  </form.Field>
+
+                  <form.Field name="category_changed_tmm_enabled">
+                    {(field) => (
+                      <SwitchSetting
+                        label="Relocate on Category Save Path Change"
+                        checked={field.state.value as boolean}
+                        onCheckedChange={field.handleChange}
+                        description="Relocate affected torrents when category save path changes (disable to switch to Manual Mode instead)"
+                      />
+                    )}
+                  </form.Field>
+                </div>
+              )
+            }
+          </form.Subscribe>
+
+          {supportsSubcategories && (
+            <form.Field name="use_subcategories">
+              {(field) => (
+                <SwitchSetting
+                  label="Enable Subcategories"
+                  checked={field.state.value as boolean}
+                  onCheckedChange={field.handleChange}
+                  description="Allow creating nested categories using slash separator (e.g., Movies/4K)"
+                />
+              )}
+            </form.Field>
           )}
-        </form.Field>
 
-        <form.Field name="save_path">
-          {(field) => (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Default Save Path</Label>
-              <p className="text-xs text-muted-foreground">
-                Default directory for downloading files
-              </p>
-              <Input
-                value={field.state.value as string}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="/downloads"
-                className={incognitoMode ? "blur-sm select-none" : ""}
+          <form.Field name="start_paused_enabled">
+            {(field) => (
+              <SwitchSetting
+                label="Start Torrents Paused"
+                checked={field.state.value as boolean}
+                onCheckedChange={field.handleChange}
+                description="New torrents start in paused state"
               />
-            </div>
-          )}
-        </form.Field>
+            )}
+          </form.Field>
 
-        <form.Field name="temp_path_enabled">
-          {(field) => (
-            <SwitchSetting
-              label="Use Temporary Path"
-              checked={field.state.value as boolean}
-              onCheckedChange={field.handleChange}
-              description="Download to temporary path before moving to final location"
-            />
-          )}
-        </form.Field>
+          <form.Field name="save_path">
+            {(field) => (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Default Save Path</Label>
+                <p className="text-xs text-muted-foreground">
+                  Default directory for downloading files
+                </p>
+                <Input
+                  value={field.state.value as string}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="/downloads"
+                  className={incognitoMode ? "blur-sm select-none" : ""}
+                />
+              </div>
+            )}
+          </form.Field>
 
-        <form.Field name="temp_path">
-          {(field) => (
-            <form.Subscribe selector={(state) => state.values.temp_path_enabled}>
-              {(tempPathEnabled) => (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Temporary Download Path</Label>
+          <form.Field name="temp_path_enabled">
+            {(field) => (
+              <SwitchSetting
+                label="Use Temporary Path"
+                checked={field.state.value as boolean}
+                onCheckedChange={field.handleChange}
+                description="Download to temporary path before moving to final location"
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="temp_path">
+            {(field) => (
+              <form.Subscribe selector={(state) => state.values.temp_path_enabled}>
+                {(tempPathEnabled) => (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Temporary Download Path</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Directory where torrents are downloaded before moving to save path
+                    </p>
+                    <Input
+                      value={field.state.value as string}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="/temp-downloads"
+                      disabled={!tempPathEnabled}
+                      className={incognitoMode ? "blur-sm select-none" : ""}
+                    />
+                  </div>
+                )}
+              </form.Subscribe>
+            )}
+          </form.Field>
+
+          <form.Field name="torrent_content_layout">
+            {(field) => (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Default Content Layout</Label>
+                <p className="text-xs text-muted-foreground">
+                  How torrent files are organized within the save directory
+                </p>
+                <Select
+                  value={field.state.value as string}
+                  onValueChange={field.handleChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select content layout" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Original">Original</SelectItem>
+                    <SelectItem value="Subfolder">Create subfolder</SelectItem>
+                    <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </form.Field>
+
+          <Card className="bg-muted/20 border-muted/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Run External Program</CardTitle>
+              <CardDescription>
+                Run a command when a torrent finishes. Some instances also support running on torrent added. qBittorrent will expand placeholders like <code className="font-mono">%N</code>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {supportsAutorunOnTorrentAdded ? (
+                <form.Field name="autorun_on_torrent_added_enabled">
+                  {(enabledField) => (
+                    <div className="space-y-3">
+                      <SwitchSetting
+                        label="Run on Torrent Added"
+                        checked={enabledField.state.value as boolean}
+                        onCheckedChange={enabledField.handleChange}
+                        description="Triggered right after a torrent is added to the client"
+                      />
+
+                      <form.Field name="autorun_on_torrent_added_program">
+                        {(programField) => (
+                          <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
+                            <Label className="text-sm font-medium">Command</Label>
+                            <Input
+                              value={programField.state.value as string}
+                              onChange={(e) => programField.handleChange(e.target.value)}
+                              placeholder={autorunProgramPlaceholder}
+                              disabled={!(enabledField.state.value as boolean)}
+                              className={incognitoMode ? "blur-sm select-none" : ""}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              {AUTORUN_PROGRAM_TIP}
+                            </p>
+                          </div>
+                        )}
+                      </form.Field>
+                    </div>
+                  )}
+                </form.Field>
+              ) : (
+                <div className="space-y-1 rounded-md border border-muted bg-background/40 p-3">
+                  <p className="text-sm font-medium">Run on Torrent Added</p>
                   <p className="text-xs text-muted-foreground">
-                    Directory where torrents are downloaded before moving to save path
+                    Requires qBittorrent 4.5.0+ (Web API {AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION}+). This instance reports {webAPIVersion || "no Web API version"}.
                   </p>
-                  <Input
-                    value={field.state.value as string}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="/temp-downloads"
-                    disabled={!tempPathEnabled}
-                    className={incognitoMode ? "blur-sm select-none" : ""}
-                  />
                 </div>
               )}
-            </form.Subscribe>
-          )}
-        </form.Field>
 
-        <form.Field name="torrent_content_layout">
-          {(field) => (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Default Content Layout</Label>
-              <p className="text-xs text-muted-foreground">
-                How torrent files are organized within the save directory
-              </p>
-              <Select
-                value={field.state.value as string}
-                onValueChange={field.handleChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select content layout" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Original">Original</SelectItem>
-                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </form.Field>
-
-        <Card className="bg-muted/20 border-muted/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Run External Program</CardTitle>
-            <CardDescription>
-              Run a command when a torrent finishes. Some instances also support running on torrent added. qBittorrent will expand placeholders like <code className="font-mono">%N</code>.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {supportsAutorunOnTorrentAdded ? (
-              <form.Field name="autorun_on_torrent_added_enabled">
+              <form.Field name="autorun_enabled">
                 {(enabledField) => (
                   <div className="space-y-3">
                     <SwitchSetting
-                      label="Run on Torrent Added"
+                      label="Run on Torrent Finished"
                       checked={enabledField.state.value as boolean}
                       onCheckedChange={enabledField.handleChange}
-                      description="Triggered right after a torrent is added to the client"
+                      description="Triggered when a torrent completes"
                     />
 
-                    <form.Field name="autorun_on_torrent_added_program">
+                    <form.Field name="autorun_program">
                       {(programField) => (
                         <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
                           <Label className="text-sm font-medium">Command</Label>
@@ -419,75 +475,21 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                   </div>
                 )}
               </form.Field>
-            ) : (
-              <div className="space-y-1 rounded-md border border-muted bg-background/40 p-3">
-                <p className="text-sm font-medium">Run on Torrent Added</p>
-                <p className="text-xs text-muted-foreground">
-                  Requires qBittorrent 4.5.0+ (Web API {AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION}+). This instance reports {webAPIVersion || "no Web API version"}.
-                </p>
-              </div>
-            )}
 
-            <form.Field name="autorun_enabled">
-              {(enabledField) => (
-                <div className="space-y-3">
-                  <SwitchSetting
-                    label="Run on Torrent Finished"
-                    checked={enabledField.state.value as boolean}
-                    onCheckedChange={enabledField.handleChange}
-                    description="Triggered when a torrent completes"
-                  />
-
-                  <form.Field name="autorun_program">
-                    {(programField) => (
-                      <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
-                        <Label className="text-sm font-medium">Command</Label>
-                        <Input
-                          value={programField.state.value as string}
-                          onChange={(e) => programField.handleChange(e.target.value)}
-                          placeholder={autorunProgramPlaceholder}
-                          disabled={!(enabledField.state.value as boolean)}
-                          className={incognitoMode ? "blur-sm select-none" : ""}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          {AUTORUN_PROGRAM_TIP}
-                        </p>
-                      </div>
-                    )}
-                  </form.Field>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Supported Placeholders (case sensitive)</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs text-muted-foreground">
+                  {autorunPlaceholders.map((item) => (
+                    <div key={item.token}>
+                      <code className="font-mono text-foreground">{item.token}</code> {item.label}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </form.Field>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Supported Placeholders (case sensitive)</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs text-muted-foreground">
-                {autorunPlaceholders.map((item) => (
-                  <div key={item.token}>
-                    <code className="font-mono text-foreground">{item.token}</code> {item.label}
-                  </div>
-                ))}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -300,8 +301,8 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 	// HDR must match if either is present (HDR vs SDR are different encodes)
 	// If one release has HDR metadata and the other doesn't, they cannot match
-	sourceHDR := joinNormalizedSlice(source.HDR)
-	candidateHDR := joinNormalizedSlice(candidate.HDR)
+	sourceHDR := joinNormalizedHDRSlice(source.HDR)
+	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
 	if sourceHDR != candidateHDR {
 		return false
 	}
@@ -403,6 +404,11 @@ func joinNormalizedSlice(slice []string) string {
 		normalized[i] = normalizeVariant(s)
 	}
 	sort.Strings(normalized)
+	return strings.Join(normalized, " ")
+}
+
+func joinNormalizedHDRSlice(slice []string) string {
+	normalized := releases.NormalizeHDRTags(slice)
 	return strings.Join(normalized, " ")
 }
 

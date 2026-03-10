@@ -64,11 +64,16 @@ type basicAuthCredentials struct {
 	password string
 }
 
+type sessionRefresher interface {
+	LoginCtx(context.Context) error
+}
+
 type proxyContext struct {
 	instanceID  int
 	instanceURL *url.URL
 	httpClient  *http.Client
 	basicAuth   *basicAuthCredentials
+	session     sessionRefresher
 }
 
 type proxyContentPathMediaInfoRequest struct {
@@ -158,28 +163,7 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 		return
 	}
 
-	if proxyCtx.httpClient != nil && proxyCtx.httpClient.Jar != nil {
-		// Get cookies for the target URL from the cookie jar
-		cookies := proxyCtx.httpClient.Jar.Cookies(instanceURL)
-		if len(cookies) > 0 {
-			var cookiePairs []string
-			for _, cookie := range cookies {
-				cookiePairs = append(cookiePairs, fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
-			}
-			pr.Out.Header.Set("Cookie", strings.Join(cookiePairs, "; "))
-			log.Debug().Int("instanceId", instanceID).Int("cookieCount", len(cookies)).Msg("Added cookies from HTTP client jar to proxy request")
-		} else {
-			log.Debug().Int("instanceId", instanceID).Msg("No cookies found in HTTP client jar")
-		}
-	} else {
-		log.Debug().Int("instanceId", instanceID).Msg("No HTTP client or cookie jar available")
-	}
-
-	if proxyCtx.basicAuth != nil {
-		pr.Out.SetBasicAuth(proxyCtx.basicAuth.username, proxyCtx.basicAuth.password)
-	} else {
-		pr.Out.Header.Del("Authorization")
-	}
+	proxyCtx.applyAuthHeaders(pr.Out)
 
 	// Strip the proxy prefix from the path
 	apiKey := chi.URLParam(pr.In, "api-key")
@@ -521,6 +505,7 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 		instanceURL: instanceURL,
 		httpClient:  client.GetHTTPClient(),
 		basicAuth:   basicAuth,
+		session:     client,
 	}
 
 	return proxyCtx, nil
@@ -532,6 +517,38 @@ func getProxyContext(ctx context.Context) (*proxyContext, bool) {
 	}
 	proxyCtx, ok := ctx.Value(proxyContextKey).(*proxyContext)
 	return proxyCtx, ok
+}
+
+func (pc *proxyContext) applyAuthHeaders(req *http.Request) {
+	if pc == nil || req == nil {
+		return
+	}
+
+	if pc.httpClient != nil && pc.httpClient.Jar != nil && pc.instanceURL != nil {
+		cookies := pc.httpClient.Jar.Cookies(pc.instanceURL)
+		if len(cookies) > 0 {
+			var cookiePairs []string
+			for _, cookie := range cookies {
+				cookiePairs = append(cookiePairs, fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
+			}
+			req.Header.Set("Cookie", strings.Join(cookiePairs, "; "))
+		} else {
+			req.Header.Del("Cookie")
+		}
+	}
+
+	if pc.basicAuth != nil {
+		req.SetBasicAuth(pc.basicAuth.username, pc.basicAuth.password)
+	} else {
+		req.Header.Del("Authorization")
+	}
+}
+
+func (pc *proxyContext) refreshSession(ctx context.Context) error {
+	if pc == nil || pc.session == nil {
+		return errors.New("proxy session refresh unavailable")
+	}
+	return pc.session.LoginCtx(ctx)
 }
 
 func (h *Handler) writeProxyError(w http.ResponseWriter) {

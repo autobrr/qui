@@ -11,6 +11,8 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 
 function SwitchSetting({
   label,
@@ -102,126 +104,12 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
-    >
-      <div className="space-y-6">
-        <form.Field name="queueing_enabled">
-          {(field) => (
-            <SwitchSetting
-              label="Enable Queueing"
-              checked={(field.state.value as boolean) ?? false}
-              onCheckedChange={field.handleChange}
-              description="Limit the number of active torrents"
-            />
-          )}
-        </form.Field>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field
-            name="max_active_downloads"
-            validators={{
-              onChange: ({ value }) => {
-                if (value < -1) {
-                  return 'Maximum active downloads must be greater than -1'
-                }
-                return undefined
-              }
-            }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Max Active Downloads"
-                  value={(field.state.value as number) ?? 3}
-                  onChange={field.handleChange}
-                  max={99999}
-                  description="Maximum number of downloading torrents"
-                  allowUnlimited={true}
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
-                )}
-              </div>
-            )}
-          </form.Field>
-
-          <form.Field
-            name="max_active_uploads"
-            validators={{
-              onChange: ({ value }) => {
-                if (value < -1) {
-                  return 'Maximum active uploads must be greater than -1'
-                }
-                return undefined
-              }
-            }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Max Active Uploads"
-                  value={(field.state.value as number) ?? 3}
-                  onChange={field.handleChange}
-                  max={99999}
-                  description="Maximum number of uploading torrents"
-                  allowUnlimited={true}
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
-                )}
-              </div>
-            )}
-          </form.Field>
-
-          <form.Field
-            name="max_active_torrents"
-            validators={{
-              onChange: ({ value }) => {
-                if (value < -1) {
-                  return 'Maximum active torrents must be greater than -1'
-                }
-                return undefined
-              }
-            }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInputWithUnlimited
-                  label="Max Active Torrents"
-                  value={(field.state.value as number) ?? 5}
-                  onChange={field.handleChange}
-                  max={99999}
-                  description="Total maximum active torrents"
-                  allowUnlimited={true}
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
-                )}
-              </div>
-            )}
-          </form.Field>
-
-          <form.Field name="max_active_checking_torrents">
-            {(field) => (
-              <NumberInputWithUnlimited
-                label="Max Checking Torrents"
-                value={(field.state.value as number) ?? 1}
-                onChange={field.handleChange}
-                max={99999}
-                description="Maximum torrents checking simultaneously"
-                allowUnlimited={true}
-              />
-            )}
-          </form.Field>
-        </div>
-      </div>
-
-      <div className="flex justify-end pt-4">
+      footer={(
         <form.Subscribe
           selector={(state) => [state.canSubmit, state.isSubmitting]}
         >
@@ -235,7 +123,121 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
             </Button>
           )}
         </form.Subscribe>
+      )}
+    >
+      <div className="space-y-6">
+        <div className="space-y-6">
+          <form.Field name="queueing_enabled">
+            {(field) => (
+              <SwitchSetting
+                label="Enable Queueing"
+                checked={(field.state.value as boolean) ?? false}
+                onCheckedChange={field.handleChange}
+                description="Limit the number of active torrents"
+              />
+            )}
+          </form.Field>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field
+              name="max_active_downloads"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < -1) {
+                    return "Maximum active downloads must be greater than -1"
+                  }
+                  return undefined
+                },
+              }}
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label="Max Active Downloads"
+                    value={(field.state.value as number) ?? 3}
+                    onChange={field.handleChange}
+                    max={99999}
+                    description="Maximum number of downloading torrents"
+                    allowUnlimited={true}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
+              )}
+            </form.Field>
+
+            <form.Field
+              name="max_active_uploads"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < -1) {
+                    return "Maximum active uploads must be greater than -1"
+                  }
+                  return undefined
+                },
+              }}
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label="Max Active Uploads"
+                    value={(field.state.value as number) ?? 3}
+                    onChange={field.handleChange}
+                    max={99999}
+                    description="Maximum number of uploading torrents"
+                    allowUnlimited={true}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
+              )}
+            </form.Field>
+
+            <form.Field
+              name="max_active_torrents"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < -1) {
+                    return "Maximum active torrents must be greater than -1"
+                  }
+                  return undefined
+                },
+              }}
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label="Max Active Torrents"
+                    value={(field.state.value as number) ?? 5}
+                    onChange={field.handleChange}
+                    max={99999}
+                    description="Total maximum active torrents"
+                    allowUnlimited={true}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
+              )}
+            </form.Field>
+
+            <form.Field name="max_active_checking_torrents">
+              {(field) => (
+                <NumberInputWithUnlimited
+                  label="Max Checking Torrents"
+                  value={(field.state.value as number) ?? 1}
+                  onChange={field.handleChange}
+                  max={99999}
+                  description="Maximum torrents checking simultaneously"
+                  allowUnlimited={true}
+                />
+              )}
+            </form.Field>
+          </div>
+        </div>
       </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

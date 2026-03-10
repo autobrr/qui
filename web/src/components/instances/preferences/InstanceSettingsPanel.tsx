@@ -16,6 +16,8 @@ import { useForm } from "@tanstack/react-form"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 interface InstanceSettingsPanelProps {
   instance: Instance
   onSuccess?: () => void
@@ -121,14 +123,28 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
   }, [instance, form])
 
   return (
-    <div className="space-y-6">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          form.handleSubmit()
-        }}
-        className="space-y-6"
-      >
+    <PreferencesFormShell
+      onSubmit={(e) => {
+        e.preventDefault()
+        form.handleSubmit()
+      }}
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {(isSubmitting || isUpdating) ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
+    >
+      <div className="space-y-6">
         {/* Connection Settings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field
@@ -380,24 +396,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
             )}
           </div>
         </div>
-
-        {/* Save Button */}
-        <div className="flex justify-end">
-          <form.Subscribe
-            selector={(state) => [state.canSubmit, state.isSubmitting]}
-          >
-            {([canSubmit, isSubmitting]) => (
-              <Button
-                type="submit"
-                disabled={!canSubmit || isSubmitting || isUpdating}
-                className="min-w-32"
-              >
-                {(isSubmitting || isUpdating) ? "Saving..." : "Save Changes"}
-              </Button>
-            )}
-          </form.Subscribe>
-        </div>
-      </form>
-    </div>
+      </div>
+    </PreferencesFormShell>
   )
 }
