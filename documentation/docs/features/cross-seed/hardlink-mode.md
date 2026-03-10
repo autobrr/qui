@@ -103,7 +103,7 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
   - **FreeBSD**: Not currently supported
 
 :::note
-Windows reflink mode uses ReFS block cloning (requiring an ReFS filesystem). NTFS is not supported. If reflink creation fails, fallback still depends on the existing "Fallback to regular mode" setting.
+Windows reflink mode uses ReFS block cloning (requiring a ReFS filesystem). NTFS is not supported. If the matched source path is a symlink, qui resolves it before cloning, and the resolved source plus the reflink base directory still need to be on the same ReFS volume. If reflink creation fails, fallback still depends on the existing "Fallback to regular mode" setting.
 :::
 
 :::tip
