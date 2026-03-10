@@ -10861,6 +10861,19 @@ type reflinkModeResult struct {
 	Result InstanceCrossSeedResult
 }
 
+func shouldWarnForReflinkCreateError(err error) bool {
+	if !errors.Is(err, reflinktree.ErrReflinkUnsupported) {
+		return false
+	}
+
+	type multiUnwrapper interface {
+		Unwrap() []error
+	}
+
+	var joined multiUnwrapper
+	return !errors.As(err, &joined)
+}
+
 // processReflinkMode attempts to add a cross-seed torrent using reflink (copy-on-write) mode.
 // This creates a reflink tree matching the incoming torrent's layout, allowing safe
 // modification of cloned files without affecting originals.
@@ -11081,7 +11094,11 @@ func (s *Service) processReflinkMode(
 
 	// Create reflink tree on disk
 	if err := reflinktree.Create(plan); err != nil {
-		log.Error().
+		logEvent := log.Error()
+		if shouldWarnForReflinkCreateError(err) {
+			logEvent = log.Warn()
+		}
+		logEvent.
 			Err(err).
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
