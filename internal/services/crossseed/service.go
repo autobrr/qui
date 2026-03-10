@@ -241,6 +241,11 @@ const (
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
 
+var (
+	completionCheckingPollInterval = 2 * time.Second
+	completionCheckingTimeout      = 5 * time.Minute
+)
+
 var completionRateLimitTokens = []string{
 	"429",
 	"rate limit",
@@ -1459,13 +1464,24 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
 
-	err = s.executeCompletionSearchWithRetry(ctx, instanceID, &torrent, settings, completionSettings)
+	readyTorrent, err := s.waitForCompletionTorrentReady(ctx, instanceID, torrent)
 	if err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
+		return
+	}
+
+	err = s.executeCompletionSearchWithRetry(ctx, instanceID, readyTorrent, settings, completionSettings)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", readyTorrent.Hash).
+			Str("name", readyTorrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
 	}
 }
@@ -1484,6 +1500,94 @@ func (s *Service) getCompletionLane(instanceID int) *completionLane {
 		s.completionLanes[instanceID] = lane
 	}
 	return lane
+}
+
+func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID int, eventTorrent qbt.Torrent) (*qbt.Torrent, error) {
+	current, err := s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isCompletionCheckingState(current.State) {
+		if current.Progress < 1.0 {
+			return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, current.Name, current.Progress)
+		}
+		return current, nil
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Str("hash", current.Hash).
+		Str("name", current.Name).
+		Str("state", string(current.State)).
+		Float64("progress", current.Progress).
+		Msg("[CROSSSEED-COMPLETION] Deferring completion search while torrent is checking")
+
+	timeout := time.NewTimer(completionCheckingTimeout)
+	defer timeout.Stop()
+
+	ticker := time.NewTicker(completionCheckingPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timeout.C:
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("hash", current.Hash).
+				Str("name", current.Name).
+				Str("state", string(current.State)).
+				Float64("progress", current.Progress).
+				Dur("timeout", completionCheckingTimeout).
+				Msg("[CROSSSEED-COMPLETION] Timed out waiting for torrent checking to finish")
+			return nil, fmt.Errorf("completion torrent %s still checking after %s", current.Name, completionCheckingTimeout)
+		case <-ticker.C:
+			current, err = s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
+			if err != nil {
+				return nil, err
+			}
+			if isCompletionCheckingState(current.State) {
+				continue
+			}
+			if current.Progress < 1.0 {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("hash", current.Hash).
+					Str("name", current.Name).
+					Str("state", string(current.State)).
+					Float64("progress", current.Progress).
+					Msg("[CROSSSEED-COMPLETION] Torrent finished checking but is still incomplete")
+				return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, current.Name, current.Progress)
+			}
+			return current, nil
+		}
+	}
+}
+
+func (s *Service) getCompletionTorrent(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
+	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
+	defer cancel()
+
+	torrents, err := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{
+		Hashes: []string{hash},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load torrents: %w", err)
+	}
+	if len(torrents) == 0 {
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+	}
+
+	torrent := torrents[0]
+	return &torrent, nil
+}
+
+func isCompletionCheckingState(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStateCheckingDl ||
+		state == qbt.TorrentStateCheckingUp ||
+		state == qbt.TorrentStateCheckingResumeData
 }
 
 func (s *Service) executeCompletionSearchWithRetry(
