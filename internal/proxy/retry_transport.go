@@ -159,12 +159,8 @@ func prepareRequestReplay(req *http.Request) (requestReplayState, error) {
 }
 
 func cloneRequestForAttempt(req *http.Request, attempt int) (*http.Request, error) {
-	if attempt == 0 {
-		return req, nil
-	}
-
 	reqClone := req.Clone(req.Context())
-	if req.Body == nil {
+	if attempt == 0 || req.Body == nil {
 		return reqClone, nil
 	}
 
@@ -214,8 +210,8 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	authRetried := false
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		reqClone, err := cloneRequestForAttempt(req, attempt)
+	for attempt, sendAttempt := 0, 0; attempt <= maxRetries; sendAttempt++ {
+		reqClone, err := cloneRequestForAttempt(req, sendAttempt)
 		if err != nil {
 			return nil, err
 		}
@@ -255,6 +251,8 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err := waitForRetry(req, backoff); err != nil {
 			return nil, err
 		}
+
+		attempt++
 	}
 
 	return nil, lastErr
