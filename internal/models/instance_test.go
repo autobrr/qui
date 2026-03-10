@@ -364,6 +364,97 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 	assert.Equal(t, "http://localhost:9091", updated.Host, "updated host should match")
 }
 
+func TestInstanceStoreRejectsInvalidLinkDirName(t *testing.T) {
+	ctx := t.Context()
+
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	encryptionKey := make([]byte, 32)
+	for i := range encryptionKey {
+		encryptionKey[i] = byte(i)
+	}
+
+	db := newMockQuerier(sqlDB)
+
+	store, err := NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE instances (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name_id INTEGER NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
+			password_encrypted TEXT NOT NULL,
+			basic_username_id INTEGER,
+			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			link_dir_name TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
+			last_connected_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
+		);
+
+		CREATE VIEW instances_view AS
+		SELECT
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order,
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.link_dir_name,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
+		FROM instances i
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
+	`)
+	require.NoError(t, err)
+
+	invalidLinkDirName := "../xseed"
+	_, err = store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, &invalidLinkDirName)
+	require.ErrorContains(t, err, "invalid link directory name")
+
+	instance, err := store.Create(ctx, "Valid Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, nil)
+	require.NoError(t, err)
+
+	_, err = store.Update(ctx, instance.ID, "Valid Instance", "http://localhost:8080", "testuser", "", nil, nil, &InstanceUpdateParams{LinkDirName: &invalidLinkDirName})
+	require.ErrorContains(t, err, "invalid link directory name")
+}
+
 // TestInstanceStoreEmptyUsernameSelfHealing verifies that creating an instance with
 // empty username works even when the empty string doesn't exist in string_pool.
 // This tests the fix for the bug where cleanup could delete the empty string,

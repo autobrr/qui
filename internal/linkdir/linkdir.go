@@ -15,7 +15,7 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
-func validateInstanceDirName(name string) error {
+func ValidateInstanceDirName(name string) error {
 	switch trimmed := strings.TrimSpace(name); {
 	case trimmed == "":
 		return errors.New("instance directory name cannot be empty")
@@ -43,7 +43,7 @@ func EffectiveInstanceDirName(instanceName, override string) (string, error) {
 	if name == "" {
 		name = instanceName
 	}
-	if err := validateInstanceDirName(name); err != nil {
+	if err := ValidateInstanceDirName(name); err != nil {
 		return "", err
 	}
 	return name, nil
@@ -102,7 +102,7 @@ func BuildDestDir(baseDir, preset, groupName, torrentHash, torrentName string, c
 		}
 		return groupDestDir(baseDir, groupName, isolationFolder), nil
 	case "by-instance":
-		if err := validateInstanceDirName(groupName); err != nil {
+		if err := ValidateInstanceDirName(groupName); err != nil {
 			return "", err
 		}
 		return groupDestDir(baseDir, groupName, isolationFolder), nil

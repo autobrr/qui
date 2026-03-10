@@ -20,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/linkdir"
 )
 
 var ErrInstanceNotFound = errors.New("instance not found")
@@ -359,6 +360,9 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 	linkDirValue := ""
 	if linkDirName != nil {
+		if err := linkdir.ValidateInstanceDirName(*linkDirName); err != nil {
+			return nil, fmt.Errorf("invalid link directory name: %w", err)
+		}
 		linkDirValue = *linkDirName
 	}
 
@@ -696,6 +700,12 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	if params != nil {
+		if params.LinkDirName != nil {
+			if err := linkdir.ValidateInstanceDirName(*params.LinkDirName); err != nil {
+				return nil, fmt.Errorf("invalid link directory name: %w", err)
+			}
+		}
+
 		if params.TLSSkipVerify != nil {
 			query += ", tls_skip_verify = ?"
 			args = append(args, BoolToSQLite(*params.TLSSkipVerify))

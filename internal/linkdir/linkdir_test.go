@@ -33,6 +33,13 @@ func TestEffectiveInstanceDirName_RejectsTraversal(t *testing.T) {
 	require.ErrorContains(t, err, "path separators")
 }
 
+func TestValidateInstanceDirName(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, ValidateInstanceDirName("movies-xseed"))
+	require.ErrorContains(t, ValidateInstanceDirName("../escape"), "path separators")
+}
+
 func TestBuildDestDir_ByInstanceUsesOverride(t *testing.T) {
 	t.Parallel()
 

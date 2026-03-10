@@ -209,6 +209,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				HardlinkDirPreset:        instances[i].HardlinkDirPreset,
 				LinkDirName:              instances[i].LinkDirName,
 				UseReflinks:              instances[i].UseReflinks,
+				FallbackToRegularMode:    instances[i].FallbackToRegularMode,
 				Connected:                false,
 				HasDecryptionError:       false,
 				SortOrder:                instances[i].SortOrder,
