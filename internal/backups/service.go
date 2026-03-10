@@ -51,6 +51,14 @@ type BackupProgress struct {
 	Percentage float64
 }
 
+type exportFailureKind int
+
+const (
+	exportFailureFatal exportFailureKind = iota
+	exportFailureMetadataUnavailable
+	exportFailureRecoverable
+)
+
 type missingTorrent struct {
 	hash    string
 	name    string
@@ -77,7 +85,13 @@ type Service struct {
 	progress   map[int64]*BackupProgress
 	progressMu sync.RWMutex
 
-	now func() time.Time
+	listTorrents     func(context.Context, int) ([]qbt.Torrent, error)
+	exportTorrent    func(context.Context, int, string) ([]byte, string, string, error)
+	getCategories    func(context.Context, int) (map[string]qbt.Category, error)
+	getTags          func(context.Context, int) ([]string, error)
+	getWebAPIVersion func(context.Context, int) (string, error)
+	probeInstance    func(context.Context, int) error
+	now              func() time.Time
 }
 
 type job struct {
@@ -94,6 +108,7 @@ type Manifest struct {
 	TorrentCount int                                `json:"torrentCount"`
 	Categories   map[string]models.CategorySnapshot `json:"categories,omitempty"`
 	Tags         []string                           `json:"tags,omitempty"`
+	Warnings     []ManifestWarning                  `json:"warnings,omitempty"`
 	Items        []ManifestItem                     `json:"items"`
 }
 
@@ -108,6 +123,12 @@ type ManifestItem struct {
 	InfoHashV2  *string  `json:"infohashV2,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
+}
+
+type ManifestWarning struct {
+	Hash   string `json:"hash"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
 }
 
 func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
@@ -137,7 +158,7 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
 	}
 
-	return &Service{
+	svc := &Service{
 		store:       store,
 		syncManager: syncManager,
 		jackettSvc:  jackettService,
@@ -149,6 +170,28 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		progress:    make(map[int64]*BackupProgress),
 		now:         func() time.Time { return time.Now().UTC() },
 	}
+
+	svc.listTorrents = func(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+		return svc.syncManager.GetAllTorrents(ctx, instanceID)
+	}
+	svc.exportTorrent = func(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error) {
+		return svc.syncManager.ExportTorrent(ctx, instanceID, hash)
+	}
+	svc.getCategories = func(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
+		return svc.syncManager.GetCategories(ctx, instanceID)
+	}
+	svc.getTags = func(ctx context.Context, instanceID int) ([]string, error) {
+		return svc.syncManager.GetTags(ctx, instanceID)
+	}
+	svc.getWebAPIVersion = func(ctx context.Context, instanceID int) (string, error) {
+		return svc.syncManager.GetInstanceWebAPIVersion(ctx, instanceID)
+	}
+	svc.probeInstance = func(ctx context.Context, instanceID int) error {
+		_, err := svc.getWebAPIVersion(ctx, instanceID)
+		return err
+	}
+
+	return svc
 }
 
 func normalizeBackupSettings(settings *models.BackupSettings) bool {
@@ -515,7 +558,11 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			run.CategoryCounts = result.categoryCounts
 			run.Categories = result.categories
 			run.Tags = result.tags
-			run.ErrorMessage = nil
+			if result.warningSummary != "" {
+				run.ErrorMessage = &result.warningSummary
+			} else {
+				run.ErrorMessage = nil
+			}
 			return nil
 		})
 
@@ -536,6 +583,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			BackupKind:         j.kind,
 			BackupRunID:        j.runID,
 			BackupTorrentCount: result.torrentCount,
+			ErrorMessage:       result.warningSummary,
 			StartedAt:          &start,
 			CompletedAt:        &now,
 		})
@@ -556,6 +604,8 @@ type backupResult struct {
 	totalBytes      int64
 	torrentCount    int
 	categoryCounts  map[string]int
+	warningSummary  string
+	warnings        []ManifestWarning
 	items           []models.BackupItem
 	settings        *models.BackupSettings
 	categories      map[string]models.CategorySnapshot
@@ -569,7 +619,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.normalizeAndPersistSettings(ctx, settings)
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, j.instanceID)
+	torrents, err := s.listTorrents(ctx, j.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load torrents: %w", err)
 	}
@@ -599,7 +649,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
-		categories, err := s.syncManager.GetCategories(ctx, j.instanceID)
+		categories, err := s.getCategories(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load categories: %w", err)
 		}
@@ -613,7 +663,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotTags []string
 	if settings.IncludeTags {
-		tags, err := s.syncManager.GetTags(ctx, j.instanceID)
+		tags, err := s.getTags(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load tags: %w", err)
 		}
@@ -627,7 +677,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	webAPIVersion := ""
 	patchTrackers := false
-	if version, err := s.syncManager.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
+	if version, err := s.getWebAPIVersion(ctx, j.instanceID); err != nil {
 		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
 	} else {
 		webAPIVersion = version
@@ -652,6 +702,8 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	items := make([]models.BackupItem, 0, len(torrents))
 	manifestItems := make([]ManifestItem, 0, len(torrents))
+	manifestWarnings := make([]ManifestWarning, 0)
+	instanceAvailable := true
 	usedPaths := make(map[string]int)
 	categoryCounts := make(map[string]int)
 	var totalBytes int64
@@ -692,13 +744,24 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
+			if !instanceAvailable {
+				manifestWarnings = append(manifestWarnings, ManifestWarning{
+					Hash:   torrent.Hash,
+					Name:   torrent.Name,
+					Reason: "qBittorrent unavailable after earlier export failure",
+				})
+				s.updateProgress(j.runID, idx+1)
+				continue
+			}
+
 			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
 				return nil, err
 			}
 			var tracker string
-			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			data, suggestedName, tracker, err = s.exportTorrent(ctx, j.instanceID, torrent.Hash)
 			if err != nil {
-				if isExportMetadataUnavailable(err) {
+				switch classifyExportFailure(err) {
+				case exportFailureMetadataUnavailable:
 					log.Warn().
 						Err(err).
 						Str("hash", torrent.Hash).
@@ -707,8 +770,38 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 						Msg("Skipping torrent export; metadata not downloaded yet")
 					s.updateProgress(j.runID, idx+1)
 					continue
+				case exportFailureRecoverable:
+					warning := ManifestWarning{
+						Hash:   torrent.Hash,
+						Name:   torrent.Name,
+						Reason: simplifyExportWarning(err),
+					}
+					manifestWarnings = append(manifestWarnings, warning)
+
+					log.Warn().
+						Err(err).
+						Str("hash", torrent.Hash).
+						Str("name", torrent.Name).
+						Int("instanceID", j.instanceID).
+						Msg("Recoverable torrent export failure during backup")
+					s.updateProgress(j.runID, idx+1)
+
+					if probeErr := s.probeInstance(ctx, j.instanceID); probeErr != nil {
+						if len(manifestItems) == 0 {
+							return nil, fmt.Errorf("backup aborted after qBittorrent export failure and instance became unavailable: %w", err)
+						}
+
+						instanceAvailable = false
+						log.Warn().
+							Err(probeErr).
+							Int("instanceID", j.instanceID).
+							Int64("runID", j.runID).
+							Msg("qBittorrent became unavailable during backup; continuing with cached torrents only")
+					}
+					continue
+				case exportFailureFatal:
+					return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
 				}
-				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
 			}
 			trackerDomain = tracker
 		}
@@ -831,6 +924,13 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		s.updateProgress(j.runID, idx+1)
 	}
 
+	if len(manifestItems) == 0 {
+		if len(manifestWarnings) > 0 {
+			return nil, fmt.Errorf("backup produced no torrent exports after %d skipped export(s)", len(manifestWarnings))
+		}
+		return nil, errors.New("backup produced no torrent exports")
+	}
+
 	manifest := Manifest{
 		InstanceID:   j.instanceID,
 		Kind:         string(j.kind),
@@ -838,6 +938,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		TorrentCount: len(manifestItems),
 		Categories:   snapshotCategories,
 		Tags:         snapshotTags,
+		Warnings:     manifestWarnings,
 		Items:        manifestItems,
 	}
 
@@ -846,17 +947,17 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return nil, fmt.Errorf("marshal manifest: %w", err)
 	}
 
-	manifestPointer := &manifestRelPath
 	if err := os.WriteFile(manifestAbsPath, manifestData, 0o644); err != nil {
-		log.Warn().Err(err).Str("path", manifestAbsPath).Msg("Failed to write manifest to disk")
-		manifestPointer = nil
+		return nil, fmt.Errorf("write manifest: %w", err)
 	}
 
 	return &backupResult{
-		manifestRelPath: manifestPointer,
+		manifestRelPath: &manifestRelPath,
 		totalBytes:      totalBytes,
 		torrentCount:    len(manifestItems),
 		categoryCounts:  categoryCounts,
+		warningSummary:  buildBackupWarningSummary(manifestWarnings),
+		warnings:        manifestWarnings,
 		categories:      snapshotCategories,
 		tags:            snapshotTags,
 		items:           items,
@@ -998,6 +1099,58 @@ func isExportMetadataUnavailable(err error) bool {
 		return true
 	}
 	return strings.Contains(err.Error(), "status code: 409")
+}
+
+func classifyExportFailure(err error) exportFailureKind {
+	if isExportMetadataUnavailable(err) {
+		return exportFailureMetadataUnavailable
+	}
+	if isRecoverableExportFailure(err) {
+		return exportFailureRecoverable
+	}
+	return exportFailureFatal
+}
+
+func isRecoverableExportFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "timeout") ||
+		strings.Contains(message, "deadline exceeded") ||
+		strings.Contains(message, "connection reset by peer") ||
+		strings.Contains(message, "connection refused") ||
+		strings.Contains(message, "broken pipe") ||
+		strings.Contains(message, "unexpected eof") ||
+		strings.Contains(message, "status code: 500") ||
+		strings.Contains(message, "status code: 502") ||
+		strings.Contains(message, "status code: 503") ||
+		strings.Contains(message, "status code: 504")
+}
+
+func simplifyExportWarning(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	message := strings.TrimSpace(err.Error())
+	return strings.TrimPrefix(message, "failed to export torrent: ")
+}
+
+func buildBackupWarningSummary(warnings []ManifestWarning) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+
+	if len(warnings) == 1 {
+		return "Partial backup: skipped 1 torrent export. See manifest warnings for details."
+	}
+
+	return fmt.Sprintf("Partial backup: skipped %d torrent exports. See manifest warnings for details.", len(warnings))
 }
 
 func (s *Service) GetProgress(runID int64) *BackupProgress {
@@ -1288,12 +1441,28 @@ func (s *Service) DeleteAllRuns(ctx context.Context, instanceID int) error {
 }
 
 func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, error) {
-	items, err := s.store.ListItems(ctx, runID)
+	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
 
-	run, err := s.store.GetRun(ctx, runID)
+	if run.ManifestPath != nil {
+		manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
+		data, readErr := os.ReadFile(manifestPath)
+		if readErr == nil {
+			var manifest Manifest
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return nil, fmt.Errorf("parse manifest: %w", err)
+			}
+			return &manifest, nil
+		}
+		if !errors.Is(readErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("read manifest: %w", readErr)
+		}
+		log.Warn().Err(readErr).Int64("runID", runID).Str("path", manifestPath).Msg("Backup manifest file missing; falling back to database reconstruction")
+	}
+
+	items, err := s.store.ListItems(ctx, runID)
 	if err != nil {
 		return nil, err
 	}

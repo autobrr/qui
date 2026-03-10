@@ -8,6 +8,12 @@ description: Schedule and restore qBittorrent instance backups.
 
 qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later.
 
+## Partial Backups
+
+If qBittorrent crashes, hangs, or drops export requests mid-backup, qui now keeps the torrents it already exported and marks the run as completed with warnings instead of discarding the whole backup. The run history highlights these partial backups, and the backup manifest lists each skipped torrent with the export error that caused it.
+
+This is a resilience layer for upstream qBittorrent export bugs, especially around some hybrid torrents. qui does not try to rewrite hashes or guess around the qBittorrent API; it preserves the usable subset and tells you exactly what was skipped.
+
 ## Restore Modes
 
 Once backups are enabled for an instance the backlog UI exposes a **Restore** action for each run. Restores support three distinct modes:
