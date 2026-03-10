@@ -115,7 +115,7 @@ func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[stri
 	clients := make(map[int]*quiqbt.Client, len(torrentsByInstanceName))
 
 	for instanceName, torrents := range torrentsByInstanceName {
-		instance, createErr := instanceStore.Create(context.Background(), instanceName, "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+		instance, createErr := instanceStore.Create(context.Background(), instanceName, "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 		require.NoError(t, createErr)
 
 		instanceIDs[instanceName] = instance.ID
