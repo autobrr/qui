@@ -62,6 +62,11 @@ const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
 
+interface PersistSettingsCallbacks {
+  onSuccess?: () => void
+  onError?: (error: unknown) => void
+}
+
 export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card", formId }: TrackerReannounceFormProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const { formatISOTimestamp } = useDateTimeFormatters()
@@ -222,7 +227,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     })
   }
 
-  const persistSettings = (nextSettings: InstanceReannounceSettings, successMessage = "Settings saved successfully.") => {
+  const persistSettings = (
+    nextSettings: InstanceReannounceSettings,
+    successMessage = "Settings saved successfully.",
+    callbacks?: PersistSettingsCallbacks
+  ) => {
     if (!instance) {
       toast.error("Instance missing", { description: "Please close and reopen the dialog." })
       return
@@ -246,10 +255,12 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       {
         onSuccess: () => {
           toast.success("Tracker monitoring updated", { description: successMessage })
+          callbacks?.onSuccess?.()
           onSuccess?.()
         },
         onError: (error) => {
           toast.error("Update failed", { description: error instanceof Error ? error.message : "Unable to update settings" })
+          callbacks?.onError?.(error)
         },
       }
     )
@@ -271,9 +282,12 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const confirmEnable = () => {
     if (!pendingEnableSettings) return
-    persistSettings(pendingEnableSettings)
-    setPendingEnableSettings(null)
-    setShowEnableDialog(false)
+    persistSettings(pendingEnableSettings, "Settings saved successfully.", {
+      onSuccess: () => {
+        setPendingEnableSettings(null)
+        setShowEnableDialog(false)
+      },
+    })
   }
 
   const handleEnableDialogChange = (open: boolean) => {
