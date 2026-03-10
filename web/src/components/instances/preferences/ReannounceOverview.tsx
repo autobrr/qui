@@ -4,6 +4,7 @@
  */
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -74,6 +75,7 @@ export function ReannounceOverview({
   const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
+  const [pendingEnableInstance, setPendingEnableInstance] = useState<Instance | null>(null)
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -91,7 +93,7 @@ export function ReannounceOverview({
     })),
   })
 
-  const handleToggleEnabled = (instance: Instance, enabled: boolean) => {
+  const saveEnabledState = (instance: Instance, enabled: boolean) => {
     const payload: Partial<InstanceFormData> = {
       name: instance.name,
       host: instance.host,
@@ -124,6 +126,21 @@ export function ReannounceOverview({
     )
   }
 
+  const handleToggleEnabled = (instance: Instance, enabled: boolean) => {
+    if (enabled) {
+      setPendingEnableInstance(instance)
+      return
+    }
+
+    saveEnabledState(instance, false)
+  }
+
+  const confirmEnable = () => {
+    if (!pendingEnableInstance) return
+    saveEnabledState(pendingEnableInstance, true)
+    setPendingEnableInstance(null)
+  }
+
   const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
     succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
@@ -154,121 +171,122 @@ export function ReannounceOverview({
   }
 
   return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[300px]">
-              <p>
-                qBittorrent doesn't retry failed announces quickly. When a tracker is slow to
-                register a new upload or returns an error, you may be stuck waiting. qui handles
-                this automatically while never spamming trackers.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-        <CardDescription>
-          Monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
-        </CardDescription>
-      </CardHeader>
+    <>
+      <Card>
+        <CardHeader className="space-y-2">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">
+                <p>
+                  qBittorrent doesn't retry failed announces quickly. When a tracker is slow to
+                  register a new upload or returns an error, you may be stuck waiting. qui handles
+                  this automatically while never spamming trackers.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <CardDescription>
+            Monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
+          </CardDescription>
+        </CardHeader>
 
-      <CardContent className="p-0">
-        <Accordion
-          type="multiple"
-          value={expandedInstances}
-          onValueChange={setExpandedInstances}
-          className="border-t"
-        >
-          {activeInstances.map((instance, index) => {
-            const activityQuery = activityQueries[index]
-            const events = activityQuery?.data ?? []
-            const stats = computeStats(events)
-            const settings = instance.reannounceSettings
-            const isEnabled = settings?.enabled ?? false
-            const hideSkipped = hideSkippedMap[instance.id] ?? true
-            const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
-            // Filter by outcome and search term, limit to 50 events for display
-            const filteredEvents = events
-              .filter((e) => {
-                if (hideSkipped && e.outcome === "skipped") return false
-                if (searchTerm) {
-                  const nameMatch = e.torrentName?.toLowerCase().includes(searchTerm)
-                  const hashMatch = e.hash.toLowerCase().includes(searchTerm)
-                  if (!nameMatch && !hashMatch) return false
-                }
-                return true
-              })
-              .slice(-50)
-              .reverse()
+        <CardContent className="p-0">
+          <Accordion
+            type="multiple"
+            value={expandedInstances}
+            onValueChange={setExpandedInstances}
+            className="border-t"
+          >
+            {activeInstances.map((instance, index) => {
+              const activityQuery = activityQueries[index]
+              const events = activityQuery?.data ?? []
+              const stats = computeStats(events)
+              const settings = instance.reannounceSettings
+              const isEnabled = settings?.enabled ?? false
+              const hideSkipped = hideSkippedMap[instance.id] ?? true
+              const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
+              // Filter by outcome and search term, limit to 50 events for display
+              const filteredEvents = events
+                .filter((e) => {
+                  if (hideSkipped && e.outcome === "skipped") return false
+                  if (searchTerm) {
+                    const nameMatch = e.torrentName?.toLowerCase().includes(searchTerm)
+                    const hashMatch = e.hash.toLowerCase().includes(searchTerm)
+                    if (!nameMatch && !hashMatch) return false
+                  }
+                  return true
+                })
+                .slice(-50)
+                .reverse()
 
-            return (
-              <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
-                <div className="grid grid-cols-[1fr_auto] items-center px-6">
-                  <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="font-medium truncate">{instance.name}</span>
-                        {isEnabled && stats.successToday > 0 && (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                            {stats.successToday} today
-                          </Badge>
-                        )}
-                        {isEnabled && stats.failedToday > 0 && (
-                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                            {stats.failedToday} failed
-                          </Badge>
+              return (
+                <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
+                  <div className="grid grid-cols-[1fr_auto] items-center px-6">
+                    <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="font-medium truncate">{instance.name}</span>
+                          {isEnabled && stats.successToday > 0 && (
+                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                              {stats.successToday} today
+                            </Badge>
+                          )}
+                          {isEnabled && stats.failedToday > 0 && (
+                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                              {stats.failedToday} failed
+                            </Badge>
+                          )}
+                        </div>
+
+                        {isEnabled && stats.lastActivity && (
+                          <span className="text-xs text-muted-foreground hidden sm:block">
+                            {formatRelativeTime(stats.lastActivity)}
+                          </span>
                         )}
                       </div>
-
-                      {isEnabled && stats.lastActivity && (
-                        <span className="text-xs text-muted-foreground hidden sm:block">
-                          {formatRelativeTime(stats.lastActivity)}
+                    </AccordionTrigger>
+                    <div className="flex items-center gap-4 py-4">
+                      <div
+                        className="flex items-center gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className={cn(
+                          "text-xs font-medium",
+                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                        )}>
+                          {isEnabled ? "On" : "Off"}
                         </span>
-                      )}
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
+                          disabled={isUpdating}
+                          className="scale-90"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const itemValue = String(instance.id)
+                          if (expandedInstances.includes(itemValue)) {
+                            setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                          } else {
+                            setExpandedInstances([...expandedInstances, itemValue])
+                          }
+                        }}
+                        aria-expanded={expandedInstances.includes(String(instance.id))}
+                        aria-label={expandedInstances.includes(String(instance.id)) ? "Collapse" : "Expand"}
+                      >
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+                      </button>
                     </div>
-                  </AccordionTrigger>
-                  <div className="flex items-center gap-4 py-4">
-                    <div
-                      className="flex items-center gap-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span className={cn(
-                        "text-xs font-medium",
-                        isEnabled ? "text-emerald-500" : "text-muted-foreground"
-                      )}>
-                        {isEnabled ? "On" : "Off"}
-                      </span>
-                      <Switch
-                        checked={isEnabled}
-                        onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
-                        disabled={isUpdating}
-                        className="scale-90"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const itemValue = String(instance.id)
-                        if (expandedInstances.includes(itemValue)) {
-                          setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
-                        } else {
-                          setExpandedInstances([...expandedInstances, itemValue])
-                        }
-                      }}
-                      aria-expanded={expandedInstances.includes(String(instance.id))}
-                      aria-label={expandedInstances.includes(String(instance.id)) ? "Collapse" : "Expand"}
-                    >
-                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
-                    </button>
                   </div>
-                </div>
 
-                <AccordionContent className="px-6 pb-4">
-                  <div className="space-y-4">
+                  <AccordionContent className="px-6 pb-4">
+                    <div className="space-y-4">
                     {/* Settings summary */}
                     <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
                       <div className="space-y-0.5">
@@ -473,13 +491,24 @@ export function ReannounceOverview({
                         </p>
                       </div>
                     )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )
-          })}
-        </Accordion>
-      </CardContent>
-    </Card>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
+        </CardContent>
+      </Card>
+      <ReannounceEnableWarningDialog
+        open={pendingEnableInstance !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingEnableInstance(null)
+          }
+        }}
+        onConfirm={confirmEnable}
+        confirming={isUpdating}
+      />
+    </>
   )
 }
