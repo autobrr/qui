@@ -132,17 +132,22 @@ func prepareRequestReplay(req *http.Request) (requestReplayState, error) {
 		return requestReplayState{replayable: true}, nil
 	}
 
-	if req.GetBody != nil {
-		return requestReplayState{replayable: true}, nil
-	}
-
 	if req.ContentLength < 0 || req.ContentLength > maxAuthReplayBodySize {
 		return requestReplayState{}, nil
 	}
 
-	body, err := io.ReadAll(req.Body)
+	if req.GetBody != nil {
+		return requestReplayState{replayable: true}, nil
+	}
+
+	originalBody := req.Body
+	body, err := io.ReadAll(originalBody)
+	closeErr := originalBody.Close()
 	if err != nil {
 		return requestReplayState{}, err
+	}
+	if closeErr != nil {
+		return requestReplayState{}, closeErr
 	}
 
 	req.Body = io.NopCloser(bytes.NewReader(body))

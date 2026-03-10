@@ -62,6 +62,16 @@ func (s *stubSessionRefresher) LoginCtx(ctx context.Context) error {
 	return nil
 }
 
+type trackedReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (t *trackedReadCloser) Close() error {
+	t.closed = true
+	return nil
+}
+
 func TestRetryTransport_Success(t *testing.T) {
 	mock := &mockRoundTripper{
 		response: &http.Response{
@@ -294,6 +304,31 @@ func TestRetryTransport_IdempotentMethods(t *testing.T) {
 			assert.Equal(t, 2, mock.attempts, "Should retry idempotent methods")
 		})
 	}
+}
+
+func TestPrepareRequestReplay_ClosesOriginalBody(t *testing.T) {
+	reader := &trackedReadCloser{Reader: strings.NewReader("hashes=abc")}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://proxy.example/api/v2/torrents/setCategory", reader)
+	require.NoError(t, err)
+	req.GetBody = nil
+	req.ContentLength = int64(len("hashes=abc"))
+
+	replay, err := prepareRequestReplay(req)
+	require.NoError(t, err)
+	assert.True(t, replay.replayable)
+	assert.True(t, reader.closed)
+	require.NotNil(t, req.GetBody)
+}
+
+func TestPrepareRequestReplay_DoesNotReplayOversizedGetBodyRequest(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://proxy.example/api/v2/torrents/setCategory", strings.NewReader("x"))
+	require.NoError(t, err)
+	req.ContentLength = maxAuthReplayBodySize + 1
+
+	replay, err := prepareRequestReplay(req)
+	require.NoError(t, err)
+	assert.False(t, replay.replayable)
 }
 
 func TestRetryTransport_ReauthsAndReplaysForbiddenPOST(t *testing.T) {
