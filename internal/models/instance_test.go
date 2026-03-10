@@ -448,11 +448,21 @@ func TestInstanceStoreRejectsInvalidLinkDirName(t *testing.T) {
 	_, err = store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, &invalidLinkDirName)
 	require.ErrorContains(t, err, "invalid link directory name")
 
-	instance, err := store.Create(ctx, "Valid Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, nil)
+	blankLinkDirName := "   "
+	instance, err := store.Create(ctx, "Blank Override Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, &blankLinkDirName)
+	require.NoError(t, err)
+	require.Empty(t, instance.LinkDirName)
+
+	instance, err = store.Create(ctx, "Valid Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
+	originalLinkDirName := instance.LinkDirName
 	_, err = store.Update(ctx, instance.ID, "Valid Instance", "http://localhost:8080", "testuser", "", nil, nil, &InstanceUpdateParams{LinkDirName: &invalidLinkDirName})
 	require.ErrorContains(t, err, "invalid link directory name")
+
+	reloaded, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, originalLinkDirName, reloaded.LinkDirName)
 }
 
 // TestInstanceStoreEmptyUsernameSelfHealing verifies that creating an instance with

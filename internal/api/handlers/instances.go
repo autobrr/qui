@@ -605,9 +605,11 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 
 	req.LinkDirName = normalizeOptionalString(req.LinkDirName)
 
-	// Create instance
-	instance, err := h.instanceStore.Create(
+	settingsPayload := req.ReannounceSettings.toModel(0, nil)
+
+	instance, settings, err := h.instanceStore.CreateWithReannounce(
 		r.Context(),
+		h.reannounceStore,
 		req.Name,
 		req.Host,
 		req.Username,
@@ -617,17 +619,20 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		req.TLSSkipVerify,
 		req.HasLocalFilesystemAccess,
 		req.LinkDirName,
+		settingsPayload,
 	)
 	if err != nil {
+		if errors.Is(err, models.ErrInvalidLinkDirName) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
 		return
 	}
 
-	settings, err := h.persistReannounceSettings(r.Context(), instance.ID, req.ReannounceSettings)
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to save reannounce settings")
-		return
+	if h.reannounceCache != nil && settings != nil {
+		h.reannounceCache.Replace(settings)
 	}
 
 	// Return quickly without testing connection
@@ -742,10 +747,31 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		UseReflinks:              req.UseReflinks,
 		FallbackToRegularMode:    req.FallbackToRegularMode,
 	}
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams)
+	var desiredSettings *models.InstanceReannounceSettings
+	if req.ReannounceSettings != nil {
+		desiredSettings = req.ReannounceSettings.toModel(instanceID, nil)
+	}
+
+	instance, settings, err := h.instanceStore.UpdateWithReannounce(
+		r.Context(),
+		instanceID,
+		req.Name,
+		req.Host,
+		req.Username,
+		req.Password,
+		req.BasicUsername,
+		req.BasicPassword,
+		updateParams,
+		h.reannounceStore,
+		desiredSettings,
+	)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+		if errors.Is(err, models.ErrInvalidLinkDirName) {
+			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		log.Error().Err(err).Msg("Failed to update instance")
@@ -756,16 +782,10 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
 
-	var settings *models.InstanceReannounceSettings
-	if req.ReannounceSettings != nil {
-		var err error
-		settings, err = h.persistReannounceSettings(r.Context(), instanceID, req.ReannounceSettings)
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to save reannounce settings")
-			return
-		}
-	} else {
+	if req.ReannounceSettings == nil {
 		settings = h.loadReannounceSettings(r.Context(), instanceID)
+	} else if h.reannounceCache != nil && settings != nil {
+		h.reannounceCache.Replace(settings)
 	}
 
 	// Return quickly without testing connection
