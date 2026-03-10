@@ -11082,7 +11082,7 @@ func (s *Service) processReflinkMode(
 	// Create reflink tree on disk
 	if err := reflinktree.Create(plan); err != nil {
 		logEvent := log.Error()
-		if errors.Is(err, reflinktree.ErrReflinkUnsupported) {
+		if errors.Is(err, reflinktree.ErrReflinkUnsupported) && errors.Unwrap(err) == nil {
 			logEvent = log.Warn()
 		}
 		logEvent.
