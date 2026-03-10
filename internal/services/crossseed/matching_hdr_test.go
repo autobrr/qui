@@ -99,6 +99,45 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			wantMatch:   true,
 			description: "identical SDR releases should cross-seed",
 		},
+		{
+			name:          "discussion title should match filename HDR10P alias",
+			sourceName:    "End of Watch 2012 Hybrid 2160p UHD BluRay REMUX DV HDR10+ HEVC DTS-HD MA 5.1-FraMeSToR",
+			candidateName: "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv", Size: 50 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv", Size: 50 << 30},
+			},
+			wantMatch:   true,
+			description: "HDR10P filename alias should match HDR10+ title metadata",
+		},
+		{
+			name:          "DV HDR10 plus should not match DV only",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.DV.HDR10+-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.DV-GROUP",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.DV.HDR10+-GROUP.mkv", Size: 40 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.DV-GROUP.mkv", Size: 40 << 30},
+			},
+			wantMatch:   false,
+			description: "adding HDR10+ must remain distinct from DV-only releases",
+		},
+		{
+			name:          "HDR10 plus should not match HDR10",
+			sourceName:    "Movie.2024.2160p.BluRay.x265.HDR10+-GROUP",
+			candidateName: "Movie.2024.2160p.BluRay.x265.HDR10-GROUP",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.HDR10+-GROUP.mkv", Size: 40 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.2160p.BluRay.x265.HDR10-GROUP.mkv", Size: 40 << 30},
+			},
+			wantMatch:   false,
+			description: "HDR10 and HDR10+ remain distinct encodes",
+		},
 		// Collection/streaming service tests
 		{
 			name:          "MA.WEB-DL should NOT match plain WEB-DL",

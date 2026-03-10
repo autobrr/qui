@@ -6,6 +6,7 @@
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { api } from "@/lib/api"
+import type { TagUpdatePlan } from "@/lib/tag-editor"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
@@ -82,8 +83,47 @@ interface ClientMeta {
   excludeTargets?: Array<{ instanceId: number; hash: string }>
 }
 
+type TagBulkActionResult = {
+  action: "add" | "remove"
+  status: "success" | "failed"
+  error?: Error
+}
+
+class TagBulkActionError extends Error {
+  results: TagBulkActionResult[]
+
+  constructor(results: TagBulkActionResult[]) {
+    const succeeded = results.filter(result => result.status === "success").map(result => result.action)
+    const failed = results.filter(result => result.status === "failed").map(result => result.action)
+    const summary = [
+      failed.length > 0 ? `failed to ${failed.join(" and ")}` : "",
+      succeeded.length > 0 ? `after ${succeeded.join(" and ")}` : "",
+    ].filter(Boolean).join(" ")
+
+    super(summary || "Failed to update tags")
+    this.name = "TagBulkActionError"
+    this.results = results
+  }
+}
+
 export function useTorrentActions({ instanceId, instanceIds, onActionComplete }: UseTorrentActionsProps) {
   const queryClient = useQueryClient()
+  const invalidateTorrentCaches = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["torrents-list", instanceId],
+        exact: false,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["torrent-counts", instanceId],
+        exact: false,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["instance-metadata", instanceId],
+        exact: false,
+      }),
+    ])
+  }, [instanceId, queryClient])
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -95,9 +135,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   } = usePersistedDeleteFiles(false)
   const { blockCrossSeeds, setBlockCrossSeeds } = usePersistedCrossSeedBlocklist(instanceId, false)
   const [deleteCrossSeeds, setDeleteCrossSeeds] = useState(false)
-  const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
-  const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
-  const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
+  const [showTagsDialog, setShowTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
@@ -234,12 +272,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       if (variables.action === "delete") {
         setShowDeleteDialog(false)
         setDeleteCrossSeeds(false)
-      } else if (variables.action === "addTags") {
-        setShowAddTagsDialog(false)
-      } else if (variables.action === "setTags") {
-        setShowSetTagsDialog(false)
-      } else if (variables.action === "removeTags") {
-        setShowRemoveTagsDialog(false)
       } else if (variables.action === "setCategory") {
         setShowCategoryDialog(false)
         setShowCreateCategoryDialog(false)
@@ -261,6 +293,124 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       const count = variables.hashes.length || 1
       const torrentText = count === 1 ? "torrent" : "torrents"
       toast.error(`Failed to ${variables.action} ${count} ${torrentText}`, {
+        description: error.message || "An unexpected error occurred",
+      })
+    },
+  })
+
+  const updateTagsMutation = useMutation({
+    mutationFn: async (data: TagUpdatePlan & Omit<TorrentActionData, "action" | "tags">) => {
+      const effectiveFilters = data.filters ? {
+        ...data.filters,
+        categories: data.filters.expandedCategories ?? data.filters.categories ?? [],
+        excludeCategories: data.filters.expandedExcludeCategories ?? data.filters.excludeCategories ?? [],
+      } : undefined
+
+      const sharedPayload = {
+        hashes: data.hashes,
+        instanceIds: data.instanceIds,
+        targets: data.targets,
+        selectAll: data.selectAll,
+        filters: effectiveFilters,
+        search: data.search,
+        excludeHashes: data.excludeHashes,
+        excludeTargets: data.excludeTargets,
+      }
+      const results: TagBulkActionResult[] = []
+
+      const runTagBulkAction = async (action: "add" | "remove", tags: string[]) => {
+        try {
+          await api.bulkAction(instanceId, {
+            ...sharedPayload,
+            action: action === "remove" ? "removeTags" : "addTags",
+            tags: tags.join(","),
+          })
+          results.push({ action, status: "success" })
+        } catch (error) {
+          results.push({
+            action,
+            status: "failed",
+            error: error instanceof Error ? error : new Error("Unknown tag update failure"),
+          })
+        }
+      }
+
+      if (data.remove.length > 0) {
+        await runTagBulkAction("remove", data.remove)
+      }
+
+      if (data.add.length > 0) {
+        await runTagBulkAction("add", data.add)
+      }
+
+      if (results.some(result => result.status === "failed")) {
+        await invalidateTorrentCaches()
+        throw new TagBulkActionError(results)
+      }
+
+      return { results }
+    },
+    onSuccess: async (_, variables) => {
+      setTimeout(() => {
+        queryClient.refetchQueries({
+          queryKey: ["torrents-list", instanceId],
+          exact: false,
+          type: "active",
+        })
+        queryClient.refetchQueries({
+          queryKey: ["torrent-counts", instanceId],
+          exact: false,
+          type: "active",
+        })
+      }, 1000)
+
+      setShowTagsDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
+
+      let toastCount = variables.hashes.length
+      if (variables.clientHashes && variables.clientHashes.length > 0) {
+        toastCount = variables.clientHashes.length
+      }
+      if (typeof variables.clientCount === "number") {
+        toastCount = variables.clientCount
+      }
+
+      const normalizedCount = Math.max(1, toastCount)
+      toast.success(`Updated tags for ${normalizedCount} ${normalizedCount === 1 ? "torrent" : "torrents"}`)
+      onActionComplete?.("setTags")
+    },
+    onError: (error: Error, variables) => {
+      const count = variables.clientCount ?? variables.hashes.length ?? 1
+      const torrentText = count === 1 ? "torrent" : "torrents"
+      if (error instanceof TagBulkActionError) {
+        setShowTagsDialog(false)
+        setContextHashes([])
+        setContextTorrents([])
+        const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
+        const failed = error.results.filter(result => result.status === "failed")
+        const succeededLabel = succeeded.length > 0
+          ? `${succeeded.join(" and ")} ${succeeded.length === 1 ? "succeeded" : "succeeded"}`
+          : ""
+        const failedLabel = failed.length > 0
+          ? `${failed.map(result => result.action).join(" and ")} failed`
+          : "tag update failed"
+        const description = failed
+          .map(result => result.error?.message)
+          .filter((message): message is string => Boolean(message))
+          .join("; ")
+
+        toast.error(`Partially updated tags for ${count} ${torrentText}`, {
+          description: [succeededLabel, failedLabel, description].filter(Boolean).join(". "),
+        })
+        return
+      }
+
+      setShowTagsDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
+      void invalidateTorrentCaches()
+      toast.error(`Failed to update tags for ${count} ${torrentText}`, {
         description: error.message || "An unexpected error occurred",
       })
     },
@@ -418,8 +568,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setContextTorrents([])
   }, [mutation, deleteFiles, instanceIds])
 
-  const handleAddTags = useCallback(async (
-    tags: string[],
+  const handleUpdateTags = useCallback(async (
+    plan: TagUpdatePlan,
     hashes: string[],
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
@@ -427,98 +577,20 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     excludeHashes?: string[],
     clientMeta?: ClientMeta
   ) => {
-    const clientHashes = clientMeta?.clientHashes ?? hashes
-    const clientCount = clientMeta?.totalSelected
-      ?? (clientHashes?.length ?? hashes.length)
-    await mutation.mutateAsync({
-      action: "addTags",
-      instanceIds,
-      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
-      tags: tags.join(","),
-      hashes: isAllSelected ? [] : hashes,
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? search : undefined,
-      excludeHashes: isAllSelected ? excludeHashes : undefined,
-      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
-      clientHashes,
-      clientCount,
-    })
-    setShowAddTagsDialog(false)
-    setContextHashes([])
-    setContextTorrents([])
-  }, [mutation, instanceIds])
-
-  const handleSetTags = useCallback(async (
-    tags: string[],
-    hashes: string[],
-    isAllSelected?: boolean,
-    filters?: TorrentActionData["filters"],
-    search?: string,
-    excludeHashes?: string[],
-    clientMeta?: ClientMeta
-  ) => {
-    const clientHashes = clientMeta?.clientHashes ?? hashes
-    const clientCount = clientMeta?.totalSelected
-      ?? (clientHashes?.length ?? hashes.length)
-    try {
-      await mutation.mutateAsync({
-        action: "setTags",
-        instanceIds,
-        targets: isAllSelected ? undefined : clientMeta?.actionTargets,
-        tags: tags.join(","),
-        hashes: isAllSelected ? [] : hashes,
-        selectAll: isAllSelected,
-        filters: isAllSelected ? filters : undefined,
-        search: isAllSelected ? search : undefined,
-        excludeHashes: isAllSelected ? excludeHashes : undefined,
-        excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
-        clientHashes,
-        clientCount,
-      })
-    } catch (error) {
-      // Fallback to addTags for older qBittorrent versions
-      if ((error as Error).message?.includes("requires qBittorrent")) {
-        await mutation.mutateAsync({
-          action: "addTags",
-          instanceIds,
-          targets: isAllSelected ? undefined : clientMeta?.actionTargets,
-          tags: tags.join(","),
-          hashes: isAllSelected ? [] : hashes,
-          selectAll: isAllSelected,
-          filters: isAllSelected ? filters : undefined,
-          search: isAllSelected ? search : undefined,
-          excludeHashes: isAllSelected ? excludeHashes : undefined,
-          excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
-          clientHashes,
-          clientCount,
-        })
-      } else {
-        throw error
-      }
+    if ((plan.add.length === 0) && (plan.remove.length === 0)) {
+      setShowTagsDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
+      return
     }
-    setShowSetTagsDialog(false)
-    setContextHashes([])
-    setContextTorrents([])
-  }, [mutation, instanceIds])
 
-  const handleRemoveTags = useCallback(async (
-    tags: string[],
-    hashes: string[],
-    isAllSelected?: boolean,
-    filters?: TorrentActionData["filters"],
-    search?: string,
-    excludeHashes?: string[],
-    clientMeta?: ClientMeta
-  ) => {
     const clientHashes = clientMeta?.clientHashes ?? hashes
     const clientCount = clientMeta?.totalSelected
       ?? (clientHashes?.length ?? hashes.length)
-    await mutation.mutateAsync({
-      action: "removeTags",
+    await updateTagsMutation.mutateAsync({
+      ...plan,
       instanceIds,
       targets: isAllSelected ? undefined : clientMeta?.actionTargets,
-      tags: tags.join(","),
       hashes: isAllSelected ? [] : hashes,
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
@@ -528,10 +600,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       clientHashes,
       clientCount,
     })
-    setShowRemoveTagsDialog(false)
-    setContextHashes([])
-    setContextTorrents([])
-  }, [mutation, instanceIds])
+  }, [updateTagsMutation, instanceIds])
 
   const handleSetCategory = useCallback(async (
     category: string,
@@ -790,13 +859,10 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setDeleteCrossSeeds(false)
   }, [])
 
-  const prepareTagsAction = useCallback((action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => {
+  const prepareTagsAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
-
-    if (action === "add") setShowAddTagsDialog(true)
-    else if (action === "set") setShowSetTagsDialog(true)
-    else if (action === "remove") setShowRemoveTagsDialog(true)
+    setShowTagsDialog(true)
   }, [])
 
   const prepareCategoryAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
@@ -909,7 +975,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowRenameFolderDialog(true)
   }, [])
 
-  const isPending = mutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
+  const isPending = mutation.isPending || updateTagsMutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
 
 
   return {
@@ -925,12 +991,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
-    showAddTagsDialog,
-    setShowAddTagsDialog,
-    showSetTagsDialog,
-    setShowSetTagsDialog,
-    showRemoveTagsDialog,
-    setShowRemoveTagsDialog,
+    showTagsDialog,
+    setShowTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showCreateCategoryDialog,
@@ -965,9 +1027,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     // Direct action handlers
     handleAction,
     handleDelete,
-    handleAddTags,
-    handleSetTags,
-    handleRemoveTags,
+    handleUpdateTags,
     handleSetCategory,
     handleSetShareLimit,
     handleSetSpeedLimits,
