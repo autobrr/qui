@@ -76,12 +76,16 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const [pendingEnableSettings, setPendingEnableSettings] = useState<InstanceReannounceSettings | null>(null)
   const [showEnableDialog, setShowEnableDialog] = useState(false)
 
-  // Reset settings when instance changes
+  // Sync form values with persisted settings for the active instance.
   useEffect(() => {
     setSettings(cloneSettings(instance?.reannounceSettings))
+  }, [instance?.reannounceSettings])
+
+  // Reset ephemeral dialog state only when switching instances.
+  useEffect(() => {
     setPendingEnableSettings(null)
     setShowEnableDialog(false)
-  }, [instanceId, instance?.reannounceSettings])
+  }, [instanceId])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: !!instance })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -755,7 +759,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   // Card mode: show tabs with settings and activity
   return (
     <>
-      <form onSubmit={handleSubmit}>
+      <form id={formId} onSubmit={handleSubmit}>
         <Card className="w-full">
           <CardHeader className="space-y-4">
             {headerContent}
