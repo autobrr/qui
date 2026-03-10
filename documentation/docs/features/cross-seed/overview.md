@@ -28,6 +28,12 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
 
+:::note Prowlarr indexer filters are preserved
+When using Prowlarr-backed indexers, qui searches the exact Prowlarr indexer you selected. Any tracker-side filter configured on that Prowlarr entry, such as **freeleech only**, still applies during cross-seed searches.
+
+If you keep separate Prowlarr entries for normal grabbing vs cross-seed/manual searching, select the non-filtered variant for qui cross-seed workflows.
+:::
+
 Optional: qui can also query OPS/RED via the trackers' Gazelle JSON APIs. This complements Torznab (and excludes OPS/RED Torznab indexers for per-torrent searches only when **both** Gazelle keys are configured). See [OPS/RED (Gazelle)](gazelle-ops-red).
 
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
