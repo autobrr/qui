@@ -114,6 +114,8 @@ const (
 	FieldIsGrouped              = models.FieldIsGrouped
 	FieldExistsOnOtherInstance  = models.FieldExistsOnOtherInstance
 	FieldSeedingOnOtherInstance = models.FieldSeedingOnOtherInstance
+	FieldExistsOnSameInstance   = models.FieldExistsOnSameInstance
+	FieldSeedingOnSameInstance  = models.FieldSeedingOnSameInstance
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope

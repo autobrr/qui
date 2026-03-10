@@ -96,6 +96,13 @@ type EvalContext struct {
 	// Built from SyncManager cached data when rules use SEEDING_ON_OTHER_INSTANCE.
 	CrossInstanceSeedingHashSet map[string]struct{}
 
+	// SameInstanceCrossSeedHashSet contains hashes of torrents that have a cross-seed
+	// (same content path, different hash) on the same instance.
+	SameInstanceCrossSeedHashSet map[string]struct{}
+	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
+	// seeding (Progress >= 1.0) on the same instance.
+	SameInstanceCrossSeedSeedingHashSet map[string]struct{}
+
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
@@ -560,6 +567,20 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		seeding := false
 		if ctx != nil && ctx.CrossInstanceSeedingHashSet != nil {
 			_, seeding = ctx.CrossInstanceSeedingHashSet[torrent.Hash]
+		}
+		return compareBool(seeding, cond)
+
+	case FieldExistsOnSameInstance:
+		exists := false
+		if ctx != nil && ctx.SameInstanceCrossSeedHashSet != nil {
+			_, exists = ctx.SameInstanceCrossSeedHashSet[torrent.Hash]
+		}
+		return compareBool(exists, cond)
+
+	case FieldSeedingOnSameInstance:
+		seeding := false
+		if ctx != nil && ctx.SameInstanceCrossSeedSeedingHashSet != nil {
+			_, seeding = ctx.SameInstanceCrossSeedSeedingHashSet[torrent.Hash]
 		}
 		return compareBool(seeding, cond)
 

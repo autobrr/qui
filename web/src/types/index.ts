@@ -264,6 +264,8 @@ export type ConditionField =
   | "IS_GROUPED"
   | "EXISTS_ON_OTHER_INSTANCE"
   | "SEEDING_ON_OTHER_INSTANCE"
+  | "EXISTS_ON_SAME_INSTANCE"
+  | "SEEDING_ON_SAME_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 

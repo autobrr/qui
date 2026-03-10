@@ -737,6 +737,8 @@ const (
 	FieldIsGrouped              ConditionField = "IS_GROUPED"
 	FieldExistsOnOtherInstance  ConditionField = "EXISTS_ON_OTHER_INSTANCE"
 	FieldSeedingOnOtherInstance ConditionField = "SEEDING_ON_OTHER_INSTANCE"
+	FieldExistsOnSameInstance   ConditionField = "EXISTS_ON_SAME_INSTANCE"
+	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"

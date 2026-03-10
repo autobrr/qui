@@ -96,6 +96,8 @@ export const CONDITION_FIELDS = {
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
   EXISTS_ON_OTHER_INSTANCE: { label: "Exists on Other Instance", type: "boolean" as const, description: "Torrent exists on at least one other configured instance (by hash)" },
   SEEDING_ON_OTHER_INSTANCE: { label: "Seeding on Other Instance", type: "boolean" as const, description: "Torrent is seeding (100% complete) on at least one other instance" },
+  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
+  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is seeding (100% complete) on this instance" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
@@ -263,8 +265,8 @@ export const FIELD_GROUPS = [
     fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
   },
   {
-    label: "Cross-Instance",
-    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE"],
+    label: "Cross-Seed",
+    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE", "EXISTS_ON_SAME_INSTANCE", "SEEDING_ON_SAME_INSTANCE"],
   },
   {
     label: "Mode",
