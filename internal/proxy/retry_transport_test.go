@@ -4,7 +4,6 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -380,7 +379,8 @@ func TestRetryTransport_ReauthsAndReplaysForbiddenPOST(t *testing.T) {
 	})
 
 	formBody := "hashes=abc&category=movies-hd"
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://proxy.example/api/v2/torrents/setCategory", bytes.NewBufferString(formBody))
+	reqBody := &trackedReadCloser{Reader: strings.NewReader(formBody)}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://proxy.example/api/v2/torrents/setCategory", reqBody)
 	require.NoError(t, err)
 	req.ContentLength = int64(len(formBody))
 
