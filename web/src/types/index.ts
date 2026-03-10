@@ -61,6 +61,7 @@ export interface Instance {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  linkDirName: string
   // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks: boolean
   // Fallback to regular mode when reflink/hardlink fails
@@ -83,6 +84,7 @@ export interface InstanceFormData {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  linkDirName?: string
   // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks?: boolean
   // Fallback to regular mode when reflink/hardlink fails

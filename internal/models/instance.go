@@ -20,9 +20,30 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/linkdir"
 )
 
 var ErrInstanceNotFound = errors.New("instance not found")
+var ErrInvalidLinkDirName = errors.New("invalid link directory name")
+
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func normalizeLinkDirName(linkDirName *string) (string, error) {
+	if linkDirName == nil {
+		return "", nil
+	}
+
+	trimmed := strings.TrimSpace(*linkDirName)
+	if trimmed == "" {
+		return "", nil
+	}
+	if err := linkdir.ValidateInstanceDirName(trimmed); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrInvalidLinkDirName, err)
+	}
+	return trimmed, nil
+}
 
 type Instance struct {
 	ID                       int     `json:"id"`
@@ -40,6 +61,7 @@ type Instance struct {
 	UseHardlinks      bool   `json:"useHardlinks"`
 	HardlinkBaseDir   string `json:"hardlinkBaseDir"`
 	HardlinkDirPreset string `json:"hardlinkDirPreset"` // "flat", "by-tracker", "by-instance"
+	LinkDirName       string `json:"linkDirName"`       // Custom directory name for "by-instance" link layout
 	// Reflink mode (copy-on-write clones) - mutually exclusive with hardlink mode
 	UseReflinks bool `json:"useReflinks"`
 	// Fallback to regular mode when reflink/hardlink fails
@@ -62,6 +84,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		UseHardlinks             bool       `json:"useHardlinks"`
 		HardlinkBaseDir          string     `json:"hardlinkBaseDir"`
 		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
+		LinkDirName              string     `json:"linkDirName"`
 		UseReflinks              bool       `json:"useReflinks"`
 		FallbackToRegularMode    bool       `json:"fallbackToRegularMode"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
@@ -88,6 +111,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		UseHardlinks:             i.UseHardlinks,
 		HardlinkBaseDir:          i.HardlinkBaseDir,
 		HardlinkDirPreset:        i.HardlinkDirPreset,
+		LinkDirName:              i.LinkDirName,
 		UseReflinks:              i.UseReflinks,
 		FallbackToRegularMode:    i.FallbackToRegularMode,
 	})
@@ -109,6 +133,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		UseHardlinks             *bool      `json:"useHardlinks,omitempty"`
 		HardlinkBaseDir          *string    `json:"hardlinkBaseDir,omitempty"`
 		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
+		LinkDirName              *string    `json:"linkDirName,omitempty"`
 		UseReflinks              *bool      `json:"useReflinks,omitempty"`
 		FallbackToRegularMode    *bool      `json:"fallbackToRegularMode,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
@@ -152,6 +177,9 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	}
 	if temp.HardlinkDirPreset != nil {
 		i.HardlinkDirPreset = *temp.HardlinkDirPreset
+	}
+	if temp.LinkDirName != nil {
+		i.LinkDirName = *temp.LinkDirName
 	}
 	// Reflink setting (defaults to false if not provided)
 	if temp.UseReflinks != nil {
@@ -277,7 +305,28 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string) (*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	instance, err := s.createWithTx(ctx, tx, name, rawHost, username, password, basicUsername, basicPassword, tlsSkipVerify, hasLocalFilesystemAccess, linkDirName)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return instance, nil
+}
+
+func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQuerier, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -304,13 +353,6 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		}
 		encryptedBasicPassword = &encrypted
 	}
-
-	// Start a transaction to ensure atomicity
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
 
 	// Intern all strings in a single call
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
@@ -340,6 +382,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var basicPasswordEncrypted sql.NullString
 	var tlsSkipVerifyResult int
 	var hasLocalFilesystemAccessResult int
+	var linkDirNameResult string
 	var sortOrder int
 	var isActive int
 
@@ -347,6 +390,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	localAccess := false
 	if hasLocalFilesystemAccess != nil {
 		localAccess = *hasLocalFilesystemAccess
+	}
+
+	linkDirValue, err := normalizeLinkDirName(linkDirName)
+	if err != nil {
+		return nil, err
 	}
 
 	err = tx.QueryRowContext(ctx, `
@@ -362,10 +410,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 			basic_password_encrypted,
 			tls_skip_verify,
 			has_local_filesystem_access,
+			link_dir_name,
 			sort_order
 		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
-		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, link_dir_name
 		`,
 		nameID,
 		hostID,
@@ -375,6 +424,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword,
 		BoolToSQLite(tlsSkipVerify),
 		BoolToSQLite(localAccess),
+		linkDirValue,
 	).Scan(
 		&instanceID,
 		&passwordEncrypted,
@@ -383,6 +433,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&sortOrder,
 		&isActive,
 		&hasLocalFilesystemAccessResult,
+		&linkDirNameResult,
 	)
 	if err != nil {
 		return nil, err
@@ -398,6 +449,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccessResult),
 		SortOrder:                sortOrder,
 		IsActive:                 SQLiteIntToBool(isActive),
+		LinkDirName:              linkDirNameResult,
 	}
 
 	if basicUsername != nil {
@@ -407,16 +459,12 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return instance, nil
 }
 
-func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
+func scanInstance(ctx context.Context, q rowQuerier, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		WHERE id = ?
 	`
@@ -429,11 +477,11 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var isActive int
 	var hasLocalFilesystemAccess int
 	var useHardlinks int
-	var hardlinkBaseDir, hardlinkDirPreset string
+	var hardlinkBaseDir, hardlinkDirPreset, linkDirName string
 	var useReflinks int
 	var fallbackToRegularMode int
 
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err := q.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
 		&name,
 		&host,
@@ -448,6 +496,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&useHardlinks,
 		&hardlinkBaseDir,
 		&hardlinkDirPreset,
+		&linkDirName,
 		&useReflinks,
 		&fallbackToRegularMode,
 	)
@@ -471,6 +520,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		UseHardlinks:             SQLiteIntToBool(useHardlinks),
 		HardlinkBaseDir:          hardlinkBaseDir,
 		HardlinkDirPreset:        hardlinkDirPreset,
+		LinkDirName:              linkDirName,
 		UseReflinks:              SQLiteIntToBool(useReflinks),
 		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
 	}
@@ -485,6 +535,10 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	return instance, nil
 }
 
+func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
+	return scanInstance(ctx, s.db, id)
+}
+
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	orderByName := "name COLLATE NOCASE"
 	if dbinterface.DialectOf(s.db) == "postgres" {
@@ -492,7 +546,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		ORDER BY sort_order ASC, %s ASC, id ASC
 	`, orderByName)
@@ -513,7 +567,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var isActive int
 		var hasLocalFilesystemAccess int
 		var useHardlinks int
-		var hardlinkBaseDir, hardlinkDirPreset string
+		var hardlinkBaseDir, hardlinkDirPreset, linkDirName string
 		var useReflinks int
 		var fallbackToRegularMode int
 
@@ -532,6 +586,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&useHardlinks,
 			&hardlinkBaseDir,
 			&hardlinkDirPreset,
+			&linkDirName,
 			&useReflinks,
 			&fallbackToRegularMode,
 		)
@@ -552,6 +607,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			UseHardlinks:             SQLiteIntToBool(useHardlinks),
 			HardlinkBaseDir:          hardlinkBaseDir,
 			HardlinkDirPreset:        hardlinkDirPreset,
+			LinkDirName:              linkDirName,
 			UseReflinks:              SQLiteIntToBool(useReflinks),
 			FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
 		}
@@ -580,23 +636,38 @@ type InstanceUpdateParams struct {
 	UseHardlinks             *bool
 	HardlinkBaseDir          *string
 	HardlinkDirPreset        *string
+	LinkDirName              *string
 	UseReflinks              *bool
 	FallbackToRegularMode    *bool
 }
 
 func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	instance, err := s.updateWithTx(ctx, tx, id, name, rawHost, username, password, basicUsername, basicPassword, params)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return instance, nil
+}
+
+func (s *InstanceStore) updateWithTx(ctx context.Context, tx dbinterface.TxQuerier, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
 	}
-
-	// Start a transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
 
 	// Prepare strings to intern - always intern name, host, username
 	// Also intern basic_username if it's provided and not empty
@@ -674,6 +745,14 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	if params != nil {
+		if params.LinkDirName != nil {
+			linkDirValue, err := normalizeLinkDirName(params.LinkDirName)
+			if err != nil {
+				return nil, err
+			}
+			params.LinkDirName = &linkDirValue
+		}
+
 		if params.TLSSkipVerify != nil {
 			query += ", tls_skip_verify = ?"
 			args = append(args, BoolToSQLite(*params.TLSSkipVerify))
@@ -697,6 +776,11 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		if params.HardlinkDirPreset != nil {
 			query += ", hardlink_dir_preset = ?"
 			args = append(args, *params.HardlinkDirPreset)
+		}
+
+		if params.LinkDirName != nil {
+			query += ", link_dir_name = ?"
+			args = append(args, *params.LinkDirName)
 		}
 
 		if params.UseReflinks != nil {
@@ -727,11 +811,91 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, ErrInstanceNotFound
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	return scanInstance(ctx, tx, id)
+}
+
+func (s *InstanceStore) CreateWithReannounce(
+	ctx context.Context,
+	reannounceStore *InstanceReannounceStore,
+	name, rawHost, username, password string,
+	basicUsername, basicPassword *string,
+	tlsSkipVerify bool,
+	hasLocalFilesystemAccess *bool,
+	linkDirName *string,
+	reannounceSettings *InstanceReannounceSettings,
+) (*Instance, *InstanceReannounceSettings, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	instance, err := s.createWithTx(ctx, tx, name, rawHost, username, password, basicUsername, basicPassword, tlsSkipVerify, hasLocalFilesystemAccess, linkDirName)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return s.Get(ctx, id)
+	settings := reannounceSettings
+	switch {
+	case reannounceStore != nil:
+		settings, err = upsertReannounceSettingsTx(ctx, tx, reannounceSettings, instance.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+	case settings == nil:
+		settings = DefaultInstanceReannounceSettings(instance.ID)
+	default:
+		settings = sanitizeInstanceReannounceSettings(settings)
+		settings.InstanceID = instance.ID
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return instance, settings, nil
+}
+
+func (s *InstanceStore) UpdateWithReannounce(
+	ctx context.Context,
+	id int,
+	name, rawHost, username, password string,
+	basicUsername, basicPassword *string,
+	params *InstanceUpdateParams,
+	reannounceStore *InstanceReannounceStore,
+	reannounceSettings *InstanceReannounceSettings,
+) (*Instance, *InstanceReannounceSettings, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	instance, err := s.updateWithTx(ctx, tx, id, name, rawHost, username, password, basicUsername, basicPassword, params)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var settings *InstanceReannounceSettings
+	if reannounceSettings != nil && reannounceStore != nil {
+		settings, err = upsertReannounceSettingsTx(ctx, tx, reannounceSettings, id)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else if reannounceSettings != nil {
+		settings = sanitizeInstanceReannounceSettings(reannounceSettings)
+		settings.InstanceID = id
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return instance, settings, nil
 }
 
 func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool) (*Instance, error) {
