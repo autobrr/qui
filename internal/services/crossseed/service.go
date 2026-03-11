@@ -340,7 +340,8 @@ type Service struct {
 	metrics *ServiceMetrics
 
 	// Per-instance completion coordination.
-	// Ensures completion-triggered searches run serially per instance.
+	// Queue bookkeeping/polling and completion-triggered search serialization
+	// use separate mutexes so a slow search does not stall other waits.
 	completionLaneMu sync.Mutex
 	completionLanes  map[int]*completionLane
 	// Completion polling timings are injectable for tests; zero values use package defaults.
@@ -369,9 +370,10 @@ type pendingResume struct {
 }
 
 type completionLane struct {
-	mu      sync.Mutex
-	waits   map[string]*completionWaitState
-	polling bool
+	mu       sync.Mutex
+	searchMu sync.Mutex
+	waits    map[string]*completionWaitState
+	polling  bool
 }
 
 type completionWaitState struct {
@@ -1478,12 +1480,8 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	lane := s.getCompletionLane(instanceID)
-	lane.mu.Lock()
-
-	readyTorrent, err := s.waitForCompletionTorrentReadyLocked(ctx, instanceID, lane, torrent)
+	readyTorrent, err := s.waitForCompletionTorrentReady(ctx, instanceID, torrent)
 	if err != nil {
-		lane.mu.Unlock()
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -1493,7 +1491,9 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	defer lane.mu.Unlock()
+	lane := s.getCompletionLane(instanceID)
+	lane.searchMu.Lock()
+	defer lane.searchMu.Unlock()
 
 	readyTorrent, err = s.getCompletionTorrent(ctx, instanceID, readyTorrent.Hash)
 	if err != nil {

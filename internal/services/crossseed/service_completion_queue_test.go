@@ -287,6 +287,111 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 	require.Equal(t, []string{firstHash, secondHash}, invocationOrder)
 }
 
+func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *testing.T) {
+	completionStore := setupCompletionStoreForQueueTests(t)
+
+	firstHash := "abababababababababababababababababababab"
+	secondHash := "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		firstHash: {{
+			Hash:         firstHash,
+			Name:         "first",
+			Progress:     1.0,
+			State:        qbt.TorrentStateUploading,
+			CompletionOn: 123,
+		}},
+		secondHash: {
+			{
+				Hash:         secondHash,
+				Name:         "second",
+				Progress:     0.42,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 124,
+			},
+			{
+				Hash:         secondHash,
+				Name:         "second",
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+				CompletionOn: 124,
+			},
+		},
+	})
+
+	firstStarted := make(chan struct{})
+	secondStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var firstOnce sync.Once
+	var secondOnce sync.Once
+
+	svc := &Service{
+		completionStore: completionStore,
+		syncManager:     syncMock,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+			switch torrent.Hash {
+			case firstHash:
+				firstOnce.Do(func() { close(firstStarted) })
+				<-releaseFirst
+			case secondHash:
+				secondOnce.Do(func() { close(secondStarted) })
+			}
+			return nil
+		},
+	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 200*time.Millisecond)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+			Hash:         firstHash,
+			Name:         "first",
+			Progress:     1.0,
+			CompletionOn: 123,
+		})
+	}()
+
+	select {
+	case <-firstStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first completion search did not start")
+	}
+
+	go func() {
+		defer wg.Done()
+		svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+			Hash:         secondHash,
+			Name:         "second",
+			Progress:     1.0,
+			CompletionOn: 124,
+		})
+	}()
+
+	require.Eventually(t, func() bool {
+		return syncMock.hitCount(secondHash) >= 2
+	}, time.Second, 10*time.Millisecond, "second wait was not polled while first search held the serialization lock")
+
+	select {
+	case <-secondStarted:
+		t.Fatal("second completion search started before first released")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	select {
+	case <-secondStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second completion search did not start after first completed")
+	}
+
+	wg.Wait()
+}
+
 func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
