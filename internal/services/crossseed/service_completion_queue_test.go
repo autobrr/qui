@@ -183,6 +183,11 @@ func setCompletionCheckingTimings(svc *Service, pollInterval time.Duration, time
 	svc.completionTimeout = timeout
 }
 
+func setCompletionCheckingRetryPolicy(svc *Service, retryDelay time.Duration, maxAttempts int) {
+	svc.completionRetryDelay = retryDelay
+	svc.completionMaxAttempts = maxAttempts
+}
+
 func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
@@ -379,6 +384,84 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 	}
 }
 
+func TestHandleTorrentCompletion_RetriesAfterCheckingTimeout(t *testing.T) {
+	completionStore := setupCompletionStoreForQueueTests(t)
+
+	hash := "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		hash: {
+			{
+				Hash:         hash,
+				Name:         "checking-retry",
+				Progress:     0.27,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 220,
+			},
+			{
+				Hash:         hash,
+				Name:         "checking-retry",
+				Progress:     0.27,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 220,
+			},
+			{
+				Hash:         hash,
+				Name:         "checking-retry",
+				Progress:     0.27,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 220,
+			},
+			{
+				Hash:         hash,
+				Name:         "checking-retry",
+				Progress:     0.27,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 220,
+			},
+			{
+				Hash:         hash,
+				Name:         "checking-retry",
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+				CompletionOn: 220,
+			},
+		},
+	})
+
+	invoked := make(chan qbt.Torrent, 1)
+	svc := &Service{
+		completionStore: completionStore,
+		syncManager:     syncMock,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+			invoked <- *torrent
+			return nil
+		},
+	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 12*time.Millisecond)
+	setCompletionCheckingRetryPolicy(svc, 8*time.Millisecond, 3)
+
+	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+		Hash:         hash,
+		Name:         "checking-retry",
+		Progress:     0.27,
+		State:        qbt.TorrentStateCheckingResumeData,
+		CompletionOn: 220,
+	})
+
+	select {
+	case torrent := <-invoked:
+		require.InDelta(t, 1.0, torrent.Progress, 0.0001)
+		require.Equal(t, qbt.TorrentStateUploading, torrent.State)
+	case <-time.After(time.Second):
+		t.Fatal("completion search was not invoked after checking retry")
+	}
+
+	require.Equal(t, 6, syncMock.hitCount(hash))
+}
+
 func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
@@ -475,6 +558,7 @@ func TestWaitForCompletionTorrentReady_TimesOutWhileChecking(t *testing.T) {
 		}),
 	}
 	setCompletionCheckingTimings(svc, 5*time.Millisecond, 20*time.Millisecond)
+	setCompletionCheckingRetryPolicy(svc, 5*time.Millisecond, 1)
 
 	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
 		Hash: hash,
@@ -529,6 +613,91 @@ func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaiters(t *testing.
 	}
 
 	require.Equal(t, 2, syncMock.hitCount(hash))
+}
+
+func TestWaitForCompletionTorrentReady_TimesOutAfterCheckingRetries(t *testing.T) {
+	hash := "1212121212121212121212121212121212121212"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		hash: {{
+			Hash:     hash,
+			Name:     "retry-timeout",
+			Progress: 0.27,
+			State:    qbt.TorrentStateCheckingResumeData,
+		}},
+	})
+
+	svc := &Service{
+		syncManager: syncMock,
+	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 10*time.Millisecond)
+	setCompletionCheckingRetryPolicy(svc, 8*time.Millisecond, 3)
+
+	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
+		Hash: hash,
+		Name: "retry-timeout",
+	})
+	require.EqualError(t, err, "completion torrent retry-timeout still checking after 10ms")
+	require.GreaterOrEqual(t, syncMock.hitCount(hash), 5)
+}
+
+func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaitersDuringRetryBackoff(t *testing.T) {
+	hash := "3434343434343434343434343434343434343434"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		hash: {
+			{
+				Hash:     hash,
+				Name:     "shared-retry-wait",
+				Progress: 0.27,
+				State:    qbt.TorrentStateCheckingResumeData,
+			},
+			{
+				Hash:     hash,
+				Name:     "shared-retry-wait",
+				Progress: 0.27,
+				State:    qbt.TorrentStateCheckingResumeData,
+			},
+			{
+				Hash:     hash,
+				Name:     "shared-retry-wait",
+				Progress: 0.27,
+				State:    qbt.TorrentStateCheckingResumeData,
+			},
+			{
+				Hash:     hash,
+				Name:     "shared-retry-wait",
+				Progress: 1.0,
+				State:    qbt.TorrentStateUploading,
+			},
+		},
+	})
+
+	svc := &Service{
+		syncManager: syncMock,
+	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 10*time.Millisecond)
+	setCompletionCheckingRetryPolicy(svc, 8*time.Millisecond, 3)
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+
+	for range 2 {
+		go func() {
+			<-start
+			_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
+				Hash: hash,
+				Name: "shared-retry-wait",
+			})
+			errs <- err
+		}()
+	}
+
+	close(start)
+
+	for range 2 {
+		require.NoError(t, <-errs)
+	}
+
+	require.Equal(t, 4, syncMock.hitCount(hash))
 }
 
 func TestCompletionRetryDelay_FallbackRateLimitMessages(t *testing.T) {

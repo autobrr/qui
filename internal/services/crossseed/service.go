@@ -235,7 +235,9 @@ const (
 	minSearchIntervalSecondsGazelleOnly   = 5
 	minSearchCooldownMinutes              = 720
 	maxCompletionSearchAttempts           = 3
+	maxCompletionCheckingAttempts         = 3
 	defaultCompletionRetryDelay           = 30 * time.Second
+	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
 	defaultCompletionCheckingTimeout      = 5 * time.Minute
 
@@ -344,6 +346,8 @@ type Service struct {
 	// Completion polling timings are injectable for tests; zero values use package defaults.
 	completionPollInterval time.Duration
 	completionTimeout      time.Duration
+	completionRetryDelay   time.Duration
+	completionMaxAttempts  int
 
 	// test hooks
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
@@ -372,6 +376,8 @@ type completionLane struct {
 
 type completionWaitState struct {
 	done           chan struct{}
+	attempt        int
+	retryAt        time.Time
 	deadline       time.Time
 	timeout        time.Duration
 	eventTorrent   qbt.Torrent
@@ -438,6 +444,8 @@ func NewService(
 		completionLanes:               make(map[int]*completionLane),
 		completionPollInterval:        defaultCompletionCheckingPollInterval,
 		completionTimeout:             defaultCompletionCheckingTimeout,
+		completionRetryDelay:          defaultCompletionCheckingRetryDelay,
+		completionMaxAttempts:         maxCompletionCheckingAttempts,
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
@@ -463,6 +471,22 @@ func (s *Service) getCompletionTimeout() time.Duration {
 	}
 
 	return defaultCompletionCheckingTimeout
+}
+
+func (s *Service) getCompletionRetryDelay() time.Duration {
+	if s != nil && s.completionRetryDelay > 0 {
+		return s.completionRetryDelay
+	}
+
+	return defaultCompletionCheckingRetryDelay
+}
+
+func (s *Service) getCompletionMaxAttempts() int {
+	if s != nil && s.completionMaxAttempts > 0 {
+		return s.completionMaxAttempts
+	}
+
+	return maxCompletionCheckingAttempts
 }
 
 // HealthCheck performs comprehensive health checks on the cross-seed service
@@ -1632,10 +1656,16 @@ func (s *Service) registerCompletionWaitLocked(
 
 	hash := normalizeHash(eventTorrent.Hash)
 	timeout := s.getCompletionTimeout()
-	deadline := time.Now().Add(timeout)
+	now := time.Now()
+	deadline := now.Add(timeout)
 
 	wait, ok := lane.waits[hash]
 	if ok {
+		base := now
+		if wait.retryAt.After(base) {
+			base = wait.retryAt
+		}
+		deadline = base.Add(timeout)
 		if deadline.After(wait.deadline) {
 			wait.deadline = deadline
 			wait.timeout = timeout
@@ -1646,6 +1676,7 @@ func (s *Service) registerCompletionWaitLocked(
 
 	wait = &completionWaitState{
 		done:         make(chan struct{}),
+		attempt:      1,
 		deadline:     deadline,
 		timeout:      timeout,
 		eventTorrent: eventTorrent,
@@ -1673,26 +1704,40 @@ func (s *Service) runCompletionLanePoller(instanceID int, lane *completionLane) 
 
 	for {
 		<-timer.C
-		if !s.pollCompletionLane(instanceID, lane) {
+		nextDelay, ok := s.pollCompletionLane(instanceID, lane)
+		if !ok {
 			return
 		}
-		timer.Reset(s.getCompletionPollInterval())
+		timer.Reset(nextDelay)
 	}
 }
 
-func (s *Service) pollCompletionLane(instanceID int, lane *completionLane) bool {
+func (s *Service) pollCompletionLane(instanceID int, lane *completionLane) (time.Duration, bool) {
 	waits := s.snapshotCompletionWaits(lane)
 	if len(waits) == 0 {
-		return false
+		return 0, false
 	}
 
+	now := time.Now()
+	activeWaits := make(map[string]*completionWaitState, len(waits))
 	hashes := make([]string, 0, len(waits))
-	for hash := range waits {
+	for hash, wait := range waits {
+		if wait.retryAt.After(now) {
+			continue
+		}
+		activeWaits[hash] = wait
 		hashes = append(hashes, hash)
 	}
 
+	if len(activeWaits) == 0 {
+		lane.mu.Lock()
+		defer lane.mu.Unlock()
+
+		return s.nextCompletionPollDelayLocked(lane, now)
+	}
+
 	torrents, err := s.getCompletionTorrents(context.Background(), instanceID, hashes)
-	now := time.Now()
+	now = time.Now()
 
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
@@ -1704,12 +1749,12 @@ func (s *Service) pollCompletionLane(instanceID int, lane *completionLane) bool 
 			Int("torrents", len(hashes)).
 			Msg("[CROSSSEED-COMPLETION] Failed to refresh completion torrents while waiting for checking to finish")
 		s.expireCompletionWaitsLocked(instanceID, lane, now)
-		return s.updateCompletionPollerStateLocked(lane)
+		return s.nextCompletionPollDelayLocked(lane, now)
 	}
 
-	s.applyCompletionPollResultsLocked(instanceID, lane, waits, torrents, now)
+	s.applyCompletionPollResultsLocked(instanceID, lane, activeWaits, torrents, now)
 
-	return s.updateCompletionPollerStateLocked(lane)
+	return s.nextCompletionPollDelayLocked(lane, now)
 }
 
 func (s *Service) snapshotCompletionWaits(lane *completionLane) map[string]*completionWaitState {
@@ -1799,6 +1844,11 @@ func (s *Service) keepWaitingForCompletion(
 		return true
 	}
 
+	if wait.attempt < s.getCompletionMaxAttempts() {
+		s.retryCompletionWaitLocked(instanceID, wait, current, now)
+		return true
+	}
+
 	log.Warn().
 		Int("instanceID", instanceID).
 		Str("hash", current.Hash).
@@ -1816,6 +1866,31 @@ func (s *Service) keepWaitingForCompletion(
 	)
 
 	return true
+}
+
+func (s *Service) retryCompletionWaitLocked(instanceID int, wait *completionWaitState, current qbt.Torrent, now time.Time) {
+	retryAfter := s.getCompletionRetryDelay()
+	retryAt := now.Add(retryAfter)
+	nextAttempt := wait.attempt + 1
+
+	log.Warn().
+		Int("instanceID", instanceID).
+		Str("hash", current.Hash).
+		Str("name", current.Name).
+		Str("state", string(current.State)).
+		Float64("progress", current.Progress).
+		Int("attempt", wait.attempt).
+		Int("nextAttempt", nextAttempt).
+		Int("maxAttempts", s.getCompletionMaxAttempts()).
+		Dur("timeout", wait.timeout).
+		Dur("retryAfter", retryAfter).
+		Msg("[CROSSSEED-COMPLETION] Timed out waiting for torrent checking to finish, retrying")
+
+	wait.attempt = nextAttempt
+	wait.retryAt = retryAt
+	wait.deadline = retryAt.Add(wait.timeout)
+	wait.lastSeen = &current
+	wait.checkingLogged = false
 }
 
 func (s *Service) failMissingCompletionWaitLocked(
@@ -1904,6 +1979,28 @@ func (s *Service) updateCompletionPollerStateLocked(lane *completionLane) bool {
 
 	lane.polling = false
 	return false
+}
+
+func (s *Service) nextCompletionPollDelayLocked(lane *completionLane, now time.Time) (time.Duration, bool) {
+	if !s.updateCompletionPollerStateLocked(lane) {
+		return 0, false
+	}
+
+	pollInterval := s.getCompletionPollInterval()
+	nextDelay := pollInterval
+
+	for _, wait := range lane.waits {
+		if !wait.retryAt.After(now) {
+			return pollInterval, true
+		}
+
+		delay := wait.retryAt.Sub(now)
+		if delay < nextDelay {
+			nextDelay = delay
+		}
+	}
+
+	return nextDelay, true
 }
 
 func (s *Service) getCompletionTorrent(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
