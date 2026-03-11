@@ -364,7 +364,7 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 
 	select {
 	case torrent := <-invoked:
-		require.Equal(t, 1.0, torrent.Progress)
+		require.InDelta(t, 1.0, torrent.Progress, 0.0001)
 		require.Equal(t, qbt.TorrentStateUploading, torrent.State)
 	case <-time.After(time.Second):
 		t.Fatal("completion search was not invoked after checking finished")
