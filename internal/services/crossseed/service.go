@@ -1611,6 +1611,15 @@ func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID 
 		case <-ticker.C:
 			current, err = s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
 			if err != nil {
+				if errors.Is(err, ErrTorrentNotFound) {
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", eventTorrent.Hash).
+						Str("name", eventTorrent.Name).
+						Err(err).
+						Msg("[CROSSSEED-COMPLETION] Completion torrent disappeared while waiting for checking to finish")
+					return nil, err
+				}
 				log.Warn().
 					Int("instanceID", instanceID).
 					Str("hash", eventTorrent.Hash).
