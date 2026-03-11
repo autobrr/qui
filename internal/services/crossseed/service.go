@@ -389,6 +389,11 @@ type completionWaitState struct {
 	checkingLogged bool
 }
 
+type completionWaitSnapshot struct {
+	state   *completionWaitState
+	retryAt time.Time
+}
+
 // NewService creates a new cross-seed service
 func NewService(
 	instanceStore *models.InstanceStore,
@@ -1725,7 +1730,7 @@ func (s *Service) pollCompletionLane(instanceID int, lane *completionLane) (time
 		if wait.retryAt.After(now) {
 			continue
 		}
-		activeWaits[hash] = wait
+		activeWaits[hash] = wait.state
 		hashes = append(hashes, hash)
 	}
 
@@ -1757,7 +1762,7 @@ func (s *Service) pollCompletionLane(instanceID int, lane *completionLane) (time
 	return s.nextCompletionPollDelayLocked(lane, now)
 }
 
-func (s *Service) snapshotCompletionWaits(lane *completionLane) map[string]*completionWaitState {
+func (s *Service) snapshotCompletionWaits(lane *completionLane) map[string]completionWaitSnapshot {
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
 
@@ -1766,7 +1771,15 @@ func (s *Service) snapshotCompletionWaits(lane *completionLane) map[string]*comp
 		return nil
 	}
 
-	return maps.Clone(lane.waits)
+	waits := make(map[string]completionWaitSnapshot, len(lane.waits))
+	for hash, wait := range lane.waits {
+		waits[hash] = completionWaitSnapshot{
+			state:   wait,
+			retryAt: wait.retryAt,
+		}
+	}
+
+	return waits
 }
 
 func (s *Service) applyCompletionPollResultsLocked(

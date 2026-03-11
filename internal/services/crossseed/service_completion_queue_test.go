@@ -392,6 +392,33 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 	wg.Wait()
 }
 
+func TestSnapshotCompletionWaits_CopiesSchedulingFields(t *testing.T) {
+	lane := &completionLane{
+		waits: make(map[string]*completionWaitState),
+	}
+
+	initialRetryAt := time.Now().Add(15 * time.Second)
+	wait := &completionWaitState{
+		done:    make(chan struct{}),
+		retryAt: initialRetryAt,
+	}
+	lane.waits["abc"] = wait
+
+	svc := &Service{}
+	snapshot := svc.snapshotCompletionWaits(lane)
+
+	lane.mu.Lock()
+	updatedRetryAt := initialRetryAt.Add(30 * time.Second)
+	wait.retryAt = updatedRetryAt
+	lane.mu.Unlock()
+
+	entry, ok := snapshot["abc"]
+	require.True(t, ok)
+	require.Same(t, wait, entry.state)
+	require.True(t, entry.retryAt.Equal(initialRetryAt))
+	require.False(t, entry.retryAt.Equal(updatedRetryAt))
+}
+
 func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
