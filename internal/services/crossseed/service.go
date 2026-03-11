@@ -219,31 +219,28 @@ type automationContext struct {
 }
 
 const (
-	searchResultCacheTTL                = 5 * time.Minute
-	indexerDomainCacheTTL               = 1 * time.Minute
-	contentFilteringWaitTimeout         = 5 * time.Second
-	contentFilteringPollInterval        = 150 * time.Millisecond
-	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
-	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
-	crossSeedRenameWaitTimeout          = 15 * time.Second
-	crossSeedRenamePollInterval         = 200 * time.Millisecond
-	automationSettingsQueryTimeout      = 5 * time.Second
-	recheckPollInterval                 = 3 * time.Second  // Batch API calls per instance
-	recheckAbsoluteTimeout              = 60 * time.Minute // Allow time for large recheck queues
-	recheckAPITimeout                   = 30 * time.Second
-	minSearchIntervalSecondsTorznab     = 60
-	minSearchIntervalSecondsGazelleOnly = 5
-	minSearchCooldownMinutes            = 720
-	maxCompletionSearchAttempts         = 3
-	defaultCompletionRetryDelay         = 30 * time.Second
+	searchResultCacheTTL                  = 5 * time.Minute
+	indexerDomainCacheTTL                 = 1 * time.Minute
+	contentFilteringWaitTimeout           = 5 * time.Second
+	contentFilteringPollInterval          = 150 * time.Millisecond
+	selectedIndexerContentSkipReason      = "selected indexers were filtered out"
+	selectedIndexerCapabilitySkipReason   = "selected indexers do not support required caps"
+	crossSeedRenameWaitTimeout            = 15 * time.Second
+	crossSeedRenamePollInterval           = 200 * time.Millisecond
+	automationSettingsQueryTimeout        = 5 * time.Second
+	recheckPollInterval                   = 3 * time.Second  // Batch API calls per instance
+	recheckAbsoluteTimeout                = 60 * time.Minute // Allow time for large recheck queues
+	recheckAPITimeout                     = 30 * time.Second
+	minSearchIntervalSecondsTorznab       = 60
+	minSearchIntervalSecondsGazelleOnly   = 5
+	minSearchCooldownMinutes              = 720
+	maxCompletionSearchAttempts           = 3
+	defaultCompletionRetryDelay           = 30 * time.Second
+	defaultCompletionCheckingPollInterval = 2 * time.Second
+	defaultCompletionCheckingTimeout      = 5 * time.Minute
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
-)
-
-var (
-	completionCheckingPollInterval = 2 * time.Second
-	completionCheckingTimeout      = 5 * time.Minute
 )
 
 var completionRateLimitTokens = []string{
@@ -344,6 +341,9 @@ type Service struct {
 	// Ensures completion-triggered searches run serially per instance.
 	completionLaneMu sync.Mutex
 	completionLanes  map[int]*completionLane
+	// Completion polling timings are injectable for tests; zero values use package defaults.
+	completionPollInterval time.Duration
+	completionTimeout      time.Duration
 
 	// test hooks
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
@@ -423,6 +423,8 @@ func NewService(
 		dedupCache:                    dedupCache,
 		metrics:                       NewServiceMetrics(),
 		completionLanes:               make(map[int]*completionLane),
+		completionPollInterval:        defaultCompletionCheckingPollInterval,
+		completionTimeout:             defaultCompletionCheckingTimeout,
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
@@ -432,6 +434,22 @@ func NewService(
 	go svc.recheckResumeWorker()
 
 	return svc
+}
+
+func (s *Service) getCompletionPollInterval() time.Duration {
+	if s != nil && s.completionPollInterval > 0 {
+		return s.completionPollInterval
+	}
+
+	return defaultCompletionCheckingPollInterval
+}
+
+func (s *Service) getCompletionTimeout() time.Duration {
+	if s != nil && s.completionTimeout > 0 {
+		return s.completionTimeout
+	}
+
+	return defaultCompletionCheckingTimeout
 }
 
 // HealthCheck performs comprehensive health checks on the cross-seed service
@@ -1533,6 +1551,9 @@ func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID 
 		return nil, err
 	}
 
+	completionTimeout := s.getCompletionTimeout()
+	completionPollInterval := s.getCompletionPollInterval()
+
 	if !isCompletionCheckingState(current.State) {
 		if current.Progress < 1.0 {
 			return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, current.Name, current.Progress)
@@ -1548,10 +1569,10 @@ func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID 
 		Float64("progress", current.Progress).
 		Msg("[CROSSSEED-COMPLETION] Deferring completion search while torrent is checking")
 
-	timeout := time.NewTimer(completionCheckingTimeout)
+	timeout := time.NewTimer(completionTimeout)
 	defer timeout.Stop()
 
-	ticker := time.NewTicker(completionCheckingPollInterval)
+	ticker := time.NewTicker(completionPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -1565,9 +1586,9 @@ func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID 
 				Str("name", current.Name).
 				Str("state", string(current.State)).
 				Float64("progress", current.Progress).
-				Dur("timeout", completionCheckingTimeout).
+				Dur("timeout", completionTimeout).
 				Msg("[CROSSSEED-COMPLETION] Timed out waiting for torrent checking to finish")
-			return nil, fmt.Errorf("completion torrent %s still checking after %s", current.Name, completionCheckingTimeout)
+			return nil, fmt.Errorf("completion torrent %s still checking after %s", current.Name, completionTimeout)
 		case <-ticker.C:
 			current, err = s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
 			if err != nil {

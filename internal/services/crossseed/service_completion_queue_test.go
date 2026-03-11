@@ -166,18 +166,9 @@ func (*completionPollingSyncMock) CreateCategory(context.Context, int, string, s
 	return nil
 }
 
-func setCompletionCheckingTimings(t *testing.T, pollInterval time.Duration, timeout time.Duration) {
-	t.Helper()
-
-	previousPollInterval := completionCheckingPollInterval
-	previousTimeout := completionCheckingTimeout
-	completionCheckingPollInterval = pollInterval
-	completionCheckingTimeout = timeout
-
-	t.Cleanup(func() {
-		completionCheckingPollInterval = previousPollInterval
-		completionCheckingTimeout = previousTimeout
-	})
+func setCompletionCheckingTimings(svc *Service, pollInterval time.Duration, timeout time.Duration) {
+	svc.completionPollInterval = pollInterval
+	svc.completionTimeout = timeout
 }
 
 func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
@@ -324,7 +315,6 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 
 func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
-	setCompletionCheckingTimings(t, 5*time.Millisecond, 50*time.Millisecond)
 
 	hash := "dddddddddddddddddddddddddddddddddddddddd"
 	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
@@ -358,6 +348,7 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 			return nil
 		},
 	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
 
 	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
 		Hash:         hash,
@@ -378,7 +369,6 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 
 func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
-	setCompletionCheckingTimings(t, 5*time.Millisecond, 50*time.Millisecond)
 
 	hash := "abababababababababababababababababababab"
 	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
@@ -413,6 +403,7 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 			return nil
 		},
 	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
 
 	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
 		Hash:         hash,
@@ -430,8 +421,6 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 }
 
 func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testing.T) {
-	setCompletionCheckingTimings(t, 5*time.Millisecond, 50*time.Millisecond)
-
 	hash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	svc := &Service{
 		syncManager: newCompletionPollingSyncMock(map[string][]qbt.Torrent{
@@ -451,6 +440,7 @@ func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testin
 			},
 		}),
 	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
 
 	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
 		Hash: hash,
@@ -461,8 +451,6 @@ func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testin
 }
 
 func TestWaitForCompletionTorrentReady_TimesOutWhileChecking(t *testing.T) {
-	setCompletionCheckingTimings(t, 5*time.Millisecond, 20*time.Millisecond)
-
 	hash := "ffffffffffffffffffffffffffffffffffffffff"
 	svc := &Service{
 		syncManager: newCompletionPollingSyncMock(map[string][]qbt.Torrent{
@@ -474,6 +462,7 @@ func TestWaitForCompletionTorrentReady_TimesOutWhileChecking(t *testing.T) {
 			}},
 		}),
 	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 20*time.Millisecond)
 
 	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
 		Hash: hash,
