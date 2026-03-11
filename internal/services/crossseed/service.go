@@ -1441,10 +1441,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	lane := s.getCompletionLane(instanceID)
-	lane.mu.Lock()
-	defer lane.mu.Unlock()
-
 	readyTorrent, err := s.waitForCompletionTorrentReady(ctx, instanceID, torrent)
 	if err != nil {
 		log.Warn().
@@ -1453,6 +1449,29 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
+		return
+	}
+
+	lane := s.getCompletionLane(instanceID)
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	readyTorrent, err = s.getCompletionTorrent(ctx, instanceID, readyTorrent.Hash)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Failed to reload completion torrent")
+		return
+	}
+	if isCompletionCheckingState(readyTorrent.State) {
+		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Torrent resumed checking before completion search")
+		return
+	}
+	if readyTorrent.Progress < 1.0 {
+		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Torrent is no longer fully downloaded")
 		return
 	}
 
