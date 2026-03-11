@@ -1571,7 +1571,13 @@ func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID 
 		case <-ticker.C:
 			current, err = s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
 			if err != nil {
-				return nil, err
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("hash", eventTorrent.Hash).
+					Str("name", eventTorrent.Name).
+					Err(err).
+					Msg("[CROSSSEED-COMPLETION] Failed to refresh completion torrent while waiting for checking to finish")
+				continue
 			}
 			if isCompletionCheckingState(current.State) {
 				continue
