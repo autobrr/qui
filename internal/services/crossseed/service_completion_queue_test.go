@@ -187,16 +187,18 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 	secondHash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
 		firstHash: {{
-			Hash:     firstHash,
-			Name:     "first",
-			Progress: 1.0,
-			State:    qbt.TorrentStateUploading,
+			Hash:         firstHash,
+			Name:         "first",
+			Progress:     1.0,
+			State:        qbt.TorrentStateUploading,
+			CompletionOn: 123,
 		}},
 		secondHash: {{
-			Hash:     secondHash,
-			Name:     "second",
-			Progress: 1.0,
-			State:    qbt.TorrentStateUploading,
+			Hash:         secondHash,
+			Name:         "second",
+			Progress:     1.0,
+			State:        qbt.TorrentStateUploading,
+			CompletionOn: 124,
 		}},
 	})
 	firstStarted := make(chan struct{})
@@ -285,10 +287,11 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 		completionStore: completionStore,
 		syncManager: newCompletionPollingSyncMock(map[string][]qbt.Torrent{
 			"cccccccccccccccccccccccccccccccccccccccc": {{
-				Hash:     "cccccccccccccccccccccccccccccccccccccccc",
-				Name:     "retry-me",
-				Progress: 1.0,
-				State:    qbt.TorrentStateUploading,
+				Hash:         "cccccccccccccccccccccccccccccccccccccccc",
+				Name:         "retry-me",
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+				CompletionOn: 125,
 			}},
 		}),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -327,16 +330,18 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
 		hash: {
 			{
-				Hash:     hash,
-				Name:     "checking",
-				Progress: 0.27,
-				State:    qbt.TorrentStateCheckingResumeData,
+				Hash:         hash,
+				Name:         "checking",
+				Progress:     0.27,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 200,
 			},
 			{
-				Hash:     hash,
-				Name:     "checking",
-				Progress: 1.0,
-				State:    qbt.TorrentStateUploading,
+				Hash:         hash,
+				Name:         "checking",
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+				CompletionOn: 200,
 			},
 		},
 	})
@@ -368,6 +373,59 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 		require.Equal(t, qbt.TorrentStateUploading, torrent.State)
 	case <-time.After(time.Second):
 		t.Fatal("completion search was not invoked after checking finished")
+	}
+}
+
+func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T) {
+	completionStore := setupCompletionStoreForQueueTests(t)
+	setCompletionCheckingTimings(t, 5*time.Millisecond, 50*time.Millisecond)
+
+	hash := "abababababababababababababababababababab"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		hash: {
+			{
+				Hash:         hash,
+				Name:         "checking-then-tagged",
+				Progress:     0.27,
+				State:        qbt.TorrentStateCheckingResumeData,
+				CompletionOn: 300,
+			},
+			{
+				Hash:         hash,
+				Name:         "checking-then-tagged",
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+				CompletionOn: 300,
+				Tags:         "cross-seed",
+			},
+		},
+	})
+
+	invoked := make(chan struct{}, 1)
+	svc := &Service{
+		completionStore: completionStore,
+		syncManager:     syncMock,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+		completionSearchInvoker: func(_ context.Context, _ int, _ *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+			invoked <- struct{}{}
+			return nil
+		},
+	}
+
+	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+		Hash:         hash,
+		Name:         "checking-then-tagged",
+		Progress:     0.27,
+		State:        qbt.TorrentStateCheckingResumeData,
+		CompletionOn: 300,
+	})
+
+	select {
+	case <-invoked:
+		t.Fatal("completion search should be skipped after refreshed torrent gains cross-seed tag")
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

@@ -1415,49 +1415,12 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	if !completionSettings.Enabled {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Completion search disabled for this instance")
+		logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
 
-	if torrent.CompletionOn <= 0 || torrent.Hash == "" {
-		// Safety check – the qbittorrent completion hook should only fire for completed torrents.
+	if shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
 		return
-	}
-
-	if hasCrossSeedTag(torrent.Tags) {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Skipping already tagged cross-seed torrent")
-		return
-	}
-
-	if !matchesCompletionFilters(&torrent, completionSettings) {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Torrent does not match completion filters")
-		return
-	}
-
-	// Load global automation settings for cross-seed configuration (indexers, tags, etc.)
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Msg("[CROSSSEED-COMPLETION] Failed to load automation settings")
-		return
-	}
-	if settings == nil {
-		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
 	lane := s.getCompletionLane(instanceID)
@@ -1475,6 +1438,37 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
+	completionSettings, err = s.completionStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", readyTorrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to reload instance completion settings")
+		return
+	}
+	if !completionSettings.Enabled {
+		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
+		return
+	}
+	if shouldSkipCompletionTorrent(instanceID, readyTorrent, completionSettings) {
+		return
+	}
+
+	// Load global automation settings for cross-seed configuration (indexers, tags, etc.)
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", readyTorrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to load automation settings")
+		return
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
+
 	err = s.executeCompletionSearchWithRetry(ctx, instanceID, readyTorrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
@@ -1484,6 +1478,37 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Str("name", readyTorrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
 	}
+}
+
+func shouldSkipCompletionTorrent(instanceID int, torrent *qbt.Torrent, completionSettings *models.InstanceCrossSeedCompletionSettings) bool {
+	if torrent == nil {
+		return true
+	}
+
+	if torrent.CompletionOn <= 0 || torrent.Hash == "" {
+		// Safety check – the qbittorrent completion hook should only fire for completed torrents.
+		return true
+	}
+
+	if hasCrossSeedTag(torrent.Tags) {
+		logCompletionSkip(instanceID, torrent, "[CROSSSEED-COMPLETION] Skipping already tagged cross-seed torrent")
+		return true
+	}
+
+	if !matchesCompletionFilters(torrent, completionSettings) {
+		logCompletionSkip(instanceID, torrent, "[CROSSSEED-COMPLETION] Torrent does not match completion filters")
+		return true
+	}
+
+	return false
+}
+
+func logCompletionSkip(instanceID int, torrent *qbt.Torrent, message string) {
+	event := log.Debug().Int("instanceID", instanceID)
+	if torrent != nil {
+		event = event.Str("hash", torrent.Hash).Str("name", torrent.Name)
+	}
+	event.Msg(message)
 }
 
 func (s *Service) getCompletionLane(instanceID int) *completionLane {
