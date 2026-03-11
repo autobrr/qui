@@ -365,7 +365,20 @@ type pendingResume struct {
 }
 
 type completionLane struct {
-	mu sync.Mutex
+	mu      sync.Mutex
+	waits   map[string]*completionWaitState
+	polling bool
+}
+
+type completionWaitState struct {
+	done           chan struct{}
+	deadline       time.Time
+	timeout        time.Duration
+	eventTorrent   qbt.Torrent
+	lastSeen       *qbt.Torrent
+	result         *qbt.Torrent
+	err            error
+	checkingLogged bool
 }
 
 // NewService creates a new cross-seed service
@@ -1441,8 +1454,12 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	readyTorrent, err := s.waitForCompletionTorrentReady(ctx, instanceID, torrent)
+	lane := s.getCompletionLane(instanceID)
+	lane.mu.Lock()
+
+	readyTorrent, err := s.waitForCompletionTorrentReadyLocked(ctx, instanceID, lane, torrent)
 	if err != nil {
+		lane.mu.Unlock()
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -1452,8 +1469,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	lane := s.getCompletionLane(instanceID)
-	lane.mu.Lock()
 	defer lane.mu.Unlock()
 
 	readyTorrent, err = s.getCompletionTorrent(ctx, instanceID, readyTorrent.Hash)
@@ -1565,103 +1580,364 @@ func (s *Service) getCompletionLane(instanceID int) *completionLane {
 }
 
 func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID int, eventTorrent qbt.Torrent) (*qbt.Torrent, error) {
-	current, err := s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
+	lane := s.getCompletionLane(instanceID)
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	return s.waitForCompletionTorrentReadyLocked(ctx, instanceID, lane, eventTorrent)
+}
+
+func (s *Service) waitForCompletionTorrentReadyLocked(
+	ctx context.Context,
+	instanceID int,
+	lane *completionLane,
+	eventTorrent qbt.Torrent,
+) (*qbt.Torrent, error) {
+	wait := s.registerCompletionWaitLocked(instanceID, lane, eventTorrent)
+	done := wait.done
+
+	lane.mu.Unlock()
+
+	var result *qbt.Torrent
+	var err error
+
+	select {
+	case <-ctx.Done():
+		err = ctx.Err()
+	case <-done:
+		err = wait.err
+		if wait.result != nil {
+			torrent := *wait.result
+			result = &torrent
+		}
+	}
+
+	lane.mu.Lock()
+
 	if err != nil {
 		return nil, err
 	}
 
-	completionTimeout := s.getCompletionTimeout()
-	completionPollInterval := s.getCompletionPollInterval()
+	return result, nil
+}
 
-	if !isCompletionCheckingState(current.State) {
-		if current.Progress < 1.0 {
-			return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, current.Name, current.Progress)
-		}
-		return current, nil
+func (s *Service) registerCompletionWaitLocked(
+	instanceID int,
+	lane *completionLane,
+	eventTorrent qbt.Torrent,
+) *completionWaitState {
+	if lane.waits == nil {
+		lane.waits = make(map[string]*completionWaitState)
 	}
 
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("hash", current.Hash).
-		Str("name", current.Name).
-		Str("state", string(current.State)).
-		Float64("progress", current.Progress).
-		Msg("[CROSSSEED-COMPLETION] Deferring completion search while torrent is checking")
+	hash := normalizeHash(eventTorrent.Hash)
+	timeout := s.getCompletionTimeout()
+	deadline := time.Now().Add(timeout)
 
-	timeout := time.NewTimer(completionTimeout)
-	defer timeout.Stop()
+	wait, ok := lane.waits[hash]
+	if ok {
+		if deadline.After(wait.deadline) {
+			wait.deadline = deadline
+			wait.timeout = timeout
+		}
+		s.startCompletionLanePollerLocked(instanceID, lane)
+		return wait
+	}
 
-	ticker := time.NewTicker(completionPollInterval)
-	defer ticker.Stop()
+	wait = &completionWaitState{
+		done:         make(chan struct{}),
+		deadline:     deadline,
+		timeout:      timeout,
+		eventTorrent: eventTorrent,
+	}
+	lane.waits[hash] = wait
+
+	s.startCompletionLanePollerLocked(instanceID, lane)
+
+	return wait
+}
+
+func (s *Service) startCompletionLanePollerLocked(instanceID int, lane *completionLane) {
+	if lane.polling {
+		return
+	}
+
+	lane.polling = true
+
+	go s.runCompletionLanePoller(instanceID, lane)
+}
+
+func (s *Service) runCompletionLanePoller(instanceID int, lane *completionLane) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-timeout.C:
+		<-timer.C
+		if !s.pollCompletionLane(instanceID, lane) {
+			return
+		}
+		timer.Reset(s.getCompletionPollInterval())
+	}
+}
+
+func (s *Service) pollCompletionLane(instanceID int, lane *completionLane) bool {
+	waits := s.snapshotCompletionWaits(lane)
+	if len(waits) == 0 {
+		return false
+	}
+
+	hashes := make([]string, 0, len(waits))
+	for hash := range waits {
+		hashes = append(hashes, hash)
+	}
+
+	torrents, err := s.getCompletionTorrents(context.Background(), instanceID, hashes)
+	now := time.Now()
+
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Int("torrents", len(hashes)).
+			Msg("[CROSSSEED-COMPLETION] Failed to refresh completion torrents while waiting for checking to finish")
+		s.expireCompletionWaitsLocked(instanceID, lane, now)
+		return s.updateCompletionPollerStateLocked(lane)
+	}
+
+	s.applyCompletionPollResultsLocked(instanceID, lane, waits, torrents, now)
+
+	return s.updateCompletionPollerStateLocked(lane)
+}
+
+func (s *Service) snapshotCompletionWaits(lane *completionLane) map[string]*completionWaitState {
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	if len(lane.waits) == 0 {
+		lane.polling = false
+		return nil
+	}
+
+	return maps.Clone(lane.waits)
+}
+
+func (s *Service) applyCompletionPollResultsLocked(
+	instanceID int,
+	lane *completionLane,
+	waits map[string]*completionWaitState,
+	torrents map[string]qbt.Torrent,
+	now time.Time,
+) {
+	for hash, wait := range waits {
+		currentWait, ok := lane.waits[hash]
+		if !ok || currentWait != wait {
+			continue
+		}
+
+		torrent, ok := torrents[hash]
+		if !ok {
+			s.failMissingCompletionWaitLocked(instanceID, lane, hash, wait)
+			continue
+		}
+
+		current := torrent
+		wait.lastSeen = &current
+
+		if s.keepWaitingForCompletion(instanceID, lane, hash, wait, current, now) {
+			continue
+		}
+
+		if current.Progress < 1.0 {
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", current.Hash).
 				Str("name", current.Name).
 				Str("state", string(current.State)).
 				Float64("progress", current.Progress).
-				Dur("timeout", completionTimeout).
-				Msg("[CROSSSEED-COMPLETION] Timed out waiting for torrent checking to finish")
-			return nil, fmt.Errorf("completion torrent %s still checking after %s", current.Name, completionTimeout)
-		case <-ticker.C:
-			current, err = s.getCompletionTorrent(ctx, instanceID, eventTorrent.Hash)
-			if err != nil {
-				if errors.Is(err, ErrTorrentNotFound) {
-					log.Warn().
-						Int("instanceID", instanceID).
-						Str("hash", eventTorrent.Hash).
-						Str("name", eventTorrent.Name).
-						Err(err).
-						Msg("[CROSSSEED-COMPLETION] Completion torrent disappeared while waiting for checking to finish")
-					return nil, err
-				}
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("hash", eventTorrent.Hash).
-					Str("name", eventTorrent.Name).
-					Err(err).
-					Msg("[CROSSSEED-COMPLETION] Failed to refresh completion torrent while waiting for checking to finish")
-				continue
-			}
-			if isCompletionCheckingState(current.State) {
-				continue
-			}
-			if current.Progress < 1.0 {
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("hash", current.Hash).
-					Str("name", current.Name).
-					Str("state", string(current.State)).
-					Float64("progress", current.Progress).
-					Msg("[CROSSSEED-COMPLETION] Torrent finished checking but is still incomplete")
-				return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, current.Name, current.Progress)
-			}
-			return current, nil
+				Msg("[CROSSSEED-COMPLETION] Torrent finished checking but is still incomplete")
+			s.completeCompletionWaitLocked(
+				lane,
+				hash,
+				wait,
+				nil,
+				fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, current.Name, current.Progress),
+			)
+			continue
 		}
+
+		s.completeCompletionWaitLocked(lane, hash, wait, &current, nil)
 	}
 }
 
+func (s *Service) keepWaitingForCompletion(
+	instanceID int,
+	lane *completionLane,
+	hash string,
+	wait *completionWaitState,
+	current qbt.Torrent,
+	now time.Time,
+) bool {
+	if !isCompletionCheckingState(current.State) {
+		return false
+	}
+
+	if !wait.checkingLogged {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", current.Hash).
+			Str("name", current.Name).
+			Str("state", string(current.State)).
+			Float64("progress", current.Progress).
+			Msg("[CROSSSEED-COMPLETION] Deferring completion search while torrent is checking")
+		wait.checkingLogged = true
+	}
+
+	if now.Before(wait.deadline) {
+		return true
+	}
+
+	log.Warn().
+		Int("instanceID", instanceID).
+		Str("hash", current.Hash).
+		Str("name", current.Name).
+		Str("state", string(current.State)).
+		Float64("progress", current.Progress).
+		Dur("timeout", wait.timeout).
+		Msg("[CROSSSEED-COMPLETION] Timed out waiting for torrent checking to finish")
+	s.completeCompletionWaitLocked(
+		lane,
+		hash,
+		wait,
+		nil,
+		fmt.Errorf("completion torrent %s still checking after %s", current.Name, wait.timeout),
+	)
+
+	return true
+}
+
+func (s *Service) failMissingCompletionWaitLocked(
+	instanceID int,
+	lane *completionLane,
+	hash string,
+	wait *completionWaitState,
+) {
+	err := fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, wait.eventTorrent.Hash, instanceID)
+
+	log.Warn().
+		Int("instanceID", instanceID).
+		Str("hash", wait.eventTorrent.Hash).
+		Str("name", wait.eventTorrent.Name).
+		Err(err).
+		Msg("[CROSSSEED-COMPLETION] Completion torrent disappeared while waiting for checking to finish")
+
+	s.completeCompletionWaitLocked(lane, hash, wait, nil, err)
+}
+
+func (s *Service) expireCompletionWaitsLocked(instanceID int, lane *completionLane, now time.Time) {
+	for hash, wait := range lane.waits {
+		if now.Before(wait.deadline) {
+			continue
+		}
+
+		s.failTimedOutCompletionWaitLocked(instanceID, lane, hash, wait)
+	}
+}
+
+func (s *Service) failTimedOutCompletionWaitLocked(
+	instanceID int,
+	lane *completionLane,
+	hash string,
+	wait *completionWaitState,
+) {
+	name := wait.eventTorrent.Name
+	state := qbt.TorrentState("")
+	progress := 0.0
+
+	if wait.lastSeen != nil {
+		name = wait.lastSeen.Name
+		state = wait.lastSeen.State
+		progress = wait.lastSeen.Progress
+	}
+
+	log.Warn().
+		Int("instanceID", instanceID).
+		Str("hash", wait.eventTorrent.Hash).
+		Str("name", name).
+		Str("state", string(state)).
+		Float64("progress", progress).
+		Dur("timeout", wait.timeout).
+		Msg("[CROSSSEED-COMPLETION] Timed out waiting for torrent checking to finish")
+	s.completeCompletionWaitLocked(
+		lane,
+		hash,
+		wait,
+		nil,
+		fmt.Errorf("completion torrent %s still checking after %s", name, wait.timeout),
+	)
+}
+
+func (s *Service) completeCompletionWaitLocked(
+	lane *completionLane,
+	hash string,
+	wait *completionWaitState,
+	result *qbt.Torrent,
+	err error,
+) {
+	delete(lane.waits, hash)
+
+	if result != nil {
+		torrent := *result
+		wait.result = &torrent
+	}
+	wait.err = err
+
+	close(wait.done)
+}
+
+func (s *Service) updateCompletionPollerStateLocked(lane *completionLane) bool {
+	if len(lane.waits) > 0 {
+		return true
+	}
+
+	lane.polling = false
+	return false
+}
+
 func (s *Service) getCompletionTorrent(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
+	torrents, err := s.getCompletionTorrents(ctx, instanceID, []string{hash})
+	if err != nil {
+		return nil, err
+	}
+
+	torrent, ok := torrents[normalizeHash(hash)]
+	if !ok {
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+	}
+
+	current := torrent
+	return &current, nil
+}
+
+func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error) {
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	defer cancel()
 
 	torrents, err := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{
-		Hashes: []string{hash},
+		Hashes: hashes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
-	if len(torrents) == 0 {
-		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+
+	result := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		result[normalizeHash(torrent.Hash)] = torrent
 	}
 
-	torrent := torrents[0]
-	return &torrent, nil
+	return result, nil
 }
 
 func isCompletionCheckingState(state qbt.TorrentState) bool {

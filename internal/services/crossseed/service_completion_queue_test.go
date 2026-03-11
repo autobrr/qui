@@ -63,6 +63,7 @@ type completionPollingSyncMock struct {
 	mu        sync.Mutex
 	sequences map[string][]qbt.Torrent
 	hits      map[string]int
+	delay     time.Duration
 }
 
 func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completionPollingSyncMock {
@@ -80,6 +81,10 @@ func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completio
 func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 {
 		return nil, nil
+	}
+
+	if m.delay > 0 {
+		time.Sleep(m.delay)
 	}
 
 	hash := normalizeHash(filter.Hashes[0])
@@ -100,6 +105,13 @@ func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter
 
 	torrent := sequence[index]
 	return []qbt.Torrent{torrent}, nil
+}
+
+func (m *completionPollingSyncMock) hitCount(hash string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.hits[normalizeHash(hash)]
 }
 
 func (m *completionPollingSyncMock) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
@@ -469,6 +481,54 @@ func TestWaitForCompletionTorrentReady_TimesOutWhileChecking(t *testing.T) {
 		Name: "stuck-checking",
 	})
 	require.EqualError(t, err, "completion torrent stuck-checking still checking after 20ms")
+}
+
+func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaiters(t *testing.T) {
+	hash := "9999999999999999999999999999999999999999"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		hash: {
+			{
+				Hash:     hash,
+				Name:     "shared-wait",
+				Progress: 0.27,
+				State:    qbt.TorrentStateCheckingResumeData,
+			},
+			{
+				Hash:     hash,
+				Name:     "shared-wait",
+				Progress: 1.0,
+				State:    qbt.TorrentStateUploading,
+			},
+		},
+	})
+	syncMock.delay = 2 * time.Millisecond
+
+	svc := &Service{
+		syncManager: syncMock,
+	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+
+	for range 2 {
+		go func() {
+			<-start
+			_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
+				Hash: hash,
+				Name: "shared-wait",
+			})
+			errs <- err
+		}()
+	}
+
+	close(start)
+
+	for range 2 {
+		require.NoError(t, <-errs)
+	}
+
+	require.Equal(t, 2, syncMock.hitCount(hash))
 }
 
 func TestCompletionRetryDelay_FallbackRateLimitMessages(t *testing.T) {
