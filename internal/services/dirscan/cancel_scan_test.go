@@ -51,7 +51,7 @@ func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, dir.LastScanAt)
 
-	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled")
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
 	require.NoError(t, err)
 	require.Positive(t, runID)
 

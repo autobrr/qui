@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -91,6 +92,7 @@ type DirScanRun struct {
 	DirectoryID   int              `json:"directoryId"`
 	Status        DirScanRunStatus `json:"status"`
 	TriggeredBy   string           `json:"triggeredBy"`
+	ScanRoot      string           `json:"scanRoot,omitempty"`
 	FilesFound    int              `json:"filesFound"`
 	FilesSkipped  int              `json:"filesSkipped"`
 	MatchesFound  int              `json:"matchesFound"`
@@ -299,10 +301,17 @@ func minPieceRatioToDB(value float64) float64 {
 // ErrDirectoryNotFound is returned when a directory is not found.
 var ErrDirectoryNotFound = errors.New("directory not found")
 
+// ErrDuplicateDirScanDirectoryPath is returned when another directory already
+// uses the same cleaned path.
+var ErrDuplicateDirScanDirectoryPath = errors.New("duplicate dir scan directory path")
+
 // CreateDirectory creates a new scan directory.
 func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirectory) (*DirScanDirectory, error) {
 	if dir == nil {
 		return nil, errors.New("directory is nil")
+	}
+	if err := s.ensureUniqueDirectoryPath(ctx, dir.Path, 0); err != nil {
+		return nil, err
 	}
 
 	var qbitPathPrefix any
@@ -471,6 +480,9 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 	}
 
 	applyDirectoryUpdateParams(existing, params)
+	if err := s.ensureUniqueDirectoryPath(ctx, existing.Path, id); err != nil {
+		return nil, err
+	}
 
 	var qbitPathPrefix any
 	if existing.QbitPathPrefix != "" {
@@ -505,6 +517,26 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 	}
 
 	return s.GetDirectory(ctx, id)
+}
+
+func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path string, excludeID int) error {
+	cleanPath := filepath.Clean(path)
+
+	dirs, err := s.ListDirectories(ctx)
+	if err != nil {
+		return fmt.Errorf("list directories: %w", err)
+	}
+
+	for _, dir := range dirs {
+		if dir.ID == excludeID {
+			continue
+		}
+		if filepath.Clean(dir.Path) == cleanPath {
+			return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
+		}
+	}
+
+	return nil
 }
 
 func applyDirectoryUpdateParams(existing *DirScanDirectory, params *DirScanDirectoryUpdateParams) {
@@ -594,13 +626,18 @@ func (s *DirScanStore) ListEnabledDirectories(ctx context.Context) ([]*DirScanDi
 var ErrDirScanRunAlreadyActive = errors.New("an active scan run already exists for this directory")
 
 // CreateRun creates a new scan run.
-func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
+func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggeredBy, scanRoot string) (int64, error) {
+	var scanRootValue any
+	if scanRoot != "" {
+		scanRootValue = scanRoot
+	}
+
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
-		VALUES (?, ?, ?)
+		INSERT INTO dir_scan_runs (directory_id, status, triggered_by, scan_root)
+		VALUES (?, ?, ?, ?)
 		RETURNING id
-	`, directoryID, DirScanRunStatusQueued, triggeredBy).Scan(&id)
+	`, directoryID, DirScanRunStatusQueued, triggeredBy, scanRootValue).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert run: %w", err)
 	}
@@ -609,18 +646,23 @@ func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggered
 }
 
 // CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
-func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
+func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int, triggeredBy, scanRoot string) (int64, error) {
+	var scanRootValue any
+	if scanRoot != "" {
+		scanRootValue = scanRoot
+	}
+
 	var id int64
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO dir_scan_runs (directory_id, status, triggered_by)
-		SELECT ?, ?, ?
+		INSERT INTO dir_scan_runs (directory_id, status, triggered_by, scan_root)
+		SELECT ?, ?, ?, ?
 		WHERE NOT EXISTS (
 			SELECT 1 FROM dir_scan_runs
 			WHERE directory_id = ?
 			  AND status IN ('queued', 'scanning', 'searching', 'injecting')
 		)
 		RETURNING id
-	`, directoryID, DirScanRunStatusQueued, triggeredBy, directoryID).Scan(&id)
+	`, directoryID, DirScanRunStatusQueued, triggeredBy, scanRootValue, directoryID).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrDirScanRunAlreadyActive
@@ -634,7 +676,7 @@ func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int,
 // GetRun retrieves a run by ID.
 func (s *DirScanStore) GetRun(ctx context.Context, runID int64) (*DirScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, directory_id, status, triggered_by, files_found, files_skipped,
+		SELECT id, directory_id, status, triggered_by, scan_root, files_found, files_skipped,
 		       matches_found, torrents_added, error_message, started_at, completed_at
 		FROM dir_scan_runs
 		WHERE id = ?
@@ -653,6 +695,7 @@ func (s *DirScanStore) scanRun(row *sql.Row) (*DirScanRun, error) {
 
 func scanRunFromScanner(scanner sqlScanner) (*DirScanRun, error) {
 	var run DirScanRun
+	var scanRoot sql.NullString
 	var errorMessage sql.NullString
 	var completedAt sql.NullTime
 
@@ -661,6 +704,7 @@ func scanRunFromScanner(scanner sqlScanner) (*DirScanRun, error) {
 		&run.DirectoryID,
 		&run.Status,
 		&run.TriggeredBy,
+		&scanRoot,
 		&run.FilesFound,
 		&run.FilesSkipped,
 		&run.MatchesFound,
@@ -674,6 +718,9 @@ func scanRunFromScanner(scanner sqlScanner) (*DirScanRun, error) {
 
 	if errorMessage.Valid {
 		run.ErrorMessage = errorMessage.String
+	}
+	if scanRoot.Valid {
+		run.ScanRoot = scanRoot.String
 	}
 	if completedAt.Valid {
 		run.CompletedAt = &completedAt.Time
@@ -689,7 +736,7 @@ func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, directory_id, status, triggered_by, files_found, files_skipped,
+		SELECT id, directory_id, status, triggered_by, scan_root, files_found, files_skipped,
 		       matches_found, torrents_added, error_message, started_at, completed_at
 		FROM dir_scan_runs
 		WHERE directory_id = ?
@@ -738,7 +785,7 @@ func (s *DirScanStore) HasActiveRun(ctx context.Context, directoryID int) (bool,
 // GetActiveRun returns the active run for a directory, if any.
 func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, directory_id, status, triggered_by, files_found, files_skipped,
+		SELECT id, directory_id, status, triggered_by, scan_root, files_found, files_skipped,
 		       matches_found, torrents_added, error_message, started_at, completed_at
 		FROM dir_scan_runs
 		WHERE directory_id = ?

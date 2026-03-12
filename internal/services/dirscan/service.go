@@ -233,7 +233,7 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 	ctx := s.schedulerCtx
 
 	// Try to create a run; if one is already active, this will fail gracefully
-	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled")
+	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled", "")
 	if err != nil {
 		// ErrDirScanRunAlreadyActive is expected if a scan is in progress
 		if !errors.Is(err, models.ErrDirScanRunAlreadyActive) {
@@ -308,9 +308,8 @@ func (s *Service) startRun(parent context.Context, directoryID int, runID int64)
 	}()
 }
 
-// StartManualScan starts a manual scan for a directory.
-func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
-	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "manual")
+func (s *Service) startScan(ctx context.Context, directoryID int, triggeredBy, scanRoot string) (int64, error) {
+	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, triggeredBy, scanRoot)
 	if err != nil {
 		return 0, fmt.Errorf("create run: %w", err)
 	}
@@ -319,6 +318,16 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 	s.startRun(context.Background(), directoryID, runID)
 
 	return runID, nil
+}
+
+// StartManualScan starts a manual scan for a directory.
+func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
+	return s.startScan(ctx, directoryID, "manual", "")
+}
+
+// StartWebhookScan starts a webhook-triggered subtree scan for a directory.
+func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoot string) (int64, error) {
+	return s.startScan(ctx, directoryID, "webhook", scanRoot)
 }
 
 // CancelScan cancels an active scan.
@@ -439,14 +448,22 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	l.Info().Str("path", dir.Path).Msg("dirscan: starting scan")
+	scanRoot := dir.Path
+	if run.ScanRoot != "" {
+		scanRoot = run.ScanRoot
+	}
+
+	l.Info().
+		Str("path", scanRoot).
+		Str("directoryPath", dir.Path).
+		Msg("dirscan: starting scan")
 
 	settings, matcher, ok := s.loadSettingsAndMatcher(ctx, runID, dir.TargetInstanceID, &l)
 	if !ok {
 		return
 	}
 
-	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, settings, runID, &l)
+	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, scanRoot, settings, runID, &l)
 	if !ok {
 		return
 	}
@@ -624,7 +641,7 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 
 // runScanPhase executes the directory scanning phase.
 // Returns the scan result and true if successful, or nil and false on failure.
-func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, settings *models.DirScanSettings, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, settings *models.DirScanSettings, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
 	scanner := NewScanner()
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
@@ -639,7 +656,7 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 		}
 	}
 
-	scanResult, err := scanner.ScanDirectory(ctx, dir.Path)
+	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to scan directory")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
