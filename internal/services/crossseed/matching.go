@@ -65,13 +65,6 @@ type releaseKey struct {
 	day   int
 }
 
-type releaseMatchMode uint8
-
-const (
-	releaseMatchModeIdentity releaseMatchMode = iota
-	releaseMatchModeDiscovery
-)
-
 // makeReleaseKey creates a releaseKey from a parsed release.
 // Returns the zero value if the release doesn't have identifiable metadata.
 func makeReleaseKey(r *rls.Release) releaseKey {
@@ -126,19 +119,19 @@ func (k releaseKey) String() string {
 // releasesMatch keeps the historical strict identity semantics used by local
 // match views, deduplication, and other places that must avoid widening.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
-	return s.releasesMatchMode(source, candidate, findIndividualEpisodes, releaseMatchModeIdentity)
+	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, false)
 }
 
 func (s *Service) releasesMatchDiscovery(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
-	return s.releasesMatchMode(source, candidate, findIndividualEpisodes, releaseMatchModeDiscovery)
+	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, true)
 }
 
-func (s *Service) releasesMatchMode(source, candidate *rls.Release, findIndividualEpisodes bool, mode releaseMatchMode) bool {
+func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, findIndividualEpisodes bool, allowDiscoveryRelaxations bool) bool {
 	if source == candidate {
 		return true
 	}
 
-	if !releaseTitlesMatch(source.Title, candidate.Title, mode) {
+	if !titlesMatch(source.Title, candidate.Title, allowDiscoveryRelaxations) {
 		return false
 	}
 
@@ -213,7 +206,7 @@ func (s *Service) releasesMatchMode(source, candidate *rls.Release, findIndividu
 		}
 	}
 
-	if mode == releaseMatchModeDiscovery {
+	if allowDiscoveryRelaxations {
 		return discoveryMetadataMatch(s, source, candidate)
 	}
 
@@ -396,7 +389,7 @@ func (s *Service) releasesMatchMode(source, candidate *rls.Release, findIndividu
 	return true
 }
 
-func releaseTitlesMatch(sourceTitle, candidateTitle string, mode releaseMatchMode) bool {
+func titlesMatch(sourceTitle, candidateTitle string, allowDiscoveryRelaxations bool) bool {
 	sourceTitleNorm := stringutils.NormalizeForMatching(sourceTitle)
 	candidateTitleNorm := stringutils.NormalizeForMatching(candidateTitle)
 	if sourceTitleNorm == "" || candidateTitleNorm == "" {
@@ -405,7 +398,7 @@ func releaseTitlesMatch(sourceTitle, candidateTitle string, mode releaseMatchMod
 	if sourceTitleNorm == candidateTitleNorm {
 		return true
 	}
-	if mode != releaseMatchModeDiscovery {
+	if !allowDiscoveryRelaxations {
 		return false
 	}
 
@@ -422,7 +415,18 @@ func normalizeDiscoveryTitle(title string) string {
 
 	filtered := tokens[:0]
 	for _, token := range tokens {
-		if isIgnorableDiscoveryTitleToken(token) {
+		switch strings.TrimSpace(strings.ToLower(token)) {
+		case "", "us", "uk", "au", "ca", "jp", "kr", "cn", "de", "fr", "es", "it", "se", "no", "fi", "dk", "nl", "be":
+			continue
+		}
+		ignorable := true
+		for _, r := range token {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				ignorable = false
+				break
+			}
+		}
+		if ignorable {
 			continue
 		}
 		filtered = append(filtered, token)
@@ -430,28 +434,19 @@ func normalizeDiscoveryTitle(title string) string {
 	return strings.Join(filtered, " ")
 }
 
-func isIgnorableDiscoveryTitleToken(token string) bool {
-	switch strings.TrimSpace(strings.ToLower(token)) {
-	case "", "us", "uk", "au", "ca", "jp", "kr", "cn", "de", "fr", "es", "it", "se", "no", "fi", "dk", "nl", "be":
-		return true
-	}
-
-	for _, r := range token {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			return false
-		}
-	}
-	return true
-}
-
 func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
-	sourceGroup := discoveryReleaseGroupValue(s.stringNormalizer, source.Group)
-	candidateGroup := discoveryReleaseGroupValue(s.stringNormalizer, candidate.Group)
+	normalizer := s.stringNormalizer
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	sourceGroup := normalizer.Normalize(source.Group)
+	candidateGroup := normalizer.Normalize(candidate.Group)
 	if sourceGroup != "" && candidateGroup != "" {
-		if !discoveryReleaseGroupCompatible(s.stringNormalizer, source.Group, candidate.Group) {
+		if !discoveryReleaseGroupCompatible(normalizer, source.Group, candidate.Group) {
 			return false
 		}
-	} else if !discoveryReleaseGroupCompatible(s.stringNormalizer, source.Site, candidate.Site) {
+	} else if !discoveryReleaseGroupCompatible(normalizer, source.Site, candidate.Site) {
 		return false
 	}
 
@@ -489,13 +484,6 @@ func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
 	}
 
 	return true
-}
-
-func discoveryReleaseGroupValue(normalizer *stringutils.Normalizer[string, string], value string) string {
-	if normalizer == nil {
-		normalizer = stringutils.DefaultNormalizer
-	}
-	return normalizer.Normalize(value)
 }
 
 func discoveryReleaseGroupCompatible(normalizer *stringutils.Normalizer[string, string], sourceValue, candidateValue string) bool {
