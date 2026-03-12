@@ -456,8 +456,8 @@ func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
 		return false
 	}
 
-	sourceRes := s.stringNormalizer.Normalize(source.Resolution)
-	candidateRes := s.stringNormalizer.Normalize(candidate.Resolution)
+	sourceRes := normalizer.Normalize(source.Resolution)
+	candidateRes := normalizer.Normalize(candidate.Resolution)
 	if sourceRes != candidateRes {
 		isKnownSD := func(res string) bool {
 			switch normalizeVariant(res) {
@@ -474,8 +474,8 @@ func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
 		}
 	}
 
-	sourceVersion := s.stringNormalizer.Normalize(source.Version)
-	candidateVersion := s.stringNormalizer.Normalize(candidate.Version)
+	sourceVersion := normalizer.Normalize(source.Version)
+	candidateVersion := normalizer.Normalize(candidate.Version)
 	if (sourceVersion == "") != (candidateVersion == "") {
 		return false
 	}
@@ -486,6 +486,9 @@ func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
 	return true
 }
 
+// discoveryReleaseGroupCompatible is intentionally permissive for discovery filtering.
+// It uses strings.HasPrefix on normalized values, so "FLUX" and "FLUXUS" are treated
+// as compatible here and stricter downstream file verification decides the final match.
 func discoveryReleaseGroupCompatible(normalizer *stringutils.Normalizer[string, string], sourceValue, candidateValue string) bool {
 	if normalizer == nil {
 		normalizer = stringutils.DefaultNormalizer

@@ -154,3 +154,27 @@ func TestReleasesMatchDiscovery_KeepsSourceAndVersionBoundaries(t *testing.T) {
 		require.False(t, svc.releasesMatchDiscovery(source, candidate, false))
 	})
 }
+
+func TestReleasesMatchDiscovery_UsesDefaultNormalizerFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+
+	source := &rls.Release{
+		Title:      "Gladiator",
+		Year:       2000,
+		Group:      "UBWEB",
+		Source:     "WEB-DL",
+		Resolution: "2160p",
+	}
+	candidate := &rls.Release{
+		Title:      "Gladiator",
+		Year:       2000,
+		Source:     "WEB-DL",
+		Resolution: "2160p",
+	}
+
+	require.NotPanics(t, func() {
+		require.True(t, svc.releasesMatchDiscovery(source, candidate, false))
+	})
+}
