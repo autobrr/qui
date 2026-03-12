@@ -65,6 +65,13 @@ type releaseKey struct {
 	day   int
 }
 
+type releaseMatchMode uint8
+
+const (
+	releaseMatchModeIdentity releaseMatchMode = iota
+	releaseMatchModeDiscovery
+)
+
 // makeReleaseKey creates a releaseKey from a parsed release.
 // Returns the zero value if the release doesn't have identifiable metadata.
 func makeReleaseKey(r *rls.Release) releaseKey {
@@ -116,30 +123,22 @@ func (k releaseKey) String() string {
 	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
 }
 
-// releasesMatch checks if two releases are related using fuzzy matching.
-// This allows matching similar content that isn't exactly the same.
+// releasesMatch keeps the historical strict identity semantics used by local
+// match views, deduplication, and other places that must avoid widening.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	return s.releasesMatchMode(source, candidate, findIndividualEpisodes, releaseMatchModeIdentity)
+}
+
+func (s *Service) releasesMatchDiscovery(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	return s.releasesMatchMode(source, candidate, findIndividualEpisodes, releaseMatchModeDiscovery)
+}
+
+func (s *Service) releasesMatchMode(source, candidate *rls.Release, findIndividualEpisodes bool, mode releaseMatchMode) bool {
 	if source == candidate {
 		return true
 	}
 
-	// Title should match closely but not necessarily exactly.
-	// Use punctuation-stripping normalization to handle differences like
-	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitleNorm := stringutils.NormalizeForMatching(source.Title)
-	candidateTitleNorm := stringutils.NormalizeForMatching(candidate.Title)
-
-	if sourceTitleNorm == "" || candidateTitleNorm == "" {
-		return false
-	}
-
-	// Require exact title match after normalization.
-	//
-	// This is intentionally strict to avoid false positives between related-but-distinct
-	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
-	// would incorrectly treat them as the same show.
-	if sourceTitleNorm != candidateTitleNorm {
-		// Title mismatches are expected for most candidates - don't log to avoid noise
+	if !releaseTitlesMatch(source.Title, candidate.Title, mode) {
 		return false
 	}
 
@@ -212,6 +211,10 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 				return false
 			}
 		}
+	}
+
+	if mode == releaseMatchModeDiscovery {
+		return discoveryMetadataMatch(s, source, candidate)
 	}
 
 	// Group tags should match for proper cross-seeding compatibility.
@@ -391,6 +394,122 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	}
 
 	return true
+}
+
+func releaseTitlesMatch(sourceTitle, candidateTitle string, mode releaseMatchMode) bool {
+	sourceTitleNorm := stringutils.NormalizeForMatching(sourceTitle)
+	candidateTitleNorm := stringutils.NormalizeForMatching(candidateTitle)
+	if sourceTitleNorm == "" || candidateTitleNorm == "" {
+		return false
+	}
+	if sourceTitleNorm == candidateTitleNorm {
+		return true
+	}
+	if mode != releaseMatchModeDiscovery {
+		return false
+	}
+
+	sourceDiscovery := normalizeDiscoveryTitle(sourceTitleNorm)
+	candidateDiscovery := normalizeDiscoveryTitle(candidateTitleNorm)
+	return sourceDiscovery != "" && sourceDiscovery == candidateDiscovery
+}
+
+func normalizeDiscoveryTitle(title string) string {
+	tokens := strings.Fields(title)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	filtered := tokens[:0]
+	for _, token := range tokens {
+		if isIgnorableDiscoveryTitleToken(token) {
+			continue
+		}
+		filtered = append(filtered, token)
+	}
+	return strings.Join(filtered, " ")
+}
+
+func isIgnorableDiscoveryTitleToken(token string) bool {
+	switch strings.TrimSpace(strings.ToLower(token)) {
+	case "", "us", "uk", "au", "ca", "jp", "kr", "cn", "de", "fr", "es", "it", "se", "no", "fi", "dk", "nl", "be":
+		return true
+	}
+
+	for _, r := range token {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
+	sourceGroup := discoveryReleaseGroupValue(s.stringNormalizer, source.Group)
+	candidateGroup := discoveryReleaseGroupValue(s.stringNormalizer, candidate.Group)
+	if sourceGroup != "" && candidateGroup != "" {
+		if !discoveryReleaseGroupCompatible(s.stringNormalizer, source.Group, candidate.Group) {
+			return false
+		}
+	} else if !discoveryReleaseGroupCompatible(s.stringNormalizer, source.Site, candidate.Site) {
+		return false
+	}
+
+	sourceSource := normalizeSource(source.Source)
+	candidateSource := normalizeSource(candidate.Source)
+	if !sourcesCompatible(sourceSource, candidateSource) {
+		return false
+	}
+
+	sourceRes := s.stringNormalizer.Normalize(source.Resolution)
+	candidateRes := s.stringNormalizer.Normalize(candidate.Resolution)
+	if sourceRes != candidateRes {
+		isKnownSD := func(res string) bool {
+			switch normalizeVariant(res) {
+			case "480P", "576P", "SD":
+				return true
+			default:
+				return false
+			}
+		}
+
+		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
+		if !sdFallbackAllowed {
+			return false
+		}
+	}
+
+	sourceVersion := s.stringNormalizer.Normalize(source.Version)
+	candidateVersion := s.stringNormalizer.Normalize(candidate.Version)
+	if (sourceVersion == "") != (candidateVersion == "") {
+		return false
+	}
+	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
+		return false
+	}
+
+	return true
+}
+
+func discoveryReleaseGroupValue(normalizer *stringutils.Normalizer[string, string], value string) string {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+	return normalizer.Normalize(value)
+}
+
+func discoveryReleaseGroupCompatible(normalizer *stringutils.Normalizer[string, string], sourceValue, candidateValue string) bool {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	sourceNorm := normalizer.Normalize(sourceValue)
+	candidateNorm := normalizer.Normalize(candidateValue)
+	if sourceNorm == "" || candidateNorm == "" {
+		return true
+	}
+
+	return strings.HasPrefix(sourceNorm, candidateNorm) || strings.HasPrefix(candidateNorm, sourceNorm)
 }
 
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.

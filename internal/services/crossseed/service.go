@@ -3151,7 +3151,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			}
 
 			// Check if releases are related (quick filter)
-			if !s.releasesMatch(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
+			if !s.releasesMatchDiscovery(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
 				continue
 			}
 
@@ -6419,7 +6419,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		if !s.releasesMatchDiscovery(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
 			releaseFilteredCount++
 			continue
 		}
@@ -9776,7 +9776,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			}
 
 			// Check if releases match using the configured strict or episode-aware matching.
-			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
+			if !s.releasesMatchDiscovery(incomingRelease, existingRelease, findIndividualEpisodes) {
 				continue
 			}
 
