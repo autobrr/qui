@@ -131,6 +131,11 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 		return true
 	}
 
+	normalizer := s.stringNormalizer
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
 	if !titlesMatch(source.Title, candidate.Title, allowDiscoveryRelaxations) {
 		return false
 	}
@@ -140,8 +145,8 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
 	if source.Artist != "" && candidate.Artist != "" {
-		sourceArtist := s.stringNormalizer.Normalize(source.Artist)
-		candidateArtist := s.stringNormalizer.Normalize(candidate.Artist)
+		sourceArtist := normalizer.Normalize(source.Artist)
+		candidateArtist := normalizer.Normalize(candidate.Artist)
 		if sourceArtist != candidateArtist {
 			return false
 		}
@@ -207,80 +212,82 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 	}
 
 	if allowDiscoveryRelaxations {
-		return discoveryMetadataMatch(s, source, candidate)
-	}
-
-	// Group tags should match for proper cross-seeding compatibility.
-	// Different release groups often have different encoding settings and file structures.
-	sourceGroup := s.stringNormalizer.Normalize((source.Group))
-	candidateGroup := s.stringNormalizer.Normalize((candidate.Group))
-
-	// Only enforce group matching if the source has a group tag
-	if sourceGroup != "" {
-		// If source has a group, candidate must have the same group
-		if candidateGroup == "" || sourceGroup != candidateGroup {
+		if !discoveryMetadataMatch(s, source, candidate) {
 			return false
 		}
-	}
-	// If source has no group, we don't care about candidate's group
+	} else {
+		// Group tags should match for proper cross-seeding compatibility.
+		// Different release groups often have different encoding settings and file structures.
+		sourceGroup := normalizer.Normalize(source.Group)
+		candidateGroup := normalizer.Normalize(candidate.Group)
 
-	// Site field is used by anime releases where group is in brackets like [SubsPlease].
-	// rls parses these as Site rather than Group. Different fansub groups can never
-	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
-	// non-empty site tags as incompatible, but don't reject candidates that simply
-	// lack this metadata.
-	sourceSite := s.stringNormalizer.Normalize(source.Site)
-	candidateSite := s.stringNormalizer.Normalize(candidate.Site)
-	if sourceSite != "" && candidateSite != "" && sourceSite != candidateSite {
-		return false
-	}
+		// Only enforce group matching if the source has a group tag
+		if sourceGroup != "" {
+			// If source has a group, candidate must have the same group
+			if candidateGroup == "" || sourceGroup != candidateGroup {
+				return false
+			}
+		}
+		// If source has no group, we don't care about candidate's group
 
-	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
-	// Different checksums mean different files with 100% certainty.
-	sourceSum := s.stringNormalizer.Normalize(source.Sum)
-	candidateSum := s.stringNormalizer.Normalize(candidate.Sum)
-	if sourceSum != "" {
-		if candidateSum == "" || sourceSum != candidateSum {
+		// Site field is used by anime releases where group is in brackets like [SubsPlease].
+		// rls parses these as Site rather than Group. Different fansub groups can never
+		// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
+		// non-empty site tags as incompatible, but don't reject candidates that simply
+		// lack this metadata.
+		sourceSite := normalizer.Normalize(source.Site)
+		candidateSite := normalizer.Normalize(candidate.Site)
+		if sourceSite != "" && candidateSite != "" && sourceSite != candidateSite {
 			return false
 		}
-	}
 
-	// Source must be compatible if both are present.
-	// WEB is ambiguous and matches both WEB-DL and WEBRip.
-	// WEB-DL and WEBRip are explicitly different and do not match.
-	// Other sources (BluRay, HDTV, etc.) must match exactly.
-	sourceSource := normalizeSource(source.Source)
-	candidateSource := normalizeSource(candidate.Source)
-	if !sourcesCompatible(sourceSource, candidateSource) {
-		return false
-	}
-
-	// Resolution must match (1080p vs 2160p are different files).
-	// Exception: empty resolution is allowed to match SD resolutions (480p, 576p, SD).
-	sourceRes := s.stringNormalizer.Normalize((source.Resolution))
-	candidateRes := s.stringNormalizer.Normalize((candidate.Resolution))
-	if sourceRes != candidateRes {
-		// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
-		// treat an empty resolution as a match only when the other side is clearly SD.
-		isKnownSD := func(res string) bool {
-			switch normalizeVariant(res) {
-			case "480P", "576P", "SD":
-				return true
-			default:
+		// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
+		// Different checksums mean different files with 100% certainty.
+		sourceSum := normalizer.Normalize(source.Sum)
+		candidateSum := normalizer.Normalize(candidate.Sum)
+		if sourceSum != "" {
+			if candidateSum == "" || sourceSum != candidateSum {
 				return false
 			}
 		}
 
-		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
-		if !sdFallbackAllowed {
+		// Source must be compatible if both are present.
+		// WEB is ambiguous and matches both WEB-DL and WEBRip.
+		// WEB-DL and WEBRip are explicitly different and do not match.
+		// Other sources (BluRay, HDTV, etc.) must match exactly.
+		sourceSource := normalizeSource(source.Source)
+		candidateSource := normalizeSource(candidate.Source)
+		if !sourcesCompatible(sourceSource, candidateSource) {
 			return false
+		}
+
+		// Resolution must match (1080p vs 2160p are different files).
+		// Exception: empty resolution is allowed to match SD resolutions (480p, 576p, SD).
+		sourceRes := normalizer.Normalize(source.Resolution)
+		candidateRes := normalizer.Normalize(candidate.Resolution)
+		if sourceRes != candidateRes {
+			// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
+			// treat an empty resolution as a match only when the other side is clearly SD.
+			isKnownSD := func(res string) bool {
+				switch normalizeVariant(res) {
+				case "480P", "576P", "SD":
+					return true
+				default:
+					return false
+				}
+			}
+
+			sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
+			if !sdFallbackAllowed {
+				return false
+			}
 		}
 	}
 
 	// Collection must match if either is present (NF vs AMZN vs Criterion are different sources)
 	// If one release has a collection/service tag and the other doesn't, they cannot match
-	sourceCollection := s.stringNormalizer.Normalize((source.Collection))
-	candidateCollection := s.stringNormalizer.Normalize((candidate.Collection))
+	sourceCollection := normalizer.Normalize(source.Collection)
+	candidateCollection := normalizer.Normalize(candidate.Collection)
 	if sourceCollection != candidateCollection {
 		return false
 	}
@@ -305,8 +312,8 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 
 	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
 	// We intentionally don't enforce "either present" here since indexer titles often omit it.
-	sourceBitDepth := s.stringNormalizer.Normalize(source.BitDepth)
-	candidateBitDepth := s.stringNormalizer.Normalize(candidate.BitDepth)
+	sourceBitDepth := normalizer.Normalize(source.BitDepth)
+	candidateBitDepth := normalizer.Normalize(candidate.BitDepth)
 	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
 		return false
 	}
@@ -351,29 +358,29 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 	}
 
 	// Version must match if both are present (v2 often has different files than v1)
-	sourceVersion := s.stringNormalizer.Normalize(source.Version)
-	candidateVersion := s.stringNormalizer.Normalize(candidate.Version)
+	sourceVersion := normalizer.Normalize(source.Version)
+	candidateVersion := normalizer.Normalize(candidate.Version)
 	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
 		return false
 	}
 
 	// Disc must match if both are present (Disc1 vs Disc2 are different content)
-	sourceDisc := s.stringNormalizer.Normalize(source.Disc)
-	candidateDisc := s.stringNormalizer.Normalize(candidate.Disc)
+	sourceDisc := normalizer.Normalize(source.Disc)
+	candidateDisc := normalizer.Normalize(candidate.Disc)
 	if sourceDisc != "" && candidateDisc != "" && sourceDisc != candidateDisc {
 		return false
 	}
 
 	// Platform must match if both are present (Windows vs macOS are different binaries)
-	sourcePlatform := s.stringNormalizer.Normalize(source.Platform)
-	candidatePlatform := s.stringNormalizer.Normalize(candidate.Platform)
+	sourcePlatform := normalizer.Normalize(source.Platform)
+	candidatePlatform := normalizer.Normalize(candidate.Platform)
 	if sourcePlatform != "" && candidatePlatform != "" && sourcePlatform != candidatePlatform {
 		return false
 	}
 
 	// Architecture must match if both are present (x64 vs x86 are different binaries)
-	sourceArch := s.stringNormalizer.Normalize(source.Arch)
-	candidateArch := s.stringNormalizer.Normalize(candidate.Arch)
+	sourceArch := normalizer.Normalize(source.Arch)
+	candidateArch := normalizer.Normalize(candidate.Arch)
 	if sourceArch != "" && candidateArch != "" && sourceArch != candidateArch {
 		return false
 	}
@@ -414,10 +421,12 @@ func normalizeDiscoveryTitle(title string) string {
 	}
 
 	filtered := tokens[:0]
-	for _, token := range tokens {
+	for i, token := range tokens {
 		switch strings.TrimSpace(strings.ToLower(token)) {
 		case "", "us", "uk", "au", "ca", "jp", "kr", "cn", "de", "fr", "es", "it", "se", "no", "fi", "dk", "nl", "be":
-			continue
+			if i == len(tokens)-1 {
+				continue
+			}
 		}
 		ignorable := true
 		for _, r := range token {

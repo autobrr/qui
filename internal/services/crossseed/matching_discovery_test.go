@@ -85,6 +85,29 @@ func TestReleasesMatchDiscovery_IgnoresBilingualAndRegionTitleNoise(t *testing.T
 	})
 }
 
+func TestReleasesMatchDiscovery_KeepsInternalRegionLikeTokens(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	source := &rls.Release{
+		Title:      "The IT Crowd",
+		Series:     1,
+		Episode:    1,
+		Source:     "WEB-DL",
+		Resolution: "1080p",
+	}
+	candidate := &rls.Release{
+		Title:      "The Crowd",
+		Series:     1,
+		Episode:    1,
+		Source:     "WEB-DL",
+		Resolution: "1080p",
+	}
+
+	require.False(t, svc.releasesMatchDiscovery(source, candidate, false))
+}
+
 func TestReleasesMatchDiscovery_StillRejectsDistinctSpinoffs(t *testing.T) {
 	t.Parallel()
 
@@ -149,6 +172,54 @@ func TestReleasesMatchDiscovery_KeepsSourceAndVersionBoundaries(t *testing.T) {
 			Episode:    4,
 			Source:     "WEB-DL",
 			Resolution: "1080p",
+		}
+
+		require.False(t, svc.releasesMatchDiscovery(source, candidate, false))
+	})
+}
+
+func TestReleasesMatchDiscovery_KeepsSharedCompatibilityChecks(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	t.Run("collection mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		source := &rls.Release{
+			Title:      "Gladiator",
+			Year:       2000,
+			Group:      "UBWEB",
+			Source:     "WEB-DL",
+			Resolution: "2160p",
+			Collection: "NF",
+		}
+		candidate := &rls.Release{
+			Title:      "Gladiator",
+			Year:       2000,
+			Source:     "WEB-DL",
+			Resolution: "2160p",
+		}
+
+		require.False(t, svc.releasesMatchDiscovery(source, candidate, false))
+	})
+
+	t.Run("variant mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		source := &rls.Release{
+			Title:      "Gladiator",
+			Year:       2000,
+			Group:      "UBWEB",
+			Source:     "WEB-DL",
+			Resolution: "2160p",
+			Other:      []string{"PROPER"},
+		}
+		candidate := &rls.Release{
+			Title:      "Gladiator",
+			Year:       2000,
+			Source:     "WEB-DL",
+			Resolution: "2160p",
 		}
 
 		require.False(t, svc.releasesMatchDiscovery(source, candidate, false))
