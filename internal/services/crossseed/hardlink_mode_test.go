@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
 // Note: qbtLayoutToHardlinkLayout is no longer used in hardlink mode.
@@ -903,4 +906,40 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 	assert.False(t, result.Success, "result should indicate failure")
 	assert.Equal(t, "reflink_error", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "base directory")
+}
+
+func TestShouldWarnForReflinkCreateError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "plain wrapped unsupported error",
+			err:  fmt.Errorf("reflink create failed: %w", reflinktree.ErrReflinkUnsupported),
+			want: true,
+		},
+		{
+			name: "joined rollback error stays error level",
+			err: errors.Join(
+				fmt.Errorf("reflink create failed: %w", reflinktree.ErrReflinkUnsupported),
+				errors.New("rollback also failed"),
+			),
+			want: false,
+		},
+		{
+			name: "unrelated error",
+			err:  errors.New("boom"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shouldWarnForReflinkCreateError(tt.err))
+		})
+	}
 }

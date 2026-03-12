@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -407,58 +408,8 @@ func joinNormalizedSlice(slice []string) string {
 }
 
 func joinNormalizedHDRSlice(slice []string) string {
-	if len(slice) == 0 {
-		return ""
-	}
-
-	seen := make(map[string]struct{}, len(slice))
-	hasHDR10Plus := false
-	for _, tag := range slice {
-		n := normalizeHDRVariant(tag)
-		if n == "" {
-			continue
-		}
-		if n == "HDR10+" {
-			hasHDR10Plus = true
-		}
-		seen[n] = struct{}{}
-	}
-
-	if hasHDR10Plus {
-		delete(seen, "HDR10")
-	}
-
-	normalized := make([]string, 0, len(seen))
-	for tag := range seen {
-		normalized = append(normalized, tag)
-	}
-
-	sort.Strings(normalized)
+	normalized := releases.NormalizeHDRTags(slice)
 	return strings.Join(normalized, " ")
-}
-
-func normalizeHDRVariant(value string) string {
-	upper := normalizeVariant(value)
-	if upper == "" {
-		return ""
-	}
-
-	key := strings.NewReplacer(" ", "", ".", "", "_", "", "-", "").Replace(upper)
-
-	switch key {
-	case "DOVI", "DOLBYVISION", "DV":
-		return "DV"
-	case "HDR10PLUS", "HDR10P", "HDR10+":
-		return "HDR10+"
-	case "HDR10":
-		return "HDR10"
-	case "HDR":
-		return "HDR"
-	case "HLG":
-		return "HLG"
-	default:
-		return upper
-	}
 }
 
 // videoCodecAliases maps equivalent video codec names to a canonical form.
