@@ -14,8 +14,22 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 - **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
 - **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 
+Managed-link follow-up settings live in **Hardlink / Reflink Mode** on the same Rules tab:
+
+- **Enable pooled partial completion** - Only shown when at least one instance is using hardlink or reflink mode. Applies only to hardlink/reflink adds that already passed the normal acceptance rules and still need coordination after add time, such as non-exact matches, extra files, or disc layouts. Related partial adds against the same matched local source torrent are coordinated as a shared active pool, and active pool state can be restored while the pool remains active.
+- **Max missing bytes after recheck** - Shown when pooled partial completion is enabled. Default `100 MiB`. Used only for pooled reflink automation. If a reflink pool member still has more missing bytes than this after recheck, it stays paused for manual review.
+- **Allow reflink single-file size mismatch** - Only shown when at least one instance is using reflink mode. Reflink-only escape hatch for one-file torrents where the normalized file names match and the source file size is already within 1% of the incoming size. qui clones the file, forces a recheck, and auto-resumes once qBittorrent reaches 99%. Larger gaps are rejected before add. This path does not use pooled partial completion.
+
 :::note
 Disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
+:::
+
+:::note
+For pooled partial completion, hardlink automation only continues when the post-recheck gap is limited to whole missing files and those files are still piece-boundary safe. If bytes are missing inside an existing linked file, qui leaves the torrent paused for manual review. Reflink can continue with partial-file divergence as long as it stays within the byte limit above.
+:::
+
+:::note
+Pooled partial completion keeps managed hardlink/reflink adds paused while qBittorrent rechecks them. Once the pool no longer needs coordination, normal resume behavior takes over. If you also enable **Skip recheck**, any add that would have relied on pooled handling is skipped instead.
 :::
 
 ## Categories

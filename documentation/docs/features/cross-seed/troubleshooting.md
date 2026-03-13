@@ -95,6 +95,24 @@ The incoming torrent has files not present in your matched torrent, and those fi
 - Verify the "Size mismatch tolerance" setting in Rules
 - Torrents below the auto-resume threshold stay paused for manual review
 
+## Pooled partial completion stayed paused
+
+If **Enable pooled partial completion** is on in **Hardlink / Reflink Mode**, qui may intentionally add hardlink/reflink cross-seeds paused and wait for qBittorrent's recheck result before deciding whether to resume them.
+
+Common reasons they remain paused:
+- **Hardlink post-recheck gap is inside an existing linked file**: hardlink automation only continues automatically when the remaining gap is made of whole missing files
+- **Reflink post-recheck gap exceeds the configured byte limit**: check **Max missing after recheck (MiB)** in **Hardlink / Reflink Mode**
+- **Disc layout (`BDMV`/`VIDEO_TS`)**: these are handled more conservatively and require a full successful recheck
+- **Skip recheck is enabled**: pooled handling cannot run if the add would have required a recheck
+
+If the result looks safe in qBittorrent, you can resume manually.
+
+## Reflink single-file size mismatch was skipped or stayed paused
+
+The **Allow reflink single-file size mismatch** option in **Hardlink / Reflink Mode** only applies when both torrents contain exactly one file, the normalized file names match, and the sizes are already within 1%. It does not apply to multi-file torrents.
+
+When it does apply, qui adds the torrent paused, queues a recheck, and only auto-resumes once qBittorrent reaches **99%**. If the size gap is larger than 1%, qui rejects it before add. If it still stays below 99% after recheck, leave it paused for manual review.
+
 ## Blu-ray or DVD cross-seed left paused
 
 Torrents containing disc-based media (Blu-ray `BDMV` or DVD `VIDEO_TS` folder structures) are always added paused.

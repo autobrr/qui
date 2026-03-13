@@ -32,24 +32,29 @@ type CrossSeedHandler struct {
 
 var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 
+const minMaxMissingBytesAfterRecheck = 1024 * 1024
+
 type automationSettingsRequest struct {
-	Enabled                      bool    `json:"enabled"`
-	RunIntervalMinutes           int     `json:"runIntervalMinutes"`
-	StartPaused                  bool    `json:"startPaused"`
-	Category                     *string `json:"category"`
-	TargetInstanceIDs            []int   `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int   `json:"targetIndexerIds"`
-	MaxResultsPerRun             int     `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`
-	UseCrossCategoryAffix        bool    `json:"useCrossCategoryAffix"`
-	CategoryAffixMode            string  `json:"categoryAffixMode"`
-	CategoryAffix                string  `json:"categoryAffix"`
-	UseCustomCategory            bool    `json:"useCustomCategory"`
-	CustomCategory               string  `json:"customCategory"`
-	RunExternalProgramID         *int    `json:"runExternalProgramId"`
-	SkipRecheck                  bool    `json:"skipRecheck"`
+	Enabled                            bool    `json:"enabled"`
+	RunIntervalMinutes                 int     `json:"runIntervalMinutes"`
+	StartPaused                        bool    `json:"startPaused"`
+	Category                           *string `json:"category"`
+	TargetInstanceIDs                  []int   `json:"targetInstanceIds"`
+	TargetIndexerIDs                   []int   `json:"targetIndexerIds"`
+	MaxResultsPerRun                   int     `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes             bool    `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent       float64 `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer             bool    `json:"useCategoryFromIndexer"`
+	UseCrossCategoryAffix              bool    `json:"useCrossCategoryAffix"`
+	CategoryAffixMode                  string  `json:"categoryAffixMode"`
+	CategoryAffix                      string  `json:"categoryAffix"`
+	UseCustomCategory                  bool    `json:"useCustomCategory"`
+	CustomCategory                     string  `json:"customCategory"`
+	RunExternalProgramID               *int    `json:"runExternalProgramId"`
+	SkipRecheck                        bool    `json:"skipRecheck"`
+	EnablePooledPartialCompletion      bool    `json:"enablePooledPartialCompletion"`
+	AllowReflinkSingleFileSizeMismatch bool    `json:"allowReflinkSingleFileSizeMismatch"`
+	MaxMissingBytesAfterRecheck        int64   `json:"maxMissingBytesAfterRecheck"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled bool   `json:"gazelleEnabled"`
 	RedactedAPIKey string `json:"redactedApiKey"`
@@ -90,12 +95,15 @@ type automationSettingsPatchRequest struct {
 	WebhookTags          *[]string `json:"webhookTags,omitempty"`
 	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
 	// Skip auto-resume settings per source mode
-	SkipAutoResumeRSS            *bool `json:"skipAutoResumeRss,omitempty"`
-	SkipAutoResumeSeededSearch   *bool `json:"skipAutoResumeSeededSearch,omitempty"`
-	SkipAutoResumeCompletion     *bool `json:"skipAutoResumeCompletion,omitempty"`
-	SkipAutoResumeWebhook        *bool `json:"skipAutoResumeWebhook,omitempty"`
-	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
-	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
+	SkipAutoResumeRSS                  *bool  `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch         *bool  `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion           *bool  `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook              *bool  `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                        *bool  `json:"skipRecheck,omitempty"`
+	EnablePooledPartialCompletion      *bool  `json:"enablePooledPartialCompletion,omitempty"`
+	AllowReflinkSingleFileSizeMismatch *bool  `json:"allowReflinkSingleFileSizeMismatch,omitempty"`
+	MaxMissingBytesAfterRecheck        *int64 `json:"maxMissingBytesAfterRecheck,omitempty"`
+	SkipPieceBoundarySafetyCheck       *bool  `json:"skipPieceBoundarySafetyCheck,omitempty"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled *bool   `json:"gazelleEnabled,omitempty"`
 	RedactedAPIKey *string `json:"redactedApiKey,omitempty"`
@@ -193,10 +201,21 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
 		r.SkipRecheck == nil &&
+		r.EnablePooledPartialCompletion == nil &&
+		r.AllowReflinkSingleFileSizeMismatch == nil &&
+		r.MaxMissingBytesAfterRecheck == nil &&
 		r.SkipPieceBoundarySafetyCheck == nil &&
 		r.GazelleEnabled == nil &&
 		r.RedactedAPIKey == nil &&
 		r.OrpheusAPIKey == nil
+}
+
+func validateMaxMissingBytesAfterRecheck(w http.ResponseWriter, value int64) bool {
+	if value < minMaxMissingBytesAfterRecheck {
+		RespondError(w, http.StatusBadRequest, "maxMissingBytesAfterRecheck must be one MiB or greater")
+		return false
+	}
+	return true
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -314,6 +333,15 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipRecheck != nil {
 		settings.SkipRecheck = *patch.SkipRecheck
+	}
+	if patch.EnablePooledPartialCompletion != nil {
+		settings.EnablePooledPartialCompletion = *patch.EnablePooledPartialCompletion
+	}
+	if patch.AllowReflinkSingleFileSizeMismatch != nil {
+		settings.AllowReflinkSingleFileSizeMismatch = *patch.AllowReflinkSingleFileSizeMismatch
+	}
+	if patch.MaxMissingBytesAfterRecheck != nil {
+		settings.MaxMissingBytesAfterRecheck = *patch.MaxMissingBytesAfterRecheck
 	}
 	if patch.SkipPieceBoundarySafetyCheck != nil {
 		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
@@ -767,6 +795,9 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if !validateMaxMissingBytesAfterRecheck(w, req.MaxMissingBytesAfterRecheck) {
+		return
+	}
 
 	category := req.Category
 	if category != nil {
@@ -828,26 +859,29 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		Enabled:                      req.Enabled,
-		RunIntervalMinutes:           req.RunIntervalMinutes,
-		StartPaused:                  req.StartPaused,
-		Category:                     category,
-		TargetInstanceIDs:            req.TargetInstanceIDs,
-		TargetIndexerIDs:             req.TargetIndexerIDs,
-		MaxResultsPerRun:             req.MaxResultsPerRun,
-		FindIndividualEpisodes:       req.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
-		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
-		UseCrossCategoryAffix:        req.UseCrossCategoryAffix,
-		CategoryAffixMode:            req.CategoryAffixMode,
-		CategoryAffix:                req.CategoryAffix,
-		UseCustomCategory:            req.UseCustomCategory,
-		CustomCategory:               req.CustomCategory,
-		RunExternalProgramID:         req.RunExternalProgramID,
-		SkipRecheck:                  req.SkipRecheck,
-		GazelleEnabled:               req.GazelleEnabled,
-		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
-		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),
+		Enabled:                            req.Enabled,
+		RunIntervalMinutes:                 req.RunIntervalMinutes,
+		StartPaused:                        req.StartPaused,
+		Category:                           category,
+		TargetInstanceIDs:                  req.TargetInstanceIDs,
+		TargetIndexerIDs:                   req.TargetIndexerIDs,
+		MaxResultsPerRun:                   req.MaxResultsPerRun,
+		FindIndividualEpisodes:             req.FindIndividualEpisodes,
+		SizeMismatchTolerancePercent:       req.SizeMismatchTolerancePercent,
+		UseCategoryFromIndexer:             req.UseCategoryFromIndexer,
+		UseCrossCategoryAffix:              req.UseCrossCategoryAffix,
+		CategoryAffixMode:                  req.CategoryAffixMode,
+		CategoryAffix:                      req.CategoryAffix,
+		UseCustomCategory:                  req.UseCustomCategory,
+		CustomCategory:                     req.CustomCategory,
+		RunExternalProgramID:               req.RunExternalProgramID,
+		SkipRecheck:                        req.SkipRecheck,
+		EnablePooledPartialCompletion:      req.EnablePooledPartialCompletion,
+		AllowReflinkSingleFileSizeMismatch: req.AllowReflinkSingleFileSizeMismatch,
+		MaxMissingBytesAfterRecheck:        req.MaxMissingBytesAfterRecheck,
+		GazelleEnabled:                     req.GazelleEnabled,
+		RedactedAPIKey:                     strings.TrimSpace(req.RedactedAPIKey),
+		OrpheusAPIKey:                      strings.TrimSpace(req.OrpheusAPIKey),
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
@@ -886,6 +920,9 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	}
 	if req.isEmpty() {
 		RespondError(w, http.StatusBadRequest, "No fields provided to update")
+		return
+	}
+	if req.MaxMissingBytesAfterRecheck != nil && !validateMaxMissingBytesAfterRecheck(w, *req.MaxMissingBytesAfterRecheck) {
 		return
 	}
 

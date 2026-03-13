@@ -78,6 +78,8 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
 - Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 - Hardlink mode supports extra files when piece-boundary safe. If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
+- If you enable pooled partial completion in the **Hardlink / Reflink Mode** section of the Rules tab, related hardlink adds against the same matched local source torrent can cooperate temporarily. Hardlink automation only continues when post-recheck missing data is limited to whole missing files. If qBittorrent reports missing bytes inside an already linked file, qui leaves that torrent paused for manual review.
+- With pooled partial completion enabled, hardlink mode can still add paused even when no files are immediately reusable, then rely on recheck and the pool to decide whether it can continue automatically.
 
 ## Reflink Mode (Alternative)
 
@@ -117,6 +119,19 @@ On Linux, check the filesystem type with `df -T /path` (you want `xfs`/`btrfs`, 
 | Piece-boundary check | Skips if unsafe | Never skips (safe to modify clones) |
 | Recheck | Only when extras exist | Only when extras exist |
 | Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
+| Single-file size mismatch | Not supported | Optional normalized-name override |
+
+When pooled partial completion is enabled, reflink members may continue even when a file is only partially complete after recheck, as long as the total missing bytes remain within the configured post-recheck limit.
+
+### Single-File Size Mismatch Override
+
+If you enable **Allow reflink single-file size mismatch** in the **Hardlink / Reflink Mode** section, qui can accept a reflink cross-seed when:
+
+- both torrents contain exactly one file;
+- the normalized file names match; and
+- the sizes differ but are still within 1%.
+
+qui clones the file into the reflink tree, adds the torrent paused, and queues a recheck. If qBittorrent reaches at least **99%** after recheck, qui resumes it automatically. This override is separate from pooled partial completion.
 
 ### Disk Usage Implications
 

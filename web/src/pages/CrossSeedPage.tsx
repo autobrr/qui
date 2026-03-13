@@ -64,7 +64,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 // RSS Automation settings
@@ -108,6 +108,9 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
   skipPieceBoundarySafetyCheck: boolean
+  enablePooledPartialCompletion: boolean
+  allowReflinkSingleFileSizeMismatch: boolean
+  maxMissingBytesAfterRecheck: number
   // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
   webhookSourceTags: string[]
@@ -125,6 +128,7 @@ const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
 const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
+const BYTES_PER_MIB = 1024 * 1024
 
 // RSS Automation defaults
 const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
@@ -164,6 +168,9 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeWebhook: false,
   skipRecheck: false,
   skipPieceBoundarySafetyCheck: true,
+  enablePooledPartialCompletion: false,
+  allowReflinkSingleFileSizeMismatch: false,
+  maxMissingBytesAfterRecheck: 100 * BYTES_PER_MIB,
   // Webhook source filtering defaults - empty means no filtering (all torrents)
   webhookSourceCategories: [],
   webhookSourceTags: [],
@@ -304,8 +311,13 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   )
 }
 
+interface HardlinkModeSettingsProps {
+  globalSettings: GlobalCrossSeedSettings
+  setGlobalSettings: Dispatch<SetStateAction<GlobalCrossSeedSettings>>
+}
+
 /** Per-instance hardlink/reflink mode settings component */
-function HardlinkModeSettings() {
+function HardlinkModeSettings({ globalSettings, setGlobalSettings }: HardlinkModeSettingsProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dirtyMap, setDirtyMap] = useState<Record<number, boolean>>({})
@@ -323,6 +335,24 @@ function HardlinkModeSettings() {
     () => (instances ?? []).filter((inst) => inst.isActive),
     [instances]
   )
+  const managedModeSummary = useMemo(() => {
+    let hasManagedMode = false
+    let hasReflinkMode = false
+
+    for (const instance of activeInstances) {
+      const form = formMap[instance.id]
+      const useHardlinks = form?.useHardlinks ?? instance.useHardlinks
+      const useReflinks = form?.useReflinks ?? instance.useReflinks
+      if (useHardlinks || useReflinks) {
+        hasManagedMode = true
+      }
+      if (useReflinks) {
+        hasReflinkMode = true
+      }
+    }
+
+    return { hasManagedMode, hasReflinkMode }
+  }, [activeInstances, formMap])
 
   // Auto-expand when 3 or fewer instances (only on first load)
   useEffect(() => {
@@ -612,6 +642,76 @@ function HardlinkModeSettings() {
               )
             })}
           </Accordion>
+
+          {managedModeSummary.hasManagedMode && (
+            <div className="rounded-lg border border-border/70 bg-background/50 p-4 space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium leading-none">Managed partial handling</p>
+                <p className="text-xs text-muted-foreground">
+                  These settings only apply when at least one instance is using hardlink or reflink mode.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="enable-pooled-partial-completion" className="font-medium">Enable pooled partial completion</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Applies only to hardlink/reflink adds that already passed the current acceptance rules. Related partial adds sharing the same matched local source torrent are coordinated as a temporary in-memory pool.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Hardlink automation only continues when post-recheck missing data is limited to whole missing files. Reflink can continue with partial-file divergence if the missing bytes stay within the limit below.
+                  </p>
+                </div>
+                <Switch
+                  id="enable-pooled-partial-completion"
+                  checked={globalSettings.enablePooledPartialCompletion}
+                  onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, enablePooledPartialCompletion: !!value }))}
+                />
+              </div>
+
+              {globalSettings.enablePooledPartialCompletion && (
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="max-missing-bytes-after-recheck">Max missing after recheck (MiB)</Label>
+                  <Input
+                    id="max-missing-bytes-after-recheck"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={Math.round(globalSettings.maxMissingBytesAfterRecheck / BYTES_PER_MIB)}
+                    onChange={event => {
+                      const nextMiB = Number(event.target.value)
+                      setGlobalSettings(prev => ({
+                        ...prev,
+                        maxMissingBytesAfterRecheck: Math.max(BYTES_PER_MIB, Math.round((Number.isFinite(nextMiB) ? nextMiB : 0) * BYTES_PER_MIB)),
+                      }))
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Default is 100 MiB. Reflink pool members above this post-recheck gap stay paused for manual review; hardlink pool members still require whole-file-only gaps.
+                  </p>
+                </div>
+              )}
+
+              {managedModeSummary.hasReflinkMode && (
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="allow-reflink-single-file-size-mismatch" className="font-medium">Allow reflink single-file size mismatch</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Reflink-only escape hatch for one-file torrents where normalized file names match and the size is already within 1%. qui adds paused, forces a recheck, and auto-resumes at 99%.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      This does not apply to multi-file torrents, rejects larger gaps before add, and does not use pooled partial completion.
+                    </p>
+                  </div>
+                  <Switch
+                    id="allow-reflink-single-file-size-mismatch"
+                    checked={globalSettings.allowReflinkSingleFileSizeMismatch}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, allowReflinkSingleFileSizeMismatch: !!value }))}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -854,6 +954,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+        enablePooledPartialCompletion: settings.enablePooledPartialCompletion ?? false,
+        allowReflinkSingleFileSizeMismatch: settings.allowReflinkSingleFileSizeMismatch ?? false,
+        maxMissingBytesAfterRecheck: settings.maxMissingBytesAfterRecheck ?? (100 * BYTES_PER_MIB),
         // Webhook source filtering
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
         webhookSourceTags: settings.webhookSourceTags ?? [],
@@ -942,6 +1045,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
       skipRecheck: settings.skipRecheck ?? false,
       skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+      enablePooledPartialCompletion: settings.enablePooledPartialCompletion ?? false,
+      allowReflinkSingleFileSizeMismatch: settings.allowReflinkSingleFileSizeMismatch ?? false,
+      maxMissingBytesAfterRecheck: settings.maxMissingBytesAfterRecheck ?? (100 * BYTES_PER_MIB),
       webhookSourceCategories: settings.webhookSourceCategories ?? [],
       webhookSourceTags: settings.webhookSourceTags ?? [],
       webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
@@ -975,6 +1081,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
       skipRecheck: globalSource.skipRecheck,
       skipPieceBoundarySafetyCheck: globalSource.skipPieceBoundarySafetyCheck,
+      enablePooledPartialCompletion: globalSource.enablePooledPartialCompletion,
+      allowReflinkSingleFileSizeMismatch: globalSource.allowReflinkSingleFileSizeMismatch,
+      maxMissingBytesAfterRecheck: globalSource.maxMissingBytesAfterRecheck,
       // Webhook source filtering
       webhookSourceCategories: globalSource.webhookSourceCategories,
       webhookSourceTags: globalSource.webhookSourceTags,
@@ -2468,7 +2577,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <CardDescription>Settings that apply to all cross-seed operations.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <HardlinkModeSettings />
+              <HardlinkModeSettings
+                globalSettings={globalSettings}
+                setGlobalSettings={setGlobalSettings}
+              />
 
               {/* Gazelle (OPS/RED) */}
               <div id="gazelle-settings" className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3 scroll-mt-24">

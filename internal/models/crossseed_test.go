@@ -81,17 +81,20 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	category := "TV"
 
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
-		Enabled:              true,
-		RunIntervalMinutes:   30,
-		StartPaused:          false,
-		Category:             &category,
-		RSSAutomationTags:    []string{"cross-seed", "automation"},
-		SeededSearchTags:     []string{"seeded"},
-		CompletionSearchTags: []string{"completion"},
-		WebhookTags:       []string{"webhook"},
-		TargetInstanceIDs: []int{1, 2},
-		TargetIndexerIDs:     []int{11, 42},
-		MaxResultsPerRun:     25,
+		Enabled:                            true,
+		RunIntervalMinutes:                 30,
+		StartPaused:                        false,
+		Category:                           &category,
+		RSSAutomationTags:                  []string{"cross-seed", "automation"},
+		SeededSearchTags:                   []string{"seeded"},
+		CompletionSearchTags:               []string{"completion"},
+		WebhookTags:                        []string{"webhook"},
+		TargetInstanceIDs:                  []int{1, 2},
+		TargetIndexerIDs:                   []int{11, 42},
+		MaxResultsPerRun:                   25,
+		EnablePooledPartialCompletion:      true,
+		AllowReflinkSingleFileSizeMismatch: true,
+		MaxMissingBytesAfterRecheck:        200 * 1024 * 1024,
 	})
 	require.NoError(t, err)
 
@@ -107,6 +110,9 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, []int{1, 2}, updated.TargetInstanceIDs)
 	assert.ElementsMatch(t, []int{11, 42}, updated.TargetIndexerIDs)
 	assert.Equal(t, 25, updated.MaxResultsPerRun)
+	assert.True(t, updated.EnablePooledPartialCompletion)
+	assert.True(t, updated.AllowReflinkSingleFileSizeMismatch)
+	assert.EqualValues(t, 200*1024*1024, updated.MaxMissingBytesAfterRecheck)
 
 	reloaded, err := store.GetSettings(ctx)
 	require.NoError(t, err)
