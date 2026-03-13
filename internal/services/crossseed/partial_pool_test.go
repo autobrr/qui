@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 

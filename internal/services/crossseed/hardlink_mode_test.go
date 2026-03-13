@@ -709,6 +709,10 @@ func recheckConfirmationMatchesStateFilter(state qbt.TorrentState, filter qbt.To
 		return state == qbt.TorrentStateMoving
 	case qbt.TorrentFilterError:
 		return state == qbt.TorrentStateError
+	case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterCompleted,
+		qbt.TorrentFilterStalled, qbt.TorrentFilterUploading, qbt.TorrentFilterStalledUploading,
+		qbt.TorrentFilterDownloading, qbt.TorrentFilterStalledDownloading:
+		return true
 	default:
 		return true
 	}
