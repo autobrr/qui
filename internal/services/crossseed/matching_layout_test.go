@@ -117,6 +117,67 @@ func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
 	require.Len(t, files, 2, "should return folder-based file list")
 }
 
+func TestFindBestCandidateMatch_PrefersNonCrossSeedOnTie(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"tagged":   {{Name: "payload.bin", Size: 4 << 30}},
+				"untagged": {{Name: "payload.bin", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "payload.bin", Size: 4 << 30}}
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "tagged", Name: "Minimal.Payload", Progress: 1.0, Tags: "cross-seed"},
+			{Hash: "untagged", Name: "Minimal.Payload", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "untagged", bestTorrent.Hash)
+	require.Equal(t, "exact", matchType)
+	require.Len(t, files, 1)
+}
+
+func TestFindBestCandidateMatch_AllowsCrossSeedFallbackWhenOnlyOption(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"tagged": {{Name: "payload.bin", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "payload.bin", Size: 4 << 30}}
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "tagged", Name: "Minimal.Payload", Progress: 1.0, Tags: "cross-seed"},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, _, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "tagged", bestTorrent.Hash)
+	require.Equal(t, "exact", matchType)
+}
+
 func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *testing.T) {
 	t.Parallel()
 

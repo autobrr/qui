@@ -621,6 +621,7 @@ func (app *Application) runServer() {
 	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
+	crossSeedPartialPoolStore := models.NewCrossSeedPartialPoolMemberStore(db)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -632,6 +633,7 @@ func (app *Application) runServer() {
 		externalProgramStore,
 		externalProgramService,
 		instanceCrossSeedCompletionStore,
+		crossSeedPartialPoolStore,
 		trackerCustomizationStore,
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
@@ -651,6 +653,7 @@ func (app *Application) runServer() {
 	})
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
+		crossSeedService.HandleTorrentAdded(ctx, instanceID, torrent)
 		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
 	})
 
@@ -783,6 +786,14 @@ func (app *Application) runServer() {
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer reconcileCancel()
 	crossSeedService.ReconcileInterruptedRuns(reconcileCtx)
+
+	// Restore active partial-pool members with a separate timeout budget so a slow
+	// reconcile pass doesn't consume the entire startup window.
+	restorePoolsCtx, restorePoolsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer restorePoolsCancel()
+	if err := crossSeedService.RestoreActivePartialPools(restorePoolsCtx); err != nil {
+		log.Warn().Err(err).Msg("Failed to restore active cross-seed partial pools")
+	}
 
 	errorChannel := make(chan error)
 	serverReady := make(chan struct{}, 1)
