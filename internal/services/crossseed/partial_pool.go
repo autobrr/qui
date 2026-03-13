@@ -1327,6 +1327,7 @@ func (s *Service) dropPartialPoolMember(ctx context.Context, member *models.Cros
 	}
 	if err := s.pausePartialPoolHash(ctx, member.TargetInstanceID, member.TargetHash); err != nil {
 		log.Debug().Err(err).Str("hash", member.TargetHash).Msg("[CROSSSEED-POOL] Failed to pause pooled member for manual review")
+		return
 	}
 	log.Info().
 		Int("instanceID", member.TargetInstanceID).

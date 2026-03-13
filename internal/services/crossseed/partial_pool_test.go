@@ -28,6 +28,7 @@ type partialPoolTestSyncManager struct {
 	torrentsByInstance map[int][]qbt.Torrent
 	filesByHash        map[string]qbt.TorrentFiles
 	bulkActions        []string
+	bulkActionErr      error
 	torrentByAnyHash   map[string]qbt.Torrent
 	forceRefreshCalls  int
 	lastForceRefresh   bool
@@ -96,7 +97,7 @@ func (*partialPoolTestSyncManager) AddTorrent(context.Context, int, []byte, map[
 
 func (m *partialPoolTestSyncManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
 	m.bulkActions = append(m.bulkActions, fmt.Sprintf("%d:%s:%v", instanceID, action, hashes))
-	return nil
+	return m.bulkActionErr
 }
 
 func (*partialPoolTestSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
@@ -585,6 +586,35 @@ func TestHandleTorrentAdded_KeepsPooledMemberWhenAddedOnUnknown(t *testing.T) {
 	})
 
 	assert.True(t, svc.partialPoolOwnsTorrent(1, targetHash))
+}
+
+func TestDropPartialPoolMember_KeepsMarkerWhenPauseFails(t *testing.T) {
+	t.Parallel()
+
+	targetHash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	syncManager := &partialPoolTestSyncManager{
+		bulkActionErr: errors.New("pause failed"),
+	}
+	svc := &Service{
+		syncManager:         syncManager,
+		partialPoolByHash:   make(map[string]*models.CrossSeedPartialPoolMember),
+		partialPoolBySource: make(map[string]partialPoolSelection),
+	}
+	member := &models.CrossSeedPartialPoolMember{
+		SourceInstanceID: 1,
+		SourceHash:       "sourcehash",
+		TargetInstanceID: 1,
+		TargetHash:       strings.ToUpper(targetHash),
+		ExpiresAt:        time.Now().UTC().Add(time.Hour),
+	}
+	svc.storePartialPoolMemberLocked(member)
+
+	svc.dropPartialPoolMember(context.Background(), member, "manual review")
+
+	assert.True(t, svc.partialPoolOwnsTorrent(1, targetHash))
+	assert.Equal(t, []string{
+		fmt.Sprintf("%d:%s:%v", member.TargetInstanceID, "pause", []string{member.TargetHash}),
+	}, syncManager.bulkActions)
 }
 
 func TestProcessPartialPool_PropagationPausesRecipientBeforeRecheckAndSkipsResume(t *testing.T) {
