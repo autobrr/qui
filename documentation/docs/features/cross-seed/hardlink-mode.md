@@ -118,7 +118,7 @@ On Linux, check the filesystem type with `df -T /path` (you want `xfs`/`btrfs`, 
 | Aspect | Hardlink Mode | Reflink Mode |
 |--------|--------------|--------------|
 | Piece-boundary check | Skips if unsafe | Never skips (safe to modify clones) |
-| Recheck | Only when extras exist | Only when extras exist |
+| Recheck | When the linked set is incomplete and **Skip recheck** is off | When the cloned set is incomplete and **Skip recheck** is off; the single-file size mismatch override also uses this path |
 | Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
 | Single-file size mismatch | Not supported | Optional normalized-name override |
 
@@ -132,7 +132,9 @@ If you enable **Allow reflink single-file size mismatch** in the **Hardlink / Re
 - the normalized file names match; and
 - the sizes differ but are still within 1%.
 
-qui clones the file into the reflink tree, adds the torrent paused, and queues a recheck. If qBittorrent reaches at least **99%** after recheck, qui resumes it automatically. This override is separate from pooled partial completion.
+This option creates a recheck-required reflink add. If **Skip recheck-required matches** is enabled in the Rules tab, qui skips the match instead of adding it. When **Skip recheck-required matches** is disabled, qui clones the file into the reflink tree, adds the torrent paused, and queues a recheck; if qBittorrent reaches at least **99%** after recheck, qui resumes it automatically.
+
+This override is separate from pooled partial completion, so enabling **Allow reflink single-file size mismatch** does not place that add into a pooled partial-completion flow. Reflink mode can still enter the recheck path for other reasons, such as extra files or any other incomplete cloned set, and those rechecks can also be skipped entirely when **Skip recheck-required matches** is enabled.
 
 ### Disk Usage Implications
 
