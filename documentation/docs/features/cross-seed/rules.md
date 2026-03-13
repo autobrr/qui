@@ -32,6 +32,14 @@ For pooled partial completion, hardlink automation only continues when the post-
 Pooled partial completion keeps managed hardlink/reflink adds paused while qBittorrent rechecks them. Once the pool no longer needs coordination, normal resume behavior takes over. If you also enable **Skip recheck**, any add that would have relied on pooled handling is skipped instead.
 :::
 
+:::note
+Within an active pool, qui lets one eligible member download missing content at a time while the others stay paused for coordination. If one member is already downloading, qui waits for that member instead of reshuffling the pool immediately. The preferred downloader is rotated on a timer (about 6 hours) so a long-lived pool can move on to another member instead of sticking to the same one forever.
+:::
+
+:::tip
+You can manually resume another paused torrent from the same pool if you want to kick the pool back into review. qui polls pooled members regularly (about every 10 seconds), notices the newly running torrent, and re-evaluates the pool so completed files can be propagated and rechecked for the remaining paused members.
+:::
+
 ## Categories
 
 Choose one of three mutually exclusive category modes:

@@ -79,7 +79,8 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 - Hardlink mode supports extra files when piece-boundary safe. If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
 - If you enable pooled partial completion in the **Hardlink / Reflink Mode** section of the Rules tab, related hardlink adds against the same matched local source torrent can cooperate temporarily. Hardlink automation only continues when post-recheck missing data is limited to whole missing files. If qBittorrent reports missing bytes inside an already linked file, qui leaves that torrent paused for manual review.
-- With pooled partial completion enabled, hardlink mode can still add paused even when no files are immediately reusable, then rely on recheck and the pool to decide whether it can continue automatically.
+- With pooled partial completion enabled, hardlink mode can still add paused even when no files are immediately reusable, then rely on recheck and the pool to decide whether it can continue automatically. The pool waits for any currently active member to finish downloading its missing content before automatically moving on, and the preferred downloader rotates on a timer so another member can take over in long-lived pools.
+- If you manually start another paused torrent from the same pool, qui notices it on the next pool review and uses that torrent's completed files in the same propagation/recheck flow as automatically selected members.
 
 ## Reflink Mode (Alternative)
 
@@ -121,7 +122,7 @@ On Linux, check the filesystem type with `df -T /path` (you want `xfs`/`btrfs`, 
 | Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
 | Single-file size mismatch | Not supported | Optional normalized-name override |
 
-When pooled partial completion is enabled, reflink members may continue even when a file is only partially complete after recheck, as long as the total missing bytes remain within the configured post-recheck limit.
+When pooled partial completion is enabled, reflink members may continue even when a file is only partially complete after recheck, as long as the total missing bytes remain within the configured post-recheck limit. As with hardlink pools, qui keeps coordination to one active downloader at a time, rotates the preferred downloader on a timer for long-lived pools, and re-reviews the pool when you manually start another paused member.
 
 ### Single-File Size Mismatch Override
 

@@ -99,6 +99,12 @@ The incoming torrent has files not present in your matched torrent, and those fi
 
 If **Enable pooled partial completion** is on in **Hardlink / Reflink Mode**, qui may intentionally add hardlink/reflink cross-seeds paused and wait for qBittorrent's recheck result before deciding whether to resume them.
 
+What to expect from the pool:
+- qui usually keeps one eligible pool member downloading missing content at a time while the others stay paused
+- If one member is already downloading, qui waits for that download instead of immediately switching the pool to someone else
+- The preferred downloader rotates on a timer (about 6 hours) so another eligible member can be chosen in long-lived pools
+- Manually resuming another paused torrent in the same pool triggers another pool review on the next worker poll (about 10 seconds), which can let qui recheck and reuse newly completed files across the pool
+
 Common reasons they remain paused:
 - **Hardlink post-recheck gap is inside an existing linked file**: hardlink automation only continues automatically when the remaining gap is made of whole missing files
 - **Reflink post-recheck gap exceeds the configured byte limit**: check **Max missing after recheck (MiB)** in **Hardlink / Reflink Mode**
