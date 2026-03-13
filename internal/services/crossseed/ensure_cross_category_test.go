@@ -63,14 +63,12 @@ func TestEnsureCrossCategory_UsesSingleflightForConcurrentCalls(t *testing.T) {
 	start := make(chan struct{})
 	errCh := make(chan error, goroutines)
 	var wg sync.WaitGroup
-	wg.Add(goroutines)
 
 	for i := 0; i < goroutines; i++ {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			errCh <- svc.ensureCrossCategory(context.Background(), 1, "movies.cross", "/downloads/movies")
-		}()
+		})
 	}
 
 	close(start)

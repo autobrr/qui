@@ -265,7 +265,7 @@ func (s *CrossSeedPartialPoolMemberStore) DeleteExpired(ctx context.Context, now
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("delete expired pooled members rows affected: %w", err)
 	}
 	return rows, nil
 }

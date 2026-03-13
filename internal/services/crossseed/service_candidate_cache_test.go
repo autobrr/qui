@@ -20,7 +20,7 @@ func TestCacheAutomationCandidateResponse_BoundedSize(t *testing.T) {
 	}
 
 	total := automationCandidateCacheMaxEntries + 25
-	for i := 0; i < total; i++ {
+	for i := range total {
 		key := fmt.Sprintf("release-%d", i)
 		cacheAutomationCandidateResponse(autoCtx, key, &FindCandidatesResponse{})
 	}

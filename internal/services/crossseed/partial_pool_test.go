@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -865,7 +866,7 @@ func TestProcessPartialPool_DoesNotRecheckWhenPropagationFails(t *testing.T) {
 	}, syncManager.bulkActions)
 	_, err := os.Stat(filepath.Join(recipientRoot, filepath.FromSlash(fileName)))
 	require.Error(t, err)
-	assert.True(t, os.IsNotExist(err))
+	assert.True(t, os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR))
 }
 
 func TestProcessPartialPool_LeavesActiveDownloaderAlone(t *testing.T) {
@@ -1179,8 +1180,7 @@ func TestLoadPartialPoolStates_KeepsMemberWhenStoredAddedOnUnknown(t *testing.T)
 func TestTriggerPartialPoolRun_CoalescesPendingSignals(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	svc := &Service{}
 
@@ -1206,7 +1206,7 @@ func TestTriggerPartialPoolRun_CoalescesPendingSignals(t *testing.T) {
 		t.Fatal("timed out waiting for first pooled run to start")
 	}
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		svc.triggerPartialPoolRun(ctx, process)
 	}
 

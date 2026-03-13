@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -557,7 +558,7 @@ type recheckConfirmationSyncManager struct {
 	blockOnGetTorrents bool
 }
 
-func (m *recheckConfirmationSyncManager) GetTorrents(ctx context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *recheckConfirmationSyncManager) GetTorrents(ctx context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	m.getTorrentsCalls++
 	if m.blockOnGetTorrents {
 		<-ctx.Done()
@@ -571,7 +572,13 @@ func (m *recheckConfirmationSyncManager) GetTorrents(ctx context.Context, _ int,
 		idx = len(m.torrents) - 1
 	}
 	m.getTorrentIdx++
-	return []qbt.Torrent{m.torrents[idx]}, nil
+
+	torrent := m.torrents[idx]
+	if !recheckConfirmationMatchesFilter(torrent, filter) {
+		return nil, nil
+	}
+
+	return []qbt.Torrent{torrent}, nil
 }
 
 func (m *recheckConfirmationSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -602,7 +609,7 @@ func (*recheckConfirmationSyncManager) GetAppPreferences(context.Context, int) (
 
 func (m *recheckConfirmationSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
 	m.addCalls++
-	m.addOptions = mapsClone(options)
+	m.addOptions = maps.Clone(options)
 	return nil
 }
 
@@ -647,15 +654,79 @@ func (*recheckConfirmationSyncManager) CreateCategory(context.Context, int, stri
 	return nil
 }
 
-func mapsClone(input map[string]string) map[string]string {
-	if input == nil {
-		return nil
+func recheckConfirmationMatchesFilter(torrent qbt.Torrent, filter qbt.TorrentFilterOptions) bool {
+	if len(filter.Hashes) > 0 {
+		matchedHash := false
+		for _, hash := range filter.Hashes {
+			normalized := normalizeHash(hash)
+			if normalized == normalizeHash(torrent.Hash) ||
+				normalized == normalizeHash(torrent.InfohashV1) ||
+				normalized == normalizeHash(torrent.InfohashV2) {
+				matchedHash = true
+				break
+			}
+		}
+		if !matchedHash {
+			return false
+		}
 	}
-	cloned := make(map[string]string, len(input))
-	for key, value := range input {
-		cloned[key] = value
+
+	if filter.Category != "" && torrent.Category != filter.Category {
+		return false
 	}
-	return cloned
+
+	if filter.Tag != "" && !recheckConfirmationContainsExactTag(torrent.Tags, filter.Tag) {
+		return false
+	}
+
+	if filter.Filter != "" && !recheckConfirmationMatchesStateFilter(torrent.State, filter.Filter) {
+		return false
+	}
+
+	return true
+}
+
+func recheckConfirmationMatchesStateFilter(state qbt.TorrentState, filter qbt.TorrentFilter) bool {
+	switch filter {
+	case "", qbt.TorrentFilterAll:
+		return true
+	case qbt.TorrentFilterRunning:
+		return state != qbt.TorrentStateStoppedUp && state != qbt.TorrentStateStoppedDl
+	case qbt.TorrentFilterResumed:
+		return state != qbt.TorrentStatePausedUp &&
+			state != qbt.TorrentStatePausedDl &&
+			state != qbt.TorrentStateStoppedUp &&
+			state != qbt.TorrentStateStoppedDl
+	case qbt.TorrentFilterPaused:
+		return state == qbt.TorrentStatePausedUp || state == qbt.TorrentStatePausedDl
+	case qbt.TorrentFilterStopped:
+		return state == qbt.TorrentStateStoppedUp || state == qbt.TorrentStateStoppedDl
+	case qbt.TorrentFilterChecking:
+		return state == qbt.TorrentStateCheckingUp ||
+			state == qbt.TorrentStateCheckingDl ||
+			state == qbt.TorrentStateCheckingResumeData
+	case qbt.TorrentFilterMoving:
+		return state == qbt.TorrentStateMoving
+	case qbt.TorrentFilterError:
+		return state == qbt.TorrentStateError
+	default:
+		return true
+	}
+}
+
+func recheckConfirmationContainsExactTag(tags string, target string) bool {
+	trimmedTarget := strings.TrimSpace(target)
+	if tags == "" || trimmedTarget == "" {
+		return false
+	}
+
+	for tag := range strings.SplitSeq(tags, ",") {
+		if strings.TrimSpace(tag) == trimmedTarget {
+			return true
+		}
+	}
+
+	return false
 }
 
 func repeatedTorrentStates(count int, torrent qbt.Torrent, tail ...qbt.Torrent) []qbt.Torrent {
@@ -982,6 +1053,7 @@ func TestProcessHardlinkMode_OnlyLinksAvailableFiles(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "files: 1/2")
 	assert.Equal(t, managedRoot, syncManager.addOptions["savepath"])
 	assert.Equal(t, "true", syncManager.addOptions["paused"])
+	assert.Equal(t, "true", syncManager.addOptions["stopped"])
 	assert.Equal(t, "true", syncManager.addOptions["skip_checking"])
 
 	data, err := os.ReadFile(filepath.Join(managedRoot, "Movie.mkv"))
@@ -1126,6 +1198,7 @@ func TestProcessHardlinkMode_ZeroAvailableFilesStillAddsPausedAndRegistersPool(t
 	assert.Contains(t, result.Result.Message, "pooled completion active")
 	assert.Equal(t, managedRoot, syncManager.addOptions["savepath"])
 	assert.Equal(t, "true", syncManager.addOptions["paused"])
+	assert.Equal(t, "true", syncManager.addOptions["stopped"])
 
 	entries, err := os.ReadDir(managedRoot)
 	require.NoError(t, err)
@@ -1210,6 +1283,7 @@ func TestProcessReflinkMode_OnlyClonesAvailableFiles(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "files: 1/2")
 	assert.Equal(t, managedRoot, syncManager.addOptions["savepath"])
 	assert.Equal(t, "true", syncManager.addOptions["paused"])
+	assert.Equal(t, "true", syncManager.addOptions["stopped"])
 
 	data, err := os.ReadFile(filepath.Join(managedRoot, "Movie.mkv"))
 	require.NoError(t, err)
