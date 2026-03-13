@@ -125,6 +125,32 @@ func TestCrossSeedPartialPoolMemberStore_GetByAnyHash_WithMoreThanTwoHashes(t *t
 	assert.Equal(t, stored.ID, loaded.ID)
 }
 
+func TestCrossSeedPartialPoolMemberStore_GetByAnyHash_IgnoresExpiredMembers(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	store := models.NewCrossSeedPartialPoolMemberStore(db)
+	ctx := context.Background()
+
+	_, err := store.Upsert(ctx, &models.CrossSeedPartialPoolMember{
+		SourceInstanceID:            1,
+		SourceHash:                  "sourcehash",
+		TargetInstanceID:            2,
+		TargetHash:                  "targethash",
+		TargetHashV2:                "targethashv2",
+		TargetName:                  "Expired Torrent",
+		Mode:                        models.CrossSeedPartialMemberModeHardlink,
+		ManagedRoot:                 t.TempDir(),
+		SourcePieceLength:           1024,
+		MaxMissingBytesAfterRecheck: 1024,
+		SourceFiles:                 []models.CrossSeedPartialFile{{Name: "data/file.mkv", Size: 1234}},
+		ExpiresAt:                   time.Now().UTC().Add(-time.Hour),
+	})
+	require.NoError(t, err)
+
+	loaded, err := store.GetByAnyHash(ctx, 2, "targethash", "targethashv2")
+	require.NoError(t, err)
+	assert.Nil(t, loaded)
+}
+
 func TestCrossSeedPartialPoolMemberStore_DeleteByAnyHash_WithMoreThanTwoHashes(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	store := models.NewCrossSeedPartialPoolMemberStore(db)

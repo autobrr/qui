@@ -192,12 +192,13 @@ func (s *CrossSeedPartialPoolMemberStore) GetByAnyHash(ctx context.Context, inst
 		       target_name, mode, managed_root, source_piece_length, max_missing_bytes_after_recheck, source_files_json,
 		       created_at, updated_at, expires_at
 		FROM cross_seed_partial_pool_members
-		WHERE target_instance_id = ? AND (target_hash IN (%s) OR target_hash_v2 IN (%s))
+		WHERE target_instance_id = ? AND expires_at > ? AND (target_hash IN (%s) OR target_hash_v2 IN (%s))
 		LIMIT 1
 	`, placeholders, placeholders)
 
-	args := make([]any, 0, 1+len(normalized)*2)
+	args := make([]any, 0, 2+len(normalized)*2)
 	args = append(args, instanceID)
+	args = append(args, time.Now().UTC())
 	for _, hash := range normalized {
 		args = append(args, hash)
 	}
