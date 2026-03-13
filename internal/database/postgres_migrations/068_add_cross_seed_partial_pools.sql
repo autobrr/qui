@@ -28,3 +28,16 @@ CREATE INDEX idx_cross_seed_partial_pool_members_source
 
 CREATE INDEX idx_cross_seed_partial_pool_members_expires
     ON cross_seed_partial_pool_members(expires_at);
+
+CREATE OR REPLACE FUNCTION set_cross_seed_partial_pool_members_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_cross_seed_partial_pool_members_updated
+BEFORE UPDATE ON cross_seed_partial_pool_members
+FOR EACH ROW
+EXECUTE FUNCTION set_cross_seed_partial_pool_members_updated_at();
