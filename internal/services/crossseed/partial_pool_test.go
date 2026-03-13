@@ -470,6 +470,76 @@ func TestRestoreActivePartialPoolsOnlyRestoresActiveMembers(t *testing.T) {
 	assert.False(t, svc.partialPoolOwnsTorrent(1, "expiredhash"))
 }
 
+func TestProcessPartialPools_DrainsPooledMembersWhenAutomationDisabled(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		settings *models.CrossSeedAutomationSettings
+	}{
+		{
+			name:     "nil settings",
+			settings: nil,
+		},
+		{
+			name: "pooled completion disabled",
+			settings: func() *models.CrossSeedAutomationSettings {
+				settings := models.DefaultCrossSeedAutomationSettings()
+				settings.EnablePooledPartialCompletion = false
+				return settings
+			}(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dbPath := filepath.Join(t.TempDir(), "partial-pool.db")
+			db, err := database.New(dbPath)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, db.Close())
+			})
+
+			store := models.NewCrossSeedPartialPoolMemberStore(db)
+			ctx := context.Background()
+
+			member, err := store.Upsert(ctx, &models.CrossSeedPartialPoolMember{
+				SourceInstanceID:  1,
+				SourceHash:        "sourcehash",
+				TargetInstanceID:  1,
+				TargetHash:        "targethash",
+				Mode:              models.CrossSeedPartialMemberModeHardlink,
+				ManagedRoot:       t.TempDir(),
+				SourcePieceLength: 1024,
+				SourceFiles:       []models.CrossSeedPartialFile{{Name: "file.mkv", Size: 100}},
+				ExpiresAt:         time.Now().UTC().Add(time.Hour),
+			})
+			require.NoError(t, err)
+
+			svc := &Service{
+				partialPoolStore:         store,
+				partialPoolWake:          make(chan struct{}, 1),
+				partialPoolByHash:        make(map[string]*models.CrossSeedPartialPoolMember),
+				partialPoolBySource:      make(map[string]partialPoolSelection),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) { return tc.settings, nil },
+			}
+
+			svc.storePartialPoolMemberLocked(member)
+			require.True(t, svc.partialPoolOwnsTorrent(1, "targethash"))
+
+			svc.processPartialPools(ctx)
+
+			assert.False(t, svc.partialPoolOwnsTorrent(1, "targethash"))
+
+			active, err := store.ListActive(ctx, time.Now().UTC())
+			require.NoError(t, err)
+			assert.Empty(t, active)
+		})
+	}
+}
+
 func TestHandleTorrentCompletion_PooledMemberBypassesCompletionSettings(t *testing.T) {
 	t.Parallel()
 

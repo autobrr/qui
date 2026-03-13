@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -206,6 +207,9 @@ func (s *Service) processPartialPools(ctx context.Context) {
 		return
 	}
 	if settings == nil || !settings.EnablePooledPartialCompletion {
+		if err := s.drainPartialPoolMembers(ctx); err != nil {
+			log.Debug().Err(err).Msg("[CROSSSEED-POOL] Failed to clear pooled members while automation is disabled")
+		}
 		return
 	}
 
@@ -1263,6 +1267,57 @@ func (s *Service) listPartialPoolMembers() []*models.CrossSeedPartialPoolMember 
 		members = append(members, member)
 	}
 	return members
+}
+
+func (s *Service) drainPartialPoolMembers(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+
+	membersByKey := make(map[string]*models.CrossSeedPartialPoolMember)
+
+	s.partialPoolMu.Lock()
+	for _, member := range s.partialPoolByHash {
+		if member == nil {
+			continue
+		}
+		key := partialPoolLookupKey(member.TargetInstanceID, member.TargetHash)
+		if key == "" {
+			continue
+		}
+		membersByKey[key] = member
+	}
+	s.partialPoolByHash = make(map[string]*models.CrossSeedPartialPoolMember)
+	s.partialPoolBySource = make(map[string]partialPoolSelection)
+	s.partialPoolMu.Unlock()
+
+	if s.partialPoolStore == nil {
+		return nil
+	}
+
+	storedMembers, err := s.partialPoolStore.ListActive(ctx, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("list active pooled members for drain: %w", err)
+	}
+	for _, member := range storedMembers {
+		key := partialPoolLookupKey(member.TargetInstanceID, member.TargetHash)
+		if key == "" {
+			continue
+		}
+		membersByKey[key] = member
+	}
+
+	var errs []error
+	for _, member := range membersByKey {
+		if err := s.partialPoolStore.DeleteByAnyHash(ctx, member.TargetInstanceID, member.TargetHash, member.TargetHashV2); err != nil {
+			errs = append(errs, fmt.Errorf("delete pooled member %d/%s: %w", member.TargetInstanceID, normalizeHash(member.TargetHash), err))
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	return nil
 }
 
 func partialPoolMemberExpired(member *models.CrossSeedPartialPoolMember, now time.Time) bool {
