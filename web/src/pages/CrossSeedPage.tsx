@@ -643,75 +643,79 @@ function HardlinkModeSettings({ globalSettings, setGlobalSettings }: HardlinkMod
             })}
           </Accordion>
 
-          {managedModeSummary.hasManagedMode && (
-            <div className="rounded-lg border border-border/70 bg-background/50 p-4 space-y-3">
-              <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Managed partial handling</p>
-                <p className="text-xs text-muted-foreground">
-                  These settings only apply when at least one instance is using hardlink or reflink mode.
+          <div className="rounded-lg border border-border/70 bg-background/50 p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium leading-none">Managed partial handling</p>
+              <p className={`text-xs ${managedModeSummary.hasManagedMode ? "text-muted-foreground" : "text-muted-foreground/70"}`}>
+                These settings only apply when at least one instance is using hardlink or reflink mode.
+              </p>
+              {!managedModeSummary.hasManagedMode && (
+                <p className="text-xs text-muted-foreground/70">
+                  These settings are persisted but only applied when an instance enables hardlink/reflink; you can clear them here even if no instance currently uses managed mode.
                 </p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="enable-pooled-partial-completion" className="font-medium">Enable pooled partial completion</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Applies only to hardlink/reflink adds that already passed the current acceptance rules. Related partial adds sharing the same matched local source torrent are coordinated as a temporary in-memory pool.
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Hardlink automation only continues when post-recheck missing data is limited to whole missing files. Reflink can continue with partial-file divergence if the missing bytes stay within the limit below.
-                  </p>
-                </div>
-                <Switch
-                  id="enable-pooled-partial-completion"
-                  checked={globalSettings.enablePooledPartialCompletion}
-                  onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, enablePooledPartialCompletion: !!value }))}
-                />
-              </div>
-
-              {globalSettings.enablePooledPartialCompletion && (
-                <div className="space-y-2 pt-3 border-t border-border/50">
-                  <Label htmlFor="max-missing-bytes-after-recheck">Max missing after recheck (MiB)</Label>
-                  <Input
-                    id="max-missing-bytes-after-recheck"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={Math.round(globalSettings.maxMissingBytesAfterRecheck / BYTES_PER_MIB)}
-                    onChange={event => {
-                      const nextMiB = Number(event.target.value)
-                      setGlobalSettings(prev => ({
-                        ...prev,
-                        maxMissingBytesAfterRecheck: Math.max(BYTES_PER_MIB, Math.round((Number.isFinite(nextMiB) ? nextMiB : 0) * BYTES_PER_MIB)),
-                      }))
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Default is 100 MiB. Reflink pool members above this post-recheck gap stay paused for manual review; hardlink pool members still require whole-file-only gaps.
-                  </p>
-                </div>
-              )}
-
-              {managedModeSummary.hasReflinkMode && (
-                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="allow-reflink-single-file-size-mismatch" className="font-medium">Allow reflink single-file size mismatch</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Reflink-only escape hatch for one-file torrents where normalized file names match and the size is already within 1%. qui adds paused, forces a recheck, and auto-resumes at 99%.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      This does not apply to multi-file torrents, rejects larger gaps before add, and does not use pooled partial completion.
-                    </p>
-                  </div>
-                  <Switch
-                    id="allow-reflink-single-file-size-mismatch"
-                    checked={globalSettings.allowReflinkSingleFileSizeMismatch}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, allowReflinkSingleFileSizeMismatch: !!value }))}
-                  />
-                </div>
               )}
             </div>
-          )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="enable-pooled-partial-completion" className="font-medium">Enable pooled partial completion</Label>
+                <p className={`text-xs ${managedModeSummary.hasManagedMode ? "text-muted-foreground" : "text-muted-foreground/70"}`}>
+                  Applies only to hardlink/reflink adds that already passed the current acceptance rules. Related partial adds sharing the same matched local source torrent are coordinated as a temporary in-memory pool.
+                </p>
+                <p className={`text-xs ${managedModeSummary.hasManagedMode ? "text-muted-foreground" : "text-muted-foreground/70"}`}>
+                  Hardlink automation only continues when post-recheck missing data is limited to whole missing files. Reflink can continue with partial-file divergence if the missing bytes stay within the limit below.
+                </p>
+              </div>
+              <Switch
+                id="enable-pooled-partial-completion"
+                checked={globalSettings.enablePooledPartialCompletion}
+                disabled={!managedModeSummary.hasManagedMode}
+                onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, enablePooledPartialCompletion: !!value }))}
+              />
+            </div>
+
+            {globalSettings.enablePooledPartialCompletion && (
+              <div className="space-y-2 pt-3 border-t border-border/50">
+                <Label htmlFor="max-missing-bytes-after-recheck">Max missing after recheck (MiB)</Label>
+                <Input
+                  id="max-missing-bytes-after-recheck"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Math.round(globalSettings.maxMissingBytesAfterRecheck / BYTES_PER_MIB)}
+                  disabled={!managedModeSummary.hasManagedMode}
+                  onChange={event => {
+                    const nextMiB = Number(event.target.value)
+                    setGlobalSettings(prev => ({
+                      ...prev,
+                      maxMissingBytesAfterRecheck: Math.max(BYTES_PER_MIB, Math.round((Number.isFinite(nextMiB) ? nextMiB : 0) * BYTES_PER_MIB)),
+                    }))
+                  }}
+                />
+                <p className={`text-xs ${managedModeSummary.hasManagedMode ? "text-muted-foreground" : "text-muted-foreground/70"}`}>
+                  Default is 100 MiB. Reflink pool members above this post-recheck gap stay paused for manual review; hardlink pool members still require whole-file-only gaps.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
+              <div className="space-y-0.5">
+                <Label htmlFor="allow-reflink-single-file-size-mismatch" className="font-medium">Allow reflink single-file size mismatch</Label>
+                <p className={`text-xs ${managedModeSummary.hasManagedMode ? "text-muted-foreground" : "text-muted-foreground/70"}`}>
+                  Reflink-only escape hatch for one-file torrents where normalized file names match and the size is already within 1%. qui adds paused, forces a recheck, and auto-resumes at 99%.
+                </p>
+                <p className={`text-xs ${managedModeSummary.hasManagedMode ? "text-muted-foreground" : "text-muted-foreground/70"}`}>
+                  This does not apply to multi-file torrents, rejects larger gaps before add, and does not use pooled partial completion.
+                </p>
+              </div>
+              <Switch
+                id="allow-reflink-single-file-size-mismatch"
+                checked={globalSettings.allowReflinkSingleFileSizeMismatch}
+                disabled={!managedModeSummary.hasManagedMode}
+                onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, allowReflinkSingleFileSizeMismatch: !!value }))}
+              />
+            </div>
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
