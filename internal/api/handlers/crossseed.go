@@ -218,6 +218,112 @@ func validateMaxMissingBytesAfterRecheck(w http.ResponseWriter, value int64) boo
 	return true
 }
 
+func decodeAutomationSettingsRequest(body io.Reader) (automationSettingsRequest, map[string]struct{}, error) {
+	var req automationSettingsRequest
+
+	payload, err := io.ReadAll(body)
+	if err != nil {
+		return req, nil, err
+	}
+
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return req, nil, err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return req, nil, err
+	}
+
+	fields := make(map[string]struct{}, len(raw))
+	for key := range raw {
+		fields[key] = struct{}{}
+	}
+
+	return req, fields, nil
+}
+
+func hasJSONField(fields map[string]struct{}, key string) bool {
+	_, ok := fields[key]
+	return ok
+}
+
+func automationSettingsPatchFromRequest(req automationSettingsRequest, fields map[string]struct{}) automationSettingsPatchRequest {
+	patch := automationSettingsPatchRequest{}
+
+	if hasJSONField(fields, "enabled") {
+		patch.Enabled = &req.Enabled
+	}
+	if hasJSONField(fields, "runIntervalMinutes") {
+		patch.RunIntervalMinutes = &req.RunIntervalMinutes
+	}
+	if hasJSONField(fields, "startPaused") {
+		patch.StartPaused = &req.StartPaused
+	}
+	if hasJSONField(fields, "category") {
+		patch.Category = optionalString{Set: true, Value: req.Category}
+	}
+	if hasJSONField(fields, "targetInstanceIds") {
+		patch.TargetInstanceIDs = &req.TargetInstanceIDs
+	}
+	if hasJSONField(fields, "targetIndexerIds") {
+		patch.TargetIndexerIDs = &req.TargetIndexerIDs
+	}
+	if hasJSONField(fields, "maxResultsPerRun") {
+		patch.MaxResultsPerRun = &req.MaxResultsPerRun
+	}
+	if hasJSONField(fields, "findIndividualEpisodes") {
+		patch.FindIndividualEpisodes = &req.FindIndividualEpisodes
+	}
+	if hasJSONField(fields, "sizeMismatchTolerancePercent") {
+		patch.SizeMismatchTolerancePercent = &req.SizeMismatchTolerancePercent
+	}
+	if hasJSONField(fields, "useCategoryFromIndexer") {
+		patch.UseCategoryFromIndexer = &req.UseCategoryFromIndexer
+	}
+	if hasJSONField(fields, "useCrossCategoryAffix") {
+		patch.UseCrossCategoryAffix = &req.UseCrossCategoryAffix
+	}
+	if hasJSONField(fields, "categoryAffixMode") {
+		patch.CategoryAffixMode = &req.CategoryAffixMode
+	}
+	if hasJSONField(fields, "categoryAffix") {
+		patch.CategoryAffix = &req.CategoryAffix
+	}
+	if hasJSONField(fields, "useCustomCategory") {
+		patch.UseCustomCategory = &req.UseCustomCategory
+	}
+	if hasJSONField(fields, "customCategory") {
+		patch.CustomCategory = &req.CustomCategory
+	}
+	if hasJSONField(fields, "runExternalProgramId") {
+		patch.RunExternalProgramID = optionalInt{Set: true, Value: req.RunExternalProgramID}
+	}
+	if hasJSONField(fields, "skipRecheck") {
+		patch.SkipRecheck = &req.SkipRecheck
+	}
+	if hasJSONField(fields, "enablePooledPartialCompletion") {
+		patch.EnablePooledPartialCompletion = &req.EnablePooledPartialCompletion
+	}
+	if hasJSONField(fields, "allowReflinkSingleFileSizeMismatch") {
+		patch.AllowReflinkSingleFileSizeMismatch = &req.AllowReflinkSingleFileSizeMismatch
+	}
+	if hasJSONField(fields, "maxMissingBytesAfterRecheck") {
+		patch.MaxMissingBytesAfterRecheck = &req.MaxMissingBytesAfterRecheck
+	}
+	if hasJSONField(fields, "gazelleEnabled") {
+		patch.GazelleEnabled = &req.GazelleEnabled
+	}
+	if hasJSONField(fields, "redactedApiKey") {
+		patch.RedactedAPIKey = &req.RedactedAPIKey
+	}
+	if hasJSONField(fields, "orpheusApiKey") {
+		patch.OrpheusAPIKey = &req.OrpheusAPIKey
+	}
+
+	return patch
+}
+
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
 	if patch.Enabled != nil {
 		settings.Enabled = *patch.Enabled
@@ -355,6 +461,55 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.OrpheusAPIKey != nil {
 		settings.OrpheusAPIKey = strings.TrimSpace(*patch.OrpheusAPIKey)
 	}
+}
+
+func validateAutomationSettings(w http.ResponseWriter, settings *models.CrossSeedAutomationSettings) bool {
+	if settings.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(settings.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return false
+		}
+		// No double slashes allowed
+		if strings.Contains(settings.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return false
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if settings.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(settings.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return false
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if settings.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(settings.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return false
+		}
+	}
+
+	if settings.UseCrossCategoryAffix &&
+		settings.CategoryAffixMode != models.CategoryAffixModePrefix &&
+		settings.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return false
+	}
+
+	enabledModes := 0
+	if settings.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if settings.UseCrossCategoryAffix {
+		enabledModes++
+	}
+	if settings.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
+		return false
+	}
+
+	return true
 }
 
 type automationRunRequest struct {
@@ -790,101 +945,39 @@ func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/settings [put]
 func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *http.Request) {
-	var req automationSettingsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, fields, err := decodeAutomationSettingsRequest(r.Body)
+	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if !validateMaxMissingBytesAfterRecheck(w, req.MaxMissingBytesAfterRecheck) {
+
+	if hasJSONField(fields, "categoryAffixMode") &&
+		req.CategoryAffixMode != "" &&
+		req.CategoryAffixMode != models.CategoryAffixModePrefix &&
+		req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
 		return
 	}
 
-	category := req.Category
-	if category != nil {
-		trimmed := strings.TrimSpace(*category)
-		if trimmed == "" {
-			category = nil
-		} else {
-			category = &trimmed
-		}
-	}
-
-	// Validate categoryAffixMode if provided OR if UseCrossCategoryAffix is enabled
-	if req.CategoryAffixMode != "" || req.UseCrossCategoryAffix {
-		if req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
-			RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
-			return
-		}
-	}
-
-	req.CategoryAffix = strings.TrimSpace(req.CategoryAffix)
-
-	if req.CategoryAffix != "" {
-		// No backslashes allowed
-		if strings.Contains(req.CategoryAffix, "\\") {
-			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
-			return
-		}
-		// No double slashes allowed
-		if strings.Contains(req.CategoryAffix, "//") {
-			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
-			return
-		}
-		// Prefix mode: cannot start with a slash (would create leading slash in category)
-		if req.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(req.CategoryAffix, "/") {
-			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
-			return
-		}
-		// Suffix mode: cannot end with a slash (would create trailing slash in category)
-		if req.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(req.CategoryAffix, "/") {
-			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
-			return
-		}
-	}
-
-	// Validate mutual exclusivity: category modes are mutually exclusive
-	enabledModes := 0
-	if req.UseCategoryFromIndexer {
-		enabledModes++
-	}
-	if req.UseCrossCategoryAffix {
-		enabledModes++
-	}
-	if req.UseCustomCategory {
-		enabledModes++
-	}
-	if enabledModes > 1 {
-		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
+	if hasJSONField(fields, "maxMissingBytesAfterRecheck") && !validateMaxMissingBytesAfterRecheck(w, req.MaxMissingBytesAfterRecheck) {
 		return
 	}
 
-	settings := &models.CrossSeedAutomationSettings{
-		Enabled:                            req.Enabled,
-		RunIntervalMinutes:                 req.RunIntervalMinutes,
-		StartPaused:                        req.StartPaused,
-		Category:                           category,
-		TargetInstanceIDs:                  req.TargetInstanceIDs,
-		TargetIndexerIDs:                   req.TargetIndexerIDs,
-		MaxResultsPerRun:                   req.MaxResultsPerRun,
-		FindIndividualEpisodes:             req.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent:       req.SizeMismatchTolerancePercent,
-		UseCategoryFromIndexer:             req.UseCategoryFromIndexer,
-		UseCrossCategoryAffix:              req.UseCrossCategoryAffix,
-		CategoryAffixMode:                  req.CategoryAffixMode,
-		CategoryAffix:                      req.CategoryAffix,
-		UseCustomCategory:                  req.UseCustomCategory,
-		CustomCategory:                     req.CustomCategory,
-		RunExternalProgramID:               req.RunExternalProgramID,
-		SkipRecheck:                        req.SkipRecheck,
-		EnablePooledPartialCompletion:      req.EnablePooledPartialCompletion,
-		AllowReflinkSingleFileSizeMismatch: req.AllowReflinkSingleFileSizeMismatch,
-		MaxMissingBytesAfterRecheck:        req.MaxMissingBytesAfterRecheck,
-		GazelleEnabled:                     req.GazelleEnabled,
-		RedactedAPIKey:                     strings.TrimSpace(req.RedactedAPIKey),
-		OrpheusAPIKey:                      strings.TrimSpace(req.OrpheusAPIKey),
+	current, err := h.service.GetAutomationSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation settings for update")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+		return
 	}
 
-	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
+	merged := *current
+	applyAutomationSettingsPatch(&merged, automationSettingsPatchFromRequest(req, fields))
+
+	if !validateAutomationSettings(w, &merged) {
+		return
+	}
+
+	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to update cross-seed automation settings")
@@ -955,48 +1048,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
 
-	if merged.CategoryAffix != "" {
-		// No backslashes allowed
-		if strings.Contains(merged.CategoryAffix, "\\") {
-			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
-			return
-		}
-		// No double slashes allowed
-		if strings.Contains(merged.CategoryAffix, "//") {
-			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
-			return
-		}
-		// Prefix mode: cannot start with a slash (would create leading slash in category)
-		if merged.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(merged.CategoryAffix, "/") {
-			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
-			return
-		}
-		// Suffix mode: cannot end with a slash (would create trailing slash in category)
-		if merged.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(merged.CategoryAffix, "/") {
-			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
-			return
-		}
-	}
-
-	// Validate categoryAffixMode if UseCrossCategoryAffix is enabled
-	if merged.UseCrossCategoryAffix && merged.CategoryAffixMode != models.CategoryAffixModePrefix && merged.CategoryAffixMode != models.CategoryAffixModeSuffix {
-		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
-		return
-	}
-
-	// Validate mutual exclusivity: category modes are mutually exclusive
-	enabledModes := 0
-	if merged.UseCategoryFromIndexer {
-		enabledModes++
-	}
-	if merged.UseCrossCategoryAffix {
-		enabledModes++
-	}
-	if merged.UseCustomCategory {
-		enabledModes++
-	}
-	if enabledModes > 1 {
-		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
+	if !validateAutomationSettings(w, &merged) {
 		return
 	}
 
