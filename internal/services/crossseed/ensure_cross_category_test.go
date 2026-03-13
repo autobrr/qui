@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"maps"
 	"sync"
 	"testing"
 
@@ -32,9 +33,7 @@ func (m *ensureCrossCategorySyncManager) GetCategories(_ context.Context, _ int)
 	defer m.mu.Unlock()
 
 	copyMap := make(map[string]qbt.Category, len(m.categories))
-	for name, category := range m.categories {
-		copyMap[name] = category
-	}
+	maps.Copy(copyMap, m.categories)
 	return copyMap, nil
 }
 
@@ -64,7 +63,7 @@ func TestEnsureCrossCategory_UsesSingleflightForConcurrentCalls(t *testing.T) {
 	errCh := make(chan error, goroutines)
 	var wg sync.WaitGroup
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Go(func() {
 			<-start
 			errCh <- svc.ensureCrossCategory(context.Background(), 1, "movies.cross", "/downloads/movies")

@@ -3857,10 +3857,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		matchTypeCounts := make(map[string]int)
 
 		for start := 0; start < len(candidateHashes); start += candidateFileBatchSize {
-			end := start + candidateFileBatchSize
-			if end > len(candidateHashes) {
-				end = len(candidateHashes)
-			}
+			end := min(start+candidateFileBatchSize, len(candidateHashes))
 
 			batchTorrents := make([]qbt.Torrent, 0, end-start)
 			for _, hashKey := range candidateHashes[start:end] {
@@ -5573,10 +5570,7 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 
 	filesByHash := make(map[string]qbt.TorrentFiles, len(hashes))
 	for start := 0; start < len(hashes); start += candidateFileBatchSize {
-		end := start + candidateFileBatchSize
-		if end > len(hashes) {
-			end = len(hashes)
-		}
+		end := min(start+candidateFileBatchSize, len(hashes))
 
 		batch := hashes[start:end]
 		batchFiles, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, batch)
