@@ -529,6 +529,64 @@ func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
 	require.False(t, exists, "orphan string should be cleaned up")
 }
 
+func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
+	t.Parallel()
+
+	tx := &Tx{}
+	const (
+		createTemp = "CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)"
+		insertTemp = "INSERT INTO current_hashes (hash) VALUES (?)"
+		deleteTemp = `
+			DELETE FROM torrent_files_cache
+			WHERE torrent_hash_id NOT IN (
+				SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
+			)
+		`
+		dropTemp   = "DROP TABLE current_hashes"
+		normalStmt = "INSERT INTO string_pool (value) VALUES (?)"
+	)
+
+	require.True(t, tx.shouldBypassStatementCache(createTemp))
+	require.Empty(t, tx.tempTables)
+
+	tx.markQueryForCaching(createTemp)
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(insertTemp)
+	tx.markQueryForCaching(deleteTemp)
+	require.Empty(t, tx.txStmts)
+
+	tx.markQueryForCaching(normalStmt)
+	require.Contains(t, tx.txStmts, normalStmt)
+
+	require.True(t, tx.shouldBypassStatementCache(dropTemp))
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(dropTemp)
+	require.NotContains(t, tx.txStmts, dropTemp)
+	require.NotContains(t, tx.tempTables, "current_hashes")
+}
+
+func TestTempTableNameParsingUsesFinalIdentifierSegment(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE "pg_temp"."current_hashes" (hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+
+	dropName, ok := tableNameFromDrop("DROP TABLE IF EXISTS [pg_temp].[current_hashes];")
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", dropName)
+}
+
+func TestTempTableNameParsingWithoutSpaceBeforeColumns(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE current_hashes(hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+}
+
 // TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
 // after a successful commit.
 func TestTransactionCommitSuccessMutexRelease(t *testing.T) {
