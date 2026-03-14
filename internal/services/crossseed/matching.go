@@ -65,6 +65,12 @@ type releaseKey struct {
 	day   int
 }
 
+type resolutionMatchContext struct {
+	discLayout bool
+	discMarker string
+	rawName    string
+}
+
 // makeReleaseKey creates a releaseKey from a parsed release.
 // Returns the zero value if the release doesn't have identifiable metadata.
 func makeReleaseKey(r *rls.Release) releaseKey {
@@ -119,14 +125,18 @@ func (k releaseKey) String() string {
 // releasesMatch keeps the historical strict identity semantics used by local
 // match views, deduplication, and other places that must avoid widening.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
-	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, false)
+	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, false, resolutionMatchContext{}, resolutionMatchContext{})
 }
 
 func (s *Service) releasesMatchDiscovery(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
-	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, true)
+	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, true, resolutionMatchContext{}, resolutionMatchContext{})
 }
 
-func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, findIndividualEpisodes bool, allowDiscoveryRelaxations bool) bool {
+func (s *Service) releasesMatchDiscoveryWithContext(source, candidate *rls.Release, findIndividualEpisodes bool, sourceCtx, candidateCtx resolutionMatchContext) bool {
+	return s.releasesMatchWithDiscovery(source, candidate, findIndividualEpisodes, true, sourceCtx, candidateCtx)
+}
+
+func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, findIndividualEpisodes bool, allowDiscoveryRelaxations bool, sourceCtx, candidateCtx resolutionMatchContext) bool {
 	if source == candidate {
 		return true
 	}
@@ -212,7 +222,7 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 	}
 
 	if allowDiscoveryRelaxations {
-		if !discoveryMetadataMatch(s, source, candidate) {
+		if !discoveryMetadataMatch(s, source, candidate, sourceCtx, candidateCtx) {
 			return false
 		}
 	} else {
@@ -263,24 +273,8 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 
 		// Resolution must match (1080p vs 2160p are different files).
 		// Exception: empty resolution is allowed to match SD resolutions (480p, 576p, SD).
-		sourceRes := normalizer.Normalize(source.Resolution)
-		candidateRes := normalizer.Normalize(candidate.Resolution)
-		if sourceRes != candidateRes {
-			// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
-			// treat an empty resolution as a match only when the other side is clearly SD.
-			isKnownSD := func(res string) bool {
-				switch normalizeVariant(res) {
-				case "480P", "576P", "SD":
-					return true
-				default:
-					return false
-				}
-			}
-
-			sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
-			if !sdFallbackAllowed {
-				return false
-			}
+		if !resolutionsCompatible(normalizer, source, candidate, sourceCtx, candidateCtx) {
+			return false
 		}
 	}
 
@@ -443,7 +437,7 @@ func normalizeDiscoveryTitle(title string) string {
 	return strings.Join(filtered, " ")
 }
 
-func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
+func discoveryMetadataMatch(s *Service, source, candidate *rls.Release, sourceCtx, candidateCtx resolutionMatchContext) bool {
 	normalizer := s.stringNormalizer
 	if normalizer == nil {
 		normalizer = stringutils.DefaultNormalizer
@@ -465,22 +459,8 @@ func discoveryMetadataMatch(s *Service, source, candidate *rls.Release) bool {
 		return false
 	}
 
-	sourceRes := normalizer.Normalize(source.Resolution)
-	candidateRes := normalizer.Normalize(candidate.Resolution)
-	if sourceRes != candidateRes {
-		isKnownSD := func(res string) bool {
-			switch normalizeVariant(res) {
-			case "480P", "576P", "SD":
-				return true
-			default:
-				return false
-			}
-		}
-
-		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
-		if !sdFallbackAllowed {
-			return false
-		}
+	if !resolutionsCompatible(normalizer, source, candidate, sourceCtx, candidateCtx) {
+		return false
 	}
 
 	sourceVersion := normalizer.Normalize(source.Version)
@@ -510,6 +490,57 @@ func discoveryReleaseGroupCompatible(normalizer *stringutils.Normalizer[string, 
 	}
 
 	return strings.HasPrefix(sourceNorm, candidateNorm) || strings.HasPrefix(candidateNorm, sourceNorm)
+}
+
+func resolutionsCompatible(normalizer *stringutils.Normalizer[string, string], source, candidate *rls.Release, sourceCtx, candidateCtx resolutionMatchContext) bool {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	sourceRes := normalizeVariant(normalizer.Normalize(source.Resolution))
+	candidateRes := normalizeVariant(normalizer.Normalize(candidate.Resolution))
+	if sourceRes == candidateRes {
+		return true
+	}
+
+	// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
+	// treat an empty resolution as a match only when the other side is clearly SD.
+	if (sourceRes == "" && isKnownSDResolution(candidateRes)) || (candidateRes == "" && isKnownSDResolution(sourceRes)) {
+		return true
+	}
+
+	// Disc-layout search sources can omit the explicit resolution even when the
+	// raw torrent name and layout marker clearly identify the disc format.
+	if sourceRes == "" && inferredResolutionFromContext(source, sourceCtx) == candidateRes {
+		return true
+	}
+	if candidateRes == "" && inferredResolutionFromContext(candidate, candidateCtx) == sourceRes {
+		return true
+	}
+
+	return false
+}
+
+func isKnownSDResolution(resolution string) bool {
+	switch normalizeVariant(resolution) {
+	case "480P", "576P", "SD":
+		return true
+	default:
+		return false
+	}
+}
+
+func inferredResolutionFromContext(release *rls.Release, ctx resolutionMatchContext) string {
+	if release == nil || !ctx.discLayout || !strings.EqualFold(ctx.discMarker, "BDMV") {
+		return ""
+	}
+
+	titleHint := normalizeVariant(ctx.rawName)
+	if normalizeSource(release.Source) == "UHD.BLURAY" || strings.Contains(titleHint, "UHD") {
+		return "2160P"
+	}
+
+	return "1080P"
 }
 
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.

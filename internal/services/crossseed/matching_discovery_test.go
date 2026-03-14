@@ -249,3 +249,63 @@ func TestReleasesMatchDiscovery_UsesDefaultNormalizerFallback(t *testing.T) {
 		require.True(t, svc.releasesMatchDiscovery(source, candidate, false))
 	})
 }
+
+func TestReleasesMatchDiscovery_AllowsImplicitUHDToMatchExplicit2160p(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	source := svc.releaseCache.Parse("Salt.2010.COMPLETE.UHD.BLURAY-COASTER")
+	candidate := svc.releaseCache.Parse("Salt 2010 Theatrical Cut 2160p UHD Blu-ray HEVC TrueHD 7.1-COASTER")
+
+	require.True(t, svc.releasesMatchDiscoveryWithContext(
+		source,
+		candidate,
+		false,
+		resolutionMatchContext{discLayout: true, discMarker: "BDMV", rawName: "Salt.2010.COMPLETE.UHD.BLURAY-COASTER"},
+		resolutionMatchContext{},
+	))
+}
+
+func TestReleasesMatchDiscovery_DoesNotInfer2160pFromPlainBluray(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	source := svc.releaseCache.Parse("Salt.2010.COMPLETE.BLURAY-COASTER")
+	candidate := svc.releaseCache.Parse("Salt 2010 2160p Blu-ray HEVC TrueHD 7.1-COASTER")
+
+	require.False(t, svc.releasesMatchDiscoveryWithContext(
+		source,
+		candidate,
+		false,
+		resolutionMatchContext{discLayout: true, discMarker: "BDMV", rawName: "Salt.2010.COMPLETE.BLURAY-COASTER"},
+		resolutionMatchContext{},
+	))
+}
+
+func TestReleasesMatchDiscovery_Infers1080pFromPlainBlurayDiscLayout(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	source := svc.releaseCache.Parse("Salt.2010.COMPLETE.BLURAY-COASTER")
+	candidate := svc.releaseCache.Parse("Salt 2010 1080p Blu-ray AVC TrueHD 5.1-COASTER")
+
+	require.True(t, svc.releasesMatchDiscoveryWithContext(
+		source,
+		candidate,
+		false,
+		resolutionMatchContext{discLayout: true, discMarker: "BDMV", rawName: "Salt.2010.COMPLETE.BLURAY-COASTER"},
+		resolutionMatchContext{},
+	))
+}

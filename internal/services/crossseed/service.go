@@ -6405,6 +6405,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	seen := make(map[string]struct{})
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
+	sourceResolutionCtx := resolutionMatchContext{
+		discLayout: sourceInfo.DiscLayout,
+		discMarker: sourceInfo.DiscMarker,
+		rawName:    sourceTorrent.Name,
+	}
 
 	for _, res := range searchResults {
 		key := res.GUID
@@ -6419,7 +6424,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatchDiscovery(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		if !s.releasesMatchDiscoveryWithContext(searchRelease, candidateRelease, opts.FindIndividualEpisodes, sourceResolutionCtx, resolutionMatchContext{}) {
 			releaseFilteredCount++
 			continue
 		}
