@@ -116,24 +116,16 @@ This typically means the torrent name contains special characters (like double q
 {"level":"error","error":"invalid character 'V' after object key:value pair","time":"...","message":"Failed to decode webhook check request"}
 ```
 
-**Solution:** In your autobrr webhook configuration, use `toRawJson` instead of quoting the template variable directly:
+**Solution:** For `/api/cross-seed/webhook/check`, send the torrent bytes directly instead of building JSON from `TorrentName`:
 
 ```json
 {
-  "torrentName": {{ toRawJson .TorrentName }},
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "instanceIds": [1]
 }
 ```
 
-**Not:**
-```json
-{
-  "torrentName": "{{ .TorrentName }}",
-  "instanceIds": [1]
-}
-```
-
-The `toRawJson` function (from Sprig) properly escapes special characters and outputs a valid JSON string including the quotes.
+This avoids JSON-escaping issues in release names and lets qui perform final file-level validation before it responds.
 
 ## Cross-seed in wrong category
 

@@ -831,6 +831,12 @@ var ErrInvalidWebhookRequest = errors.New("invalid webhook request")
 // ErrInvalidRequest indicates a generic cross-seed request validation error.
 var ErrInvalidRequest = errors.New("cross-seed invalid request")
 
+// ErrTorrentDataDecode indicates a request supplied invalid base64 torrent data.
+var ErrTorrentDataDecode = errors.New("cross-seed torrent data decode failed")
+
+// ErrTorrentParse indicates decoded torrent bytes could not be parsed as a torrent file.
+var ErrTorrentParse = errors.New("cross-seed torrent parse failed")
+
 // ErrTorrentNotFound indicates the requested torrent could not be located in qBittorrent.
 var ErrTorrentNotFound = errors.New("cross-seed torrent not found")
 
@@ -3110,15 +3116,55 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					log.Warn().Err(recoverErr).Int("instanceID", instanceID).Msg("Failed to recover errored torrents")
 				}
 
-				// Re-fetch torrents after recovery to get updated states
+				// Re-fetch torrents after recovery to get updated states.
 				torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted})
 				if err != nil {
 					log.Warn().
 						Int("instanceID", instanceID).
 						Str("instanceName", instance.Name).
 						Err(err).
-						Msg("Failed to re-get torrents from instance after recovery, skipping")
+						Msg("Failed to re-get completed torrents from instance after recovery, skipping")
 					continue
+				}
+
+				if req.IncludeIncompleteCandidates {
+					incompleteTorrents, incompleteErr := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+						Filter: qbt.TorrentFilterDownloading,
+					})
+					if incompleteErr != nil {
+						log.Warn().
+							Int("instanceID", instanceID).
+							Str("instanceName", instance.Name).
+							Err(incompleteErr).
+							Msg("Failed to re-get incomplete torrents from instance after recovery; proceeding with completed torrents only")
+						incompleteTorrents = nil
+					}
+
+					seenHashes := make(map[string]struct{}, len(torrents)+len(incompleteTorrents))
+					merged := make([]qbt.Torrent, 0, len(torrents)+len(incompleteTorrents))
+					for _, torrent := range torrents {
+						hashKey := normalizeHash(torrent.Hash)
+						if hashKey == "" {
+							continue
+						}
+						if _, exists := seenHashes[hashKey]; exists {
+							continue
+						}
+						seenHashes[hashKey] = struct{}{}
+						merged = append(merged, torrent)
+					}
+					for _, torrent := range incompleteTorrents {
+						hashKey := normalizeHash(torrent.Hash)
+						if hashKey == "" {
+							continue
+						}
+						if _, exists := seenHashes[hashKey]; exists {
+							continue
+						}
+						seenHashes[hashKey] = struct{}{}
+						merged = append(merged, torrent)
+					}
+					torrents = merged
 				}
 			}
 		}
@@ -3128,8 +3174,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 		// Pre-filter torrents before loading files to reduce downstream work
 		for _, torrent := range torrents {
-			// Only complete torrents can provide data
-			if torrent.Progress < 1.0 {
+			// Cross-seed apply only uses complete torrents, but webhook dry-runs need
+			// to keep valid in-progress matches so they can return 202 after final validation.
+			if torrent.Progress < 1.0 && !req.IncludeIncompleteCandidates {
 				continue
 			}
 
@@ -3252,51 +3299,19 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 // It finds existing 100% complete torrents that match the content and adds the new torrent
 // paused to the same location with matching category and ATM state
 func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
-	if req.TorrentData == "" {
-		return nil, errors.New("torrent_data is required")
+	prepared, err := s.prepareCrossSeedEvaluation(ctx, req, false)
+	if err != nil {
+		return nil, err
 	}
 
-	// Decode base64 torrent data
-	torrentBytes, err := s.decodeTorrentData(req.TorrentData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode torrent data: %w", err)
-	}
-
-	// Parse torrent metadata to get name, hash, files, and info for validation
-	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse torrent: %w", err)
-	}
+	torrentBytes := prepared.torrentBytes
+	meta := prepared.meta
 	torrentHash := meta.HashV1
 	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
 		torrentHash = meta.HashV2
 	}
-	sourceRelease := s.releaseCache.Parse(meta.Name)
-
-	// Use FindCandidates to locate matching torrents
-	findReq := &FindCandidatesRequest{
-		TorrentName:            meta.Name,
-		TargetInstanceIDs:      req.TargetInstanceIDs,
-		FindIndividualEpisodes: req.FindIndividualEpisodes,
-	}
-	// Pass through source filters for RSS automation
-	if len(req.SourceFilterCategories) > 0 {
-		findReq.SourceFilterCategories = append([]string(nil), req.SourceFilterCategories...)
-	}
-	if len(req.SourceFilterTags) > 0 {
-		findReq.SourceFilterTags = append([]string(nil), req.SourceFilterTags...)
-	}
-	if len(req.SourceFilterExcludeCategories) > 0 {
-		findReq.SourceFilterExcludeCategories = append([]string(nil), req.SourceFilterExcludeCategories...)
-	}
-	if len(req.SourceFilterExcludeTags) > 0 {
-		findReq.SourceFilterExcludeTags = append([]string(nil), req.SourceFilterExcludeTags...)
-	}
-
-	candidatesResp, err := s.FindCandidates(ctx, findReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find candidates: %w", err)
-	}
+	sourceRelease := prepared.sourceRelease
+	candidatesResp := prepared.candidatesResp
 
 	// Detect disc layout from source files
 	isDiscLayout, discMarker := isDiscLayoutTorrent(meta.Files)
@@ -3532,95 +3547,66 @@ func (s *Service) processCrossSeedCandidate(
 		Status:       "error",
 	}
 
-	// Check if torrent already exists
-	hashes := make([]string, 0, 2)
-	seenHashes := make(map[string]struct{}, 2)
-	for _, hash := range []string{torrentHash, torrentHashV2} {
-		trimmed := strings.TrimSpace(hash)
-		if trimmed == "" {
-			continue
-		}
-		canonical := normalizeHash(trimmed)
-		if _, ok := seenHashes[canonical]; ok {
-			continue
-		}
-		seenHashes[canonical] = struct{}{}
-		hashes = append(hashes, trimmed)
-	}
-
-	if s.blocklistStore != nil {
-		blockedHash, blocked, err := s.blocklistStore.FindBlocked(ctx, candidate.InstanceID, hashes)
-		if err != nil {
-			result.Message = fmt.Sprintf("Failed to check cross-seed blocklist: %v", err)
-			return result
-		}
-		if blocked {
-			result.Status = "blocked"
-			result.Message = "Blocked by cross-seed blocklist"
-			log.Info().
-				Int("instanceID", candidate.InstanceID).
-				Str("instanceName", candidate.InstanceName).
-				Str("torrentHash", torrentHash).
-				Str("blockedHash", blockedHash).
-				Msg("Cross-seed apply skipped: infohash is blocked")
-			return result
-		}
-	}
-
-	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, hashes)
-	if err != nil {
-		result.Message = fmt.Sprintf("Failed to check existing torrents: %v", err)
-		return result
-	}
-
-	if exists && existingTorrent != nil {
-		result.Success = false
-		result.Status = "exists"
-		result.Message = "Torrent already exists in this instance"
-		result.MatchedTorrent = &MatchedTorrent{
-			Hash:     existingTorrent.Hash,
-			Name:     existingTorrent.Name,
-			Progress: existingTorrent.Progress,
-			Size:     existingTorrent.Size,
-		}
-
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("instanceName", candidate.InstanceName).
-			Str("torrentHash", torrentHash).
-			Str("existingHash", existingTorrent.Hash).
-			Str("existingName", existingTorrent.Name).
-			Msg("Cross-seed apply skipped: torrent already exists in instance")
-
-		return result
-	}
-
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
 	tolerancePercent := req.SizeMismatchTolerancePercent
 	if tolerancePercent <= 0 {
 		tolerancePercent = 5.0 // Default to 5% tolerance
 	}
 	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
-	if matchedTorrent == nil {
-		result.Status = "no_match"
-		result.Message = rejectReason
+	var validation *candidateValidationResult
+	if matchedTorrent != nil {
+		validation = &candidateValidationResult{
+			torrent:        matchedTorrent,
+			candidateFiles: candidateFiles,
+			matchType:      matchType,
+			rejectReason:   rejectReason,
+		}
+	}
+
+	preflight, err := s.preflightCandidateChecks(
+		ctx,
+		candidate,
+		validation,
+		rejectReason,
+		torrentHash,
+		torrentHashV2,
+		torrentName,
+		req,
+		sourceRelease,
+		sourceFiles,
+		torrentInfo,
+		nil,
+	)
+	if err != nil {
+		result.Message = err.Error()
+		return result
+	}
+	if preflight.status != candidatePreflightStatusEligible {
+		result.Status = string(preflight.status)
+		result.Message = preflight.reason
+		if preflight.existingTorrent != nil {
+			result.MatchedTorrent = &MatchedTorrent{
+				Hash:     preflight.existingTorrent.Hash,
+				Name:     preflight.existingTorrent.Name,
+				Progress: preflight.existingTorrent.Progress,
+				Size:     preflight.existingTorrent.Size,
+			}
+		}
 
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Str("torrentHash", torrentHash).
-			Str("reason", rejectReason).
-			Msg("Cross-seed apply skipped: no best candidate match after file-level validation")
-
+			Str("status", result.Status).
+			Str("reason", result.Message).
+			Msg("Cross-seed apply skipped during preflight")
 		return result
 	}
 
-	// Get torrent properties to extract save path
-	props, err := s.syncManager.GetTorrentProperties(ctx, candidate.InstanceID, matchedTorrent.Hash)
-	if err != nil {
-		result.Message = fmt.Sprintf("Failed to get torrent properties: %v", err)
-		return result
-	}
+	matchedTorrent = preflight.validation.torrent
+	candidateFiles = preflight.validation.candidateFiles
+	matchType = preflight.validation.matchType
+	props := preflight.props
 
 	// Build options for adding the torrent
 	options := make(map[string]string)
@@ -3638,7 +3624,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Compute add policy from source files (e.g., disc layout detection)
-	addPolicy := PolicyForSourceFiles(sourceFiles)
+	addPolicy := preflight.addPolicy
 	addPolicy.ApplyToAddOptions(options)
 
 	if addPolicy.DiscLayout {
@@ -3650,29 +3636,19 @@ func (s *Service) processCrossSeedCandidate(
 			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and only resumed after full recheck")
 	}
 
-	// Check if we need rename alignment (folder/file names differ)
-	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
-
-	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
-	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
-
-	// Force recheck is automatic (no user setting):
-	//  - Disc-layout torrents always trigger a recheck after injection
-	//  - Recheck-required matches (alignment/extras) trigger a recheck when SkipRecheck is OFF
-	forceRecheck := addPolicy.DiscLayout || (!req.SkipRecheck && (requiresAlignment || hasExtraFiles))
+	requiresAlignment := preflight.requiresAlignment
+	hasExtraFiles := preflight.hasExtraFiles
+	forceRecheck := preflight.forceRecheck
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
 	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
-	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
-	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks
-	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
+	useReflinkMode := preflight.useReflinkMode
+	useHardlinkMode := preflight.useHardlinkMode
 
 	runReuseSafetyChecks := func() bool {
-		// SAFETY: Reject cross-seeds where main content file sizes don't match.
-		// This prevents corrupting existing good data with potentially different or corrupted files.
-		// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
-		// it indicates either corruption or a different release that shouldn't be cross-seeded.
+		// Reflink mode can bypass reuse safety when it succeeds, but if it falls back to
+		// regular handling we must re-apply the same regular-mode protections.
 		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
@@ -3687,20 +3663,15 @@ func (s *Service) processCrossSeedCandidate(
 			return false
 		}
 
-		// SAFETY: Check piece-boundary alignment when source has extra files.
-		// If extra/ignored files share pieces with content files, downloading those pieces
-		// could corrupt the existing content data (piece hashes span both file types).
-		// In this case, we must skip - only reflink/copy mode could safely handle it.
 		if !hasExtraFiles || torrentInfo == nil {
 			return true
 		}
 
-		// Build set of missing file paths (files in source that have no (normalizedKey, size) match in candidate).
-		// This uses the same multiset matching as hasExtraSourceFiles.
 		type fileKeySize struct {
 			key  string
 			size int64
 		}
+
 		candidateKeys := make(map[fileKeySize]int)
 		for _, cf := range candidateFiles {
 			key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
@@ -3716,15 +3687,10 @@ func (s *Service) processCrossSeedCandidate(
 			}
 		}
 
-		// isMissingOnDisk returns true if the file has no (normalizedKey, size) match in candidate files.
-		// These files will be downloaded by qBittorrent during recheck.
-		// Note: ignore patterns are NOT checked here - the piece-boundary check applies
-		// to ALL missing files regardless of whether they match ignore patterns.
 		isMissingOnDisk := func(path string) bool {
 			return missingPaths[path]
 		}
 
-		// Check piece boundary safety unless user opted out
 		if !req.SkipPieceBoundarySafetyCheck {
 			unsafe, safetyResult := HasUnsafeIgnoredExtras(torrentInfo, isMissingOnDisk)
 			if unsafe {
@@ -3737,8 +3703,6 @@ func (s *Service) processCrossSeedCandidate(
 					Int("violationCount", len(safetyResult.UnsafeBoundaries)).
 					Int64("pieceLength", torrentInfo.PieceLength).
 					Msg("[CROSSSEED] Skipped: piece boundary violation - extra files share pieces with content files")
-
-				// Log first violation for actionable debugging
 				if len(safetyResult.UnsafeBoundaries) > 0 {
 					v := safetyResult.UnsafeBoundaries[0]
 					log.Debug().
@@ -3750,46 +3714,9 @@ func (s *Service) processCrossSeedCandidate(
 				}
 				return false
 			}
-		} else {
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Piece boundary safety check skipped by user setting")
 		}
 
 		return true
-	}
-
-	// NOTE: Reflink mode bypasses these checks only when reflink mode is actually used.
-	if !useReflinkMode {
-		if !runReuseSafetyChecks() {
-			return result
-		}
-	}
-
-	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
-		result.Status = "skipped_recheck"
-		result.Message = skippedRecheckMessage
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Bool("discLayout", addPolicy.DiscLayout).
-			Bool("requiresAlignment", requiresAlignment).
-			Bool("hasExtraFiles", hasExtraFiles).
-			Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
-		return result
-	}
-
-	if req.SkipRecheck && addPolicy.DiscLayout {
-		result.Status = "skipped_recheck"
-		result.Message = skippedRecheckMessage
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Bool("discLayout", addPolicy.DiscLayout).
-			Str("discMarker", addPolicy.DiscMarker).
-			Msg("Cross-seed skipped because disc layout requires recheck and skip recheck is enabled")
-		return result
 	}
 
 	// Skip checking for cross-seed adds - the data is already verified by the matched torrent.
@@ -3801,8 +3728,8 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Detect folder structure for contentLayout decisions
-	sourceRoot := detectCommonRoot(sourceFiles)
-	candidateRoot := detectCommonRoot(candidateFiles)
+	sourceRoot := preflight.sourceRoot
+	candidateRoot := preflight.candidateRoot
 
 	// Log first file from each for debugging
 	sourceFirstFile := ""
@@ -3824,44 +3751,19 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Detect episode matched to season pack - these need special handling
 	// to use the season pack's content path instead of category save path
-	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
-	isEpisodeInPack := matchType == "partial-in-pack" &&
-		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0
-	rootlessContentDir := ""
-	if !isEpisodeInPack && candidateRoot == "" {
-		rootlessContentDir = resolveRootlessContentDir(matchedTorrent, candidateFiles)
-	}
-
-	// Determine final category to apply (with optional .cross suffix for isolation)
-	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
+	isEpisodeInPack := preflight.isEpisodeInPack
+	rootlessContentDir := preflight.rootlessContentDir
+	baseCategory := preflight.baseCategory
+	crossCategory := preflight.crossCategory
 
 	// Determine the SavePath for the cross-seed category.
 	// Priority: base category's configured SavePath > matched torrent's SavePath
 	// actualCategorySavePath tracks the category's real configured path (empty if none configured)
 	// categorySavePath includes the fallback to matched torrent's path for category creation
-	var categorySavePath string
-	var actualCategorySavePath string
+	categorySavePath := preflight.categorySavePath
+	actualCategorySavePath := preflight.actualCategorySavePath
 	var categoryCreationFailed bool
 	if crossCategory != "" {
-		// Try to get SavePath from the base category definition in qBittorrent
-		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
-		if catErr != nil {
-			log.Debug().Err(catErr).Int("instanceID", candidate.InstanceID).
-				Msg("[CROSSSEED] Failed to fetch categories, falling back to torrent SavePath")
-		}
-		if catErr == nil && categories != nil {
-			if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
-				categorySavePath = cat.SavePath
-				actualCategorySavePath = cat.SavePath
-			}
-		}
-
-		// Fallback to matched torrent's SavePath if category has no explicit SavePath
-		if categorySavePath == "" {
-			categorySavePath = props.SavePath
-		}
-
 		// Ensure the cross-seed category exists with the correct SavePath
 		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
 			log.Warn().Err(err).
@@ -3885,8 +3787,6 @@ func (s *Service) processCrossSeedCandidate(
 			return rlResult.Result
 		}
 
-		// Reflink mode was enabled but not used (e.g., fallback on error). Re-run reuse safety checks
-		// before continuing into hardlink/regular modes.
 		if !runReuseSafetyChecks() {
 			return result
 		}
@@ -3980,13 +3880,6 @@ func (s *Service) processCrossSeedCandidate(
 		options["contentLayout"] = "Original"
 	}
 
-	// Check if UseCategoryFromIndexer or UseCustomCategory is enabled (affects TMM decision)
-	var useCategoryFromIndexer, useCustomCategory bool
-	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
-		useCategoryFromIndexer = settings.UseCategoryFromIndexer
-		useCustomCategory = settings.UseCustomCategory
-	}
-
 	// Determine save path strategy:
 	// Cross-seeding should use the matched torrent's SavePath to avoid relocating files.
 	// Auto Torrent Management (autoTMM) can only be enabled when the category has an explicitly
@@ -3997,7 +3890,6 @@ func (s *Service) processCrossSeedCandidate(
 	// If false, we should not add the torrent as qBittorrent would use its default location
 	// and fail to find the existing files for cross-seeding.
 
-	// Fail early for episode-in-pack if ContentPath is missing
 	if isEpisodeInPack && matchedTorrent.ContentPath == "" {
 		result.Status = "invalid_content_path"
 		result.Message = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s). This may indicate the matched torrent is incomplete or was added without proper metadata.", matchedTorrent.Hash)
@@ -4038,7 +3930,7 @@ func (s *Service) processCrossSeedCandidate(
 		}
 
 		// Evaluate whether autoTMM should be enabled
-		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, useCustomCategory, actualCategorySavePath, props.SavePath)
+		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, preflight.useCategoryFromIndexer, preflight.useCustomCategory, actualCategorySavePath, props.SavePath)
 		if forceManualSavePath {
 			tmmDecision.Enabled = false
 		}
@@ -4068,7 +3960,6 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
-	// Fail early if no valid save path - don't add orphaned torrents
 	if !hasValidSavePath {
 		result.Status = "no_save_path"
 		result.Message = fmt.Sprintf("No valid save path available. Ensure the matched torrent has a SavePath or the category has an explicit SavePath configured. (matchedSavePath=%q, categorySavePath=%q)", props.SavePath, categorySavePath)
@@ -4665,9 +4556,6 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 	seen := make(map[string]struct{}, len(torrents))
 	hashes := make([]string, 0, len(torrents))
 	for _, torrent := range torrents {
-		if torrent.Progress < 1.0 {
-			continue
-		}
 		hash := normalizeHash(torrent.Hash)
 		if hash == "" {
 			continue
@@ -4810,6 +4698,473 @@ func (s *Service) findBestCandidateMatch(
 	}
 
 	return matchedTorrent, candidateFiles, matchType, bestRejectReason
+}
+
+type candidateValidationResult struct {
+	torrent        *qbt.Torrent
+	candidateFiles qbt.TorrentFiles
+	matchType      string
+	rejectReason   string
+	score          int
+	hasRoot        bool
+	fileCount      int
+}
+
+type candidateValidationSummary struct {
+	ready        *candidateValidationResult
+	pending      *candidateValidationResult
+	rejectReason string
+}
+
+type candidatePreflightStatus string
+
+const (
+	candidatePreflightStatusEligible                candidatePreflightStatus = "eligible"
+	candidatePreflightStatusBlocked                 candidatePreflightStatus = "blocked"
+	candidatePreflightStatusExists                  candidatePreflightStatus = "exists"
+	candidatePreflightStatusNoMatch                 candidatePreflightStatus = "no_match"
+	candidatePreflightStatusRejected                candidatePreflightStatus = "rejected"
+	candidatePreflightStatusSkippedUnsafePieces     candidatePreflightStatus = "skipped_unsafe_pieces"
+	candidatePreflightStatusSkippedRecheck          candidatePreflightStatus = "skipped_recheck"
+	candidatePreflightStatusRequiresHardlinkReflink candidatePreflightStatus = "requires_hardlink_reflink"
+	candidatePreflightStatusInvalidContentPath      candidatePreflightStatus = "invalid_content_path"
+	candidatePreflightStatusNoSavePath              candidatePreflightStatus = "no_save_path"
+)
+
+type candidatePreflightResult struct {
+	status          candidatePreflightStatus
+	reason          string
+	validation      *candidateValidationResult
+	existingTorrent *qbt.Torrent
+	props           *qbt.TorrentProperties
+
+	addPolicy         AddPolicy
+	requiresAlignment bool
+	hasExtraFiles     bool
+	forceRecheck      bool
+	useReflinkMode    bool
+	useHardlinkMode   bool
+
+	sourceRoot         string
+	candidateRoot      string
+	rootlessContentDir string
+	isEpisodeInPack    bool
+
+	baseCategory           string
+	crossCategory          string
+	categorySavePath       string
+	actualCategorySavePath string
+	useCategoryFromIndexer bool
+	useCustomCategory      bool
+}
+
+type preparedCrossSeedEvaluation struct {
+	torrentBytes   []byte
+	meta           TorrentMetadata
+	sourceRelease  *rls.Release
+	candidatesResp *FindCandidatesResponse
+}
+
+func shouldPromoteValidationResult(current *candidateValidationResult, next *candidateValidationResult) bool {
+	if next == nil {
+		return false
+	}
+	if current == nil {
+		return true
+	}
+	if next.score != current.score {
+		return next.score > current.score
+	}
+	if next.hasRoot != current.hasRoot {
+		return next.hasRoot
+	}
+	return next.fileCount > current.fileCount
+}
+
+func (s *Service) validateCandidateTorrent(
+	sourceRelease *rls.Release,
+	sourceFiles qbt.TorrentFiles,
+	torrent qbt.Torrent,
+	filesByHash map[string]qbt.TorrentFiles,
+	tolerancePercent float64,
+) *candidateValidationResult {
+	hashKey := normalizeHash(torrent.Hash)
+	files, ok := filesByHash[hashKey]
+	if !ok || len(files) == 0 {
+		return nil
+	}
+
+	candidateRelease := s.releaseCache.Parse(torrent.Name)
+
+	// Force-on safety guard: if the only available local source is a single episode,
+	// never treat it as a valid source for a season-pack cross-seed.
+	if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject {
+		return &candidateValidationResult{rejectReason: reason}
+	}
+
+	matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
+	if matchResult.MatchType == "" {
+		return &candidateValidationResult{rejectReason: matchResult.Reason}
+	}
+
+	actualMatchType := matchResult.MatchType
+	switch actualMatchType {
+	case "partial-in-pack":
+		actualMatchType = "partial-contains"
+	case "partial-contains":
+		actualMatchType = "partial-in-pack"
+	}
+
+	score := matchTypePriority(actualMatchType)
+	if score == 0 {
+		return &candidateValidationResult{rejectReason: matchResult.Reason}
+	}
+
+	copyTorrent := torrent
+	return &candidateValidationResult{
+		torrent:        &copyTorrent,
+		candidateFiles: files,
+		matchType:      actualMatchType,
+		rejectReason:   matchResult.Reason,
+		score:          score,
+		hasRoot:        detectCommonRoot(files) != "",
+		fileCount:      len(files),
+	}
+}
+
+func (s *Service) summarizeCandidateValidation(
+	candidate CrossSeedCandidate,
+	sourceRelease *rls.Release,
+	sourceFiles qbt.TorrentFiles,
+	tolerancePercent float64,
+	filesByHash map[string]qbt.TorrentFiles,
+) candidateValidationSummary {
+	summary := candidateValidationSummary{}
+
+	if len(filesByHash) == 0 {
+		summary.rejectReason = "No candidate torrents with files to match against"
+		return summary
+	}
+
+	for _, torrent := range candidate.Torrents {
+		result := s.validateCandidateTorrent(sourceRelease, sourceFiles, torrent, filesByHash, tolerancePercent)
+		if result == nil {
+			continue
+		}
+		if result.torrent == nil {
+			if result.rejectReason != "" && (summary.rejectReason == "" || len(result.rejectReason) > len(summary.rejectReason)) {
+				summary.rejectReason = result.rejectReason
+			}
+			continue
+		}
+
+		if result.torrent.Progress >= 1.0 {
+			if shouldPromoteValidationResult(summary.ready, result) {
+				summary.ready = result
+			}
+			continue
+		}
+
+		if shouldPromoteValidationResult(summary.pending, result) {
+			summary.pending = result
+		}
+	}
+
+	if summary.ready == nil && summary.pending == nil && summary.rejectReason == "" {
+		summary.rejectReason = "No matching torrents found with required files"
+	}
+
+	return summary
+}
+
+func collectCandidateHashes(torrentHash string, torrentHashV2 string) []string {
+	hashes := make([]string, 0, 2)
+	seen := make(map[string]struct{}, 2)
+	for _, hash := range []string{torrentHash, torrentHashV2} {
+		trimmed := strings.TrimSpace(hash)
+		if trimmed == "" {
+			continue
+		}
+		canonical := normalizeHash(trimmed)
+		if canonical == "" {
+			continue
+		}
+		if _, exists := seen[canonical]; exists {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		hashes = append(hashes, trimmed)
+	}
+	return hashes
+}
+
+func defaultCandidateRejectReason(reason string) string {
+	if trimmed := strings.TrimSpace(reason); trimmed != "" {
+		return trimmed
+	}
+	return "No matching torrents found with required files"
+}
+
+// preflightCandidateChecks runs the read-only apply-path gates that determine whether a
+// validated candidate can proceed toward AddTorrent. It never mutates qBittorrent or local state.
+func (s *Service) preflightCandidateChecks(
+	ctx context.Context,
+	candidate CrossSeedCandidate,
+	validation *candidateValidationResult,
+	rejectReason string,
+	torrentHash string,
+	torrentHashV2 string,
+	torrentName string,
+	req *CrossSeedRequest,
+	sourceRelease *rls.Release,
+	sourceFiles qbt.TorrentFiles,
+	torrentInfo *metainfo.Info,
+	settings *models.CrossSeedAutomationSettings,
+) (candidatePreflightResult, error) {
+	result := candidatePreflightResult{
+		status:     candidatePreflightStatusEligible,
+		validation: validation,
+	}
+
+	hashes := collectCandidateHashes(torrentHash, torrentHashV2)
+
+	if s.blocklistStore != nil {
+		_, blocked, err := s.blocklistStore.FindBlocked(ctx, candidate.InstanceID, hashes)
+		if err != nil {
+			return result, fmt.Errorf("failed to check cross-seed blocklist: %w", err)
+		}
+		if blocked {
+			result.status = candidatePreflightStatusBlocked
+			result.reason = "Blocked by cross-seed blocklist"
+			return result, nil
+		}
+	}
+
+	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, hashes)
+	if err != nil {
+		return result, fmt.Errorf("failed to check existing torrents: %w", err)
+	}
+	if exists && existingTorrent != nil {
+		copyTorrent := *existingTorrent
+		result.status = candidatePreflightStatusExists
+		result.reason = "Torrent already exists in this instance"
+		result.existingTorrent = &copyTorrent
+		return result, nil
+	}
+
+	if validation == nil || validation.torrent == nil {
+		result.status = candidatePreflightStatusNoMatch
+		result.reason = defaultCandidateRejectReason(rejectReason)
+		return result, nil
+	}
+
+	props, err := s.syncManager.GetTorrentProperties(ctx, candidate.InstanceID, validation.torrent.Hash)
+	if err != nil {
+		return result, fmt.Errorf("failed to get torrent properties: %w", err)
+	}
+	result.props = props
+
+	result.addPolicy = PolicyForSourceFiles(sourceFiles)
+	result.requiresAlignment = needsRenameAlignment(torrentName, validation.torrent.Name, sourceFiles, validation.candidateFiles)
+	result.hasExtraFiles = hasExtraSourceFiles(sourceFiles, validation.candidateFiles)
+	result.forceRecheck = result.addPolicy.DiscLayout || (!req.SkipRecheck && (result.requiresAlignment || result.hasExtraFiles))
+
+	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
+	result.useReflinkMode = instanceErr == nil && instance != nil && instance.UseReflinks
+	result.useHardlinkMode = instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
+
+	if !result.useReflinkMode {
+		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, validation.candidateFiles, s.stringNormalizer); hasMismatch {
+			result.status = candidatePreflightStatusRejected
+			result.reason = "Content file sizes do not match - possible corruption or different release"
+			_ = mismatchedFiles
+			return result, nil
+		}
+
+		if result.hasExtraFiles && torrentInfo != nil {
+			type fileKeySize struct {
+				key  string
+				size int64
+			}
+
+			candidateKeys := make(map[fileKeySize]int)
+			for _, cf := range validation.candidateFiles {
+				key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
+				candidateKeys[key]++
+			}
+
+			missingPaths := make(map[string]bool)
+			for _, sf := range sourceFiles {
+				key := fileKeySize{key: normalizeFileKey(sf.Name), size: sf.Size}
+				if count := candidateKeys[key]; count > 0 {
+					candidateKeys[key]--
+				} else {
+					missingPaths[sf.Name] = true
+				}
+			}
+
+			isMissingOnDisk := func(path string) bool {
+				return missingPaths[path]
+			}
+
+			if !req.SkipPieceBoundarySafetyCheck {
+				unsafe, _ := HasUnsafeIgnoredExtras(torrentInfo, isMissingOnDisk)
+				if unsafe {
+					result.status = candidatePreflightStatusSkippedUnsafePieces
+					result.reason = "Skipped: extra files share pieces with content. Disable 'Piece boundary safety check' in Cross-Seed settings to allow"
+					return result, nil
+				}
+			}
+		}
+	}
+
+	if req.SkipRecheck && (result.addPolicy.DiscLayout || result.requiresAlignment || result.hasExtraFiles) {
+		result.status = candidatePreflightStatusSkippedRecheck
+		result.reason = skippedRecheckMessage
+		return result, nil
+	}
+
+	matchedRelease := s.releaseCache.Parse(validation.torrent.Name)
+	result.sourceRoot = detectCommonRoot(sourceFiles)
+	result.candidateRoot = detectCommonRoot(validation.candidateFiles)
+	result.isEpisodeInPack = validation.matchType == "partial-in-pack" &&
+		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
+		matchedRelease.Series > 0 && matchedRelease.Episode == 0
+	if !result.isEpisodeInPack && result.candidateRoot == "" {
+		result.rootlessContentDir = resolveRootlessContentDir(validation.torrent, validation.candidateFiles)
+	}
+
+	if settings == nil {
+		settings, err = s.GetAutomationSettings(ctx)
+		if err != nil {
+			settings = models.DefaultCrossSeedAutomationSettings()
+		}
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
+
+	result.baseCategory, result.crossCategory = s.determineCrossSeedCategory(ctx, req, validation.torrent, settings)
+	if result.crossCategory != "" {
+		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
+		if catErr == nil && categories != nil {
+			if cat, exists := categories[result.baseCategory]; exists && cat.SavePath != "" {
+				result.categorySavePath = cat.SavePath
+				result.actualCategorySavePath = cat.SavePath
+			}
+		}
+		if result.categorySavePath == "" {
+			result.categorySavePath = props.SavePath
+		}
+	}
+
+	if !result.useReflinkMode && !result.useHardlinkMode &&
+		result.sourceRoot != "" && result.candidateRoot == "" && result.hasExtraFiles {
+		result.status = candidatePreflightStatusRequiresHardlinkReflink
+		result.reason = "Skipped: cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
+		return result, nil
+	}
+
+	if !result.useReflinkMode && !result.useHardlinkMode && result.isEpisodeInPack && validation.torrent.ContentPath == "" {
+		result.status = candidatePreflightStatusInvalidContentPath
+		result.reason = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s). This may indicate the matched torrent is incomplete or was added without proper metadata.", validation.torrent.Hash)
+		return result, nil
+	}
+
+	result.useCategoryFromIndexer = settings.UseCategoryFromIndexer
+	result.useCustomCategory = settings.UseCustomCategory
+
+	if !result.useReflinkMode && !result.useHardlinkMode {
+		hasValidSavePath := false
+		if result.isEpisodeInPack && validation.torrent.ContentPath != "" {
+			hasValidSavePath = true
+		} else {
+			savePath := props.SavePath
+			if savePath == "" {
+				savePath = result.categorySavePath
+			}
+
+			forceManualSavePath := false
+			if result.rootlessContentDir != "" {
+				normalizedSavePath := normalizePath(savePath)
+				normalizedRootlessDir := normalizePath(result.rootlessContentDir)
+				if normalizedRootlessDir != "" && normalizedRootlessDir != normalizedSavePath {
+					savePath = result.rootlessContentDir
+					forceManualSavePath = true
+				}
+			}
+
+			tmmDecision := shouldEnableAutoTMM(
+				result.crossCategory,
+				validation.torrent.AutoManaged,
+				result.useCategoryFromIndexer,
+				result.useCustomCategory,
+				result.actualCategorySavePath,
+				props.SavePath,
+			)
+			if forceManualSavePath {
+				tmmDecision.Enabled = false
+			}
+
+			hasValidSavePath = tmmDecision.Enabled || savePath != ""
+		}
+
+		if !hasValidSavePath {
+			result.status = candidatePreflightStatusNoSavePath
+			result.reason = fmt.Sprintf("No valid save path available. Ensure the matched torrent has a SavePath or the category has an explicit SavePath configured. (matchedSavePath=%q, categorySavePath=%q)", props.SavePath, result.categorySavePath)
+			return result, nil
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) prepareCrossSeedEvaluation(
+	ctx context.Context,
+	req *CrossSeedRequest,
+	includeIncompleteCandidates bool,
+) (*preparedCrossSeedEvaluation, error) {
+	if req == nil {
+		return nil, errors.New("request is required")
+	}
+	if req.TorrentData == "" {
+		return nil, errors.New("torrent_data is required")
+	}
+
+	torrentBytes, err := s.decodeTorrentData(req.TorrentData)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTorrentDataDecode, err)
+	}
+
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTorrentParse, err)
+	}
+
+	findReq := &FindCandidatesRequest{
+		TorrentName:                 meta.Name,
+		TargetInstanceIDs:           req.TargetInstanceIDs,
+		FindIndividualEpisodes:      req.FindIndividualEpisodes,
+		IncludeIncompleteCandidates: includeIncompleteCandidates,
+		SourceFilterCategories:      append([]string(nil), req.SourceFilterCategories...),
+		SourceFilterTags:            append([]string(nil), req.SourceFilterTags...),
+		SourceFilterExcludeCategories: append([]string(nil),
+			req.SourceFilterExcludeCategories...,
+		),
+		SourceFilterExcludeTags: append([]string(nil), req.SourceFilterExcludeTags...),
+	}
+
+	candidatesResp, err := s.FindCandidates(ctx, findReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find candidates: %w", err)
+	}
+
+	return &preparedCrossSeedEvaluation{
+		torrentBytes:   torrentBytes,
+		meta:           meta,
+		sourceRelease:  s.releaseCache.Parse(meta.Name),
+		candidatesResp: candidatesResp,
+	}, nil
 }
 
 // decodeTorrentData decodes base64-encoded torrent data
@@ -8851,8 +9206,8 @@ func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string
 	return samples
 }
 
-func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
-	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
+func (s *Service) notifyWebhookCheck(ctx context.Context, torrentName string, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
+	if s == nil || s.notifier == nil || len(matches) == 0 {
 		return
 	}
 
@@ -8870,7 +9225,7 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 	}
 
 	lines := []string{
-		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		"Torrent: " + strings.TrimSpace(torrentName),
 		fmt.Sprintf("Matches: %d", len(matches)),
 		fmt.Sprintf("Complete matches: %d", completeCount),
 		fmt.Sprintf("Pending matches: %d", pendingCount),
@@ -8888,7 +9243,7 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 		Type:         notifications.EventCrossSeedWebhookSucceeded,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
-		TorrentName:  strings.TrimSpace(req.TorrentName),
+		TorrentName:  strings.TrimSpace(torrentName),
 		CrossSeed: &notifications.CrossSeedEventData{
 			Matches:        len(matches),
 			Complete:       completeCount,
@@ -8901,8 +9256,8 @@ func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckReque
 	})
 }
 
-func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookCheckRequest, err error, startedAt time.Time) {
-	if s == nil || s.notifier == nil || req == nil || err == nil {
+func (s *Service) notifyWebhookCheckFailure(ctx context.Context, torrentName string, err error, startedAt time.Time) {
+	if s == nil || s.notifier == nil || err == nil {
 		return
 	}
 	if errors.Is(err, ErrInvalidWebhookRequest) {
@@ -8912,7 +9267,7 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 	errorMessage := strings.TrimSpace(err.Error())
 
 	lines := []string{
-		"Torrent: " + strings.TrimSpace(req.TorrentName),
+		"Torrent: " + strings.TrimSpace(torrentName),
 		"Error: " + err.Error(),
 	}
 
@@ -8921,7 +9276,7 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 		Type:         notifications.EventCrossSeedWebhookFailed,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
-		TorrentName:  strings.TrimSpace(req.TorrentName),
+		TorrentName:  strings.TrimSpace(torrentName),
 		ErrorMessage: errorMessage,
 		ErrorMessages: func() []string {
 			if errorMessage == "" {
@@ -9566,8 +9921,8 @@ func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
 	if req == nil {
 		return fmt.Errorf("%w: request is required", ErrInvalidWebhookRequest)
 	}
-	if req.TorrentName == "" {
-		return fmt.Errorf("%w: torrentName is required", ErrInvalidWebhookRequest)
+	if strings.TrimSpace(req.TorrentData) == "" {
+		return fmt.Errorf("%w: torrentData is required", ErrInvalidWebhookRequest)
 	}
 	if len(req.InstanceIDs) > 0 {
 		for _, id := range req.InstanceIDs {
@@ -9628,18 +9983,12 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 }
 
 // CheckWebhook checks if a release announced by autobrr can be cross-seeded with existing torrents.
-// This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
-// and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
+// It mirrors the apply path's read-only validation and preflight gates without mutating qBittorrent state.
 func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
 	startedAt := time.Now().UTC()
 	if err := validateWebhookCheckRequest(req); err != nil {
 		return nil, err
 	}
-
-	requestedInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
-
-	// Parse the incoming release using rls - this extracts all metadata from the torrent name
-	incomingRelease := s.releaseCache.Parse(req.TorrentName)
 
 	// Get automation settings for sizeMismatchTolerancePercent and default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
@@ -9656,221 +10005,140 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		findIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
-	instances, err := s.resolveInstances(ctx, requestedInstanceIDs)
+	requestedInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
+	crossReq := &CrossSeedRequest{
+		TorrentData:                  req.TorrentData,
+		TargetInstanceIDs:            requestedInstanceIDs,
+		FindIndividualEpisodes:       findIndividualEpisodes,
+		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
+		SkipAutoResume:               settings.SkipAutoResumeWebhook,
+		SkipRecheck:                  settings.SkipRecheck,
+		SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
+	}
+	crossReq.SourceFilterCategories = append([]string(nil), settings.WebhookSourceCategories...)
+	crossReq.SourceFilterTags = append([]string(nil), settings.WebhookSourceTags...)
+	crossReq.SourceFilterExcludeCategories = append([]string(nil), settings.WebhookSourceExcludeCategories...)
+	crossReq.SourceFilterExcludeTags = append([]string(nil), settings.WebhookSourceExcludeTags...)
+
+	prepared, err := s.prepareCrossSeedEvaluation(ctx, crossReq, true)
 	if err != nil {
-		s.notifyWebhookCheckFailure(ctx, req, err, startedAt)
-		return nil, err
+		invalidErr := err
+		switch {
+		case errors.Is(err, ErrTorrentDataDecode),
+			errors.Is(err, ErrTorrentParse):
+			invalidErr = fmt.Errorf("%w: %w", ErrInvalidWebhookRequest, err)
+		}
+		torrentName := ""
+		if prepared != nil {
+			torrentName = prepared.meta.Name
+		}
+		s.notifyWebhookCheckFailure(ctx, torrentName, invalidErr, startedAt)
+		return nil, invalidErr
 	}
 
-	if len(instances) == 0 {
-		log.Warn().
-			Str("source", "cross-seed.webhook").
-			Ints("requestedInstanceIds", requestedInstanceIDs).
-			Msg("Webhook check skipped because no instances were available")
-		return &WebhookCheckResponse{
-			CanCrossSeed:   false,
-			Matches:        nil,
-			Recommendation: "skip",
-		}, nil
+	targetInstanceIDs := make([]int, 0, len(prepared.candidatesResp.Candidates))
+	for _, candidate := range prepared.candidatesResp.Candidates {
+		targetInstanceIDs = append(targetInstanceIDs, candidate.InstanceID)
 	}
 
-	targetInstanceIDs := make([]int, len(instances))
-	for i, instance := range instances {
-		targetInstanceIDs[i] = instance.ID
+	contentInfo := DetermineContentType(prepared.sourceRelease)
+	sourceSize := int64(0)
+	for _, file := range prepared.meta.Files {
+		sourceSize += file.Size
 	}
-
-	// Describe the parsed content type for easier debugging and tuning.
-	contentInfo := DetermineContentType(incomingRelease)
 
 	log.Debug().
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
 		Ints("targetInstanceIds", targetInstanceIDs).
 		Bool("globalScan", len(requestedInstanceIDs) == 0).
-		Str("torrentName", req.TorrentName).
-		Uint64("size", req.Size).
+		Str("torrentName", prepared.meta.Name).
+		Int64("size", sourceSize).
 		Str("contentType", contentInfo.ContentType).
 		Bool("findIndividualEpisodes", findIndividualEpisodes).
-		Str("title", incomingRelease.Title).
-		Int("series", incomingRelease.Series).
-		Int("episode", incomingRelease.Episode).
-		Int("year", incomingRelease.Year).
-		Str("group", incomingRelease.Group).
-		Str("resolution", incomingRelease.Resolution).
-		Str("sourceRelease", incomingRelease.Source).
-		Msg("Webhook check: parsed incoming release")
+		Str("title", prepared.sourceRelease.Title).
+		Int("series", prepared.sourceRelease.Series).
+		Int("episode", prepared.sourceRelease.Episode).
+		Int("year", prepared.sourceRelease.Year).
+		Str("group", prepared.sourceRelease.Group).
+		Str("resolution", prepared.sourceRelease.Resolution).
+		Str("sourceRelease", prepared.sourceRelease.Source).
+		Msg("Webhook check: parsed incoming torrent")
 
 	var (
 		matches          []WebhookCheckMatch
 		hasCompleteMatch bool
 		hasPendingMatch  bool
 	)
+	tolerancePercent := settings.SizeMismatchTolerancePercent
+	if tolerancePercent <= 0 {
+		tolerancePercent = 5.0
+	}
 
-	// Search each instance for matching torrents
-	for _, instance := range instances {
-		// Get all torrents from this instance using cached sync data
-		torrentsView, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
+	for _, candidate := range prepared.candidatesResp.Candidates {
+		filesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
+		summary := s.summarizeCandidateValidation(candidate, prepared.sourceRelease, prepared.meta.Files, tolerancePercent, filesByHash)
+
+		selected := summary.ready
+		if selected == nil {
+			selected = summary.pending
+		}
+		preflight, err := s.preflightCandidateChecks(
+			ctx,
+			candidate,
+			selected,
+			summary.rejectReason,
+			prepared.meta.HashV1,
+			prepared.meta.HashV2,
+			prepared.meta.Name,
+			crossReq,
+			prepared.sourceRelease,
+			prepared.meta.Files,
+			prepared.meta.Info,
+			settings,
+		)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents from instance")
+			log.Warn().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("instanceName", candidate.InstanceName).
+				Str("torrentName", prepared.meta.Name).
+				Msg("Webhook check: candidate preflight failed, skipping instance")
 			continue
 		}
 
-		// Apply webhook source filters if configured
-		hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
-			len(settings.WebhookSourceTags) > 0 ||
-			len(settings.WebhookSourceExcludeCategories) > 0 ||
-			len(settings.WebhookSourceExcludeTags) > 0
-
-		// Log webhook filter settings once per instance
-		log.Debug().
-			Str("source", "cross-seed.webhook").
-			Int("instanceID", instance.ID).
-			Strs("includeCategories", settings.WebhookSourceCategories).
-			Strs("excludeCategories", settings.WebhookSourceExcludeCategories).
-			Strs("includeTags", settings.WebhookSourceTags).
-			Strs("excludeTags", settings.WebhookSourceExcludeTags).
-			Bool("hasFilters", hasWebhookSourceFilters).
-			Msg("[Webhook] Source filter settings for instance")
-
-		// Track filtering stats if we're logging them
-		var excludedCategories map[string]int
-		var includedCategories map[string]int
-		var filteredCount int
-		if hasWebhookSourceFilters {
-			excludedCategories = make(map[string]int)
-			includedCategories = make(map[string]int)
-		}
-
-		log.Debug().
-			Str("source", "cross-seed.webhook").
-			Int("instanceId", instance.ID).
-			Str("instanceName", instance.Name).
-			Int("torrentCount", len(torrentsView)).
-			Msg("Webhook check: scanning instance torrents for metadata matches")
-
-		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
-		for _, torrentView := range torrentsView {
-			// Guard against nil torrentView or nil torrentView.Torrent
-			if torrentView.Torrent == nil {
-				continue
-			}
-
-			torrent := torrentView.Torrent
-
-			// Skip torrents that don't match webhook source filters
-			if hasWebhookSourceFilters {
-				if matchesWebhookSourceFilters(torrent, settings) {
-					filteredCount++
-					includedCategories[torrent.Category]++
-				} else {
-					excludedCategories[torrent.Category]++
-					continue
-				}
-			}
-			// Parse the existing torrent's release info
-			existingRelease := s.releaseCache.Parse(torrent.Name)
-
-			// Reject forbidden pairing: season pack (incoming) vs single episode (existing).
-			if reject, _ := rejectSeasonPackFromEpisode(incomingRelease, existingRelease, findIndividualEpisodes); reject {
-				continue
-			}
-
-			// Check if releases match using the configured strict or episode-aware matching.
-			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
-				continue
-			}
-
-			// Determine match type
-			matchType := "metadata"
-			var sizeDiff float64
-
-			if req.Size > 0 && torrent.Size > 0 {
-				// Calculate size difference percentage
-				if torrent.Size > 0 {
-					diff := math.Abs(float64(req.Size) - float64(torrent.Size))
-					sizeDiff = (diff / float64(torrent.Size)) * 100.0
-				}
-
-				// Check if size is within tolerance
-				if s.isSizeWithinTolerance(int64(req.Size), torrent.Size, settings.SizeMismatchTolerancePercent) {
-					if sizeDiff < 0.1 {
-						matchType = "exact"
-					} else {
-						matchType = "size"
-					}
-				} else {
-					// Size is outside tolerance, skip this match
-					log.Debug().
-						Str("incomingName", req.TorrentName).
-						Str("existingName", torrent.Name).
-						Uint64("incomingSize", req.Size).
-						Int64("existingSize", torrent.Size).
-						Float64("sizeDiff", sizeDiff).
-						Float64("tolerance", settings.SizeMismatchTolerancePercent).
-						Msg("Skipping match due to size mismatch")
-					continue
-				}
-			}
-
-			matchScore, matchReasons := evaluateReleaseMatch(incomingRelease, existingRelease)
-
+		if preflight.status != candidatePreflightStatusEligible {
 			log.Debug().
 				Str("source", "cross-seed.webhook").
-				Int("instanceId", instance.ID).
-				Str("instanceName", instance.Name).
-				Str("incomingName", req.TorrentName).
-				Str("incomingTitle", incomingRelease.Title).
-				Str("existingName", torrent.Name).
-				Str("existingTitle", existingRelease.Title).
-				Str("matchType", matchType).
-				Float64("sizeDiff", sizeDiff).
-				Float64("matchScore", matchScore).
-				Str("matchReasons", matchReasons).
-				Msg("Webhook cross-seed: matched existing torrent")
-
-			// TODO: Consider adding a configuration flag to control whether webhook-based
-			// cross-seed checks require fully completed torrents or can also treat
-			// in-progress downloads as matches. This would likely be exposed via the
-			// "Global Cross-Seed Settings" block in CrossSeedPage.tsx so users can tune
-			// webhook behavior for their setup.
-
-			matches = append(matches, WebhookCheckMatch{
-				InstanceID:   instance.ID,
-				InstanceName: instance.Name,
-				TorrentHash:  torrent.Hash,
-				TorrentName:  torrent.Name,
-				MatchType:    matchType,
-				SizeDiff:     sizeDiff,
-				Progress:     torrent.Progress,
-			})
-
-			if torrent.Progress >= 1.0 {
-				hasCompleteMatch = true
-			} else {
-				hasPendingMatch = true
-			}
+				Int("instanceID", candidate.InstanceID).
+				Str("instanceName", candidate.InstanceName).
+				Str("torrentName", prepared.meta.Name).
+				Str("status", string(preflight.status)).
+				Str("reason", preflight.reason).
+				Msg("Webhook check: candidate rejected during preflight")
+			continue
 		}
 
-		// Log filter results if we tracked them
-		if hasWebhookSourceFilters && (len(excludedCategories) > 0 || len(includedCategories) > 0) {
-			excludedSummary := make([]string, 0, len(excludedCategories))
-			for cat, count := range excludedCategories {
-				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
-			includedSummary := make([]string, 0, len(includedCategories))
-			for cat, count := range includedCategories {
-				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
-			}
+		sizeDiff := 0.0
+		if sourceSize > 0 && preflight.validation.torrent.Size > 0 {
+			diff := math.Abs(float64(sourceSize) - float64(preflight.validation.torrent.Size))
+			sizeDiff = (diff / float64(sourceSize)) * 100.0
+		}
 
-			log.Debug().
-				Str("source", "cross-seed.webhook").
-				Int("instanceID", instance.ID).
-				Str("instanceName", instance.Name).
-				Int("original", len(torrentsView)).
-				Int("filtered", filteredCount).
-				Strs("excludedCategories", excludedSummary).
-				Strs("includedCategories", includedSummary).
-				Msg("[Webhook] Source filter results")
+		matches = append(matches, WebhookCheckMatch{
+			InstanceID:   candidate.InstanceID,
+			InstanceName: candidate.InstanceName,
+			TorrentHash:  preflight.validation.torrent.Hash,
+			TorrentName:  preflight.validation.torrent.Name,
+			MatchType:    preflight.validation.matchType,
+			SizeDiff:     sizeDiff,
+			Progress:     preflight.validation.torrent.Progress,
+		})
+
+		if preflight.validation.torrent.Progress >= 1.0 {
+			hasCompleteMatch = true
+		} else {
+			hasPendingMatch = true
 		}
 	}
 
@@ -9885,13 +10153,13 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
 		Ints("targetInstanceIds", targetInstanceIDs).
-		Str("torrentName", req.TorrentName).
+		Str("torrentName", prepared.meta.Name).
 		Int("matchCount", len(matches)).
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
 
-	s.notifyWebhookCheck(ctx, req, matches, recommendation, startedAt)
+	s.notifyWebhookCheck(ctx, prepared.meta.Name, matches, recommendation, startedAt)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,

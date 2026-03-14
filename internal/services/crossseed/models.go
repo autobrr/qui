@@ -155,6 +155,9 @@ type FindCandidatesRequest struct {
 	// incomplete "season pack from episode" outcomes.
 	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+	// IncludeIncompleteCandidates keeps in-progress torrents in the candidate pool.
+	// Internal-only, used by webhook dry-run evaluation so 202 reflects validated pending matches.
+	IncludeIncompleteCandidates bool `json:"-"`
 
 	// Source filters - used to restrict which existing torrents are considered as candidates.
 	// These are applied when fetching torrents (if no pre-built snapshot is provided).
@@ -376,14 +379,17 @@ type AsyncTorrentAnalysis struct {
 }
 
 // WebhookCheckRequest represents a request from autobrr to check if a release can be cross-seeded.
-// The torrentName is parsed using the rls library to extract all metadata, so only the name is required.
+// The torrentData is parsed using torrent metainfo and rls so qui can return a final verdict.
 type WebhookCheckRequest struct {
-	// TorrentName is the release name as announced (required)
-	TorrentName string `json:"torrentName"`
+	// TorrentData is the base64-encoded torrent file bytes from autobrr (required)
+	TorrentData string `json:"torrentData"`
+	// Deprecated: retained only so older internal tests/helpers can compile while the webhook
+	// flow migrates to torrentData-driven validation. Ignored by the API.
+	TorrentName string `json:"-"`
 	// InstanceIDs optionally limits the scan to the requested instances; omit or pass an empty array to search all instances.
 	InstanceIDs []int `json:"instanceIds,omitempty"`
-	// Size is the total torrent size in bytes (optional - enables size validation if provided)
-	Size uint64 `json:"size,omitempty"`
+	// Deprecated: ignored by the API. Size is derived from torrentData.
+	Size uint64 `json:"-"`
 	// FindIndividualEpisodes overrides the default behavior when matching season packs vs episodes.
 	// When omitted, qui uses the automation setting; when set, this explicitly forces the behavior.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
@@ -395,7 +401,7 @@ type WebhookCheckMatch struct {
 	InstanceName string  `json:"instanceName"`
 	TorrentHash  string  `json:"torrentHash"`
 	TorrentName  string  `json:"torrentName"`
-	MatchType    string  `json:"matchType"` // "metadata", "exact", "size"
+	MatchType    string  `json:"matchType"` // "exact", "size", "partial-in-pack", "partial-contains"
 	SizeDiff     float64 `json:"sizeDiff,omitempty"`
 	Progress     float64 `json:"progress"`
 }
