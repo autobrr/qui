@@ -10,12 +10,12 @@ qui integrates with autobrr through webhook endpoints, enabling real-time cross-
 ## How It Works
 
 1. autobrr sees a new release from a tracker
-2. autobrr sends the torrent name to qui's `/api/cross-seed/webhook/check` endpoint
-3. qui searches your qBittorrent instances for matching content
+2. autobrr sends the torrent file to qui's `/api/cross-seed/webhook/check` endpoint
+3. qui parses the torrent and runs the full non-mutating cross-seed validation flow against your qBittorrent instances
 4. qui responds with:
-   - `200 OK` – matching torrent is complete and ready to cross-seed
-   - `202 Accepted` – matching torrent exists but still downloading; retry later
-   - `404 Not Found` – no matching torrent exists
+   - `200 OK` – a fully validated matching torrent is complete and ready to cross-seed
+   - `202 Accepted` – a fully validated match exists, but the local source torrent is still downloading; retry later
+   - `404 Not Found` – no fully validated cross-seed match exists
 5. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/apply`
 
 ## Setup
@@ -61,7 +61,7 @@ In your new autobrr filter, go to **External** tab → **Add new**:
 
 ```json
 {
-  "torrentName": {{ toRawJson .TorrentName }},
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "instanceIds": [1]
 }
 ```
@@ -70,13 +70,13 @@ To search all instances, omit `instanceIds`:
 
 ```json
 {
-  "torrentName": {{ toRawJson .TorrentName }}
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}"
 }
 ```
 
 **Field descriptions:**
 
-- `torrentName` (required): The release name as announced
+- `torrentData` (required): Base64-encoded torrent file bytes from autobrr
 - `instanceIds` (optional): qBittorrent instance IDs to scan. Omit to search all instances.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 

@@ -1460,14 +1460,14 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 
 // WebhookCheck godoc
 // @Summary Check if a release can be cross-seeded (autobrr webhook)
-// @Description Accepts release metadata from autobrr and checks if matching torrents exist across instances
+// @Description Accepts a torrent file from autobrr and performs the full non-mutating cross-seed validation flow before responding
 // @Tags cross-seed
 // @Accept json
 // @Produce json
-// @Param request body crossseed.WebhookCheckRequest true "Release metadata from autobrr"
-// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found (torrents complete, recommendation=download)"
-// @Success 202 {object} crossseed.WebhookCheckResponse "Matches found but torrents still downloading (recommendation=download, retry until 200)"
-// @Failure 404 {object} crossseed.WebhookCheckResponse "No matches found (recommendation=skip)"
+// @Param request body crossseed.WebhookCheckRequest true "Torrent payload from autobrr"
+// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found and fully validated (local source torrent complete, recommendation=download)"
+// @Success 202 {object} crossseed.WebhookCheckResponse "Matches found and fully validated, but the local source torrent is still downloading (recommendation=download, retry until 200 or 404)"
+// @Failure 404 {object} crossseed.WebhookCheckResponse "No fully validated cross-seed matches found (recommendation=skip)"
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
