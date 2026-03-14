@@ -100,9 +100,10 @@ func TestCheckWebhook_FinalAnswerStatuses(t *testing.T) {
 			require.NotNil(t, resp)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches))
+			assert.Len(t, resp.Matches, tt.wantMatchCount)
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation)
-			if tt.wantMatchCount == 1 && len(resp.Matches) == 1 {
+			if tt.wantMatchCount == 1 {
+				require.Len(t, resp.Matches, 1)
 				assert.Equal(t, "exact", resp.Matches[0].MatchType)
 			}
 		})
@@ -147,8 +148,8 @@ func TestCheckWebhook_InvalidTorrentPayload(t *testing.T) {
 			resp, err := service.CheckWebhook(context.Background(), tt.request)
 			require.Error(t, err)
 			require.Nil(t, resp)
-			assert.ErrorIs(t, err, ErrInvalidWebhookRequest)
-			assert.Contains(t, err.Error(), tt.errText)
+			require.ErrorIs(t, err, ErrInvalidWebhookRequest)
+			require.ErrorContains(t, err, tt.errText)
 		})
 	}
 }

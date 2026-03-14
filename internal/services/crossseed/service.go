@@ -4938,12 +4938,12 @@ func (s *Service) prepareCrossSeedEvaluation(
 
 	torrentBytes, err := s.decodeTorrentData(req.TorrentData)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrTorrentDataDecode, err)
+		return nil, fmt.Errorf("%w: %w", ErrTorrentDataDecode, err)
 	}
 
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrTorrentParse, err)
+		return nil, fmt.Errorf("%w: %w", ErrTorrentParse, err)
 	}
 
 	findReq := &FindCandidatesRequest{
@@ -9827,7 +9827,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		switch {
 		case errors.Is(err, ErrTorrentDataDecode),
 			errors.Is(err, ErrTorrentParse):
-			invalidErr = fmt.Errorf("%w: %v", ErrInvalidWebhookRequest, err)
+			invalidErr = fmt.Errorf("%w: %w", ErrInvalidWebhookRequest, err)
 		}
 		torrentName := ""
 		if prepared != nil {

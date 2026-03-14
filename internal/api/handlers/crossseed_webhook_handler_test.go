@@ -47,7 +47,7 @@ func TestWebhookCheckHandler_BadRequestPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/cross-seed/webhook/check", bytes.NewBufferString(tt.body))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/cross-seed/webhook/check", bytes.NewBufferString(tt.body))
 			rec := httptest.NewRecorder()
 
 			handler.WebhookCheck(rec, req)
