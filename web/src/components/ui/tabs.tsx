@@ -4,6 +4,7 @@
  */
 
 import * as TabsPrimitive from "@radix-ui/react-tabs"
+import { motion } from "motion/react"
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -23,17 +24,61 @@ function Tabs({
 
 function TabsList({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.List>) {
+  const listRef = React.useRef<HTMLDivElement>(null)
+  const [indicatorStyle, setIndicatorStyle] = React.useState({ x: 0, width: 0 })
+  const [isReady, setIsReady] = React.useState(false)
+
+  const updateIndicator = React.useCallback(() => {
+    const list = listRef.current
+    if (!list) return
+
+    const activeTab = list.querySelector<HTMLElement>('[data-state="active"]')
+    if (!activeTab) return
+
+    setIndicatorStyle({
+      x: activeTab.offsetLeft,
+      width: activeTab.offsetWidth,
+    })
+    setIsReady(true)
+  }, [])
+
+  React.useEffect(() => {
+    updateIndicator()
+
+    const list = listRef.current
+    if (!list) return
+
+    const observer = new MutationObserver(updateIndicator)
+    observer.observe(list, { attributes: true, subtree: true, attributeFilter: ["data-state"] })
+
+    window.addEventListener("resize", updateIndicator)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updateIndicator)
+    }
+  }, [updateIndicator])
+
   return (
     <TabsPrimitive.List
+      ref={listRef}
       data-slot="tabs-list"
       className={cn(
-        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
+        "bg-muted text-muted-foreground relative inline-flex h-9 w-fit items-center justify-center rounded-lg p-0.75",
         className
       )}
       {...props}
-    />
+    >
+      <motion.div
+        className="bg-background dark:bg-input/30 border border-muted-foreground/30 absolute left-0 top-0.75 bottom-0.75 rounded-md shadow-sm"
+        animate={{ x: indicatorStyle.x, width: indicatorStyle.width }}
+        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+        style={{ opacity: isReady ? 1 : 0 }}
+      />
+      {children}
+    </TabsPrimitive.List>
   )
 }
 
@@ -45,7 +90,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "data-[state=active]:bg-background data-[state=active]:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-muted-foreground hover:bg-accent hover:text-accent-foreground data-[state=active]:hover:bg-background dark:data-[state=active]:hover:bg-input/30 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow,background-color] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[state=active]:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-muted-foreground hover:text-accent-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative z-1",
         className
       )}
       {...props}
