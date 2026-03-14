@@ -3116,20 +3116,55 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					log.Warn().Err(recoverErr).Int("instanceID", instanceID).Msg("Failed to recover errored torrents")
 				}
 
-				filter := qbt.TorrentFilterCompleted
-				if req.IncludeIncompleteCandidates {
-					filter = qbt.TorrentFilterAll
-				}
-
-				// Re-fetch torrents after recovery to get updated states
-				torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: filter})
+				// Re-fetch torrents after recovery to get updated states.
+				torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted})
 				if err != nil {
 					log.Warn().
 						Int("instanceID", instanceID).
 						Str("instanceName", instance.Name).
 						Err(err).
-						Msg("Failed to re-get torrents from instance after recovery, skipping")
+						Msg("Failed to re-get completed torrents from instance after recovery, skipping")
 					continue
+				}
+
+				if req.IncludeIncompleteCandidates {
+					incompleteTorrents, incompleteErr := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+						Filter: qbt.TorrentFilterDownloading,
+					})
+					if incompleteErr != nil {
+						log.Warn().
+							Int("instanceID", instanceID).
+							Str("instanceName", instance.Name).
+							Err(incompleteErr).
+							Msg("Failed to re-get incomplete torrents from instance after recovery, skipping")
+						continue
+					}
+
+					seenHashes := make(map[string]struct{}, len(torrents)+len(incompleteTorrents))
+					merged := make([]qbt.Torrent, 0, len(torrents)+len(incompleteTorrents))
+					for _, torrent := range torrents {
+						hashKey := normalizeHash(torrent.Hash)
+						if hashKey == "" {
+							continue
+						}
+						if _, exists := seenHashes[hashKey]; exists {
+							continue
+						}
+						seenHashes[hashKey] = struct{}{}
+						merged = append(merged, torrent)
+					}
+					for _, torrent := range incompleteTorrents {
+						hashKey := normalizeHash(torrent.Hash)
+						if hashKey == "" {
+							continue
+						}
+						if _, exists := seenHashes[hashKey]; exists {
+							continue
+						}
+						seenHashes[hashKey] = struct{}{}
+						merged = append(merged, torrent)
+					}
+					torrents = merged
 				}
 			}
 		}

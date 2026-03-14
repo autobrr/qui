@@ -3231,16 +3231,18 @@ func TestDetermineSavePathContentLayoutScenarios(t *testing.T) {
 // mockRecoverSyncManager simulates torrent state changes during recheck operations
 type mockRecoverSyncManager struct {
 	torrents                    map[string]*qbt.Torrent // hash -> torrent
-	calls                       []string                // track method calls for verification
-	recheckCompletes            bool                    // whether recheck should complete torrents
-	disappearAfterRecheck       bool                    // whether torrent disappears after recheck
-	bulkActionFails             bool                    // whether BulkAction should fail
-	keepInCheckingState         bool                    // whether to keep torrent in checking state
-	failGetTorrentsAfterRecheck bool                    // whether GetTorrents should fail after recheck
-	setProgressToThreshold      bool                    // whether to set progress exactly at threshold
-	hasRechecked                bool                    // track if recheck has been called
-	secondRecheckCompletes      bool                    // whether second recheck should complete torrents
-	recheckCount                int                     // count of recheck calls
+	files                       map[string]qbt.TorrentFiles
+	calls                       []string // track method calls for verification
+	filters                     []qbt.TorrentFilter
+	recheckCompletes            bool // whether recheck should complete torrents
+	disappearAfterRecheck       bool // whether torrent disappears after recheck
+	bulkActionFails             bool // whether BulkAction should fail
+	keepInCheckingState         bool // whether to keep torrent in checking state
+	failGetTorrentsAfterRecheck bool // whether GetTorrents should fail after recheck
+	setProgressToThreshold      bool // whether to set progress exactly at threshold
+	hasRechecked                bool // track if recheck has been called
+	secondRecheckCompletes      bool // whether second recheck should complete torrents
+	recheckCount                int  // count of recheck calls
 }
 
 func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncManager {
@@ -3251,7 +3253,9 @@ func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncMa
 	}
 	return &mockRecoverSyncManager{
 		torrents:                    torrents,
+		files:                       map[string]qbt.TorrentFiles{},
 		calls:                       []string{},
+		filters:                     []qbt.TorrentFilter{},
 		recheckCompletes:            true, // default to completing
 		disappearAfterRecheck:       false,
 		bulkActionFails:             false,
@@ -3266,6 +3270,7 @@ func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncMa
 
 func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	m.calls = append(m.calls, "GetTorrents")
+	m.filters = append(m.filters, filter.Filter)
 
 	if m.failGetTorrentsAfterRecheck && m.hasRechecked {
 		// Return empty list to simulate torrent disappearing
@@ -3281,7 +3286,23 @@ func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, 
 		}
 	} else {
 		for _, torrent := range m.torrents {
-			result = append(result, *torrent)
+			if filter.Filter == "" || filter.Filter == qbt.TorrentFilterAll {
+				result = append(result, *torrent)
+				continue
+			}
+			if filter.Filter == qbt.TorrentFilterCompleted {
+				if torrent.Progress >= 1.0 {
+					result = append(result, *torrent)
+				}
+				continue
+			}
+			if filter.Filter == qbt.TorrentFilterDownloading {
+				if torrent.Progress < 1.0 &&
+					torrent.State != qbt.TorrentStateError &&
+					torrent.State != qbt.TorrentStateMissingFiles {
+					result = append(result, *torrent)
+				}
+			}
 		}
 	}
 	return result, nil
@@ -3346,8 +3367,22 @@ func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgr
 	}
 }
 
-func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-	return nil, fmt.Errorf("not implemented")
+func (m *mockRecoverSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	if len(m.files) == 0 {
+		return nil, errors.New("not implemented")
+	}
+
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		files, ok := m.files[normalizeHash(hash)]
+		if !ok {
+			continue
+		}
+		copyFiles := make(qbt.TorrentFiles, len(files))
+		copy(copyFiles, files)
+		result[normalizeHash(hash)] = copyFiles
+	}
+	return result, nil
 }
 
 func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -3602,6 +3637,58 @@ func TestRecoverErroredTorrents_EmptyList(t *testing.T) {
 
 	// Should not have made any calls
 	assert.Empty(t, mockSync.calls)
+}
+
+func TestFindCandidates_IncludeIncompleteCandidatesRefetchesWithoutErroredStates(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1, Name: "Test Instance"}
+	req := &FindCandidatesRequest{
+		TorrentName:                 "Movie.2025.1080p.BluRay.x264-GROUP",
+		TargetInstanceIDs:           []int{instance.ID},
+		IncludeIncompleteCandidates: true,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{
+		{Hash: "complete", Name: req.TorrentName, State: qbt.TorrentStatePausedUp, Progress: 1.0, Size: 1},
+		{Hash: "pending", Name: req.TorrentName, State: qbt.TorrentStateDownloading, Progress: 0.5, Size: 1},
+		{Hash: "errored", Name: req.TorrentName, State: qbt.TorrentStateError, Progress: 0.4, Size: 1},
+		{Hash: "missing", Name: req.TorrentName, State: qbt.TorrentStateMissingFiles, Progress: 0.4, Size: 1},
+	})
+	mockSync.recheckCompletes = false
+	mockSync.files = map[string]qbt.TorrentFiles{
+		normalizeHash("complete"): {{Name: "Movie.2025.1080p.BluRay.x264-GROUP.mkv", Size: 1}},
+		normalizeHash("pending"):  {{Name: "Movie.2025.1080p.BluRay.x264-GROUP.mkv", Size: 1}},
+	}
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{
+			instances: map[int]*models.Instance{
+				instance.ID: instance,
+			},
+		},
+		syncManager:                   mockSync,
+		recoverErroredTorrentsEnabled: true,
+		releaseCache:                  NewReleaseCache(),
+		stringNormalizer:              stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := svc.FindCandidates(context.Background(), req)
+	require.NoError(t, err)
+	require.Len(t, resp.Candidates, 1)
+	require.Len(t, resp.Candidates[0].Torrents, 2)
+
+	hashes := []string{
+		resp.Candidates[0].Torrents[0].Hash,
+		resp.Candidates[0].Torrents[1].Hash,
+	}
+	assert.ElementsMatch(t, []string{"complete", "pending"}, hashes)
+	require.GreaterOrEqual(t, len(mockSync.filters), 3)
+	assert.Equal(t, qbt.TorrentFilterAll, mockSync.filters[0])
+	assert.Equal(t, []qbt.TorrentFilter{
+		qbt.TorrentFilterCompleted,
+		qbt.TorrentFilterDownloading,
+	}, mockSync.filters[len(mockSync.filters)-2:])
 }
 
 func TestExtractTorrentURLForCommentMatch(t *testing.T) {
