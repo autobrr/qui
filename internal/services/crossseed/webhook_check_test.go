@@ -241,6 +241,141 @@ func TestCheckWebhook_FinalAnswerMultiInstanceScan(t *testing.T) {
 	assert.Equal(t, "download", resp.Recommendation)
 }
 
+func TestCheckWebhook_PreflightExistsSkipsDownloadRecommendation(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1, Name: "Test Instance"}
+	req, meta := makeTorrentDataRequest(t, "Already.Seeded.2025.1080p.BluRay.x264-GRP", []string{"Already.Seeded.2025.1080p.BluRay.x264-GRP.mkv"})
+	req.InstanceIDs = []int{instance.ID}
+
+	service := &Service{
+		instanceStore: &fakeInstanceStore{
+			instances: map[int]*models.Instance{
+				instance.ID: instance,
+			},
+		},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{
+				Hash:     meta.HashV1,
+				Name:     meta.Name,
+				Progress: 1.0,
+				Size:     meta.Files[0].Size,
+			},
+		}, map[string]qbt.TorrentFiles{
+			meta.HashV1: meta.Files,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := service.CheckWebhook(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.False(t, resp.CanCrossSeed)
+	assert.Empty(t, resp.Matches)
+	assert.Equal(t, "skip", resp.Recommendation)
+}
+
+func TestCheckWebhook_PreflightNoSavePathSkipsDownloadRecommendation(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1, Name: "Test Instance"}
+	req, meta := makeTorrentDataRequest(t, "No.Save.Path.2025.1080p.WEB-DL-GRP", []string{"No.Save.Path.2025.1080p.WEB-DL-GRP.mkv"})
+	req.InstanceIDs = []int{instance.ID}
+
+	matchedTorrent := qbt.Torrent{
+		Hash:     "candidate",
+		Name:     meta.Name,
+		Progress: 1.0,
+		Size:     meta.Files[0].Size,
+	}
+	sync := newFakeSyncManager(instance, []qbt.Torrent{matchedTorrent}, map[string]qbt.TorrentFiles{
+		matchedTorrent.Hash: meta.Files,
+	})
+	sync.props[normalizeHash(matchedTorrent.Hash)] = &qbt.TorrentProperties{SavePath: ""}
+
+	service := &Service{
+		instanceStore: &fakeInstanceStore{
+			instances: map[int]*models.Instance{
+				instance.ID: instance,
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := service.CheckWebhook(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.False(t, resp.CanCrossSeed)
+	assert.Empty(t, resp.Matches)
+	assert.Equal(t, "skip", resp.Recommendation)
+}
+
+func TestCheckWebhook_PreflightSkipRecheckUsesWebhookSettings(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 1, Name: "Test Instance"}
+	torrentName := "Webhook.Skip.Recheck.2025.1080p.WEB-DL-GRP"
+	torrentData := createTestTorrent(t, torrentName, []string{
+		torrentName + "/" + torrentName + ".mkv",
+		torrentName + "/Sample/sample.mkv",
+	}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(torrentData)
+	require.NoError(t, err)
+
+	req := &WebhookCheckRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instance.ID},
+	}
+
+	mainFileSize := int64(0)
+	for _, file := range meta.Files {
+		if file.Size > mainFileSize {
+			mainFileSize = file.Size
+		}
+	}
+	require.Positive(t, mainFileSize)
+
+	matchedTorrent := qbt.Torrent{
+		Hash:        "candidate",
+		Name:        meta.Name,
+		Progress:    1.0,
+		Size:        mainFileSize,
+		ContentPath: "/downloads/" + torrentName + ".mkv",
+	}
+	sync := newFakeSyncManager(instance, []qbt.Torrent{matchedTorrent}, map[string]qbt.TorrentFiles{
+		matchedTorrent.Hash: {
+			{Name: torrentName + ".mkv", Size: mainFileSize},
+		},
+	})
+	sync.props[normalizeHash(matchedTorrent.Hash)] = &qbt.TorrentProperties{SavePath: "/downloads"}
+
+	service := &Service{
+		instanceStore: &fakeInstanceStore{
+			instances: map[int]*models.Instance{
+				instance.ID: instance,
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SkipRecheck = true
+			return settings, nil
+		},
+	}
+
+	resp, err := service.CheckWebhook(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.False(t, resp.CanCrossSeed)
+	assert.Empty(t, resp.Matches)
+	assert.Equal(t, "skip", resp.Recommendation)
+}
+
 func TestCheckWebhook_FinalAnswerSourceFilters(t *testing.T) {
 	t.Parallel()
 

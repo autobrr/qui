@@ -2698,6 +2698,7 @@ type fakeSyncManager struct {
 	cached map[int][]internalqb.CrossInstanceTorrentView
 	all    map[int][]qbt.Torrent
 	files  map[string]qbt.TorrentFiles
+	props  map[string]*qbt.TorrentProperties
 }
 
 func buildCrossInstanceViews(instance *models.Instance, torrents []qbt.Torrent) []internalqb.CrossInstanceTorrentView {
@@ -2735,6 +2736,7 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files
 		cached: cached,
 		all:    all,
 		files:  normalizedFiles,
+		props:  map[string]*qbt.TorrentProperties{},
 	}
 }
 
@@ -2794,8 +2796,14 @@ func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int,
 	return nil, false, nil
 }
 
-func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
-	return nil, fmt.Errorf("GetTorrentProperties not implemented in fakeSyncManager")
+func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, hash string) (*qbt.TorrentProperties, error) {
+	if f.props != nil {
+		if props, ok := f.props[normalizeHash(hash)]; ok && props != nil {
+			copyProps := *props
+			return &copyProps, nil
+		}
+	}
+	return &qbt.TorrentProperties{SavePath: "/downloads"}, nil
 }
 
 func (f *fakeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
