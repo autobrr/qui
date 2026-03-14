@@ -56,6 +56,32 @@ printf "password" | ./qui change-password --username admin
 - Commands will create the database if it doesn't exist
 - No password confirmation required - perfect for automation
 
+### Reset a Forgotten Password {#reset-password}
+
+If you've forgotten your password, use the `change-password` command to set a new one. No old password is required.
+
+**Linux / macOS:**
+
+```bash
+./qui change-password --username admin --new-password mynewpassword
+```
+
+**Windows (Command Prompt):**
+
+Navigate to the folder containing `qui.exe` and run:
+
+```batch
+qui.exe change-password --username admin --new-password mynewpassword
+```
+
+**Docker:**
+
+```bash
+docker exec -it <container-name> qui change-password --username admin --new-password mynewpassword
+```
+
+Replace `admin` with your username and `mynewpassword` with your desired password (minimum 8 characters).
+
 ## Update Command
 
 Keep your qui installation up-to-date:
