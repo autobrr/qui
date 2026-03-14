@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -447,6 +449,33 @@ func (s *DirScanStore) ListDirectories(ctx context.Context) ([]*DirScanDirectory
 	return s.scanDirectoriesFromRows(rows)
 }
 
+// ListDirectoryIDs retrieves all scan directory IDs.
+func (s *DirScanStore) ListDirectoryIDs(ctx context.Context) ([]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id
+		FROM dir_scan_directories
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query directory ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan directory id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate directory ids: %w", err)
+	}
+
+	return ids, nil
+}
+
 // DirScanDirectoryUpdateParams holds optional fields for updating a directory.
 type DirScanDirectoryUpdateParams struct {
 	Path                *string
@@ -593,6 +622,11 @@ func (s *DirScanStore) ListEnabledDirectories(ctx context.Context) ([]*DirScanDi
 // ErrDirScanRunAlreadyActive is returned when attempting to create a run while one is active.
 var ErrDirScanRunAlreadyActive = errors.New("an active scan run already exists for this directory")
 
+const (
+	dirScanRunHistoryLimit       = 10
+	dirScanRunInjectionMaxPerRun = 256
+)
+
 // CreateRun creates a new scan run.
 func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggeredBy string) (int64, error) {
 	var id int64
@@ -604,6 +638,8 @@ func (s *DirScanStore) CreateRun(ctx context.Context, directoryID int, triggered
 	if err != nil {
 		return 0, fmt.Errorf("insert run: %w", err)
 	}
+
+	s.trimRunHistoryBestEffort(ctx, directoryID)
 
 	return id, nil
 }
@@ -627,6 +663,8 @@ func (s *DirScanStore) CreateRunIfNoActive(ctx context.Context, directoryID int,
 		}
 		return 0, fmt.Errorf("insert run: %w", err)
 	}
+
+	s.trimRunHistoryBestEffort(ctx, directoryID)
 
 	return id, nil
 }
@@ -685,7 +723,7 @@ func scanRunFromScanner(scanner sqlScanner) (*DirScanRun, error) {
 // ListRuns lists recent runs for a directory.
 func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]*DirScanRun, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = dirScanRunHistoryLimit
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -693,7 +731,7 @@ func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]
 		       matches_found, torrents_added, error_message, started_at, completed_at
 		FROM dir_scan_runs
 		WHERE directory_id = ?
-		ORDER BY started_at DESC
+		ORDER BY started_at DESC, id DESC
 		LIMIT ?
 	`, directoryID, limit)
 	if err != nil {
@@ -702,6 +740,25 @@ func (s *DirScanStore) ListRuns(ctx context.Context, directoryID, limit int) ([]
 	defer rows.Close()
 
 	return scanRunsFromRows(rows)
+}
+
+// PruneRunHistory trims each directory to the most recent retained runs.
+func (s *DirScanStore) PruneRunHistory(ctx context.Context) error {
+	directoryIDs, err := s.ListDirectoryIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("list directories for run pruning: %w", err)
+	}
+
+	for _, directoryID := range directoryIDs {
+		if directoryID <= 0 {
+			continue
+		}
+		if err := s.pruneRunHistoryForDirectory(ctx, directoryID, dirScanRunHistoryLimit); err != nil {
+			return fmt.Errorf("prune run history for directory %d: %w", directoryID, err)
+		}
+	}
+
+	return nil
 }
 
 func scanRunsFromRows(rows *sql.Rows) ([]*DirScanRun, error) {
@@ -832,9 +889,35 @@ func (s *DirScanStore) MarkActiveRunsFailed(ctx context.Context, errorMessage st
 	return rows, nil
 }
 
-// --- Run Injection Operations ---
+func (s *DirScanStore) pruneRunHistoryForDirectory(ctx context.Context, directoryID, limit int) error {
+	if directoryID <= 0 || limit <= 0 {
+		return nil
+	}
 
-const dirScanRunInjectionMaxPerRun = 256
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM dir_scan_runs
+		WHERE directory_id = ?
+		  AND id IN (
+			  SELECT id FROM dir_scan_runs
+			  WHERE directory_id = ?
+			  ORDER BY started_at DESC, id DESC
+			  LIMIT -1 OFFSET ?
+		  )
+	`, directoryID, directoryID, limit)
+	if err != nil {
+		return fmt.Errorf("delete old runs: %w", err)
+	}
+
+	return nil
+}
+
+func (s *DirScanStore) trimRunHistoryBestEffort(ctx context.Context, directoryID int) {
+	if err := s.pruneRunHistoryForDirectory(ctx, directoryID, dirScanRunHistoryLimit); err != nil {
+		log.Warn().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to prune run history")
+	}
+}
+
+// --- Run Injection Operations ---
 
 // CreateRunInjection records a successful or failed injection attempt for a run.
 func (s *DirScanStore) CreateRunInjection(ctx context.Context, injection *DirScanRunInjection) error {
@@ -938,7 +1021,7 @@ func (s *DirScanStore) trimRunInjectionsBestEffort(ctx context.Context, runID in
 			  LIMIT ?
 		  )
 	`, runID, runID, dirScanRunInjectionMaxPerRun); err != nil {
-		_ = err
+		log.Warn().Err(err).Int64("runID", runID).Msg("dirscan: failed to prune run injections")
 	}
 }
 

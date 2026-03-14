@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 type fakeInstanceStore struct {
@@ -108,6 +109,109 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected hardlink base dir to be empty after rollback, got %d entries", len(entries))
+	}
+}
+
+func TestHumanizeLinkPlanError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "no matching file",
+			err:  &hardlinktree.LinkPlanError{Kind: hardlinktree.LinkPlanErrorNoMatchingFile, File: "Example.Release/file.mkv"},
+			want: "couldn't prepare linked files for this release: no matching local source file was found for a required release file (Example.Release/file.mkv). The local file may be missing, renamed, or a different size",
+		},
+		{
+			name: "no available file",
+			err:  &hardlinktree.LinkPlanError{Kind: hardlinktree.LinkPlanErrorNoAvailableFile, File: "Example.Release/file.mkv"},
+			want: "couldn't prepare linked files for this release: no usable local source file remained for (Example.Release/file.mkv)",
+		},
+		{
+			name: "could not match",
+			err:  &hardlinktree.LinkPlanError{Kind: hardlinktree.LinkPlanErrorCouldNotMatch, File: "Example.Release/file.mkv"},
+			want: "couldn't prepare linked files for this release: couldn't map a required release file to a local source file (Example.Release/file.mkv)",
+		},
+		{
+			name: "generic fallback",
+			err:  errors.New("boom"),
+			want: "couldn't prepare linked files for this release",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := humanizeLinkPlanError(tc.err)
+			if got == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if got.Error() != tc.want {
+				t.Fatalf("expected error %q, got %q", tc.want, got.Error())
+			}
+		})
+	}
+}
+
+func TestInjector_Inject_HumanizesLinkPlanMismatchError(t *testing.T) {
+	tmp := t.TempDir()
+
+	hardlinkBase := filepath.Join(tmp, "links")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          hardlinkBase,
+		FallbackToRegularMode:    false,
+	}
+
+	injector := NewInjector(nil, &recordingTorrentManager{}, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: tmp,
+			Files: []*ScannedFile{{
+				Path:    filepath.Join(tmp, "file.mkv"),
+				RelPath: "file.mkv",
+				Size:    3,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: filepath.Join(tmp, "file.mkv"), RelPath: "file.mkv", Size: 3},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			IsMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	want := "couldn't prepare linked files for this release: no matching local source file was found for a required release file (Example.Release/file.mkv). The local file may be missing, renamed, or a different size"
+	if err.Error() != want {
+		t.Fatalf("expected error %q, got %q", want, err.Error())
+	}
+	if res.ErrorMessage != want {
+		t.Fatalf("expected result error %q, got %q", want, res.ErrorMessage)
 	}
 }
 
