@@ -309,3 +309,61 @@ func TestReleasesMatchDiscovery_Infers1080pFromPlainBlurayDiscLayout(t *testing.
 		resolutionMatchContext{},
 	))
 }
+
+func TestReleasesMatchDiscovery_SkipsEmptyBDMVSourceHDRPayload(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	source := &rls.Release{
+		Title:      "Salt",
+		Year:       2010,
+		Source:     "UHD BluRay",
+		Resolution: "2160p",
+	}
+	candidate := &rls.Release{
+		Title:      "Salt",
+		Year:       2010,
+		Source:     "UHD BluRay",
+		Resolution: "2160p",
+		HDR:        []string{"HDR10"},
+	}
+
+	require.False(t, svc.releasesMatchDiscovery(source, candidate, false))
+	require.True(t, svc.releasesMatchDiscoveryWithContext(
+		source,
+		candidate,
+		false,
+		resolutionMatchContext{discLayout: true, discMarker: "BDMV", rawName: "Salt.2010.COMPLETE.UHD.BLURAY-COASTER"},
+		resolutionMatchContext{},
+	))
+}
+
+func TestReleasesMatchDiscovery_SkipsNormalizedEmptyBDMVSourceHDRPayload(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	source := &rls.Release{
+		Title:      "Salt",
+		Year:       2010,
+		Source:     "UHD BluRay",
+		Resolution: "2160p",
+		HDR:        []string{""},
+	}
+	candidate := &rls.Release{
+		Title:      "Salt",
+		Year:       2010,
+		Source:     "UHD BluRay",
+		Resolution: "2160p",
+		HDR:        []string{"HDR10"},
+	}
+
+	require.True(t, svc.releasesMatchDiscoveryWithContext(
+		source,
+		candidate,
+		false,
+		resolutionMatchContext{discLayout: true, discMarker: "BDMV", rawName: "Salt.2010.COMPLETE.UHD.BLURAY-COASTER"},
+		resolutionMatchContext{},
+	))
+}

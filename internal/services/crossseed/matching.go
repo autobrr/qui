@@ -300,7 +300,7 @@ func (s *Service) releasesMatchWithDiscovery(source, candidate *rls.Release, fin
 	// If one release has HDR metadata and the other doesn't, they cannot match
 	sourceHDR := joinNormalizedHDRSlice(source.HDR)
 	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
-	if sourceHDR != candidateHDR {
+	if sourceHDR != candidateHDR && !shouldSkipBDMVHDRMatch(sourceCtx, sourceHDR) {
 		return false
 	}
 
@@ -560,6 +560,17 @@ func joinNormalizedSlice(slice []string) string {
 func joinNormalizedHDRSlice(slice []string) string {
 	normalized := releases.NormalizeHDRTags(slice)
 	return strings.Join(normalized, " ")
+}
+
+func shouldSkipBDMVHDRMatch(ctx resolutionMatchContext, normalizedHDR string) bool {
+	if !ctx.discLayout || !strings.EqualFold(ctx.discMarker, "BDMV") {
+		return false
+	}
+
+	// COMPLETE BDMV titles often omit HDR metadata entirely, and some rls parses
+	// surface that as an empty HDR payload. Treat empty source HDR as "unknown" so
+	// discovery matching can still consider HDR candidates for the disc.
+	return normalizedHDR == ""
 }
 
 // videoCodecAliases maps equivalent video codec names to a canonical form.
