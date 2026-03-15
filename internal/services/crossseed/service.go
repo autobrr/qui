@@ -236,6 +236,7 @@ const (
 	minSearchCooldownMinutes            = 720
 	maxCompletionSearchAttempts         = 3
 	defaultCompletionRetryDelay         = 30 * time.Second
+	maxSinglePageTorznabSearchLimit     = 500
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
@@ -6038,11 +6039,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
 	}
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 40
-	}
-	requestLimit := max(limit*3, limit)
+	requestLimit := max(opts.Limit, maxSinglePageTorznabSearchLimit)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -6502,10 +6499,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 		return scored[i].score > scored[j].score
 	})
-
-	if len(scored) > limit {
-		scored = scored[:limit]
-	}
 
 	results := make([]TorrentSearchResult, 0, len(scored))
 	for _, item := range scored {
