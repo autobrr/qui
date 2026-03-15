@@ -42,6 +42,7 @@ import type {
   DashboardSettingsInput,
   DirScanDirectory,
   DirScanDirectoryCreate,
+  DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
   DirScanRun,
@@ -2483,8 +2484,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
   }
 
-  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
-    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
+  async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {
+    return this.request<DirScanTriggerResponse>(`/dir-scan/directories/${directoryId}/scan`, {
       method: "POST",
     })
   }

@@ -46,7 +46,7 @@ func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual")
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
 	require.NoError(t, err)
 	require.Greater(t, runID, int64(0))
 
@@ -85,7 +85,7 @@ func TestDirScanStore_MarkActiveRunsFailed_IncludesQueued(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual")
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
 	require.NoError(t, err)
 
 	affected, err := store.MarkActiveRunsFailed(ctx, "restart")
