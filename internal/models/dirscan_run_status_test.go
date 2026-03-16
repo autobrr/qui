@@ -99,3 +99,42 @@ func TestDirScanStore_MarkActiveRunsFailed_IncludesQueued(t *testing.T) {
 	require.Equal(t, "restart", run.ErrorMessage)
 	require.NotNil(t, run.CompletedAt)
 }
+
+func TestDirScanStore_GetActiveRun_PrefersRunningOverQueued(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	runningID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-a")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, runningID, models.DirScanRunStatusScanning))
+
+	queuedID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-b")
+	require.NoError(t, err)
+
+	activeRun, err := store.GetActiveRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.NotNil(t, activeRun)
+	require.Equal(t, runningID, activeRun.ID)
+	require.Equal(t, models.DirScanRunStatusScanning, activeRun.Status)
+
+	queuedRun, err := store.GetQueuedRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.NotNil(t, queuedRun)
+	require.Equal(t, queuedID, queuedRun.ID)
+	require.Equal(t, models.DirScanRunStatusQueued, queuedRun.Status)
+}

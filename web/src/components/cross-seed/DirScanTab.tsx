@@ -111,6 +111,34 @@ function formatRelativeTimeStr(date: string | Date): string {
   return formatRelativeTime(typeof date === "string" ? new Date(date) : date)
 }
 
+function getRunDiscoveredFiles(run: DirScanRun): number {
+  return run.filesFound + run.filesSkipped
+}
+
+function getRunFilesLabel(run: DirScanRun): string {
+  return `${run.filesFound} eligible`
+}
+
+function RunFilesBadge({ run }: { run: DirScanRun }) {
+  const discovered = getRunDiscoveredFiles(run)
+  const showDetails = discovered > run.filesFound
+
+  if (!showDetails) {
+    return <span className="text-muted-foreground">{getRunFilesLabel(run)}</span>
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger className="cursor-default text-muted-foreground">
+        {getRunFilesLabel(run)}
+      </TooltipTrigger>
+      <TooltipContent>
+        {discovered} discovered, {run.filesSkipped} skipped
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function DirScanTab({ instances }: DirScanTabProps) {
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<number | null>(null)
@@ -438,8 +466,10 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
       {config.icon}
       <span>{config.label}</span>
       {hasStats && (
-        <span className="text-muted-foreground">
-          ({run.filesFound} files, {run.matchesFound} matches, {run.torrentsAdded} added)
+        <span className="inline-flex items-center gap-1">
+          <span className="text-muted-foreground">(</span>
+          <RunFilesBadge run={run} />
+          <span className="text-muted-foreground">, {run.matchesFound} matches, {run.torrentsAdded} added)</span>
         </span>
       )}
     </div>
@@ -524,7 +554,9 @@ function RunRow({
             )}
           </div>
         </TableCell>
-        <TableCell>{run.filesFound}</TableCell>
+        <TableCell>
+          <RunFilesBadge run={run} />
+        </TableCell>
         <TableCell>{run.matchesFound}</TableCell>
         <TableCell>{run.torrentsAdded}</TableCell>
         <TableCell>
@@ -673,7 +705,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
               <TableRow>
                 <TableHead>Started</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Files</TableHead>
+                <TableHead>Eligible</TableHead>
                 <TableHead>Matches</TableHead>
                 <TableHead>Added</TableHead>
                 <TableHead>Duration</TableHead>
@@ -965,7 +997,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   }))
                 }}
               />
-              <Label htmlFor="max-searchee-age-enabled">Skip searchees older than</Label>
+              <Label htmlFor="max-searchee-age-enabled">Only process items changed within the last</Label>
             </div>
 
             {ageFilterEnabled && (
@@ -1005,7 +1037,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  Uses file modified time (mtime). A searchee is skipped only when all files in it are older than the cutoff.
+                  Uses video/audio file modified time (mtime). Fresh subtitles or extras do not keep old items in scope.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Current cutoff: {ageFilterCutoffPreview}

@@ -171,7 +171,7 @@ Open **Dir Scan > Settings**:
 | Size Tolerance (%) | Allows small size differences when matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
-| Skip searchees older than (days) | Excludes searchees where all files are older than the cutoff. `0` = disabled. |
+| Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
@@ -188,19 +188,22 @@ So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folder
 
 This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
 
-### "Skip searchees older than (days)" explained
+### "Only process items changed within the last (days)" explained
 
 This setting reduces tracker/API load by excluding stale content before search begins.
 
-- A searchee is excluded only if **all files in that searchee** are older than the cutoff.
+- Movies/music are included only when the item's newest video/audio file is within the cutoff.
+- TV is evaluated at the season/episode work-item level so one fresh episode does not pull an entire older show back in.
+- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only.
 - Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
-- The timestamp used is filesystem **modified time (mtime)**, not release date or qBittorrent add time.
+- The timestamp used is filesystem **modified time (mtime)** from video/audio files only, not subtitles, extras, release date, or qBittorrent add time.
 - `0` disables age filtering.
 
 Example with `7` days:
 
-- `Movie.2024/` has one subtitle updated yesterday -> included.
-- `Old.Show.S01/` has all files older than 7 days -> skipped.
+- `Movie.2024/` has only an `.srt` updated yesterday while the `.mkv` is old -> skipped.
+- `Show.Name/Season 01/` has one fresh episode and nine old ones -> only the fresh episode stays in scope.
+- `Old.Show.S01/` has all episode files older than 7 days -> skipped.
 
 ## Directories
 
