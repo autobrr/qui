@@ -94,13 +94,18 @@ func matchManagedDeleteBaseDir(baseDirs []string, path string) (string, bool) {
 		return "", false
 	}
 
+	bestMatch := ""
 	for _, baseDir := range baseDirs {
-		if isManagedDeletePathInsideBase(path, baseDir) {
-			return baseDir, true
+		if isManagedDeletePathInsideBase(path, baseDir) && len(baseDir) > len(bestMatch) {
+			bestMatch = baseDir
 		}
 	}
 
-	return "", false
+	if bestMatch == "" {
+		return "", false
+	}
+
+	return bestMatch, true
 }
 
 func isManagedDeletePathInsideBase(path, baseDir string) bool {

@@ -108,3 +108,27 @@ func TestCleanupManagedDeleteTargets_StopsAtNonEmptyParent(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
 }
+
+func TestBuildManagedDeleteCleanupTargets_PrefersMostSpecificBaseDir(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	baseDir := filepath.Join(rootDir, "cross-seeds")
+	specificBaseDir := filepath.Join(baseDir, "tracker-a")
+	leafDir := filepath.Join(specificBaseDir, "MovieA")
+	filePath := filepath.Join(leafDir, "MovieA.mkv")
+
+	require.NoError(t, os.MkdirAll(leafDir, 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
+
+	targets := buildManagedDeleteCleanupTargets(baseDir+","+specificBaseDir, []qbt.Torrent{
+		{
+			Hash:        "abc123",
+			SavePath:    leafDir,
+			ContentPath: filePath,
+		},
+	})
+
+	require.Len(t, targets, 1)
+	require.Equal(t, specificBaseDir, targets[0].baseDir)
+}
