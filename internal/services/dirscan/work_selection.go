@@ -83,10 +83,7 @@ func selectEligibleRootWork(
 
 	selection.discoveredFiles = len(discoveredPaths)
 	selection.eligibleFiles = len(eligiblePaths)
-	selection.skippedFiles = selection.discoveredFiles - selection.eligibleFiles
-	if selection.skippedFiles < 0 {
-		selection.skippedFiles = 0
-	}
+	selection.skippedFiles = max(selection.discoveredFiles-selection.eligibleFiles, 0)
 
 	return selection
 }
