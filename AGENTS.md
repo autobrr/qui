@@ -101,6 +101,8 @@ When running tests, always use `-race` and `-count=1`.
 
 For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
 
+When adding Go tests that create files with `os.WriteFile`, use `0o600` or tighter permissions unless the test explicitly needs broader mode bits. This avoids `gosec` `G306` lint failures.
+
 ## Commit & Pull Request Guidelines
 
 Follow the conventional commit style in history (`feat(scope):`, `fix(scope):`, etc.) and link issues or PR numbers in the body when relevant. Keep commits focused—split backend and frontend changes when practical.
