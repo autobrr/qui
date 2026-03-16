@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -18,6 +19,11 @@ type managedDeleteCleanupTarget struct {
 	dir     string
 	baseDir string
 }
+
+const (
+	managedDeleteCleanupRetryInterval = 50 * time.Millisecond
+	managedDeleteCleanupRetryAttempts = 20
+)
 
 func buildManagedDeleteCleanupTargets(configuredBaseDirs string, torrents []qbt.Torrent) []managedDeleteCleanupTarget {
 	baseDirs := parseManagedDeleteBaseDirs(configuredBaseDirs)
@@ -124,27 +130,41 @@ func isManagedDeletePathInsideBase(path, baseDir string) bool {
 }
 
 func pruneEmptyManagedDeleteDir(target managedDeleteCleanupTarget) {
+	for range managedDeleteCleanupRetryAttempts {
+		retry := pruneEmptyManagedDeleteDirOnce(target)
+		if !retry {
+			return
+		}
+
+		time.Sleep(managedDeleteCleanupRetryInterval)
+	}
+}
+
+func pruneEmptyManagedDeleteDirOnce(target managedDeleteCleanupTarget) bool {
 	dir := filepath.Clean(target.dir)
 	baseDir := filepath.Clean(target.baseDir)
+	leafDir := dir
 
 	for isManagedDeletePathInsideBase(dir, baseDir) && dir != baseDir {
 		err := os.Remove(dir)
 		switch {
 		case err == nil, os.IsNotExist(err):
 		case isDirNotEmpty(err):
-			return
+			return dir == leafDir
 		default:
 			log.Debug().Err(err).Str("dir", dir).Str("baseDir", baseDir).
 				Msg("delete cleanup: failed to prune empty managed directory")
-			return
+			return false
 		}
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return
+			return false
 		}
 		dir = parent
 	}
+
+	return false
 }
 
 func isDirNotEmpty(err error) bool {

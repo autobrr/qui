@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -107,6 +108,43 @@ func TestCleanupManagedDeleteTargets_StopsAtNonEmptyParent(t *testing.T) {
 	info, err = os.Stat(movieBDir)
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
+}
+
+func TestCleanupManagedDeleteTargets_RetriesWhileLeafDirStillBusy(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	trackerDir := filepath.Join(baseDir, "tracker-a")
+	leafDir := filepath.Join(trackerDir, "MovieA")
+	filePath := filepath.Join(leafDir, "MovieA.mkv")
+
+	require.NoError(t, os.MkdirAll(leafDir, 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
+
+	targets := buildManagedDeleteCleanupTargets(baseDir, []qbt.Torrent{
+		{
+			Hash:        "abc123",
+			SavePath:    leafDir,
+			ContentPath: filePath,
+		},
+	})
+	require.Len(t, targets, 1)
+
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		_ = os.Remove(filePath)
+		close(done)
+	}()
+
+	cleanupManagedDeleteTargets(targets)
+	<-done
+
+	_, err := os.Stat(leafDir)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	_, err = os.Stat(trackerDir)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestBuildManagedDeleteCleanupTargets_PrefersMostSpecificBaseDir(t *testing.T) {
