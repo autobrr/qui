@@ -4,9 +4,11 @@
 package qbittorrent
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -148,6 +150,10 @@ func pruneEmptyManagedDeleteDir(target managedDeleteCleanupTarget) {
 func isDirNotEmpty(err error) bool {
 	if err == nil {
 		return false
+	}
+
+	if errors.Is(err, syscall.ENOTEMPTY) {
+		return true
 	}
 
 	return strings.Contains(strings.ToLower(err.Error()), "not empty")
