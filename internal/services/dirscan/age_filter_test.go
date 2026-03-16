@@ -107,7 +107,21 @@ func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
 	items := buildSearcheeWorkItems(root, NewParser(nil))
 	// root + 2 episode work items
 	require.Len(t, items, 3)
-	require.False(t, workItemIsStale(items[0], now.AddDate(0, 0, -3)))
+
+	var seasonItem *searcheeWorkItem
+	for i := range items {
+		item := &items[i]
+		if item.searchee == nil {
+			continue
+		}
+		if item.searchee.Path == root.Path && len(item.searchee.Files) == len(root.Files) {
+			seasonItem = item
+			break
+		}
+	}
+
+	require.NotNil(t, seasonItem)
+	require.False(t, workItemIsStale(*seasonItem, now.AddDate(0, 0, -3)))
 }
 
 func TestMaxSearcheeAgeDaysFromSettings(t *testing.T) {
