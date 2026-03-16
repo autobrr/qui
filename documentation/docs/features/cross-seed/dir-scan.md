@@ -277,12 +277,14 @@ In split-mount setups, the *arr app must send the same library path that qui see
 
 | Status Code | Meaning |
 |-------------|---------|
-| `202` | Scan started successfully. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
+| `202` | Scan accepted. If the directory is idle, qui starts the run immediately. If a webhook scan is already running for that directory, qui keeps one follow-up queued run and merges later webhook paths into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
 | `204` | Test webhook accepted. No scan started |
 | `400` | Invalid JSON payload, or no supported path field was found in the request body |
 | `404` | No enabled directory matches the path in the payload |
-| `409` | A scan is already in progress for the matched directory |
+| `409` | Multiple directories match the given path |
 | `500` | Internal server error — scan could not be started due to an internal failure |
+
+If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request or require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
 
 #### Simple mode
 

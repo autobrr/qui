@@ -797,7 +797,8 @@ func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirS
 			WHEN 'queued' THEN 3
 			ELSE 4
 		END,
-		started_at DESC
+		started_at DESC,
+		id DESC
 		LIMIT 1
 	`, directoryID)
 
@@ -812,7 +813,7 @@ func (s *DirScanStore) GetQueuedRun(ctx context.Context, directoryID int) (*DirS
 		FROM dir_scan_runs
 		WHERE directory_id = ?
 		  AND status = 'queued'
-		ORDER BY started_at DESC
+		ORDER BY started_at DESC, id DESC
 		LIMIT 1
 	`, directoryID)
 

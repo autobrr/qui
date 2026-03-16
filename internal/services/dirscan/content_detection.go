@@ -15,7 +15,7 @@ var videoExtensions = map[string]struct{}{
 
 var audioExtensions = map[string]struct{}{
 	".flac": {}, ".mp3": {}, ".wav": {}, ".aac": {}, ".ogg": {}, ".m4a": {},
-	".wma": {}, ".ape": {}, ".alac": {}, ".dsd": {}, ".dsf": {}, ".dff": {},
+	".wma": {}, ".ape": {}, ".alac": {}, ".dsd": {}, ".dsf": {}, ".dff": {}, ".aob": {},
 }
 
 func hasAnyVideoFile(files []*ScannedFile) bool {

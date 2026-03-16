@@ -67,6 +67,30 @@ func TestSelectEligibleRootWork_IgnoresFreshSubtitleBumps(t *testing.T) {
 	require.Empty(t, selection.roots)
 }
 
+func TestSelectEligibleRootWork_TreatsAOBAsAudioContent(t *testing.T) {
+	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
+	old := now.AddDate(0, 0, -10)
+
+	scanResult := &ScanResult{
+		Searchees: []*Searchee{
+			{
+				Name: "Album",
+				Path: "/data/music/Album",
+				Files: []*ScannedFile{
+					{Path: "/data/music/Album/AUDIO_TS/ATS_01_1.AOB", ModTime: old, Size: 1000},
+				},
+			},
+		},
+	}
+
+	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now)
+
+	require.Equal(t, 1, selection.discoveredFiles)
+	require.Equal(t, 0, selection.eligibleFiles)
+	require.Equal(t, 1, selection.skippedFiles)
+	require.Empty(t, selection.roots)
+}
+
 func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
 	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
 	fresh := now.Add(-24 * time.Hour)
@@ -81,6 +105,7 @@ func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
 	}
 
 	items := buildSearcheeWorkItems(root, NewParser(nil))
+	// root + 2 episode work items
 	require.Len(t, items, 3)
 	require.False(t, workItemIsStale(items[0], now.AddDate(0, 0, -3)))
 }

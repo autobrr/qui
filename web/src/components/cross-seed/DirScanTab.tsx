@@ -459,7 +459,7 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   }
 
   const config = statusConfig[run.status]
-  const hasStats = run.filesFound > 0 || run.matchesFound > 0 || run.torrentsAdded > 0
+  const hasStats = run.filesFound > 0 || run.filesSkipped > 0 || run.matchesFound > 0 || run.torrentsAdded > 0
 
   return (
     <div className={`flex items-center gap-1.5 text-xs ${config.color}`}>
@@ -469,7 +469,10 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
         <span className="inline-flex items-center gap-1">
           <span className="text-muted-foreground">(</span>
           <RunFilesBadge run={run} />
-          <span className="text-muted-foreground">, {run.matchesFound} matches, {run.torrentsAdded} added)</span>
+          <span className="text-muted-foreground">
+            {run.filesSkipped > 0 ? `, ${run.filesSkipped} skipped` : ""}
+            , {run.matchesFound} matches, {run.torrentsAdded} added)
+          </span>
         </span>
       )}
     </div>
