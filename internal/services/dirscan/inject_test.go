@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,6 +219,83 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckAndResumeWhenComplete(t *t
 	}
 	if manager.resumeCalls[0].opts.Timeout != 60*time.Minute {
 		t.Fatalf("expected timeout 60m, got %v", manager.resumeCalls[0].opts.Timeout)
+	}
+}
+
+func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedList(t *testing.T) {
+	tmp := t.TempDir()
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "file.mkv")
+	if err := os.WriteFile(sourceFile, []byte("data"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	firstBase := filepath.Join(tmp, "links-a")
+	secondBase := filepath.Join(tmp, "links-b")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          firstBase + ", " + secondBase,
+		FallbackToRegularMode:    false,
+	}
+
+	manager := &recordingTorrentManager{}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: "file.mkv",
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			IsMatch: true,
+		},
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+	if res.Mode != injectModeHardlink {
+		t.Fatalf("expected hardlink mode, got %q", res.Mode)
+	}
+	if strings.Contains(res.SavePath, ",") {
+		t.Fatalf("save path should use one base dir, got %q", res.SavePath)
+	}
+	if !strings.HasPrefix(res.SavePath, firstBase+string(os.PathSeparator)) {
+		t.Fatalf("expected save path under first matching base dir %q, got %q", firstBase, res.SavePath)
+	}
+	if got := manager.addOptions["savepath"]; got != res.SavePath {
+		t.Fatalf("expected add savepath %q, got %q", res.SavePath, got)
 	}
 }
 
