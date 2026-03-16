@@ -130,13 +130,15 @@ func isManagedDeletePathInsideBase(path, baseDir string) bool {
 }
 
 func pruneEmptyManagedDeleteDir(target managedDeleteCleanupTarget) {
-	for range managedDeleteCleanupRetryAttempts {
+	for attempt := range managedDeleteCleanupRetryAttempts {
 		retry := pruneEmptyManagedDeleteDirOnce(target)
 		if !retry {
 			return
 		}
 
-		time.Sleep(managedDeleteCleanupRetryInterval)
+		if attempt < managedDeleteCleanupRetryAttempts-1 {
+			time.Sleep(managedDeleteCleanupRetryInterval)
+		}
 	}
 }
 
