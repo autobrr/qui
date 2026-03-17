@@ -488,9 +488,23 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	dirMu.Lock()
 	defer dirMu.Unlock()
 
-	// Transition from queued to scanning once we have a run slot and hold the directory lock.
-	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusScanning); err != nil {
+	// Only the still-queued run that won the lock may advance to scanning.
+	advanced, err := s.store.UpdateRunStatusIfCurrent(ctx, runID, models.DirScanRunStatusQueued, models.DirScanRunStatusScanning)
+	if err != nil {
 		l.Debug().Err(err).Msg("dirscan: failed to update run status to scanning")
+		return
+	}
+	if !advanced {
+		return
+	}
+
+	run, err = s.store.GetRun(ctx, runID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to reload run")
+		return
+	}
+	if run == nil {
+		return
 	}
 
 	s.updateDirectoryLastScan(ctx, directoryID, &l)
