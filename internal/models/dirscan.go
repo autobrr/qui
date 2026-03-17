@@ -790,7 +790,30 @@ func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirS
 		FROM dir_scan_runs
 		WHERE directory_id = ?
 		  AND status IN ('queued', 'scanning', 'searching', 'injecting')
-		ORDER BY started_at DESC
+		ORDER BY CASE status
+			WHEN 'scanning' THEN 0
+			WHEN 'searching' THEN 1
+			WHEN 'injecting' THEN 2
+			WHEN 'queued' THEN 3
+			ELSE 4
+		END,
+		started_at DESC,
+		id DESC
+		LIMIT 1
+	`, directoryID)
+
+	return s.scanRun(row)
+}
+
+// GetQueuedRun returns the most recent queued run for a directory, if any.
+func (s *DirScanStore) GetQueuedRun(ctx context.Context, directoryID int) (*DirScanRun, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, directory_id, status, triggered_by, scan_root, files_found, files_skipped,
+		       matches_found, torrents_added, error_message, started_at, completed_at
+		FROM dir_scan_runs
+		WHERE directory_id = ?
+		  AND status = 'queued'
+		ORDER BY started_at DESC, id DESC
 		LIMIT 1
 	`, directoryID)
 
@@ -804,6 +827,22 @@ func (s *DirScanStore) UpdateRunStatus(ctx context.Context, runID int64, status 
 	`, status, runID)
 	if err != nil {
 		return fmt.Errorf("update run status: %w", err)
+	}
+	return nil
+}
+
+// UpdateRunScanRoot updates the scan root of a run.
+func (s *DirScanStore) UpdateRunScanRoot(ctx context.Context, runID int64, scanRoot string) error {
+	var scanRootValue any
+	if scanRoot != "" {
+		scanRootValue = scanRoot
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs SET scan_root = ? WHERE id = ?
+	`, scanRootValue, runID)
+	if err != nil {
+		return fmt.Errorf("update run scan root: %w", err)
 	}
 	return nil
 }
@@ -856,6 +895,19 @@ func (s *DirScanStore) UpdateRunCanceled(ctx context.Context, runID int64) error
 	`, DirScanRunStatusCanceled, runID)
 	if err != nil {
 		return fmt.Errorf("update run canceled: %w", err)
+	}
+	return nil
+}
+
+// CancelQueuedRuns marks all queued runs for a directory as canceled.
+func (s *DirScanStore) CancelQueuedRuns(ctx context.Context, directoryID int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET status = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE directory_id = ? AND status = 'queued'
+	`, DirScanRunStatusCanceled, directoryID)
+	if err != nil {
+		return fmt.Errorf("cancel queued runs: %w", err)
 	}
 	return nil
 }
