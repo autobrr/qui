@@ -535,7 +535,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		scanResult,
 		trackedFiles,
 		s.parser,
-		maxSearcheeAgeDaysFromSettings(settings),
+		effectiveMaxSearcheeAgeDays(settings, run.TriggeredBy),
 		time.Now(),
 		&l,
 	)
@@ -751,6 +751,14 @@ func maxSearcheeAgeDaysFromSettings(settings *models.DirScanSettings) int {
 		return 0
 	}
 	return settings.MaxSearcheeAgeDays
+}
+
+func effectiveMaxSearcheeAgeDays(settings *models.DirScanSettings, triggeredBy string) int {
+	if triggeredBy == "webhook" {
+		return 0
+	}
+
+	return maxSearcheeAgeDaysFromSettings(settings)
 }
 
 // runSearchAndInjectPhase searches indexers for each searchee and injects matches.

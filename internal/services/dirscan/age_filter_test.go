@@ -130,3 +130,12 @@ func TestMaxSearcheeAgeDaysFromSettings(t *testing.T) {
 	require.Equal(t, 0, maxSearcheeAgeDaysFromSettings(&models.DirScanSettings{MaxSearcheeAgeDays: -1}))
 	require.Equal(t, 14, maxSearcheeAgeDaysFromSettings(&models.DirScanSettings{MaxSearcheeAgeDays: 14}))
 }
+
+func TestEffectiveMaxSearcheeAgeDays(t *testing.T) {
+	settings := &models.DirScanSettings{MaxSearcheeAgeDays: 14}
+
+	require.Equal(t, 14, effectiveMaxSearcheeAgeDays(settings, "manual"))
+	require.Equal(t, 14, effectiveMaxSearcheeAgeDays(settings, "scheduled"))
+	require.Equal(t, 0, effectiveMaxSearcheeAgeDays(settings, "webhook"))
+	require.Equal(t, 0, effectiveMaxSearcheeAgeDays(nil, "webhook"))
+}

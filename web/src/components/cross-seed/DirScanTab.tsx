@@ -1043,6 +1043,9 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   Uses video/audio file modified time (mtime). Fresh subtitles or extras do not keep old items in scope.
                 </p>
                 <p className="text-xs text-muted-foreground">
+                  Webhook-triggered scans ignore this cutoff and trust the imported path instead.
+                </p>
+                <p className="text-xs text-muted-foreground">
                   Current cutoff: {ageFilterCutoffPreview}
                 </p>
               </>

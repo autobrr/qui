@@ -171,7 +171,7 @@ Open **Dir Scan > Settings**:
 | Size Tolerance (%) | Allows small size differences when matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
-| Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only. `0` = disabled. |
+| Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
@@ -197,6 +197,7 @@ This setting reduces tracker/API load by excluding stale content before search b
 - Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only.
 - Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
 - The timestamp used is filesystem **modified time (mtime)** from video/audio files only, not subtitles, extras, release date, or qBittorrent add time.
+- Webhook-triggered scans ignore the cutoff entirely and trust the webhook path as the freshness signal.
 - `0` disables age filtering.
 
 Example with `7` days:
@@ -285,6 +286,8 @@ In split-mount setups, the *arr app must send the same library path that qui see
 | `500` | Internal server error — scan could not be started due to an internal failure |
 
 If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request or require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
+
+Webhook-triggered scans also ignore the global age cutoff. This avoids false skips when Sonarr/Radarr imports files that preserve old filesystem mtimes.
 
 #### Simple mode
 
