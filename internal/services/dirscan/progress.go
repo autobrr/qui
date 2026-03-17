@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/rs/zerolog"
 )
 
 type trackedFilesIndex struct {
@@ -55,7 +56,13 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 	return idx, nil
 }
 
-func (s *Service) refreshTrackedFilesFromScan(ctx context.Context, directoryID int, scanResult *ScanResult, fileIDIndex map[string]string) (*trackedFilesIndex, error) {
+func (s *Service) refreshTrackedFilesFromScan(
+	ctx context.Context,
+	directoryID int,
+	scanResult *ScanResult,
+	fileIDIndex map[string]string,
+	l *zerolog.Logger,
+) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil || scanResult == nil {
 		return nil, nil
 	}
@@ -75,7 +82,7 @@ func (s *Service) refreshTrackedFilesFromScan(ctx context.Context, directoryID i
 			}
 
 			alreadySeeding := isFileAlreadySeedingByFileID(scanned, fileIDIndex)
-			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, alreadySeeding)
+			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, alreadySeeding, l)
 			if err != nil {
 				return nil, err
 			}
@@ -105,7 +112,13 @@ func isFileAlreadySeedingByFileID(scanned *ScannedFile, index map[string]string)
 	return ok
 }
 
-func buildTrackedFileUpsert(directoryID int, scanned *ScannedFile, idx *trackedFilesIndex, alreadySeeding bool) (*models.DirScanFile, error) {
+func buildTrackedFileUpsert(
+	directoryID int,
+	scanned *ScannedFile,
+	idx *trackedFilesIndex,
+	alreadySeeding bool,
+	l *zerolog.Logger,
+) (*models.DirScanFile, error) {
 	if directoryID <= 0 || scanned == nil {
 		return nil, nil
 	}
@@ -115,22 +128,15 @@ func buildTrackedFileUpsert(directoryID int, scanned *ScannedFile, idx *trackedF
 		fileID = scanned.FileID.Bytes()
 	}
 
-	var existing *models.DirScanFile
-	if idx != nil {
-		if fileID != nil {
-			existing = idx.byFileID[string(fileID)]
-		}
-		if existing == nil {
-			existing = idx.byPath[scanned.Path]
-		}
-	}
+	existing, matchedBy := lookupTrackedFile(scanned, idx)
 
 	status := models.DirScanFileStatusPending
 	var matchedTorrentHash string
 	var matchedIndexerID *int
+	unchanged := false
 
 	if existing != nil {
-		unchanged := existing.FileSize == scanned.Size && existing.FileModTime.Equal(scanned.ModTime)
+		unchanged = existing.FileSize == scanned.Size && existing.FileModTime.Equal(scanned.ModTime)
 		if unchanged {
 			status = existing.Status
 			matchedTorrentHash = existing.MatchedTorrentHash
@@ -160,7 +166,7 @@ func buildTrackedFileUpsert(directoryID int, scanned *ScannedFile, idx *trackedF
 		matchedIndexerID = nil
 	}
 
-	return &models.DirScanFile{
+	fileModel := &models.DirScanFile{
 		DirectoryID:        directoryID,
 		FilePath:           scanned.Path,
 		FileSize:           scanned.Size,
@@ -169,7 +175,87 @@ func buildTrackedFileUpsert(directoryID int, scanned *ScannedFile, idx *trackedF
 		Status:             status,
 		MatchedTorrentHash: matchedTorrentHash,
 		MatchedIndexerID:   matchedIndexerID,
-	}, nil
+	}
+
+	logTrackedFileDecision(l, scanned, existing, fileModel, matchedBy, unchanged, alreadySeeding)
+
+	return fileModel, nil
+}
+
+func lookupTrackedFile(scanned *ScannedFile, idx *trackedFilesIndex) (*models.DirScanFile, string) {
+	if scanned == nil || idx == nil {
+		return nil, ""
+	}
+
+	if !scanned.FileID.IsZero() {
+		if existing := idx.byFileID[string(scanned.FileID.Bytes())]; existing != nil {
+			return existing, "file_id"
+		}
+	}
+	if existing := idx.byPath[scanned.Path]; existing != nil {
+		return existing, "path"
+	}
+
+	return nil, ""
+}
+
+func logTrackedFileDecision(
+	l *zerolog.Logger,
+	scanned *ScannedFile,
+	existing *models.DirScanFile,
+	fileModel *models.DirScanFile,
+	matchedBy string,
+	unchanged bool,
+	alreadySeeding bool,
+) {
+	if l == nil || scanned == nil || fileModel == nil {
+		return
+	}
+	if !shouldLogTrackedFileDecision(existing, fileModel, matchedBy, alreadySeeding) {
+		return
+	}
+
+	existingStatus := ""
+	existingPath := ""
+	if existing != nil {
+		existingStatus = string(existing.Status)
+		existingPath = existing.FilePath
+	}
+
+	l.Debug().
+		Str("path", scanned.Path).
+		Str("existingPath", existingPath).
+		Str("matchedBy", matchedBy).
+		Bool("fileIDPresent", !scanned.FileID.IsZero()).
+		Bool("alreadySeeding", alreadySeeding).
+		Bool("unchanged", unchanged).
+		Str("existingStatus", existingStatus).
+		Str("newStatus", string(fileModel.Status)).
+		Int64("size", scanned.Size).
+		Time("modTime", scanned.ModTime).
+		Msg("dirscan: tracked file decision")
+}
+
+func shouldLogTrackedFileDecision(
+	existing *models.DirScanFile,
+	fileModel *models.DirScanFile,
+	matchedBy string,
+	alreadySeeding bool,
+) bool {
+	if fileModel == nil {
+		return false
+	}
+	if alreadySeeding || matchedBy == "file_id" {
+		return true
+	}
+	if fileModel.Status != models.DirScanFileStatusPending {
+		return true
+	}
+	if existing == nil {
+		return false
+	}
+
+	return existing.Status != fileModel.Status || existing.FilePath != fileModel.FilePath
 }
 
 func searcheeIsEligible(searchee *Searchee, idx *trackedFilesIndex) bool {

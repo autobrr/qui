@@ -524,7 +524,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	trackedFiles, err := s.refreshTrackedFilesFromScan(ctx, directoryID, scanResult, fileIDIndex)
+	trackedFiles, err := s.refreshTrackedFilesFromScan(ctx, directoryID, scanResult, fileIDIndex, &l)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to persist scan progress")
 		s.markRunFailed(ctx, runID, fmt.Sprintf("persist scan progress: %v", err), dir.TargetInstanceID, &l)
@@ -537,6 +537,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		s.parser,
 		maxSearcheeAgeDaysFromSettings(settings),
 		time.Now(),
+		&l,
 	)
 
 	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusSearching); err != nil {

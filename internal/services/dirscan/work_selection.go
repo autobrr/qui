@@ -4,9 +4,13 @@
 package dirscan
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/rs/zerolog"
 )
 
 type rootWorkSelection struct {
@@ -28,6 +32,7 @@ func selectEligibleRootWork(
 	parser *Parser,
 	maxSearcheeAgeDays int,
 	now time.Time,
+	l *zerolog.Logger,
 ) scanWorkSelection {
 	selection := scanWorkSelection{}
 	if scanResult == nil {
@@ -55,11 +60,17 @@ func selectEligibleRootWork(
 
 		items := buildSearcheeWorkItems(root, parser)
 		pendingItems := make([]searcheeWorkItem, 0, len(items))
+		droppedItems := make([]workItemDropDecision, 0, len(items))
 		for _, item := range items {
-			if item.searchee == nil || workItemIsStale(item, selection.cutoff) {
+			if item.searchee == nil {
+				continue
+			}
+			if workItemIsStale(item, selection.cutoff) {
+				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "stale", selection.cutoff, trackedFiles))
 				continue
 			}
 			if !workItemHasPendingFiles(item, trackedFiles) {
+				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "all_final", selection.cutoff, trackedFiles))
 				continue
 			}
 			pendingItems = append(pendingItems, item)
@@ -72,6 +83,7 @@ func selectEligibleRootWork(
 		}
 
 		if len(pendingItems) == 0 {
+			logRootSelectionDrops(l, root, droppedItems, selection.cutoff)
 			continue
 		}
 
@@ -86,6 +98,15 @@ func selectEligibleRootWork(
 	selection.skippedFiles = max(selection.discoveredFiles-selection.eligibleFiles, 0)
 
 	return selection
+}
+
+type workItemDropDecision struct {
+	name             string
+	path             string
+	reason           string
+	contentFiles     int
+	newestContentMod time.Time
+	statuses         string
 }
 
 func workItemHasPendingFiles(item searcheeWorkItem, trackedFiles *trackedFilesIndex) bool {
@@ -121,6 +142,113 @@ func trackedFileForScannedFile(f *ScannedFile, trackedFiles *trackedFilesIndex) 
 		}
 	}
 	return nil
+}
+
+func buildWorkItemDropDecision(
+	item searcheeWorkItem,
+	reason string,
+	cutoff time.Time,
+	trackedFiles *trackedFilesIndex,
+) workItemDropDecision {
+	decision := workItemDropDecision{reason: reason}
+	if item.searchee == nil {
+		return decision
+	}
+
+	contentFiles := filterContentFiles(item.searchee.Files)
+	decision.name = item.searchee.Name
+	decision.path = item.searchee.Path
+	decision.contentFiles = len(contentFiles)
+	decision.newestContentMod = newestContentModTime(contentFiles)
+	decision.statuses = summarizeTrackedStatuses(item, trackedFiles)
+
+	if decision.reason == "stale" && !cutoff.IsZero() && decision.newestContentMod.IsZero() {
+		decision.statuses = "no_content_files"
+	}
+
+	return decision
+}
+
+func newestContentModTime(files []*ScannedFile) time.Time {
+	var newest time.Time
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		if f.ModTime.After(newest) {
+			newest = f.ModTime
+		}
+	}
+	return newest
+}
+
+func summarizeTrackedStatuses(item searcheeWorkItem, trackedFiles *trackedFilesIndex) string {
+	if item.searchee == nil {
+		return ""
+	}
+
+	counts := make(map[string]int)
+	for _, f := range item.searchee.Files {
+		if f == nil {
+			continue
+		}
+
+		status := "untracked"
+		if tracked := trackedFileForScannedFile(f, trackedFiles); tracked != nil {
+			status = string(tracked.Status)
+		}
+		counts[status]++
+	}
+
+	if len(counts) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(counts))
+	for status := range counts {
+		keys = append(keys, status)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, status := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", status, counts[status]))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+func logRootSelectionDrops(l *zerolog.Logger, root *Searchee, droppedItems []workItemDropDecision, cutoff time.Time) {
+	if l == nil || root == nil || len(droppedItems) == 0 {
+		return
+	}
+
+	event := l.Debug().
+		Str("rootName", root.Name).
+		Str("rootPath", root.Path).
+		Int("rootFiles", len(root.Files)).
+		Int("droppedItems", len(droppedItems))
+	if !cutoff.IsZero() {
+		event = event.Time("cutoff", cutoff)
+	}
+	event.Msg("dirscan: no eligible work items for root")
+
+	for _, item := range droppedItems {
+		event := l.Debug().
+			Str("rootPath", root.Path).
+			Str("itemName", item.name).
+			Str("itemPath", item.path).
+			Str("reason", item.reason).
+			Int("contentFiles", item.contentFiles).
+			Str("statuses", item.statuses)
+		if !item.newestContentMod.IsZero() {
+			event = event.Time("newestContentMod", item.newestContentMod)
+		}
+		if !cutoff.IsZero() {
+			event = event.Time("cutoff", cutoff)
+		}
+		event.Msg("dirscan: dropped work item")
+	}
 }
 
 func workItemIsStale(item searcheeWorkItem, cutoff time.Time) bool {

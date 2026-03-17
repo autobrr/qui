@@ -30,7 +30,7 @@ func TestSelectEligibleRootWork_TVKeepsOnlyFreshEpisodeItems(t *testing.T) {
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now)
+	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil)
 
 	require.Equal(t, now.AddDate(0, 0, -3), selection.cutoff)
 	require.Equal(t, 2, selection.discoveredFiles)
@@ -59,7 +59,7 @@ func TestSelectEligibleRootWork_IgnoresFreshSubtitleBumps(t *testing.T) {
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now)
+	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil)
 
 	require.Equal(t, 2, selection.discoveredFiles)
 	require.Equal(t, 0, selection.eligibleFiles)
@@ -83,7 +83,7 @@ func TestSelectEligibleRootWork_TreatsAOBAsAudioContent(t *testing.T) {
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now)
+	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil)
 
 	require.Equal(t, 1, selection.discoveredFiles)
 	require.Equal(t, 0, selection.eligibleFiles)
