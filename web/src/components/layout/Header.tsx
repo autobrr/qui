@@ -682,7 +682,7 @@ export function Header({
                         <Link
                           to="/instances/$instanceId"
                           params={{ instanceId: instance.id.toString() }}
-                          className="flex cursor-pointer pl-6"
+                          className="flex cursor-pointer"
                         >
                           <HardDrive className="mr-2 h-4 w-4" />
                           <span className="truncate">{instance.name}</span>
