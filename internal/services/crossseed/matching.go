@@ -393,12 +393,14 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	return true
 }
 
-func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+const hdbitsAutobrrIndexer = "hdb"
+
+func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool, indexer string) bool {
 	if s.releasesMatch(source, candidate, findIndividualEpisodes) {
 		return true
 	}
 
-	if !canFillMissingWebhookCollection(source, candidate, s.stringNormalizer) {
+	if !canUseWebhookCollectionFallback(source, candidate, indexer, s.stringNormalizer) {
 		return false
 	}
 
@@ -408,23 +410,28 @@ func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndiv
 	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
 }
 
-func canFillMissingWebhookCollection(
+func canUseWebhookCollectionFallback(
 	source, candidate *rls.Release,
+	indexer string,
 	normalizer *stringutils.Normalizer[string, string],
 ) bool {
+	if !supportsWebhookCollectionFallback(indexer) {
+		return false
+	}
+
 	if source == nil || candidate == nil {
 		return false
 	}
 
-	// Some webhook titles omit the collection/service tag entirely ("WEB-DL")
-	// while the existing torrent keeps the canonical source service (for example
-	// "DSNP"). Only retry when the incoming title is missing Collection and the
-	// group or site already anchors the release identity.
+	// Some indexers can announce generic WEB-DL titles without the collection/
+	// service tag while the existing torrent keeps the canonical source service
+	// (for example "DSNP"). Only retry when the incoming title is missing
+	// Collection and the group or site already anchors the release identity.
 	if source.Collection != "" || candidate.Collection == "" {
 		return false
 	}
 
-	if !supportsWebhookCollectionFallback(source, candidate) {
+	if !supportsWebhookCollectionFallbackContent(source, candidate) {
 		return false
 	}
 
@@ -432,7 +439,16 @@ func canFillMissingWebhookCollection(
 		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
 }
 
-func supportsWebhookCollectionFallback(source, candidate *rls.Release) bool {
+func supportsWebhookCollectionFallback(indexer string) bool {
+	switch indexer {
+	case hdbitsAutobrrIndexer:
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsWebhookCollectionFallbackContent(source, candidate *rls.Release) bool {
 	if source == nil || candidate == nil {
 		return false
 	}

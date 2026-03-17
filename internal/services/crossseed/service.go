@@ -3439,7 +3439,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipAutoResume:               skipAutoResume,
 		SkipRecheck:                  skipRecheck,
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-		IndexerName:                  req.IndexerName,
+		IndexerName:                  req.Indexer,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -9689,6 +9689,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("globalScan", len(requestedInstanceIDs) == 0).
 		Str("torrentName", req.TorrentName).
 		Uint64("size", req.Size).
+		Str("indexer", req.Indexer).
 		Str("contentType", contentInfo.ContentType).
 		Bool("findIndividualEpisodes", findIndividualEpisodes).
 		Str("title", incomingRelease.Title).
@@ -9777,7 +9778,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 			// Webhook matching is strict by default, with one narrow retry for
 			// anchored releases whose incoming title omits the collection/service tag.
-			if !s.releasesMatchWebhook(incomingRelease, existingRelease, findIndividualEpisodes) {
+			if !s.releasesMatchWebhook(incomingRelease, existingRelease, findIndividualEpisodes, req.Indexer) {
 				continue
 			}
 
