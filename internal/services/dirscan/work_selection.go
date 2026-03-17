@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/rs/zerolog"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 type rootWorkSelection struct {

@@ -7,8 +7,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/rs/zerolog"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 type trackedFilesIndex struct {
