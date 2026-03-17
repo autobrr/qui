@@ -3036,6 +3036,7 @@ paths:
                   description: Total torrent size in bytes (optional - enables size validation when provided)
                 indexer:
                   type: string
+                  minLength: 1
                   description: Optional autobrr indexer identifier (for example "hdb"). Required if you want qui's HDBits-specific missing collection fallback on webhook checks.
                 findIndividualEpisodes:
                   type: boolean
@@ -3114,7 +3115,8 @@ paths:
                   type: boolean
                 indexer:
                   type: string
-                  description: autobrr indexer identifier (for example "hdb"). Only used when "Use indexer name as category" mode is enabled; qui uses this identifier as the category value. Webhook applies cannot derive tracker identity from the torrent file, so this field is required for that mode.
+                  minLength: 1
+                  description: autobrr indexer identifier (for example "hdb"). Only used when "Use indexer name as category" mode is enabled; when provided in that mode, qui uses this identifier as the category value. If omitted, qui falls back to the matched torrent category. Webhook applies cannot derive tracker identity from the torrent file.
       responses:
         '200':
           description: Torrent processed
