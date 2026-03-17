@@ -59,39 +59,85 @@ export function UnifiedScopeDropdownSection({
     isAllInstancesRoute ? "text-accent-foreground/70 hover:bg-accent/90 focus-visible:bg-accent/90" : "text-muted-foreground hover:bg-accent/80 hover:text-foreground focus-visible:bg-accent/80 focus-visible:text-foreground"
   )
 
-  const contentClassName = "overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+  const dropdownHeaderItemClassName = "cursor-pointer p-0"
 
-  const contentInnerClassName = isSidebar ? "ml-6 space-y-1 border-l border-sidebar-border/70 pl-3" : "ml-4 space-y-1 border-l border-border/60 pl-2"
+  const contentClassName = cn(
+    "overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
+    !isSidebar && "max-h-[min(18rem,calc(100vh-14rem))]"
+  )
+
+  const contentInnerClassName = isSidebar ? "ml-6 space-y-1 border-l border-sidebar-border/70 pl-3" : "ml-4 max-h-[min(18rem,calc(100vh-14rem))] space-y-1 overflow-y-auto overscroll-contain border-l border-border/60 pl-2 pr-1"
 
   const sidebarScopeRowClassName = "flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out outline-hidden"
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded} className="space-y-1">
       <div className={rowContainerClassName}>
-        <Link
-          to="/instances"
-          className={rowLinkClassName}
-        >
-          <HardDrive className="h-4 w-4 flex-shrink-0" />
-          <span className="truncate">Unified</span>
-        </Link>
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className={triggerClassName}
-            aria-label={isExpanded ? "Collapse unified scope" : "Expand unified scope"}
-          >
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
-              {scopeSummary}
-            </span>
-            <ChevronRight
-              className={cn(
-                "h-4 w-4 transition-transform duration-200",
-                isExpanded && "rotate-90"
-              )}
-            />
-          </button>
-        </CollapsibleTrigger>
+        {isSidebar ? (
+          <>
+            <Link
+              to="/instances"
+              className={rowLinkClassName}
+            >
+              <HardDrive className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">Unified</span>
+            </Link>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className={triggerClassName}
+                aria-label={isExpanded ? "Collapse unified scope" : "Expand unified scope"}
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
+                  {scopeSummary}
+                </span>
+                <ChevronRight
+                  className={cn(
+                    "h-4 w-4 transition-transform duration-200",
+                    isExpanded && "rotate-90"
+                  )}
+                />
+              </button>
+            </CollapsibleTrigger>
+          </>
+        ) : (
+          <>
+            <DropdownMenuItem asChild className={dropdownHeaderItemClassName}>
+              <Link
+                to="/instances"
+                className={rowLinkClassName}
+              >
+                <HardDrive className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">Unified</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              asChild
+              className={dropdownHeaderItemClassName}
+              onSelect={(event) => {
+                event.preventDefault()
+              }}
+            >
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className={triggerClassName}
+                  aria-label={isExpanded ? "Collapse unified scope" : "Expand unified scope"}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
+                    {scopeSummary}
+                  </span>
+                  <ChevronRight
+                    className={cn(
+                      "h-4 w-4 transition-transform duration-200",
+                      isExpanded && "rotate-90"
+                    )}
+                  />
+                </button>
+              </CollapsibleTrigger>
+            </DropdownMenuItem>
+          </>
+        )}
       </div>
 
       <CollapsibleContent className={contentClassName}>
