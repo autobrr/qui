@@ -393,6 +393,52 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	return true
 }
 
+func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	if s.releasesMatch(source, candidate, findIndividualEpisodes) {
+		return true
+	}
+
+	if !shouldRelaxWebhookCollectionMatch(s, source, candidate) {
+		return false
+	}
+
+	sourceWithCollection := *source
+	sourceWithCollection.Collection = candidate.Collection
+
+	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
+}
+
+func shouldRelaxWebhookCollectionMatch(s *Service, source, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	// HDBits TV announces can omit the service tag entirely ("WEB-DL") while the
+	// existing torrent keeps the canonical source service (for example "DSNP").
+	// Keep this relaxation narrowly scoped to webhook TV matching where the group
+	// or site already anchors the release identity.
+	if source.Series == 0 || candidate.Series == 0 || source.Collection != "" || candidate.Collection == "" {
+		return false
+	}
+
+	normalizer := s.stringNormalizer
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	return hasNonEmptyNormalizedMatch(normalizer, source.Group, candidate.Group) ||
+		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
+}
+
+func hasNonEmptyNormalizedMatch(normalizer *stringutils.Normalizer[string, string], left, right string) bool {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	left = normalizer.Normalize(left)
+	return left != "" && left == normalizer.Normalize(right)
+}
+
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
 // Uppercases and joins elements to ensure consistent comparison regardless of case or order.
 func joinNormalizedSlice(slice []string) string {

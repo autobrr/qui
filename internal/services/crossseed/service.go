@@ -9775,8 +9775,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				continue
 			}
 
-			// Check if releases match using the configured strict or episode-aware matching.
-			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
+			// Webhook matching is strict by default, with one narrow TV relaxation for
+			// announces that omit the source service tag while the existing torrent keeps it.
+			if !s.releasesMatchWebhook(incomingRelease, existingRelease, findIndividualEpisodes) {
 				continue
 			}
 
