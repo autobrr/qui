@@ -236,6 +236,7 @@ const (
 	minSearchCooldownMinutes            = 720
 	maxCompletionSearchAttempts         = 3
 	defaultCompletionRetryDelay         = 30 * time.Second
+	maxSinglePageTorznabSearchLimit     = 500
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
@@ -3151,7 +3152,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			}
 
 			// Check if releases are related (quick filter)
-			if !s.releasesMatch(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
+			if !s.releasesMatchDiscovery(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
 				continue
 			}
 
@@ -6038,11 +6039,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
 	}
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 40
-	}
-	requestLimit := max(limit*3, limit)
+	requestLimit := max(opts.Limit, maxSinglePageTorznabSearchLimit)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -6405,6 +6402,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	seen := make(map[string]struct{})
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
+	sourceResolutionCtx := resolutionMatchContext{
+		discLayout: sourceInfo.DiscLayout,
+		discMarker: sourceInfo.DiscMarker,
+		rawName:    sourceTorrent.Name,
+	}
 
 	for _, res := range searchResults {
 		key := res.GUID
@@ -6419,7 +6421,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		if !s.releasesMatchDiscoveryWithContext(searchRelease, candidateRelease, opts.FindIndividualEpisodes, sourceResolutionCtx, resolutionMatchContext{}) {
 			releaseFilteredCount++
 			continue
 		}
@@ -6497,10 +6499,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 		return scored[i].score > scored[j].score
 	})
-
-	if len(scored) > limit {
-		scored = scored[:limit]
-	}
 
 	results := make([]TorrentSearchResult, 0, len(scored))
 	for _, item := range scored {
@@ -9776,7 +9774,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			}
 
 			// Check if releases match using the configured strict or episode-aware matching.
-			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
+			if !s.releasesMatchDiscovery(incomingRelease, existingRelease, findIndividualEpisodes) {
 				continue
 			}
 
