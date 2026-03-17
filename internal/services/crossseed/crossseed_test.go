@@ -2219,6 +2219,41 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantRecommendation: "skip",
 		},
 		{
+			name: "movie webhook tolerates missing incoming collection when group matches",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Movie 2024 1080p WEB-DL DD+5.1 H.264-NTb",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-movie-dsnp",
+					Name:     "Sample.Movie.2024.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
+		},
+		{
+			name: "movie webhook missing collection still requires matching group or site",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Movie 2024 1080p WEB-DL DD+5.1 H.264",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-movie-dsnp-no-group",
+					Name:     "Sample.Movie.2024.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
 			name: "pending match when torrent still downloading",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,

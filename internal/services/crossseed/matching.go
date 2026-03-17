@@ -398,7 +398,7 @@ func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndiv
 		return true
 	}
 
-	if !shouldRelaxWebhookCollectionMatch(s, source, candidate) {
+	if !canFillMissingWebhookCollection(source, candidate, s.stringNormalizer) {
 		return false
 	}
 
@@ -408,26 +408,40 @@ func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndiv
 	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
 }
 
-func shouldRelaxWebhookCollectionMatch(s *Service, source, candidate *rls.Release) bool {
+func canFillMissingWebhookCollection(
+	source, candidate *rls.Release,
+	normalizer *stringutils.Normalizer[string, string],
+) bool {
 	if source == nil || candidate == nil {
 		return false
 	}
 
-	// HDBits TV announces can omit the service tag entirely ("WEB-DL") while the
-	// existing torrent keeps the canonical source service (for example "DSNP").
-	// Keep this relaxation narrowly scoped to webhook TV matching where the group
-	// or site already anchors the release identity.
-	if source.Series == 0 || candidate.Series == 0 || source.Collection != "" || candidate.Collection == "" {
+	// Some webhook titles omit the collection/service tag entirely ("WEB-DL")
+	// while the existing torrent keeps the canonical source service (for example
+	// "DSNP"). Only retry when the incoming title is missing Collection and the
+	// group or site already anchors the release identity.
+	if source.Collection != "" || candidate.Collection == "" {
 		return false
 	}
 
-	normalizer := s.stringNormalizer
-	if normalizer == nil {
-		normalizer = stringutils.DefaultNormalizer
+	if !supportsWebhookCollectionFallback(source, candidate) {
+		return false
 	}
 
 	return hasNonEmptyNormalizedMatch(normalizer, source.Group, candidate.Group) ||
 		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
+}
+
+func supportsWebhookCollectionFallback(source, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	if source.Series > 0 && candidate.Series > 0 {
+		return true
+	}
+
+	return isWebSource(normalizeSource(source.Source)) && isWebSource(normalizeSource(candidate.Source))
 }
 
 func hasNonEmptyNormalizedMatch(normalizer *stringutils.Normalizer[string, string], left, right string) bool {
@@ -502,6 +516,15 @@ func normalizeSource(source string) string {
 	return upper
 }
 
+func isWebSource(source string) bool {
+	switch source {
+	case "WEB", "WEBDL", "WEBRIP":
+		return true
+	default:
+		return false
+	}
+}
+
 // sourcesCompatible checks if two sources are compatible for cross-seed precheck.
 // Plain "WEB" is ambiguous and matches both WEBDL and WEBRIP.
 // WEBDL and WEBRIP are explicitly different and do not match each other.
@@ -512,17 +535,6 @@ func sourcesCompatible(source, candidate string) bool {
 	}
 	if source == candidate {
 		return true
-	}
-
-	// WEB is ambiguous: treat it as compatible with both WEBDL and WEBRIP.
-	// It must not match non-web sources (BLURAY, HDTV, etc.).
-	isWebSource := func(s string) bool {
-		switch s {
-		case "WEB", "WEBDL", "WEBRIP":
-			return true
-		default:
-			return false
-		}
 	}
 
 	if !isWebSource(source) || !isWebSource(candidate) {
