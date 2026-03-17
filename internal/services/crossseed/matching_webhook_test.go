@@ -17,12 +17,14 @@ func TestReleasesMatchWebhook_FillsMissingCollection(t *testing.T) {
 
 	tests := []struct {
 		name      string
+		indexer   string
 		source    rls.Release
 		candidate rls.Release
 		wantMatch bool
 	}{
 		{
-			name: "tv missing collection matches when group anchors release",
+			name:    "hdb tv missing collection matches when group anchors release",
+			indexer: "hdb",
 			source: rls.Release{
 				Title:      "Sample Show",
 				Series:     8,
@@ -43,7 +45,8 @@ func TestReleasesMatchWebhook_FillsMissingCollection(t *testing.T) {
 			wantMatch: true,
 		},
 		{
-			name: "web movie missing collection matches when group anchors release",
+			name:    "hdb web movie missing collection matches when group anchors release",
+			indexer: "hdb",
 			source: rls.Release{
 				Title:      "Sample Movie",
 				Year:       2024,
@@ -62,7 +65,47 @@ func TestReleasesMatchWebhook_FillsMissingCollection(t *testing.T) {
 			wantMatch: true,
 		},
 		{
-			name: "missing collection still needs group or site anchor",
+			name:    "non-hdb missing collection stays strict",
+			indexer: "btn",
+			source: rls.Release{
+				Title:      "Sample Movie",
+				Year:       2024,
+				Source:     "WEB-DL",
+				Resolution: "1080p",
+				Group:      "NTb",
+			},
+			candidate: rls.Release{
+				Title:      "Sample Movie",
+				Year:       2024,
+				Source:     "WEB-DL",
+				Resolution: "1080p",
+				Collection: "DSNP",
+				Group:      "NTb",
+			},
+			wantMatch: false,
+		},
+		{
+			name: "missing indexer stays strict",
+			source: rls.Release{
+				Title:      "Sample Movie",
+				Year:       2024,
+				Source:     "WEB-DL",
+				Resolution: "1080p",
+				Group:      "NTb",
+			},
+			candidate: rls.Release{
+				Title:      "Sample Movie",
+				Year:       2024,
+				Source:     "WEB-DL",
+				Resolution: "1080p",
+				Collection: "DSNP",
+				Group:      "NTb",
+			},
+			wantMatch: false,
+		},
+		{
+			name:    "hdb missing collection still needs group or site anchor",
+			indexer: "hdb",
 			source: rls.Release{
 				Title:      "Sample Movie",
 				Year:       2024,
@@ -80,7 +123,8 @@ func TestReleasesMatchWebhook_FillsMissingCollection(t *testing.T) {
 			wantMatch: false,
 		},
 		{
-			name: "non-web movie missing collection stays strict",
+			name:    "hdb non-web movie missing collection stays strict",
+			indexer: "hdb",
 			source: rls.Release{
 				Title:      "Sample Movie",
 				Year:       2024,
@@ -99,7 +143,8 @@ func TestReleasesMatchWebhook_FillsMissingCollection(t *testing.T) {
 			wantMatch: false,
 		},
 		{
-			name: "explicit source collection mismatch stays strict",
+			name:    "hdb explicit source collection mismatch stays strict",
+			indexer: "hdb",
 			source: rls.Release{
 				Title:      "Sample Movie",
 				Year:       2024,
@@ -122,7 +167,7 @@ func TestReleasesMatchWebhook_FillsMissingCollection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.wantMatch, s.releasesMatchWebhook(&tt.source, &tt.candidate, false))
+			require.Equal(t, tt.wantMatch, s.releasesMatchWebhook(&tt.source, &tt.candidate, false, tt.indexer))
 		})
 	}
 }
