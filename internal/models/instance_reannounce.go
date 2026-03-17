@@ -47,6 +47,15 @@ type InstanceReannounceStore struct {
 	db dbinterface.Querier
 }
 
+type reannounceRowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+type reannounceExecQuerier interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // NewInstanceReannounceStore creates a new store.
 func NewInstanceReannounceStore(db dbinterface.Querier) *InstanceReannounceStore {
 	return &InstanceReannounceStore{db: db}
@@ -73,13 +82,13 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 }
 
 // Get returns settings for an instance, falling back to defaults if missing.
-func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
+func getInstanceReannounceSettings(ctx context.Context, q reannounceRowQuerier, instanceID int) (*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
 		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings WHERE instance_id = ?`
 
-	row := s.db.QueryRowContext(ctx, query, instanceID)
+	row := q.QueryRowContext(ctx, query, instanceID)
 	settings, err := scanInstanceReannounceSettings(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -88,6 +97,10 @@ func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*Ins
 		return nil, err
 	}
 	return settings, nil
+}
+
+func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
+	return getInstanceReannounceSettings(ctx, s.db, instanceID)
 }
 
 // List returns settings for all instances that have overrides. Instances without overrides are omitted.
@@ -120,12 +133,13 @@ func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannoun
 }
 
 // Upsert saves settings for an instance, creating or updating as needed.
-func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *InstanceReannounceSettings) (*InstanceReannounceSettings, error) {
+func upsertReannounceSettingsTx(ctx context.Context, q reannounceExecQuerier, settings *InstanceReannounceSettings, instanceID int) (*InstanceReannounceSettings, error) {
 	if settings == nil {
-		return nil, fmt.Errorf("settings cannot be nil")
+		settings = DefaultInstanceReannounceSettings(instanceID)
 	}
 
 	coerced := sanitizeInstanceReannounceSettings(settings)
+	coerced.InstanceID = instanceID
 	catJSON, err := EncodeStringSliceJSON(coerced.Categories)
 	if err != nil {
 		return nil, err
@@ -159,7 +173,7 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		exclude_tags = excluded.exclude_tags,
 		exclude_trackers = excluded.exclude_trackers`
 
-	_, err = s.db.ExecContext(ctx, stmt,
+	_, err = q.ExecContext(ctx, stmt,
 		coerced.InstanceID,
 		BoolToSQLite(coerced.Enabled),
 		coerced.InitialWaitSeconds,
@@ -179,7 +193,15 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		return nil, err
 	}
 
-	return s.Get(ctx, coerced.InstanceID)
+	return getInstanceReannounceSettings(ctx, q, coerced.InstanceID)
+}
+
+func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *InstanceReannounceSettings) (*InstanceReannounceSettings, error) {
+	if settings == nil {
+		return nil, errors.New("settings cannot be nil")
+	}
+
+	return upsertReannounceSettingsTx(ctx, s.db, settings, settings.InstanceID)
 }
 
 func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *InstanceReannounceSettings {

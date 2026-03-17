@@ -901,6 +901,9 @@ paths:
                   type: string
                   enum: [flat, by-tracker, by-instance]
                   description: Directory organization preset for hardlink mode.
+                linkDirName:
+                  type: string
+                  description: Optional override for the folder name used by the by-instance hardlink/reflink preset.
                 useReflinks:
                   type: boolean
                   description: Enable reflink (copy-on-write) mode for cross-seed operations. Mutually exclusive with hardlink mode.
@@ -1000,6 +1003,9 @@ paths:
                   type: string
                   enum: [flat, by-tracker, by-instance]
                   description: Directory organization preset for hardlink mode.
+                linkDirName:
+                  type: string
+                  description: Optional override for the folder name used by the by-instance hardlink/reflink preset.
                 useReflinks:
                   type: boolean
                   description: Enable reflink (copy-on-write) mode for cross-seed operations. Mutually exclusive with hardlink mode.
@@ -5594,6 +5600,9 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink mode.
+        linkDirName:
+          type: string
+          description: Optional override for the folder name used by the by-instance hardlink/reflink preset.
         useReflinks:
           type: boolean
           description: When true, cross-seed operations use reflink (copy-on-write) mode for this instance. Mutually exclusive with hardlink mode.

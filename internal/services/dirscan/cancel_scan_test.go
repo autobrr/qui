@@ -38,7 +38,7 @@ func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {
 	require.NoError(t, err)
 
 	localFS := true
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, &localFS)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, &localFS, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)

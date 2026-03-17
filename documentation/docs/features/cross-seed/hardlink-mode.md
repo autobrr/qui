@@ -46,6 +46,7 @@ Configure in Cross-Seed → Hardlink Mode → (select instance):
   - `flat`: `base/TorrentName--shortHash/...`
   - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
   - `by-instance`: `base/<instance>/TorrentName--shortHash/...`
+- **Instance directory name**: Optional override used only with `by-instance`. Leave empty to use the instance name; set it when you want layouts like `movies-xseed` or `series-xseed`.
 
 ### Isolation Folders
 
@@ -67,7 +68,8 @@ For the `flat` preset, an isolation folder is always used to keep each torrent's
    - Single filesystem: `/mnt/data/cross-seed`
    - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
-6. Optionally enable "Fallback to regular mode" if you want failed hardlinks to use regular cross-seed mode instead of failing.
+6. If you use `by-instance`, optionally set "Instance directory name" to override the folder name under the shared base directory.
+7. Optionally enable "Fallback to regular mode" if you want failed hardlinks to use regular cross-seed mode instead of failing.
 
 ## Pause Behavior
 
@@ -134,7 +136,8 @@ Reflinks use copy-on-write semantics:
    - Single filesystem: `/mnt/data/cross-seed`
    - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`
 5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
-6. Optionally enable "Fallback to regular mode" if you want failed reflinks to use regular cross-seed mode instead of failing.
+6. If you use `by-instance`, optionally set "Instance directory name" to override the folder name under the shared base directory.
+7. Optionally enable "Fallback to regular mode" if you want failed reflinks to use regular cross-seed mode instead of failing.
 
 :::note
 Hardlink and reflink modes are mutually exclusive—only one can be enabled per instance.

@@ -21,7 +21,6 @@ import (
 	"maps"
 	"math"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -44,6 +43,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/linkdir"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -53,10 +53,8 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
-	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
-	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -10459,7 +10457,7 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := linkdir.FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -10487,7 +10485,15 @@ func (s *Service) processHardlinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	destDir, err := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Msg("[CROSSSEED] Hardlink mode: invalid destination directory configuration")
+		return handleError(fmt.Sprintf("Invalid destination directory configuration: %v", err))
+	}
 
 	// Build existing files list (all files on disk from matched torrent).
 	// We pass all existing files to BuildPlan so it can use path/name matching
@@ -10752,42 +10758,22 @@ func (s *Service) buildHardlinkDestDir(
 	instance *models.Instance,
 	baseDir string,
 	torrentHash, torrentName string,
-	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
-) string {
-
-	// Determine if isolation folder is needed based on torrent structure.
-	// Since hardlink mode always uses contentLayout=Original, we only need
-	// an isolation folder when the torrent doesn't have a common root folder.
-	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
-
-	// Build isolation folder name if needed
-	isolationFolder := ""
-	if needsIsolation {
-		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
+) (string, error) {
+	groupName := ""
+	if instance.HardlinkDirPreset == "by-tracker" {
+		groupName = s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
 	}
-
-	switch instance.HardlinkDirPreset {
-	case "by-tracker":
-		// Get tracker display name using incoming torrent's tracker domain
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName), isolationFolder)
+	if instance.HardlinkDirPreset == "by-instance" {
+		var err error
+		groupName, err = linkdir.EffectiveInstanceDirName(instance.Name, instance.LinkDirName)
+		if err != nil {
+			return "", err
 		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
-
-	case "by-instance":
-		if isolationFolder != "" {
-			return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName), isolationFolder)
-		}
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
-
-	default: // "flat" or unknown
-		// For flat layout, always use isolation folder to keep torrents separated
-		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
 	}
+	return linkdir.BuildDestDir(baseDir, instance.HardlinkDirPreset, groupName, torrentHash, torrentName, candidateFiles)
 }
 
 // resolveTrackerDisplayName resolves the display name for the tracker.
@@ -10809,45 +10795,6 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	}
 
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
-}
-
-// findMatchingBaseDir finds the first base directory from a comma-separated list
-// that is on the same filesystem as the source path. Returns the matching directory
-// or an error if none match.
-func findMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
-	if strings.TrimSpace(configuredDirs) == "" {
-		return "", errors.New("base directory not configured")
-	}
-
-	dirs := strings.Split(configuredDirs, ",")
-	var lastErr error
-
-	for _, dir := range dirs {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
-			continue
-		}
-
-		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
-			continue
-		}
-
-		if sameFS {
-			return dir, nil
-		}
-	}
-
-	if lastErr != nil {
-		return "", fmt.Errorf("no base directory on same filesystem as source (last error: %w)", lastErr)
-	}
-	return "", errors.New("no base directory on same filesystem as source")
 }
 
 // reflinkModeResult represents the outcome of reflink mode processing.
@@ -11001,7 +10948,7 @@ func (s *Service) processReflinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := linkdir.FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -11037,7 +10984,15 @@ func (s *Service) processReflinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	destDir, err := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Msg("[CROSSSEED] Reflink mode: invalid destination directory configuration")
+		return handleError(fmt.Sprintf("Invalid destination directory configuration: %v", err))
+	}
 
 	// Build existing files list (all files on disk from matched torrent)
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
