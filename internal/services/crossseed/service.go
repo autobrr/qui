@@ -10459,7 +10459,7 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -10814,7 +10814,9 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 // findMatchingBaseDir finds the first base directory from a comma-separated list
 // that is on the same filesystem as the source path. Returns the matching directory
 // or an error if none match.
-func findMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
+// FindMatchingBaseDir returns the first configured base directory on the same
+// filesystem as the source path.
+func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
 	if strings.TrimSpace(configuredDirs) == "" {
 		return "", errors.New("base directory not configured")
 	}
@@ -11001,7 +11003,7 @@ func (s *Service) processReflinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).

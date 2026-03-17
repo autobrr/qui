@@ -435,25 +435,29 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 	incomingFiles := buildLinkTreeIncomingFiles(req.ParsedTorrent)
 	needsIsolation := !hardlinktree.HasCommonRootFolder(incomingFiles)
 
-	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
-	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
-	destDir := buildLinkDestDir(instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
-
-	if err := os.MkdirAll(instance.HardlinkBaseDir, 0o750); err != nil {
-		return nil, "", fmt.Errorf("create hardlink base dir: %w", err)
-	}
-
 	linkableFiles, existingFiles, err := buildLinkTreeMatchedFiles(req.MatchResult)
 	if err != nil {
 		return nil, "", err
 	}
+
+	selectedBaseDir, err := crossseed.FindMatchingBaseDir(instance.HardlinkBaseDir, existingFiles[0].AbsPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("select hardlink base dir: %w", err)
+	}
+	if err := os.MkdirAll(selectedBaseDir, 0o750); err != nil {
+		return nil, "", fmt.Errorf("create hardlink base dir: %w", err)
+	}
+
+	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
+	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
+	destDir := buildLinkDestDir(selectedBaseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
 
 	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 	if err != nil {
 		return nil, "", fmt.Errorf("build link plan: %w", err)
 	}
 
-	mode, err := i.createLinkTree(instance, existingFiles, plan)
+	mode, err := i.createLinkTree(instance, selectedBaseDir, existingFiles, plan)
 	if err != nil {
 		return nil, "", err
 	}
@@ -532,9 +536,9 @@ func buildLinkTreeMatchedFiles(match *MatchResult) ([]hardlinktree.TorrentFile, 
 	return linkableFiles, existingFiles, nil
 }
 
-func (i *Injector) createLinkTree(instance *models.Instance, existingFiles []hardlinktree.ExistingFile, plan *hardlinktree.TreePlan) (string, error) {
+func (i *Injector) createLinkTree(instance *models.Instance, selectedBaseDir string, existingFiles []hardlinktree.ExistingFile, plan *hardlinktree.TreePlan) (string, error) {
 	if instance.UseReflinks {
-		if supported, reason := reflinktree.SupportsReflink(instance.HardlinkBaseDir); !supported {
+		if supported, reason := reflinktree.SupportsReflink(selectedBaseDir); !supported {
 			return "", fmt.Errorf("%w: %s", reflinktree.ErrReflinkUnsupported, reason)
 		}
 		if err := reflinktree.Create(plan); err != nil {
@@ -544,7 +548,7 @@ func (i *Injector) createLinkTree(instance *models.Instance, existingFiles []har
 	}
 
 	if instance.UseHardlinks {
-		sameFS, err := fsutil.SameFilesystem(existingFiles[0].AbsPath, instance.HardlinkBaseDir)
+		sameFS, err := fsutil.SameFilesystem(existingFiles[0].AbsPath, selectedBaseDir)
 		if err != nil {
 			return "", fmt.Errorf("verify same filesystem: %w", err)
 		}
@@ -552,7 +556,7 @@ func (i *Injector) createLinkTree(instance *models.Instance, existingFiles []har
 			return "", fmt.Errorf(
 				"hardlink source (%s) and destination (%s) are on different filesystems",
 				existingFiles[0].AbsPath,
-				instance.HardlinkBaseDir,
+				selectedBaseDir,
 			)
 		}
 
@@ -571,9 +575,7 @@ func (i *Injector) createLinkTree(instance *models.Instance, existingFiles []har
 	return "", errors.New("no link mode enabled")
 }
 
-func buildLinkDestDir(instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, trackerDisplayName string) string {
-	baseDir := instance.HardlinkBaseDir
-
+func buildLinkDestDir(baseDir string, instance *models.Instance, torrentHash, torrentName string, needsIsolation bool, trackerDisplayName string) string {
 	isolationFolder := ""
 	if needsIsolation {
 		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
