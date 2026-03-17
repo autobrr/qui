@@ -393,6 +393,66 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	return true
 }
 
+func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	if s.releasesMatch(source, candidate, findIndividualEpisodes) {
+		return true
+	}
+
+	if !canFillMissingWebhookCollection(source, candidate, s.stringNormalizer) {
+		return false
+	}
+
+	sourceWithCollection := *source
+	sourceWithCollection.Collection = candidate.Collection
+
+	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
+}
+
+func canFillMissingWebhookCollection(
+	source, candidate *rls.Release,
+	normalizer *stringutils.Normalizer[string, string],
+) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	// Some webhook titles omit the collection/service tag entirely ("WEB-DL")
+	// while the existing torrent keeps the canonical source service (for example
+	// "DSNP"). Only retry when the incoming title is missing Collection and the
+	// group or site already anchors the release identity.
+	if source.Collection != "" || candidate.Collection == "" {
+		return false
+	}
+
+	if !supportsWebhookCollectionFallback(source, candidate) {
+		return false
+	}
+
+	return hasNonEmptyNormalizedMatch(normalizer, source.Group, candidate.Group) ||
+		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
+}
+
+func supportsWebhookCollectionFallback(source, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	if source.Series > 0 && candidate.Series > 0 {
+		return true
+	}
+
+	return isWebSource(normalizeSource(source.Source)) && isWebSource(normalizeSource(candidate.Source))
+}
+
+func hasNonEmptyNormalizedMatch(normalizer *stringutils.Normalizer[string, string], left, right string) bool {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	left = normalizer.Normalize(left)
+	return left != "" && left == normalizer.Normalize(right)
+}
+
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
 // Uppercases and joins elements to ensure consistent comparison regardless of case or order.
 func joinNormalizedSlice(slice []string) string {
@@ -456,6 +516,15 @@ func normalizeSource(source string) string {
 	return upper
 }
 
+func isWebSource(source string) bool {
+	switch source {
+	case "WEB", "WEBDL", "WEBRIP":
+		return true
+	default:
+		return false
+	}
+}
+
 // sourcesCompatible checks if two sources are compatible for cross-seed precheck.
 // Plain "WEB" is ambiguous and matches both WEBDL and WEBRIP.
 // WEBDL and WEBRIP are explicitly different and do not match each other.
@@ -466,17 +535,6 @@ func sourcesCompatible(source, candidate string) bool {
 	}
 	if source == candidate {
 		return true
-	}
-
-	// WEB is ambiguous: treat it as compatible with both WEBDL and WEBRIP.
-	// It must not match non-web sources (BLURAY, HDTV, etc.).
-	isWebSource := func(s string) bool {
-		switch s {
-		case "WEB", "WEBDL", "WEBRIP":
-			return true
-		default:
-			return false
-		}
 	}
 
 	if !isWebSource(source) || !isWebSource(candidate) {
