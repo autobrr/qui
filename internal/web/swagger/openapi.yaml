@@ -1392,7 +1392,7 @@ paths:
             schema:
               type: object
               properties:
-                torrentFile:
+                torrent:
                   type: string
                   format: binary
                 urls:
