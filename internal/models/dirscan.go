@@ -831,6 +831,25 @@ func (s *DirScanStore) UpdateRunStatus(ctx context.Context, runID int64, status 
 	return nil
 }
 
+// UpdateRunStatusIfCurrent updates the status of a run only when it is still in the expected state.
+func (s *DirScanStore) UpdateRunStatusIfCurrent(ctx context.Context, runID int64, currentStatus, nextStatus DirScanRunStatus) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET status = ?
+		WHERE id = ? AND status = ?
+	`, nextStatus, runID, currentStatus)
+	if err != nil {
+		return false, fmt.Errorf("update run status conditionally: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("rows affected: %w", err)
+	}
+
+	return rows > 0, nil
+}
+
 // UpdateRunScanRoot updates the scan root of a run.
 func (s *DirScanStore) UpdateRunScanRoot(ctx context.Context, runID int64, scanRoot string) error {
 	var scanRootValue any
