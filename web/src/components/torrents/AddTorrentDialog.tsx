@@ -975,7 +975,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         {showFileList && field.state.value && field.state.value.length > 0 && (
                           <div className="max-h-24 overflow-y-auto border rounded-md p-2">
                             <div className="space-y-1 text-xs">
-                              {field.state.value.map((file, index) => {
+                              {Array.isArray(field.state.value) && field.state.value.map((file, index) => {
                                 const fileKey = createFileKey(file)
                                 const duplicateInfo = duplicateFileEntries[fileKey]
                                 const isDuplicate = Boolean(duplicateInfo)
