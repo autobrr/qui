@@ -222,7 +222,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const checkForDuplicates = useCallback(async (files: File[] | null, urls: string) => {
     duplicateCheckRequestRef.current += 1
     const requestId = duplicateCheckRequestRef.current
-    setDuplicateSummary(createEmptyDuplicateSummary())
     setDuplicateCheckStatus("pending")
     if (duplicateCheckIndicatorTimeoutRef.current !== null) {
       window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
@@ -674,7 +673,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
     // Check for duplicates when files are dropped
     if (allFiles.length > 0) {
-      checkForDuplicates(allFiles, "")
+      checkForDuplicates(allFiles, form.getFieldValue("urls"))
     }
   }, [form, checkForDuplicates])
 
@@ -1039,7 +1038,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           onChange={(e) => {
                             field.handleChange(e.target.value)
                             // Check for duplicates when URLs are entered
-                            checkForDuplicates(null, e.target.value)
+                            checkForDuplicates(form.getFieldValue("torrentFiles"), e.target.value)
                           }}
                         />
                         {duplicateUrlKeys.length > 0 && (
