@@ -30,8 +30,6 @@ type TorrentCollector struct {
 	dhtNodesDesc                *prometheus.Desc
 	torrentsPerCategoryDesc     *prometheus.Desc
 	torrentsSizePerCategoryDesc *prometheus.Desc
-	torrentsPerTrackerDesc      *prometheus.Desc
-	torrentsSizePerTrackerDesc  *prometheus.Desc
 	torrentsPerTagDesc          *prometheus.Desc
 	torrentsSizePerTagDesc      *prometheus.Desc
 	totalPeerConnectionsDesc    *prometheus.Desc
@@ -115,18 +113,6 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 			[]string{"instance_id", "instance_name", "category"},
 			nil,
 		),
-		torrentsPerTrackerDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_tracker_count",
-			"Number of torrents per tracker (grouped by alias) by instance",
-			[]string{"instance_id", "instance_name", "tracker"},
-			nil,
-		),
-		torrentsSizePerTrackerDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_tracker_bytes",
-			"Total torrent size in bytes per tracker (grouped by alias) by instance",
-			[]string{"instance_id", "instance_name", "tracker"},
-			nil,
-		),
 		torrentsPerTagDesc: prometheus.NewDesc(
 			"qbittorrent_torrents_tag_count",
 			"Number of torrents per tag by instance",
@@ -167,8 +153,6 @@ func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhtNodesDesc
 	ch <- c.torrentsPerCategoryDesc
 	ch <- c.torrentsSizePerCategoryDesc
-	ch <- c.torrentsPerTrackerDesc
-	ch <- c.torrentsSizePerTrackerDesc
 	ch <- c.torrentsPerTagDesc
 	ch <- c.torrentsSizePerTagDesc
 	ch <- c.totalPeerConnectionsDesc
@@ -375,27 +359,6 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 						instanceIDStr,
 						instanceName,
 						cat,
-					)
-				}
-			}
-			// TrackerTransfers -> map[string]TrackerTransferStats
-			if counts.TrackerTransfers != nil {
-				for tr, tt := range counts.TrackerTransfers {
-					ch <- prometheus.MustNewConstMetric(
-						c.torrentsPerTrackerDesc,
-						prometheus.GaugeValue,
-						float64(tt.Count),
-						instanceIDStr,
-						instanceName,
-						tr,
-					)
-					ch <- prometheus.MustNewConstMetric(
-						c.torrentsSizePerTrackerDesc,
-						prometheus.GaugeValue,
-						float64(tt.TotalSize),
-						instanceIDStr,
-						instanceName,
-						tr,
 					)
 				}
 			}
